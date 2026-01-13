@@ -201,6 +201,19 @@ class ClaudeAgentService:
         # Get tools for this flow
         tools = get_tools_by_names(route_result.tools)
 
+        # Log tools being passed to Claude
+        tool_names = [t['name'] for t in tools]
+        logger.info(
+            f"Tools for flow {route_result.flow.value}: "
+            f"{len(tools)} tools loaded ({tool_names})"
+        )
+
+        if not tools:
+            logger.warning(
+                f"No tools loaded for flow {route_result.flow.value}! "
+                f"Requested tools: {route_result.tools}"
+            )
+
         # Convert messages to Anthropic format
         conversation = [
             {
@@ -282,6 +295,11 @@ class ClaudeAgentService:
 
             # If no tool uses, we're done
             if not tool_uses:
+                if iterations == 1:
+                    logger.warning(
+                        f"Claude did not use any tools on first iteration. "
+                        f"Flow: {route_result.flow.value}, Tools available: {len(tools)}"
+                    )
                 break
 
             # Execute tool calls

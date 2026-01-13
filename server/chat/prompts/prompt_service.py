@@ -195,28 +195,117 @@ class PromptService:
     ) -> Tuple[Optional[str], str]:
         """
         Fetch a prompt from Braintrust.
-        
+
         Returns (prompt_text, version) or (None, "") if not found.
         """
         try:
             # Use Braintrust's prompt API
-            # Note: Actual API may differ - this is based on typical patterns
             prompt = self._braintrust_client.load_prompt(
                 project=self.project_name,
                 slug=prompt_id,
                 version=version if version != "stable" else None,
             )
-            
-            if prompt and hasattr(prompt, 'prompt'):
-                # Get the actual version
-                actual_version = getattr(prompt, 'version', version)
-                return prompt.prompt, str(actual_version)
-            
+
+            if prompt is None:
+                return None, ""
+
+            # Get the actual version
+            actual_version = getattr(prompt, 'version', version) or version
+
+            # Extract prompt text from the Braintrust Prompt object
+            prompt_text = self._extract_prompt_text(prompt)
+
+            if prompt_text:
+                logger.info(f"Loaded prompt from Braintrust: {prompt_id}, version={actual_version}")
+                return prompt_text, str(actual_version)
+
             return None, ""
-            
+
         except Exception as e:
-            logger.debug(f"Braintrust prompt fetch error for {prompt_id}: {e}")
+            logger.warning(f"Braintrust prompt fetch error for {prompt_id}: {e}")
             return None, ""
+
+    def _extract_prompt_text(self, prompt) -> Optional[str]:
+        """
+        Extract prompt text from a Braintrust Prompt object.
+
+        Braintrust prompts can be:
+        - Chat prompts: have messages array with system/user messages
+        - Completion prompts: have a single prompt string
+
+        Returns the system prompt text or None if extraction fails.
+        """
+        try:
+            # Method 1: Use build() which returns formatted messages
+            if hasattr(prompt, 'build'):
+                built = prompt.build()
+                if isinstance(built, dict):
+                    messages = built.get('messages', [])
+                    if messages:
+                        # Look for system message first
+                        for msg in messages:
+                            if isinstance(msg, dict) and msg.get('role') == 'system':
+                                content = msg.get('content', '')
+                                if isinstance(content, str):
+                                    return content
+                                elif isinstance(content, list):
+                                    # Content can be array of text blocks
+                                    return ''.join(
+                                        block.get('text', '') if isinstance(block, dict) else str(block)
+                                        for block in content
+                                    )
+                        # No system message, try first message content
+                        first_msg = messages[0] if messages else None
+                        if first_msg and isinstance(first_msg, dict):
+                            content = first_msg.get('content', '')
+                            if isinstance(content, str):
+                                return content
+
+                    # Completion format: might have 'prompt' key
+                    if 'prompt' in built:
+                        return built['prompt']
+
+            # Method 2: Access prompt_data directly
+            if hasattr(prompt, 'prompt_data'):
+                prompt_data = prompt.prompt_data
+                if hasattr(prompt_data, 'prompt'):
+                    block = prompt_data.prompt
+                    # Handle PromptChatBlock with messages
+                    if hasattr(block, 'messages'):
+                        messages = block.messages
+                        if messages:
+                            for msg in messages:
+                                if hasattr(msg, 'role') and msg.role == 'system':
+                                    content = getattr(msg, 'content', None)
+                                    if isinstance(content, str):
+                                        return content
+                                    elif isinstance(content, list):
+                                        return ''.join(
+                                            getattr(part, 'text', str(part)) for part in content
+                                        )
+                            # Return first message content if no system
+                            first = messages[0]
+                            if hasattr(first, 'content'):
+                                content = first.content
+                                if isinstance(content, str):
+                                    return content
+                    # Handle PromptCompletionBlock
+                    elif hasattr(block, 'content'):
+                        return block.content
+
+            # Method 3: Try direct attributes
+            for attr in ['prompt', 'content', 'text', 'system']:
+                if hasattr(prompt, attr):
+                    val = getattr(prompt, attr)
+                    if isinstance(val, str) and val:
+                        return val
+
+            logger.warning(f"Could not extract text from prompt object: {type(prompt)}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error extracting prompt text: {e}")
+            return None
     
     def invalidate_cache(self, prompt_id: Optional[str] = None):
         """
