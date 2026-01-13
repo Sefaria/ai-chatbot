@@ -165,6 +165,15 @@ ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 # Anthropic API Configuration
 # ============================================================================
 # Set ANTHROPIC_API_KEY environment variable
+#
+# AI Router & Guardrails Configuration:
+# - ROUTER_USE_AI=true/false (default: true) - Enable AI-based flow routing
+# - GUARDRAILS_USE_AI=true/false (default: true) - Enable AI-based guardrails
+# - ROUTER_MODEL=claude-3-5-haiku-20241022 (default) - Model for routing
+# - GUARDRAIL_MODEL=claude-3-5-haiku-20241022 (default) - Model for guardrails
+#
+# Note: Uses Claude 3.5 Haiku by default for speed and cost-effectiveness.
+# Falls back to rule-based classification if AI fails or is disabled.
 
 # ============================================================================
 # Sefaria API Configuration (optional)

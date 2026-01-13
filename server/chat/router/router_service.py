@@ -14,7 +14,7 @@ import time
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 
 from .reason_codes import ReasonCode
@@ -159,29 +159,51 @@ GENERAL_KEYWORDS = [
 class RouterService:
     """
     Router service for classifying user messages and making routing decisions.
-    
-    Uses a combination of:
-    1. Rule-based keyword/pattern matching
-    2. Guardrail checks
-    3. Conversation context (previous flow, summary)
+
+    Can use either:
+    1. AI-based classification (Claude with Braintrust prompts) - Default
+    2. Rule-based classification (keyword/pattern matching) - Fallback
+
+    Also includes guardrail checks for safety.
     """
-    
+
     def __init__(
         self,
         guardrail_checker: Optional[GuardrailChecker] = None,
-        use_llm_classifier: bool = False,
+        use_ai_classifier: bool = True,
+        use_ai_guardrails: bool = True,
     ):
         """
         Initialize the router service.
-        
+
         Args:
             guardrail_checker: Custom guardrail checker (default: built-in)
-            use_llm_classifier: Whether to use LLM for ambiguous classification
+            use_ai_classifier: Whether to use AI for flow classification (default: True)
+            use_ai_guardrails: Whether to use AI for guardrails (default: True)
         """
-        self.guardrail_checker = guardrail_checker or get_guardrail_checker()
-        self.use_llm_classifier = use_llm_classifier
-        
-        # Compile patterns
+        # Initialize guardrail checker
+        self.use_ai_guardrails = use_ai_guardrails
+        self.guardrail_checker = guardrail_checker or get_guardrail_checker(use_ai=use_ai_guardrails)
+
+        # Initialize flow classifier
+        self.use_ai_classifier = use_ai_classifier
+        self._ai_router = None
+
+        if use_ai_classifier:
+            try:
+                from .ai_router import get_ai_flow_router
+
+                # Create AI router with rule-based fallback
+                self._ai_router = get_ai_flow_router(
+                    fallback_classifier=self._classify_intent_rule_based
+                )
+                logger.info("Using AI-based flow router with rule-based fallback")
+            except Exception as e:
+                logger.error(f"Failed to initialize AI flow router: {e}")
+                logger.info("Falling back to rule-based flow router")
+                self.use_ai_classifier = False
+
+        # Compile rule-based patterns (used for fallback or if AI disabled)
         self._halachic_patterns = [re.compile(p, re.IGNORECASE) for p in HALACHIC_KEYWORDS]
         self._search_patterns = [re.compile(p, re.IGNORECASE) for p in SEARCH_KEYWORDS]
         self._general_patterns = [re.compile(p, re.IGNORECASE) for p in GENERAL_KEYWORDS]
@@ -227,12 +249,19 @@ class RouterService:
                 start_time=start_time,
             )
         
-        # Step 2: Classify intent
-        flow, flow_confidence, flow_reasons = self._classify_intent(
-            user_message,
-            conversation_summary,
-            previous_flow,
-        )
+        # Step 2: Classify intent (AI or rule-based)
+        if self.use_ai_classifier and self._ai_router:
+            flow, flow_confidence, flow_reasons = self._ai_router.classify(
+                user_message,
+                conversation_summary,
+                previous_flow,
+            )
+        else:
+            flow, flow_confidence, flow_reasons = self._classify_intent_rule_based(
+                user_message,
+                conversation_summary,
+                previous_flow,
+            )
         reason_codes.extend(flow_reasons)
         
         # Step 3: Determine session action
@@ -275,15 +304,17 @@ class RouterService:
             router_latency_ms=latency_ms,
         )
     
-    def _classify_intent(
+    def _classify_intent_rule_based(
         self,
         message: str,
         summary: str,
         previous_flow: Optional[str],
-    ) -> tuple[Flow, float, List[ReasonCode]]:
+    ) -> Tuple[Flow, float, List[ReasonCode]]:
         """
-        Classify the user's intent into a flow.
-        
+        Classify the user's intent into a flow using rule-based patterns.
+
+        This is used as fallback when AI classification is disabled or fails.
+
         Returns (flow, confidence, reason_codes)
         """
         reason_codes = []
@@ -352,7 +383,7 @@ class RouterService:
         """Select prompt IDs based on flow."""
         # These IDs will be looked up in Braintrust
         return PromptBundle(
-            core_prompt_id="bt_prompt_core",
+            core_prompt_id="core-8fbc",
             core_prompt_version="stable",
             flow_prompt_id=f"bt_prompt_{flow.value.lower()}",
             flow_prompt_version="stable",
@@ -426,11 +457,37 @@ class RouterService:
 _default_router = None
 
 
-def get_router_service() -> RouterService:
-    """Get or create the default router service."""
+def get_router_service(
+    use_ai_classifier: Optional[bool] = None,
+    use_ai_guardrails: Optional[bool] = None,
+) -> RouterService:
+    """
+    Get or create the default router service.
+
+    Args:
+        use_ai_classifier: Override to enable/disable AI classification.
+                          If None, reads from ROUTER_USE_AI env var (default: True)
+        use_ai_guardrails: Override to enable/disable AI guardrails.
+                          If None, reads from GUARDRAILS_USE_AI env var (default: True)
+
+    Returns:
+        RouterService instance
+    """
     global _default_router
+
+    # Read from environment if not specified
+    if use_ai_classifier is None:
+        use_ai_classifier = os.environ.get('ROUTER_USE_AI', 'true').lower() == 'true'
+    if use_ai_guardrails is None:
+        use_ai_guardrails = os.environ.get('GUARDRAILS_USE_AI', 'true').lower() == 'true'
+
+    # Create new instance if settings changed or doesn't exist
     if _default_router is None:
-        _default_router = RouterService()
+        _default_router = RouterService(
+            use_ai_classifier=use_ai_classifier,
+            use_ai_guardrails=use_ai_guardrails,
+        )
+
     return _default_router
 
 

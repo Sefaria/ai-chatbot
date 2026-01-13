@@ -89,20 +89,20 @@ HARASSMENT_PATTERNS = [
 class GuardrailChecker:
     """
     Checks messages against safety guardrails.
-    
-    Uses rule-based pattern matching with optional LLM backup
-    for ambiguous cases.
+
+    Uses rule-based pattern matching for fast, deterministic checks.
+    This serves as the fallback for the AI-based guardrail checker.
     """
-    
+
     def __init__(self, strict_mode: bool = False):
         """
         Initialize the guardrail checker.
-        
+
         Args:
             strict_mode: If True, err on the side of caution for edge cases
         """
         self.strict_mode = strict_mode
-        
+
         # Compile patterns for efficiency
         self._injection_patterns = [
             re.compile(p, re.IGNORECASE) for p in PROMPT_INJECTION_PATTERNS
@@ -223,13 +223,47 @@ class GuardrailChecker:
 
 # Default guardrail checker instance
 _default_checker = None
+_default_ai_checker = None
 
 
-def get_guardrail_checker() -> GuardrailChecker:
-    """Get or create the default guardrail checker."""
-    global _default_checker
-    if _default_checker is None:
-        _default_checker = GuardrailChecker()
-    return _default_checker
+def get_guardrail_checker(use_ai: bool = False) -> GuardrailChecker:
+    """
+    Get or create the default guardrail checker.
+
+    Args:
+        use_ai: If True, return AI-based checker with rule-based fallback.
+                If False, return rule-based checker only.
+
+    Returns:
+        GuardrailChecker (rule-based) or AIGuardrailChecker (AI-based)
+    """
+    global _default_checker, _default_ai_checker
+
+    if use_ai:
+        if _default_ai_checker is None:
+            try:
+                from .ai_guardrails import get_ai_guardrail_checker
+
+                # Create rule-based checker as fallback
+                if _default_checker is None:
+                    _default_checker = GuardrailChecker()
+
+                # Create AI checker with fallback
+                _default_ai_checker = get_ai_guardrail_checker(
+                    fallback_checker=_default_checker
+                )
+                logger.info("Using AI-based guardrail checker with rule-based fallback")
+            except Exception as e:
+                logger.error(f"Failed to initialize AI guardrail checker: {e}")
+                logger.info("Falling back to rule-based guardrail checker")
+                if _default_checker is None:
+                    _default_checker = GuardrailChecker()
+                return _default_checker
+
+        return _default_ai_checker
+    else:
+        if _default_checker is None:
+            _default_checker = GuardrailChecker()
+        return _default_checker
 
 

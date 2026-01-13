@@ -9,7 +9,7 @@ import os
 import time
 import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from threading import Lock
 
 logger = logging.getLogger('chat.prompts')
@@ -85,42 +85,62 @@ class PromptService:
         if not self.api_key:
             logger.info("Braintrust API key not configured, using local prompts only")
             return
-        
+
         try:
             import braintrust
             self._braintrust_client = braintrust
+
+            # Also initialize the router's Braintrust client for core prompt
+            from ..router import get_braintrust_client
+            self._router_braintrust_client = get_braintrust_client()
+
             logger.info(f"Braintrust client initialized for project: {self.project_name}")
         except ImportError:
             logger.warning("Braintrust package not installed, using local prompts only")
+            self._router_braintrust_client = None
         except Exception as e:
             logger.warning(f"Failed to initialize Braintrust: {e}")
+            self._router_braintrust_client = None
     
     def get_prompt_bundle(
         self,
         flow: str,
-        core_prompt_id: str = "bt_prompt_core",
+        core_prompt_id: str = "core-8fbc",
         flow_prompt_id: Optional[str] = None,
         version: str = "stable",
     ) -> PromptBundle:
         """
         Get a complete prompt bundle for a flow.
-        
+
         Args:
             flow: Flow type (HALACHIC, GENERAL, SEARCH)
-            core_prompt_id: Braintrust ID for core prompt
+            core_prompt_id: Braintrust slug for core prompt (default: "core-8fbc")
             flow_prompt_id: Braintrust ID for flow prompt (default: derived from flow)
             version: Prompt version to fetch
-            
+
         Returns:
             PromptBundle with core and flow prompts
         """
         flow_lower = flow.lower()
         flow_prompt_id = flow_prompt_id or f"bt_prompt_{flow_lower}"
-        
-        # Fetch prompts (from cache, Braintrust, or defaults)
-        core_prompt, core_version = self._get_prompt(core_prompt_id, version, 'core')
+
+        # Fetch core prompt using the router's Braintrust client (supports core-8fbc slug)
+        if core_prompt_id == "core-8fbc" and hasattr(self, '_router_braintrust_client') and self._router_braintrust_client:
+            try:
+                core_prompt = self._router_braintrust_client.get_core_prompt(version)
+                core_version = version
+                logger.debug(f"Fetched core prompt via router client: {len(core_prompt)} chars")
+            except Exception as e:
+                logger.warning(f"Failed to fetch core prompt via router client: {e}, falling back to legacy method")
+                core_prompt, core_version = self._get_prompt(core_prompt_id, version, 'core')
+        else:
+            # Fetch using legacy method
+            logger.debug(f"Using legacy method for core prompt: {core_prompt_id}")
+            core_prompt, core_version = self._get_prompt(core_prompt_id, version, 'core')
+
+        # Fetch flow prompt
         flow_prompt, flow_version = self._get_prompt(flow_prompt_id, version, flow_lower)
-        
+
         return PromptBundle(
             core_prompt=core_prompt,
             flow_prompt=flow_prompt,
@@ -135,7 +155,7 @@ class PromptService:
         prompt_id: str,
         version: str,
         fallback_key: str,
-    ) -> tuple[str, str]:
+    ) -> Tuple[str, str]:
         """
         Get a single prompt by ID with caching.
         
@@ -172,7 +192,7 @@ class PromptService:
         self,
         prompt_id: str,
         version: str,
-    ) -> tuple[Optional[str], str]:
+    ) -> Tuple[Optional[str], str]:
         """
         Fetch a prompt from Braintrust.
         
