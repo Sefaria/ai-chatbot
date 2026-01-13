@@ -1,5 +1,13 @@
 """
-Chat API views with Claude agent integration.
+Chat API views with routed Claude agent integration.
+
+Implements the orchestrator pattern:
+1. Receive user message
+2. Load/generate conversation summary
+3. Route to appropriate flow
+4. Execute agent with flow-specific prompts/tools
+5. Update summary and session state
+6. Log to Braintrust via native tracing
 """
 
 import asyncio
@@ -10,6 +18,7 @@ import time
 import queue
 from datetime import datetime
 from threading import Thread
+from typing import Optional
 
 from django.http import StreamingHttpResponse
 from django.utils import timezone
@@ -17,18 +26,22 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import ChatMessage, ChatSession
+from .models import ChatMessage, ChatSession, RouteDecision
 from .serializers import (
     ChatRequestSerializer,
     ChatResponseSerializer,
     HistoryMessageSerializer,
 )
 from .agent import ClaudeAgentService, ConversationMessage, AgentProgressUpdate
+from .router import RouterService, RouteResult, get_router_service
+from .prompts import get_prompt_service
+from .summarization import get_summary_service, ConversationSummary
 
 logger = logging.getLogger('chat')
 
-# Global agent service (initialized lazily)
-_agent_service = None
+# Global services (initialized lazily)
+_agent_service: Optional[ClaudeAgentService] = None
+_router_service: Optional[RouterService] = None
 
 
 def get_agent_service() -> ClaudeAgentService:
@@ -38,8 +51,19 @@ def get_agent_service() -> ClaudeAgentService:
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
-        _agent_service = ClaudeAgentService(api_key=api_key)
+        _agent_service = ClaudeAgentService(
+            api_key=api_key,
+            prompt_service=get_prompt_service(),
+        )
     return _agent_service
+
+
+def get_router() -> RouterService:
+    """Get or create the router service singleton."""
+    global _router_service
+    if _router_service is None:
+        _router_service = get_router_service()
+    return _router_service
 
 
 def run_async(coro):
@@ -51,7 +75,6 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     
     if loop.is_running():
-        # If we're already in an async context, create a new loop
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(asyncio.run, coro)
@@ -60,34 +83,44 @@ def run_async(coro):
         return loop.run_until_complete(coro)
 
 
+def _save_route_decision(route_result: RouteResult, session_id: str, turn_id: str, user_message: str, summary: str = "", previous_flow: str = "") -> RouteDecision:
+    """Save a route decision to the database."""
+    return RouteDecision.objects.create(
+        decision_id=route_result.decision_id,
+        session_id=session_id,
+        turn_id=turn_id,
+        user_message=user_message[:5000],
+        conversation_summary_used=summary[:5000],
+        previous_flow=previous_flow,
+        flow=route_result.flow.value,
+        confidence=route_result.confidence,
+        reason_codes=[code.value for code in route_result.reason_codes],
+        core_prompt_id=route_result.prompt_bundle.core_prompt_id,
+        core_prompt_version=route_result.prompt_bundle.core_prompt_version,
+        flow_prompt_id=route_result.prompt_bundle.flow_prompt_id,
+        flow_prompt_version=route_result.prompt_bundle.flow_prompt_version,
+        tools_attached=route_result.tools,
+        session_action=route_result.session_action.value,
+        safety_allowed=route_result.safety.allowed,
+        refusal_message=route_result.safety.refusal_message or "",
+        router_latency_ms=route_result.router_latency_ms,
+    )
+
+
 @api_view(['POST'])
 def chat(request):
     """
-    Handle incoming chat messages with Claude agent.
+    Handle incoming chat messages with routed Claude agent.
     
     POST /api/chat
     
-    Request body:
-    {
-        "userId": "abc123",
-        "sessionId": "sess_...",
-        "messageId": "msg_...",
-        "timestamp": "2026-01-05T08:12:34.000Z",
-        "text": "User question here",
-        "context": {
-            "pageUrl": "...",
-            "locale": "en",
-            "clientVersion": "1.2.0"
-        }
-    }
-    
-    Response:
-    {
-        "messageId": "msg_reply_...",
-        "sessionId": "sess_...",
-        "timestamp": "2026-01-05T08:12:36.000Z",
-        "markdown": "### Answer\nHere is **markdown**..."
-    }
+    Orchestration flow:
+    1. Validate request
+    2. Load session and conversation summary
+    3. Route message to appropriate flow
+    4. Execute agent with flow-specific configuration
+    5. Update summary and save response
+    6. Return response with routing metadata
     """
     start_time = time.time()
     
@@ -102,14 +135,17 @@ def chat(request):
     data = serializer.validated_data
     context = data.get('context', {})
     
+    # Generate turn ID
+    turn_id = ChatMessage.generate_turn_id()
+    
     # Log incoming message
     logger.info(
         f"📨 user={data['userId']} session={data['sessionId'][:20]}... "
-        f"msg={data['messageId'][:20]}... text={data['text'][:50]}..."
+        f"turn={turn_id[:20]}... text={data['text'][:50]}..."
     )
     
     # Update or create session
-    session, _ = ChatSession.objects.update_or_create(
+    session, session_created = ChatSession.objects.update_or_create(
         session_id=data['sessionId'],
         defaults={
             'user_id': data['userId'],
@@ -117,26 +153,60 @@ def chat(request):
         }
     )
     
+    # Get conversation summary for routing
+    conversation_summary = session.conversation_summary or ""
+    previous_flow = session.current_flow or ""
+    
+    # Route the message
+    router = get_router()
+    route_result = router.route(
+        session_id=data['sessionId'],
+        user_message=data['text'],
+        conversation_summary=conversation_summary,
+        previous_flow=previous_flow if previous_flow else None,
+        user_metadata={
+            'locale': context.get('locale', ''),
+            'pageUrl': context.get('pageUrl', ''),
+        }
+    )
+    
+    # Save route decision
+    route_decision = _save_route_decision(
+        route_result=route_result,
+        session_id=data['sessionId'],
+        turn_id=turn_id,
+        user_message=data['text'],
+        summary=conversation_summary,
+        previous_flow=previous_flow,
+    )
+    
+    logger.info(
+        f"🔀 Route: flow={route_result.flow.value} confidence={route_result.confidence:.2f} "
+        f"reasons={[c.value for c in route_result.reason_codes[:3]]}"
+    )
+    
     # Save user message
     user_message = ChatMessage.objects.create(
         message_id=data['messageId'],
         session_id=data['sessionId'],
         user_id=data['userId'],
+        turn_id=turn_id,
+        route_decision=route_decision,
         role=ChatMessage.Role.USER,
         content=data['text'],
         client_timestamp=data['timestamp'],
         page_url=context.get('pageUrl', ''),
         locale=context.get('locale', ''),
         client_version=context.get('clientVersion', ''),
+        flow=route_result.flow.value,
     )
     
     try:
-        # Get conversation history for this session
+        # Get conversation history for context
         history_messages = ChatMessage.objects.filter(
             session_id=data['sessionId']
-        ).order_by('server_timestamp')[:50]  # Last 50 messages for context
+        ).order_by('server_timestamp')[:50]
         
-        # Build conversation for agent
         conversation = []
         for msg in history_messages:
             conversation.append(ConversationMessage(
@@ -144,13 +214,15 @@ def chat(request):
                 content=msg.content
             ))
         
-        # Get agent service and send message
+        # Execute agent with routing context
         agent = get_agent_service()
         agent_response = run_async(
             agent.send_message(
                 messages=conversation,
+                route_result=route_result,
                 session_id=data['sessionId'],
-                user_id=data['userId']
+                user_id=data['userId'],
+                turn_id=turn_id,
             )
         )
         
@@ -162,6 +234,8 @@ def chat(request):
             message_id=ChatMessage.generate_message_id(),
             session_id=data['sessionId'],
             user_id=data['userId'],
+            turn_id=turn_id,
+            route_decision=route_decision,
             role=ChatMessage.Role.ASSISTANT,
             content=agent_response.content,
             latency_ms=latency_ms,
@@ -173,6 +247,8 @@ def chat(request):
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
             model_name='claude-sonnet-4-5-20250929',
+            flow=route_result.flow.value,
+            status=ChatMessage.Status.REFUSED if agent_response.was_refused else ChatMessage.Status.SUCCESS,
         )
         
         # Link user message to response
@@ -180,31 +256,50 @@ def chat(request):
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=['response_message', 'latency_ms'])
         
-        # Update session stats
-        session.message_count = ChatMessage.objects.filter(
-            session_id=data['sessionId']
-        ).count()
+        # Update session with new summary and flow
+        summary_service = get_summary_service()
+        new_summary = run_async(
+            summary_service.update_summary(
+                current_summary=ConversationSummary(text=conversation_summary) if conversation_summary else None,
+                new_user_message=data['text'],
+                new_assistant_response=agent_response.content,
+                flow=route_result.flow.value,
+            )
+        )
+        
+        session.message_count = ChatMessage.objects.filter(session_id=data['sessionId']).count()
+        session.turn_count = (session.turn_count or 0) + 1
+        session.current_flow = route_result.flow.value
+        session.conversation_summary = new_summary.to_text()
+        session.summary_updated_at = timezone.now()
         session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
         session.total_output_tokens = (session.total_output_tokens or 0) + agent_response.output_tokens
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
         session.save(update_fields=[
-            'message_count', 'last_activity',
+            'message_count', 'turn_count', 'last_activity', 'current_flow',
+            'conversation_summary', 'summary_updated_at',
             'total_input_tokens', 'total_output_tokens', 'total_tool_calls'
         ])
         
         # Log response
         logger.info(
-            f"📤 response={response_message.message_id[:20]}... "
+            f"📤 response={response_message.message_id[:20]}... flow={route_result.flow.value} "
             f"latency={latency_ms}ms tools={len(agent_response.tool_calls)} "
             f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
         )
         
-        # Return response
+        # Return response with routing metadata
         response_data = {
             'messageId': response_message.message_id,
             'sessionId': data['sessionId'],
             'timestamp': response_message.server_timestamp.isoformat(),
             'markdown': agent_response.content,
+            'routing': {
+                'flow': route_result.flow.value,
+                'decisionId': route_result.decision_id,
+                'confidence': route_result.confidence,
+                'wasRefused': agent_response.was_refused,
+            },
         }
         
         return Response(response_data)
@@ -212,15 +307,17 @@ def chat(request):
     except Exception as e:
         logger.error(f"❌ Agent error: {e}", exc_info=True)
         
-        # Save error response
         error_message = ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
             session_id=data['sessionId'],
             user_id=data['userId'],
+            turn_id=turn_id,
+            route_decision=route_decision,
             role=ChatMessage.Role.ASSISTANT,
             content="I'm sorry, I encountered an error processing your request. Please try again.",
             status=ChatMessage.Status.FAILED,
             latency_ms=int((time.time() - start_time) * 1000),
+            flow=route_result.flow.value,
         )
         
         user_message.response_message = error_message
@@ -231,33 +328,25 @@ def chat(request):
             'sessionId': data['sessionId'],
             'timestamp': error_message.server_timestamp.isoformat(),
             'markdown': error_message.content,
+            'routing': {
+                'flow': route_result.flow.value,
+                'decisionId': route_result.decision_id,
+                'wasRefused': False,
+            },
         })
 
 
 @api_view(['POST'])
 def chat_stream(request):
     """
-    Handle incoming chat messages with streaming tool progress via SSE.
+    Handle incoming chat messages with streaming progress via SSE.
     
     POST /api/chat/stream
     
-    Request body: Same as /api/chat
-    
-    Response: Server-Sent Events stream
-    
-    Event types:
-    - event: progress
-      data: {"type": "status|tool_start|tool_end", "text": "...", ...}
-    
-    - event: message
-      data: {"messageId": "...", "sessionId": "...", "timestamp": "...", "markdown": "..."}
-    
-    - event: error
-      data: {"error": "..."}
+    Response: Server-Sent Events stream with routing and tool progress.
     """
     start_time = time.time()
     
-    # Validate request
     serializer = ChatRequestSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -267,11 +356,11 @@ def chat_stream(request):
     
     data = serializer.validated_data
     context = data.get('context', {})
+    turn_id = ChatMessage.generate_turn_id()
     
-    # Log incoming message
     logger.info(
         f"📨 [stream] user={data['userId']} session={data['sessionId'][:20]}... "
-        f"msg={data['messageId'][:20]}... text={data['text'][:50]}..."
+        f"turn={turn_id[:20]}... text={data['text'][:50]}..."
     )
     
     # Update or create session
@@ -283,17 +372,39 @@ def chat_stream(request):
         }
     )
     
+    # Route the message
+    router = get_router()
+    route_result = router.route(
+        session_id=data['sessionId'],
+        user_message=data['text'],
+        conversation_summary=session.conversation_summary or "",
+        previous_flow=session.current_flow if session.current_flow else None,
+    )
+    
+    # Save route decision
+    route_decision = _save_route_decision(
+        route_result=route_result,
+        session_id=data['sessionId'],
+        turn_id=turn_id,
+        user_message=data['text'],
+        summary=session.conversation_summary or "",
+        previous_flow=session.current_flow or "",
+    )
+    
     # Save user message
     user_message = ChatMessage.objects.create(
         message_id=data['messageId'],
         session_id=data['sessionId'],
         user_id=data['userId'],
+        turn_id=turn_id,
+        route_decision=route_decision,
         role=ChatMessage.Role.USER,
         content=data['text'],
         client_timestamp=data['timestamp'],
         page_url=context.get('pageUrl', ''),
         locale=context.get('locale', ''),
         client_version=context.get('clientVersion', ''),
+        flow=route_result.flow.value,
     )
     
     def generate_sse():
@@ -301,14 +412,21 @@ def chat_stream(request):
         progress_queue = queue.Queue()
         result_holder = {'response': None, 'error': None}
         
+        # Emit routing decision first
+        routing_event = {
+            'type': 'routing',
+            'flow': route_result.flow.value,
+            'decisionId': route_result.decision_id,
+            'confidence': route_result.confidence,
+            'reasonCodes': [c.value for c in route_result.reason_codes[:5]],
+        }
+        yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
+        
         def on_progress(update: AgentProgressUpdate):
-            """Callback for agent progress updates."""
             progress_queue.put(update)
         
         def run_agent():
-            """Run the agent in a separate thread."""
             try:
-                # Get conversation history
                 history_messages = ChatMessage.objects.filter(
                     session_id=data['sessionId']
                 ).order_by('server_timestamp')[:50]
@@ -324,34 +442,32 @@ def chat_stream(request):
                 result_holder['response'] = asyncio.run(
                     agent.send_message(
                         messages=conversation,
+                        route_result=route_result,
                         on_progress=on_progress,
                         session_id=data['sessionId'],
-                        user_id=data['userId']
+                        user_id=data['userId'],
+                        turn_id=turn_id,
                     )
                 )
             except Exception as e:
                 result_holder['error'] = str(e)
             finally:
-                # Signal completion
                 progress_queue.put(None)
         
-        # Start agent in background thread
         agent_thread = Thread(target=run_agent, daemon=True)
         agent_thread.start()
         
-        # Stream progress events
         while True:
             try:
-                update = progress_queue.get(timeout=60)  # 60s timeout
+                update = progress_queue.get(timeout=60)
                 
                 if update is None:
-                    # Agent finished
                     break
                 
-                # Format SSE event for progress
                 event_data = {
                     'type': update.type,
                     'text': update.text,
+                    'flow': update.flow,
                 }
                 
                 if update.tool_name:
@@ -368,13 +484,10 @@ def chat_stream(request):
                 yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
                 
             except queue.Empty:
-                # Send keepalive
                 yield ": keepalive\n\n"
         
-        # Wait for thread to complete
         agent_thread.join(timeout=5)
         
-        # Handle result
         latency_ms = int((time.time() - start_time) * 1000)
         
         if result_holder['error']:
@@ -384,10 +497,13 @@ def chat_stream(request):
                 message_id=ChatMessage.generate_message_id(),
                 session_id=data['sessionId'],
                 user_id=data['userId'],
+                turn_id=turn_id,
+                route_decision=route_decision,
                 role=ChatMessage.Role.ASSISTANT,
                 content="I'm sorry, I encountered an error processing your request.",
                 status=ChatMessage.Status.FAILED,
                 latency_ms=latency_ms,
+                flow=route_result.flow.value,
             )
             
             user_message.response_message = error_msg
@@ -403,6 +519,8 @@ def chat_stream(request):
             message_id=ChatMessage.generate_message_id(),
             session_id=data['sessionId'],
             user_id=data['userId'],
+            turn_id=turn_id,
+            route_decision=route_decision,
             role=ChatMessage.Role.ASSISTANT,
             content=agent_response.content,
             latency_ms=latency_ms,
@@ -414,41 +532,44 @@ def chat_stream(request):
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
             model_name='claude-sonnet-4-5-20250929',
+            flow=route_result.flow.value,
+            status=ChatMessage.Status.REFUSED if agent_response.was_refused else ChatMessage.Status.SUCCESS,
         )
         
-        # Link user message to response
         user_message.response_message = response_message
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=['response_message', 'latency_ms'])
         
-        # Update session stats
-        session.message_count = ChatMessage.objects.filter(
-            session_id=data['sessionId']
-        ).count()
+        # Update session
+        session.message_count = ChatMessage.objects.filter(session_id=data['sessionId']).count()
+        session.turn_count = (session.turn_count or 0) + 1
+        session.current_flow = route_result.flow.value
         session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
         session.total_output_tokens = (session.total_output_tokens or 0) + agent_response.output_tokens
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
         session.save(update_fields=[
-            'message_count', 'last_activity',
+            'message_count', 'turn_count', 'last_activity', 'current_flow',
             'total_input_tokens', 'total_output_tokens', 'total_tool_calls'
         ])
         
-        # Log response
         logger.info(
-            f"📤 [stream] response={response_message.message_id[:20]}... "
-            f"latency={latency_ms}ms tools={len(agent_response.tool_calls)} "
-            f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
+            f"📤 [stream] response={response_message.message_id[:20]}... flow={route_result.flow.value} "
+            f"latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
         )
         
-        # Send final message event
         final_data = {
             'messageId': response_message.message_id,
             'sessionId': data['sessionId'],
             'timestamp': response_message.server_timestamp.isoformat(),
             'markdown': agent_response.content,
-            'toolCalls': agent_response.tool_calls,
+            'routing': {
+                'flow': route_result.flow.value,
+                'decisionId': route_result.decision_id,
+                'wasRefused': agent_response.was_refused,
+            },
             'stats': {
                 'llmCalls': agent_response.llm_calls,
+                'toolCalls': len(agent_response.tool_calls),
                 'inputTokens': agent_response.input_tokens,
                 'outputTokens': agent_response.output_tokens,
                 'latencyMs': latency_ms,
@@ -462,7 +583,7 @@ def chat_stream(request):
         content_type='text/event-stream'
     )
     response['Cache-Control'] = 'no-cache'
-    response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
+    response['X-Accel-Buffering'] = 'no'
     
     return response
 
@@ -470,21 +591,9 @@ def chat_stream(request):
 @api_view(['GET'])
 def history(request):
     """
-    Get conversation history.
+    Get conversation history with routing metadata.
     
     GET /api/history?userId=...&sessionId=...&before=...&limit=...
-    
-    Query parameters:
-    - userId (required): User identifier
-    - sessionId (required): Session identifier
-    - before (optional): ISO timestamp, load messages before this time
-    - limit (optional): Max messages to return (default 20, max 100)
-    
-    Response:
-    {
-        "messages": [...],
-        "hasMore": true
-    }
     """
     user_id = request.query_params.get('userId')
     session_id = request.query_params.get('sessionId')
@@ -499,7 +608,6 @@ def history(request):
     
     logger.info(f"📜 history user={user_id} session={session_id[:20]}... limit={limit}")
     
-    # Build query
     queryset = ChatMessage.objects.filter(
         user_id=user_id,
         session_id=session_id,
@@ -515,52 +623,72 @@ def history(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
     
-    # Get messages (one extra to check if there's more)
     messages = list(
         queryset.order_by('-server_timestamp')[:limit + 1]
     )
     
     has_more = len(messages) > limit
     messages = messages[:limit]
-    
-    # Reverse to get chronological order
     messages.reverse()
     
-    # Serialize
     serializer = HistoryMessageSerializer(messages, many=True)
+    
+    # Get session info
+    try:
+        session = ChatSession.objects.get(session_id=session_id)
+        session_info = {
+            'currentFlow': session.current_flow,
+            'turnCount': session.turn_count,
+            'totalTokens': session.total_input_tokens + session.total_output_tokens,
+        }
+    except ChatSession.DoesNotExist:
+        session_info = None
     
     return Response({
         'messages': serializer.data,
         'hasMore': has_more,
+        'session': session_info,
     })
 
 
 @api_view(['POST'])
-def reload_prompt(request):
+def reload_prompts(request):
     """
-    Reload the system prompt from Langfuse without restarting the server.
+    Reload prompts from Braintrust without restarting the server.
     
-    POST /api/admin/reload-prompt
-    
-    Response:
-    {
-        "success": true,
-        "promptLength": 12345
-    }
+    POST /api/admin/reload-prompts
     """
     try:
-        agent = get_agent_service()
-        prompt_length = agent.reload_prompt()
+        prompt_service = get_prompt_service()
+        prompt_service.invalidate_cache()
         
-        logger.info(f"🔄 Prompt reloaded: {prompt_length} chars")
+        logger.info("🔄 Prompts cache invalidated")
         
         return Response({
             'success': True,
-            'promptLength': prompt_length,
+            'message': 'Prompt cache invalidated. New prompts will be fetched on next request.',
         })
     except Exception as e:
-        logger.error(f"❌ Failed to reload prompt: {e}")
+        logger.error(f"❌ Failed to reload prompts: {e}")
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+def health(request):
+    """
+    Health check endpoint.
+    
+    GET /api/health
+    """
+    return Response({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'services': {
+            'agent': get_agent_service() is not None,
+            'router': get_router() is not None,
+            'braintrust': True,  # Native tracing always available
+        }
+    })

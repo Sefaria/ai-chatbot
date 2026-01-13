@@ -6,10 +6,15 @@ django-cors-headers>=4.3
 anthropic>=0.40.0
 
 # Tracing/Observability
-langfuse>=3.0.0
+langsmith>=0.1.0
+braintrust>=0.0.150
 
 # HTTP client
 httpx>=0.27.0
 
 # Environment
 python-dotenv>=1.0
+
+# Database
+psycopg2-binary>=2.9.10
+gunicorn>=21.2

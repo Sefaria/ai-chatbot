@@ -57,11 +57,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'chatbot_server.wsgi.application'
 
-# Database - using SQLite for simplicity, switch to PostgreSQL for production
+# Database - using postgres for production
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
+        'PORT': os.environ.get('DB_PORT'),
     }
 }
 
@@ -78,11 +82,55 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings - allow all origins in development
-CORS_ALLOW_ALL_ORIGINS = DEBUG
+# Set to True to allow any origin (for local development)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Fallback list if CORS_ALLOW_ALL_ORIGINS is False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:8000",
+    "http://localhost:8001",
     "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8001",
 ]
+
+# Allow all methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# CORS headers for SSE streaming
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',
+]
+
+# Allow credentials for CORS
+CORS_ALLOW_CREDENTIALS = True
+
+# Expose headers needed for SSE
+CORS_EXPOSE_HEADERS = [
+    'Content-Type',
+    'Cache-Control',
+    'X-Accel-Buffering',
+]
+
+# Allow preflight requests to be cached
+CORS_PREFLIGHT_MAX_AGE = 86400
 
 # REST Framework settings
 REST_FRAMEWORK = {
@@ -95,19 +143,37 @@ REST_FRAMEWORK = {
     'UNAUTHENTICATED_USER': None,
 }
 
-# Langfuse configuration (for tracing)
-# Set these environment variables to enable Langfuse:
-# - LANGFUSE_PUBLIC_KEY=<your-public-key>
-# - LANGFUSE_SECRET_KEY=<your-secret-key>
-# - LANGFUSE_HOST=https://cloud.langfuse.com (or https://us.cloud.langfuse.com for US region)
+# ============================================================================
+# LangSmith Tracing Configuration
+# ============================================================================
+# Set these environment variables to enable LangSmith tracing:
+# - LANGSMITH_API_KEY=<your-api-key>
+# - LANGSMITH_PROJECT=sefaria-chatbot (optional, defaults to this)
+# - LANGSMITH_ENDPOINT=https://api.smith.langchain.com (optional)
 
-# Anthropic API configuration
+# ============================================================================
+# Braintrust Configuration (Prompts + Evals)
+# ============================================================================
+# Set these environment variables to enable Braintrust:
+# - BRAINTRUST_API_KEY=<your-api-key>
+# - BRAINTRUST_PROJECT=sefaria-chatbot (optional, defaults to this)
+
+# Environment tag for logging
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+
+# ============================================================================
+# Anthropic API Configuration
+# ============================================================================
 # Set ANTHROPIC_API_KEY environment variable
 
-# Sefaria API configuration (optional)
+# ============================================================================
+# Sefaria API Configuration (optional)
+# ============================================================================
 # - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)
 # - SEFARIA_AI_BASE_URL (default: https://ai.sefaria.org)
 # - SEFARIA_AI_TOKEN (for authenticated requests)
+# - VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST (for internal deployment)
+# - VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT (for internal deployment)
 
 # Logging configuration
 LOGGING = {
@@ -141,6 +207,36 @@ LOGGING = {
             'propagate': False,
         },
         'chat.agent': {
+            'handlers': ['chat_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat.router': {
+            'handlers': ['chat_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat.router.guardrails': {
+            'handlers': ['chat_console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'chat.prompts': {
+            'handlers': ['chat_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat.tracing': {
+            'handlers': ['chat_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat.logging': {
+            'handlers': ['chat_console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'chat.summarization': {
             'handlers': ['chat_console'],
             'level': 'INFO',
             'propagate': False,

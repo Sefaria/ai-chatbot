@@ -1,0 +1,11 @@
+.git/
+.github/
+.vscode/
+.DS_Store
+node_modules/
+dist/
+.venv/
+server/venv/
+server/__pycache__/
+server/db.sqlite3
+workflows/
