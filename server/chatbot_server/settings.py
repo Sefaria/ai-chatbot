@@ -4,6 +4,7 @@ Django settings for chatbot_server project.
 
 from pathlib import Path
 import os
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -86,14 +87,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Fallback list if CORS_ALLOW_ALL_ORIGINS is False
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "http://localhost:8001",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:8001",
-]
 
 # Allow all methods
 CORS_ALLOW_METHODS = [
@@ -105,19 +98,12 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# CORS headers for SSE streaming
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'cache-control',
+# CORS headers for SSE streaming (include Sentry tracing headers)
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'sentry-trace',
+    'baggage',
 ]
+
 
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True

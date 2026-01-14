@@ -36,9 +36,10 @@ DOMPurify.addHook('afterSanitizeAttributes', function(node) {
  */
 export function renderMarkdown(markdown) {
   if (!markdown) return '';
-  
+
   try {
-    const html = marked.parse(markdown);
+    const normalized = markdown.replace(/<([^|>\s]+)\|([^>]+)>/g, '[$2]($1)');
+    const html = marked.parse(normalized);
     return DOMPurify.sanitize(html, {
       ALLOWED_TAGS: [
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -57,4 +58,3 @@ export function renderMarkdown(markdown) {
     return DOMPurify.sanitize(markdown);
   }
 }
-

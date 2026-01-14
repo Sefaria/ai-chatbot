@@ -363,6 +363,26 @@
   }
 
   let messagesWithMarkers = $derived(getMessagesWithMarkers());
+
+  function handleMessageLinkClick(e) {
+    const anchor = e.target?.closest?.('a');
+    if (!anchor) return;
+
+    const sefariaPath = anchor.getAttribute('href');
+    if (!sefariaPath) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const path = sefariaPath;
+    console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
+      detail: {
+        url: path,
+        replaceHistory: true
+      }
+    }));
+  }
 </script>
 
 <div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
@@ -414,10 +434,11 @@
 
       <!-- Message List -->
       <div 
-        class="lc-chatbot-messages"
-        bind:this={messageListRef}
-        onscroll={handleScroll}
-      >
+      class="lc-chatbot-messages"
+      bind:this={messageListRef}
+      onscroll={handleScroll}
+      onclick={handleMessageLinkClick}
+    >
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
@@ -1088,4 +1109,3 @@
     transform: scale(0.95);
   }
 </style>
-
