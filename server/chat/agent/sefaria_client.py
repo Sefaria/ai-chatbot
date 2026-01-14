@@ -5,6 +5,7 @@ Sefaria API client for tool implementations.
 import os
 import json
 import base64
+import asyncio
 from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import urlencode, quote
@@ -46,11 +47,31 @@ class SefariaClient:
         self.base_url = (base_url or DEFAULT_SEFARIA_BASE_URL).rstrip('/')
         self.ai_base_url = (ai_base_url or DEFAULT_SEFARIA_AI_BASE_URL).rstrip('/')
         self.timeout = timeout
-        self._client = httpx.AsyncClient(timeout=timeout)
+        self._client: Optional[httpx.AsyncClient] = None
+        self._client_loop: Optional[asyncio.AbstractEventLoop] = None
     
     async def close(self):
         """Close the HTTP client."""
-        await self._client.aclose()
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+            self._client_loop = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get an AsyncClient bound to the current event loop."""
+        loop = asyncio.get_running_loop()
+        if self._client and self._client_loop is loop and not loop.is_closed():
+            return self._client
+
+        if self._client:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+
+        self._client = httpx.AsyncClient(timeout=self.timeout)
+        self._client_loop = loop
+        return self._client
     
     async def get_text(
         self,
@@ -113,9 +134,10 @@ class SefariaClient:
         bearer = os.environ.get('SEFARIA_AI_TOKEN')
         if bearer:
             headers['Authorization'] = f'Bearer {bearer}'
-        
+
         url = f'{self.ai_base_url}/api/knn-search'
-        response = await self._client.post(url, json=payload, headers=headers)
+        client = await self._get_client()
+        response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
     
@@ -211,9 +233,10 @@ class SefariaClient:
         """Convert a book name into a search filter path."""
         encoded_name = quote(book_name)
         url = f'{self.base_url}/api/search-path-filter/{encoded_name}'
-        
+
         try:
-            response = await self._client.get(url)
+            client = await self._get_client()
+            response = await client.get(url)
             if response.status_code != 200:
                 return None
             text = response.text.strip()
@@ -243,7 +266,8 @@ class SefariaClient:
         manuscript_title: Optional[str] = None
     ) -> dict[str, Any]:
         """Download a manuscript image."""
-        response = await self._client.get(image_url)
+        client = await self._get_client()
+        response = await client.get(image_url)
         response.raise_for_status()
         
         content_type = response.headers.get('content-type', 'image/jpeg')
@@ -291,7 +315,8 @@ class SefariaClient:
             'type': 'text'
         }
         
-        response = await self._client.post(
+        client = await self._get_client()
+        response = await client.post(
             url,
             json=payload,
             headers={'Content-Type': 'application/json'}
@@ -311,7 +336,8 @@ class SefariaClient:
             if filtered_params:
                 url = f'{url}?{urlencode(filtered_params)}'
         
-        response = await self._client.get(url)
+        client = await self._get_client()
+        response = await client.get(url)
         response.raise_for_status()
         return response.json()
     
@@ -446,5 +472,3 @@ class SefariaClient:
             results.append(result)
         
         return results
-
-

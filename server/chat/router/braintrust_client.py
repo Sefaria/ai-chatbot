@@ -144,11 +144,16 @@ class BraintrustPromptClient:
                 if prompt:
                     # Extract content from Braintrust Prompt object
                     content = self._extract_prompt_content(prompt)
-
-                    if content['system'] or content['user']:
+                    user_template = (content.get('user') or '').strip()
+                    if not user_template:
+                        logger.warning(
+                            "Braintrust guardrail prompt missing user template; "
+                            "falling back to hardcoded prompt"
+                        )
+                    elif content.get('system') or user_template:
                         template = PromptTemplate(
-                            system_prompt=content['system'],
-                            user_prompt_template=content['user'],
+                            system_prompt=content.get('system', ''),
+                            user_prompt_template=user_template,
                             metadata=content['metadata']
                         )
                         self._prompt_cache[cache_key] = template
@@ -188,11 +193,16 @@ class BraintrustPromptClient:
                 if prompt:
                     # Extract content from Braintrust Prompt object
                     content = self._extract_prompt_content(prompt)
-
-                    if content['system'] or content['user']:
+                    user_template = (content.get('user') or '').strip()
+                    if not user_template:
+                        logger.warning(
+                            "Braintrust router prompt missing user template; "
+                            "falling back to hardcoded prompt"
+                        )
+                    elif content.get('system') or user_template:
                         template = PromptTemplate(
-                            system_prompt=content['system'],
-                            user_prompt_template=content['user'],
+                            system_prompt=content.get('system', ''),
+                            user_prompt_template=user_template,
                             metadata=content['metadata']
                         )
                         self._prompt_cache[cache_key] = template
