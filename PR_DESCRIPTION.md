@@ -6,6 +6,7 @@ Developer experience improvements: documentation, tooling, and comprehensive tes
 
 ### Documentation & Tooling
 - Added `CLAUDE.md` with development standards, project overview, and setup instructions
+- Added `ARCHITECTURE.md` with detailed system design, flows, components, and data models
 - Added `.pre-commit-config.yaml` with ruff (Python) and eslint (JS/Svelte) hooks
 - Added `setup.sh` - one-command setup (pyenv support, venv, deps, migrations, env checks)
 - Added `start.sh` - starts backend + frontend with pre-flight checks and log tailing

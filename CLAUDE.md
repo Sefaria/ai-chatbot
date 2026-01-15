@@ -34,6 +34,8 @@ Svelte Web Component → Django REST → Router → Claude Agent → Sefaria API
 
 **Flows:** HALACHIC | SEARCH | GENERAL | REFUSE
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
+
 ## Stack
 
 - **Frontend:** Svelte 5, Vite, Web Components
