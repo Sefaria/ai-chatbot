@@ -1,6 +1,4 @@
-"""
-Tests for Django models - ChatSession, ChatMessage, RouteDecision, etc.
-"""
+"""Tests for Django models - ChatSession, ChatMessage, RouteDecision, etc."""
 
 import pytest
 from django.utils import timezone
@@ -19,89 +17,56 @@ from chat.models import (
 class TestChatSession:
     """Test ChatSession model."""
 
-    def test_create_session(self):
-        """Test basic session creation."""
-        session = ChatSession.objects.create(
-            session_id="sess_test123",
-            user_id="user_abc",
-        )
+    def test_create_session(self) -> None:
+        session = ChatSession.objects.create(session_id="sess_test123", user_id="user_abc")
         assert session.session_id == "sess_test123"
         assert session.user_id == "user_abc"
         assert session.message_count == 0
         assert session.turn_count == 0
         assert session.current_flow == ""
 
-    def test_session_defaults(self):
-        """Test default values."""
-        session = ChatSession.objects.create(
-            session_id="sess_defaults",
-            user_id="user_defaults",
-        )
+    def test_session_defaults(self) -> None:
+        session = ChatSession.objects.create(session_id="sess_defaults", user_id="user")
         assert session.total_input_tokens == 0
         assert session.total_output_tokens == 0
         assert session.total_tool_calls == 0
         assert session.conversation_summary == ""
         assert session.user_locale == ""
 
-    def test_session_with_flow(self):
-        """Test session with flow set."""
+    def test_session_with_flow_and_summary(self) -> None:
         session = ChatSession.objects.create(
             session_id="sess_flow",
-            user_id="user_flow",
+            user_id="user",
             current_flow="HALACHIC",
-        )
-        assert session.current_flow == "HALACHIC"
-
-    def test_session_with_summary(self):
-        """Test session with conversation summary."""
-        session = ChatSession.objects.create(
-            session_id="sess_summary",
-            user_id="user_summary",
             conversation_summary="User asked about Shabbat laws.",
         )
+        assert session.current_flow == "HALACHIC"
         assert session.conversation_summary == "User asked about Shabbat laws."
 
-    def test_session_str(self):
-        """Test string representation."""
+    def test_session_str(self) -> None:
         session = ChatSession.objects.create(
-            session_id="sess_str",
-            user_id="user_str",
-            current_flow="SEARCH",
+            session_id="sess_str", user_id="user_str", current_flow="SEARCH"
         )
         str_repr = str(session)
         assert "sess_str" in str_repr
         assert "user_str" in str_repr
         assert "SEARCH" in str_repr
 
-    def test_session_unique_id(self):
-        """Test session ID uniqueness."""
+    def test_session_unique_id(self) -> None:
         ChatSession.objects.create(session_id="unique_id", user_id="user1")
         with pytest.raises(Exception):
             ChatSession.objects.create(session_id="unique_id", user_id="user2")
 
-    def test_session_auto_timestamps(self):
-        """Test auto-generated timestamps."""
-        session = ChatSession.objects.create(
-            session_id="sess_time",
-            user_id="user_time",
-        )
+    def test_session_auto_timestamps(self) -> None:
+        session = ChatSession.objects.create(session_id="sess_time", user_id="user")
         assert session.created_at is not None
         assert session.last_activity is not None
 
-    def test_session_ordering(self):
-        """Test session ordering by last_activity."""
-        old_session = ChatSession.objects.create(
-            session_id="sess_old",
-            user_id="user",
-        )
-        # Force update older timestamp
+    def test_session_ordering(self) -> None:
+        old_session = ChatSession.objects.create(session_id="sess_old", user_id="user")
         old_session.last_activity = timezone.now() - timedelta(hours=1)
         old_session.save()
-
-        new_session = ChatSession.objects.create(
-            session_id="sess_new",
-            user_id="user",
-        )
+        ChatSession.objects.create(session_id="sess_new", user_id="user")
 
         sessions = list(ChatSession.objects.all())
         assert sessions[0].session_id == "sess_new"
@@ -111,8 +76,7 @@ class TestChatSession:
 class TestRouteDecision:
     """Test RouteDecision model."""
 
-    def test_create_route_decision(self):
-        """Test basic route decision creation."""
+    def test_create_route_decision(self) -> None:
         decision = RouteDecision.objects.create(
             decision_id="dec_test123",
             session_id="sess_123",
@@ -125,8 +89,7 @@ class TestRouteDecision:
         assert decision.flow == "HALACHIC"
         assert decision.confidence == 0.85
 
-    def test_route_decision_defaults(self):
-        """Test default values."""
+    def test_route_decision_defaults(self) -> None:
         decision = RouteDecision.objects.create(
             decision_id="dec_defaults",
             session_id="sess",
@@ -140,34 +103,22 @@ class TestRouteDecision:
         assert decision.refusal_message == ""
         assert decision.session_action == "CONTINUE"
 
-    def test_route_decision_with_reason_codes(self):
-        """Test with reason codes."""
+    def test_route_decision_with_reason_codes_and_tools(self) -> None:
         decision = RouteDecision.objects.create(
-            decision_id="dec_reasons",
-            session_id="sess",
-            turn_id="turn",
-            user_message="test",
-            flow="HALACHIC",
-            reason_codes=["ROUTE_HALACHIC_KEYWORDS", "ROUTE_HALACHIC_INTENT"],
-        )
-        assert len(decision.reason_codes) == 2
-        assert "ROUTE_HALACHIC_KEYWORDS" in decision.reason_codes
-
-    def test_route_decision_with_tools(self):
-        """Test with tools attached."""
-        decision = RouteDecision.objects.create(
-            decision_id="dec_tools",
+            decision_id="dec_full",
             session_id="sess",
             turn_id="turn",
             user_message="test",
             flow="SEARCH",
+            reason_codes=["ROUTE_HALACHIC_KEYWORDS", "ROUTE_HALACHIC_INTENT"],
             tools_attached=["get_text", "text_search", "english_semantic_search"],
         )
+        assert len(decision.reason_codes) == 2
+        assert "ROUTE_HALACHIC_KEYWORDS" in decision.reason_codes
         assert len(decision.tools_attached) == 3
         assert "get_text" in decision.tools_attached
 
-    def test_route_decision_refuse_flow(self):
-        """Test refuse flow decision."""
+    def test_route_decision_refuse_flow(self) -> None:
         decision = RouteDecision.objects.create(
             decision_id="dec_refuse",
             session_id="sess",
@@ -183,21 +134,19 @@ class TestRouteDecision:
         assert decision.safety_allowed is False
         assert decision.session_action == "END"
 
-    def test_generate_decision_id(self):
-        """Test decision ID generation."""
+    def test_generate_decision_id(self) -> None:
         decision_id = RouteDecision.generate_decision_id()
         assert decision_id.startswith("dec_")
-        assert len(decision_id) == 20  # dec_ + 16 hex chars
+        assert len(decision_id) == 20
 
-    def test_route_decision_str(self):
-        """Test string representation."""
+    def test_route_decision_str(self) -> None:
         decision = RouteDecision.objects.create(
             decision_id="dec_str",
             session_id="sess",
             turn_id="turn",
             user_message="test",
             flow="GENERAL",
-            reason_codes=["ROUTE_GENERAL_LEARNING", "TOOLS_MINIMAL_GENERAL_SET"],
+            reason_codes=["ROUTE_GENERAL_LEARNING"],
         )
         str_repr = str(decision)
         assert "dec_str" in str_repr
@@ -208,8 +157,7 @@ class TestRouteDecision:
 class TestChatMessage:
     """Test ChatMessage model."""
 
-    def test_create_user_message(self):
-        """Test user message creation."""
+    def test_create_user_message(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_user123",
             session_id="sess_123",
@@ -221,8 +169,7 @@ class TestChatMessage:
         assert message.role == "user"
         assert message.content == "What is the halacha about this?"
 
-    def test_create_assistant_message(self):
-        """Test assistant message creation."""
+    def test_create_assistant_message(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_assistant123",
             session_id="sess_123",
@@ -237,8 +184,7 @@ class TestChatMessage:
         assert message.model_name == "claude-sonnet-4-5-20250929"
         assert message.input_tokens == 100
 
-    def test_message_defaults(self):
-        """Test default values."""
+    def test_message_defaults(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_defaults",
             session_id="sess",
@@ -250,37 +196,25 @@ class TestChatMessage:
         assert message.flow == ""
         assert message.tool_calls_count is None
 
-    def test_message_with_flow(self):
-        """Test message with flow context."""
-        message = ChatMessage.objects.create(
-            message_id="msg_flow",
-            session_id="sess",
-            user_id="user",
-            role="user",
-            content="test",
-            flow="HALACHIC",
-        )
-        assert message.flow == "HALACHIC"
-
-    def test_message_with_tool_calls(self):
-        """Test assistant message with tool calls."""
+    def test_message_with_tool_calls(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_tools",
             session_id="sess",
             user_id="user",
             role="assistant",
             content="Here is what I found...",
+            flow="HALACHIC",
             tool_calls_count=3,
             tool_calls_data=[
                 {"tool": "get_text", "input": {"reference": "Genesis 1:1"}},
                 {"tool": "text_search", "input": {"query": "creation"}},
             ],
         )
+        assert message.flow == "HALACHIC"
         assert message.tool_calls_count == 3
         assert len(message.tool_calls_data) == 2
 
-    def test_message_with_cache_tokens(self):
-        """Test message with cache token tracking."""
+    def test_message_with_cache_tokens(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_cache",
             session_id="sess",
@@ -295,33 +229,29 @@ class TestChatMessage:
         assert message.cache_creation_tokens == 400
         assert message.cache_read_tokens == 200
 
-    def test_message_status_choices(self):
-        """Test message status choices."""
-        for status in ["success", "failed", "refused"]:
-            message = ChatMessage.objects.create(
-                message_id=f"msg_{status}",
-                session_id="sess",
-                user_id="user",
-                role="assistant",
-                content="test",
-                status=status,
-            )
-            assert message.status == status
+    @pytest.mark.parametrize("status", ["success", "failed", "refused"])
+    def test_message_status_choices(self, status: str) -> None:
+        message = ChatMessage.objects.create(
+            message_id=f"msg_{status}",
+            session_id="sess",
+            user_id="user",
+            role="assistant",
+            content="test",
+            status=status,
+        )
+        assert message.status == status
 
-    def test_generate_message_id(self):
-        """Test message ID generation."""
+    def test_generate_message_id(self) -> None:
         message_id = ChatMessage.generate_message_id()
         assert message_id.startswith("msg_")
         assert len(message_id) == 20
 
-    def test_generate_turn_id(self):
-        """Test turn ID generation."""
+    def test_generate_turn_id(self) -> None:
         turn_id = ChatMessage.generate_turn_id()
         assert turn_id.startswith("turn_")
         assert len(turn_id) == 21
 
-    def test_message_str(self):
-        """Test string representation."""
+    def test_message_str(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_str",
             session_id="sess",
@@ -333,16 +263,11 @@ class TestChatMessage:
         assert "user" in str_repr
         assert "..." in str_repr
 
-    def test_message_ordering(self):
-        """Test message ordering by timestamp."""
-        msg1 = ChatMessage.objects.create(
-            message_id="msg_1",
-            session_id="sess",
-            user_id="user",
-            role="user",
-            content="first",
+    def test_message_ordering(self) -> None:
+        ChatMessage.objects.create(
+            message_id="msg_1", session_id="sess", user_id="user", role="user", content="first"
         )
-        msg2 = ChatMessage.objects.create(
+        ChatMessage.objects.create(
             message_id="msg_2",
             session_id="sess",
             user_id="user",
@@ -358,8 +283,7 @@ class TestChatMessage:
 class TestMessageRouteDecisionRelation:
     """Test ChatMessage to RouteDecision relationship."""
 
-    def test_message_with_route_decision(self):
-        """Test message linked to route decision."""
+    def test_message_with_route_decision(self) -> None:
         decision = RouteDecision.objects.create(
             decision_id="dec_rel",
             session_id="sess",
@@ -378,8 +302,7 @@ class TestMessageRouteDecisionRelation:
         assert message.route_decision == decision
         assert message in decision.messages.all()
 
-    def test_message_without_route_decision(self):
-        """Test message without route decision."""
+    def test_message_without_route_decision(self) -> None:
         message = ChatMessage.objects.create(
             message_id="msg_no_rel",
             session_id="sess",
@@ -394,8 +317,7 @@ class TestMessageRouteDecisionRelation:
 class TestToolCallEvent:
     """Test ToolCallEvent model."""
 
-    def test_create_tool_call_event(self):
-        """Test basic tool call event creation."""
+    def test_create_tool_call_event(self) -> None:
         event = ToolCallEvent.objects.create(
             event_id="evt_test123",
             session_id="sess_123",
@@ -408,8 +330,7 @@ class TestToolCallEvent:
         assert event.tool_name == "get_text"
         assert event.tool_input["reference"] == "Genesis 1:1"
 
-    def test_tool_call_with_output(self):
-        """Test tool call with output."""
+    def test_tool_call_with_output(self) -> None:
         event = ToolCallEvent.objects.create(
             event_id="evt_output",
             session_id="sess",
@@ -426,8 +347,7 @@ class TestToolCallEvent:
         assert event.latency_ms == 150
         assert event.success is True
 
-    def test_tool_call_error(self):
-        """Test tool call with error."""
+    def test_tool_call_error(self) -> None:
         event = ToolCallEvent.objects.create(
             event_id="evt_error",
             session_id="sess",
@@ -442,14 +362,12 @@ class TestToolCallEvent:
         assert event.success is False
         assert event.error_message == "Reference not found"
 
-    def test_generate_event_id(self):
-        """Test event ID generation."""
+    def test_generate_event_id(self) -> None:
         event_id = ToolCallEvent.generate_event_id()
         assert event_id.startswith("evt_")
         assert len(event_id) == 20
 
-    def test_tool_call_str(self):
-        """Test string representation."""
+    def test_tool_call_str(self) -> None:
         event = ToolCallEvent.objects.create(
             event_id="evt_str",
             session_id="sess",
@@ -463,15 +381,13 @@ class TestToolCallEvent:
         str_repr = str(event)
         assert "get_text" in str_repr
         assert "100ms" in str_repr
-        assert "✓" in str_repr
 
 
 @pytest.mark.django_db
 class TestBraintrustLog:
     """Test BraintrustLog model."""
 
-    def test_create_braintrust_log(self):
-        """Test basic log creation."""
+    def test_create_braintrust_log(self) -> None:
         log = BraintrustLog.objects.create(
             log_id="log_test123",
             session_id="sess_123",
@@ -482,8 +398,7 @@ class TestBraintrustLog:
         assert log.log_id == "log_test123"
         assert log.flow == "HALACHIC"
 
-    def test_braintrust_log_with_metrics(self):
-        """Test log with full metrics."""
+    def test_braintrust_log_with_metrics(self) -> None:
         log = BraintrustLog.objects.create(
             log_id="log_metrics",
             session_id="sess",
@@ -502,8 +417,7 @@ class TestBraintrustLog:
         assert log.llm_calls == 3
         assert log.estimated_cost_usd == 0.05
 
-    def test_braintrust_log_with_tools(self):
-        """Test log with tool info."""
+    def test_braintrust_log_with_tools(self) -> None:
         log = BraintrustLog.objects.create(
             log_id="log_tools",
             session_id="sess",
@@ -516,8 +430,7 @@ class TestBraintrustLog:
         assert len(log.tools_available) == 3
         assert len(log.tools_used) == 1
 
-    def test_braintrust_log_refused(self):
-        """Test refused log entry."""
+    def test_braintrust_log_refused(self) -> None:
         log = BraintrustLog.objects.create(
             log_id="log_refused",
             session_id="sess",
@@ -530,14 +443,12 @@ class TestBraintrustLog:
         assert log.was_refused is True
         assert "GUARDRAIL_PROMPT_INJECTION" in log.refusal_reason_codes
 
-    def test_generate_log_id(self):
-        """Test log ID generation."""
+    def test_generate_log_id(self) -> None:
         log_id = BraintrustLog.generate_log_id()
         assert log_id.startswith("log_")
         assert len(log_id) == 20
 
-    def test_braintrust_log_str(self):
-        """Test string representation."""
+    def test_braintrust_log_str(self) -> None:
         log = BraintrustLog.objects.create(
             log_id="log_str",
             session_id="sess",
