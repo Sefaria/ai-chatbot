@@ -574,7 +574,7 @@ class ClaudeAgentService:
                 "refs": [],
                 "tool_calls": [],
                 "was_refused": True,
-                "refusal_codes": [c.value for c in route_result.safety.reason_codes],
+                "refusal_codes": [c.value for c in route_result.reason_codes],
             },
             metrics={
                 "latency_ms": latency_ms,
