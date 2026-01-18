@@ -1,8 +1,14 @@
 ## Summary
 
-Developer experience improvements: documentation, tooling, and comprehensive test infrastructure.
+Developer experience improvements: documentation, tooling, comprehensive test infrastructure, and Braintrust logging cleanup.
 
 ## Changes
+
+### Braintrust Logging Cleanup
+- Removed unused `server/chat/logging/` module (BraintrustLogger was never called)
+- Removed unused `server/chat/agent/claude_service_old.py`
+- Current tracing uses native `@traced` decorator from Braintrust SDK
+- Added `docs/BRAINTRUST_RESTRUCTURE_PLAN.md` for future logging improvements
 
 ### Documentation & Tooling
 - Added `CLAUDE.md` with development standards, project overview, and setup instructions
