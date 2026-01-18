@@ -263,9 +263,6 @@ server/
 │   ├── tracing/              # LangSmith integration
 │   │   └── langsmith_tracer.py
 │   │
-│   ├── logging/              # Braintrust logging
-│   │   └── braintrust_logger.py
-│   │
 │   └── summarization/        # Conversation context
 │       └── summary_service.py
 ```

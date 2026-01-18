@@ -7,7 +7,7 @@ Implements the orchestrator pattern:
 3. Route to appropriate flow
 4. Execute agent with flow-specific prompts/tools
 5. Update summary and session state
-6. Log to Braintrust via native tracing
+6. Trace to Braintrust via native @traced decorator
 """
 
 import asyncio
