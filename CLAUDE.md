@@ -20,11 +20,13 @@ Embeddable AI chatbot for Jewish text learning. Claude + Sefaria API.
 ## Commands
 
 ```bash
-pytest                                    # Backend tests
+pytest                                    # Backend tests (SQLite, fast)
 python manage.py runserver 0.0.0.0:8001  # Backend server
 npm run dev                               # Frontend dev server
 npm run build                             # Build bundle
 ```
+
+See [TESTING.md](TESTING.md) for PostgreSQL testing and CI details.
 
 ## Architecture
 
