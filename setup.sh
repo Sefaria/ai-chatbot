@@ -110,6 +110,24 @@ fi
 
 echo
 
+# --- Git Hooks ---
+echo -e "${BLUE}Setting up git hooks...${NC}"
+
+if [ -d "hooks" ] && [ -d ".git/hooks" ]; then
+    for hook in hooks/*; do
+        if [ -f "$hook" ]; then
+            hook_name=$(basename "$hook")
+            cp "$hook" ".git/hooks/$hook_name"
+            chmod +x ".git/hooks/$hook_name"
+        fi
+    done
+    echo -e "${GREEN}✓${NC} Git hooks installed"
+else
+    echo -e "${YELLOW}⚠${NC} Could not install git hooks"
+fi
+
+echo
+
 # --- Env Check ---
 echo -e "${BLUE}Checking environment...${NC}"
 

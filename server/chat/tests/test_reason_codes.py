@@ -1,52 +1,65 @@
 """Tests for reason codes - enumeration, descriptions, filtering."""
 
 import pytest
+
 from chat.router.reason_codes import (
-    ReasonCode,
     REASON_CODES,
-    get_reason_description,
+    ReasonCode,
     filter_reasons_by_category,
+    get_reason_description,
 )
 
 
 class TestReasonCodeEnum:
     """Test ReasonCode enumeration."""
 
-    @pytest.mark.parametrize("code", [
-        ReasonCode.ROUTE_HALACHIC_INTENT,
-        ReasonCode.ROUTE_SEARCH_INTENT,
-        ReasonCode.ROUTE_GENERAL_INTENT,
-        ReasonCode.ROUTE_FLOW_STICKINESS,
-        ReasonCode.ROUTE_DEFAULT_GENERAL,
-    ])
+    @pytest.mark.parametrize(
+        "code",
+        [
+            ReasonCode.ROUTE_HALACHIC_INTENT,
+            ReasonCode.ROUTE_SEARCH_INTENT,
+            ReasonCode.ROUTE_GENERAL_INTENT,
+            ReasonCode.ROUTE_FLOW_STICKINESS,
+            ReasonCode.ROUTE_DEFAULT_GENERAL,
+        ],
+    )
     def test_routing_codes_exist(self, code):
         assert code
 
-    @pytest.mark.parametrize("code", [
-        ReasonCode.GUARDRAIL_PROMPT_INJECTION,
-        ReasonCode.GUARDRAIL_HARASSMENT,
-        ReasonCode.GUARDRAIL_HATE_SPEECH,
-        ReasonCode.GUARDRAIL_HIGH_RISK_PSAK,
-        ReasonCode.GUARDRAIL_MEDICAL_ADVICE,
-    ])
+    @pytest.mark.parametrize(
+        "code",
+        [
+            ReasonCode.GUARDRAIL_PROMPT_INJECTION,
+            ReasonCode.GUARDRAIL_HARASSMENT,
+            ReasonCode.GUARDRAIL_HATE_SPEECH,
+            ReasonCode.GUARDRAIL_HIGH_RISK_PSAK,
+            ReasonCode.GUARDRAIL_MEDICAL_ADVICE,
+        ],
+    )
     def test_guardrail_codes_exist(self, code):
         assert code
 
-    @pytest.mark.parametrize("code", [
-        ReasonCode.TOOLS_ADDED_HALACHIC_SET,
-        ReasonCode.TOOLS_ADDED_SEARCH_SET,
-        ReasonCode.TOOLS_MINIMAL_GENERAL_SET,
-        ReasonCode.TOOLS_NONE_ATTACHED,
-    ])
+    @pytest.mark.parametrize(
+        "code",
+        [
+            ReasonCode.TOOLS_ADDED_HALACHIC_SET,
+            ReasonCode.TOOLS_ADDED_SEARCH_SET,
+            ReasonCode.TOOLS_MINIMAL_GENERAL_SET,
+            ReasonCode.TOOLS_NONE_ATTACHED,
+        ],
+    )
     def test_tool_codes_exist(self, code):
         assert code
 
-    @pytest.mark.parametrize("code", [
-        ReasonCode.SESSION_NEW,
-        ReasonCode.SESSION_CONTINUE,
-        ReasonCode.SESSION_TIMEOUT,
-        ReasonCode.SESSION_END_REQUESTED,
-    ])
+    @pytest.mark.parametrize(
+        "code",
+        [
+            ReasonCode.SESSION_NEW,
+            ReasonCode.SESSION_CONTINUE,
+            ReasonCode.SESSION_TIMEOUT,
+            ReasonCode.SESSION_END_REQUESTED,
+        ],
+    )
     def test_session_codes_exist(self, code):
         assert code
 
@@ -74,11 +87,14 @@ class TestReasonCodesDict:
 class TestGetReasonDescription:
     """Test get_reason_description function."""
 
-    @pytest.mark.parametrize("code,expected_substring", [
-        (ReasonCode.ROUTE_HALACHIC_INTENT, "halachic"),
-        (ReasonCode.GUARDRAIL_PROMPT_INJECTION, "injection"),
-        (ReasonCode.TOOLS_ADDED_SEARCH_SET, "search"),
-    ])
+    @pytest.mark.parametrize(
+        "code,expected_substring",
+        [
+            (ReasonCode.ROUTE_HALACHIC_INTENT, "halachic"),
+            (ReasonCode.GUARDRAIL_PROMPT_INJECTION, "injection"),
+            (ReasonCode.TOOLS_ADDED_SEARCH_SET, "search"),
+        ],
+    )
     def test_get_description_contains_expected_text(self, code, expected_substring):
         desc = get_reason_description(code)
         assert expected_substring in desc.lower()
@@ -111,22 +127,29 @@ class TestFilterReasonsByCategory:
             ReasonCode.TOOLS_ADDED_SEARCH_SET,
         ]
         assert filter_reasons_by_category(subset, "routing") == [ReasonCode.ROUTE_HALACHIC_INTENT]
-        assert filter_reasons_by_category(subset, "guardrail") == [ReasonCode.GUARDRAIL_PROMPT_INJECTION]
+        assert filter_reasons_by_category(subset, "guardrail") == [
+            ReasonCode.GUARDRAIL_PROMPT_INJECTION
+        ]
 
 
 class TestReasonCodeCategories:
     """Test reason code categorization is consistent."""
 
-    @pytest.mark.parametrize("prefix,expected_category", [
-        ("ROUTE_", "routing"),
-        ("GUARDRAIL_", "guardrail"),
-        ("TOOLS_", "tooling"),
-        ("SESSION_", "session"),
-    ])
+    @pytest.mark.parametrize(
+        "prefix,expected_category",
+        [
+            ("ROUTE_", "routing"),
+            ("GUARDRAIL_", "guardrail"),
+            ("TOOLS_", "tooling"),
+            ("SESSION_", "session"),
+        ],
+    )
     def test_prefix_matches_category(self, prefix, expected_category):
         for code in ReasonCode:
             if code.value.startswith(prefix):
-                assert REASON_CODES[code]["category"] == expected_category, f"{code} should be {expected_category}"
+                assert REASON_CODES[code]["category"] == expected_category, (
+                    f"{code} should be {expected_category}"
+                )
 
 
 class TestReasonCodeUsageInRouting:

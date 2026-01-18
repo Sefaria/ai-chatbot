@@ -10,7 +10,6 @@ Or in Django shell:
 """
 
 import os
-import sys
 
 
 def test_braintrust_client():
@@ -19,14 +18,14 @@ def test_braintrust_client():
     from chat.router import get_braintrust_client
 
     client = get_braintrust_client()
-    print(f"✓ Braintrust client initialized")
+    print("✓ Braintrust client initialized")
     print(f"  - API Key configured: {bool(client.api_key)}")
     print(f"  - Project: {client.project_name}")
 
     # Test loading core prompt
     try:
         core_prompt = client.get_core_prompt()
-        print(f"✓ Core prompt loaded (slug: core-8fbc)")
+        print("✓ Core prompt loaded (slug: core-8fbc)")
         print(f"  - Prompt length: {len(core_prompt)} chars")
         print(f"  - Preview: {core_prompt[:100]}...")
     except Exception as e:
@@ -35,7 +34,7 @@ def test_braintrust_client():
     # Test loading guardrail prompt
     try:
         guardrail_prompt = client.get_guardrail_prompt()
-        print(f"✓ Guardrail prompt loaded")
+        print("✓ Guardrail prompt loaded")
         print(f"  - System prompt length: {len(guardrail_prompt.system_prompt)} chars")
         print(f"  - Version: {guardrail_prompt.metadata.get('version', 'unknown')}")
     except Exception as e:
@@ -44,7 +43,7 @@ def test_braintrust_client():
     # Test loading router prompt
     try:
         router_prompt = client.get_router_prompt()
-        print(f"✓ Router prompt loaded")
+        print("✓ Router prompt loaded")
         print(f"  - System prompt length: {len(router_prompt.system_prompt)} chars")
         print(f"  - Version: {router_prompt.metadata.get('version', 'unknown')}")
     except Exception as e:
@@ -56,7 +55,7 @@ def test_ai_guardrails():
     print("\n=== Testing AI Guardrails ===")
 
     # Check if ANTHROPIC_API_KEY is set
-    if not os.environ.get('ANTHROPIC_API_KEY'):
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         print("✗ ANTHROPIC_API_KEY not set, skipping AI guardrails test")
         return
 
@@ -64,7 +63,7 @@ def test_ai_guardrails():
         from chat.router import get_ai_guardrail_checker
 
         checker = get_ai_guardrail_checker()
-        print(f"✓ AI Guardrail checker initialized")
+        print("✓ AI Guardrail checker initialized")
         print(f"  - Model: {checker.model}")
 
         # Test cases
@@ -96,7 +95,7 @@ def test_ai_router():
     print("\n=== Testing AI Router ===")
 
     # Check if ANTHROPIC_API_KEY is set
-    if not os.environ.get('ANTHROPIC_API_KEY'):
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         print("✗ ANTHROPIC_API_KEY not set, skipping AI router test")
         return
 
@@ -104,7 +103,7 @@ def test_ai_router():
         from chat.router import get_ai_flow_router
 
         router = get_ai_flow_router()
-        print(f"✓ AI Flow router initialized")
+        print("✓ AI Flow router initialized")
         print(f"  - Model: {router.model}")
 
         # Test cases
@@ -141,25 +140,25 @@ def test_integrated_router():
         # Test with AI enabled
         print("\nTesting with AI enabled:")
         router_ai = get_router_service(use_ai_classifier=True, use_ai_guardrails=True)
-        print(f"✓ Router service initialized (AI mode)")
+        print("✓ Router service initialized (AI mode)")
         print(f"  - AI classifier: {router_ai.use_ai_classifier}")
         print(f"  - AI guardrails: {router_ai.use_ai_guardrails}")
 
         # Test with AI disabled (rule-based fallback)
         print("\nTesting with AI disabled (rule-based):")
-        router_rule = get_router_service(use_ai_classifier=False, use_ai_guardrails=False)
-        print(f"✓ Router service initialized (rule-based mode)")
+        get_router_service(use_ai_classifier=False, use_ai_guardrails=False)
+        print("✓ Router service initialized (rule-based mode)")
 
         # Test routing
-        if os.environ.get('ANTHROPIC_API_KEY'):
+        if os.environ.get("ANTHROPIC_API_KEY"):
             print("\nTesting routing with real message:")
             result = router_ai.route(
                 session_id="test_session",
                 user_message="Can I use my phone on Shabbat?",
                 conversation_summary="",
-                previous_flow=None
+                previous_flow=None,
             )
-            print(f"✓ Routing completed")
+            print("✓ Routing completed")
             print(f"  - Flow: {result.flow.value}")
             print(f"  - Confidence: {result.confidence:.2f}")
             print(f"  - Safety allowed: {result.safety.allowed}")
@@ -171,6 +170,7 @@ def test_integrated_router():
     except Exception as e:
         print(f"✗ Failed to test integrated router: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -183,14 +183,16 @@ def run_tests():
     # Check environment
     print("\n=== Environment Check ===")
     print(f"ANTHROPIC_API_KEY: {'✓ Set' if os.environ.get('ANTHROPIC_API_KEY') else '✗ Not set'}")
-    print(f"BRAINTRUST_API_KEY: {'✓ Set' if os.environ.get('BRAINTRUST_API_KEY') else '○ Not set (optional)'}")
+    print(
+        f"BRAINTRUST_API_KEY: {'✓ Set' if os.environ.get('BRAINTRUST_API_KEY') else '○ Not set (optional)'}"
+    )
     print(f"ROUTER_USE_AI: {os.environ.get('ROUTER_USE_AI', 'true')}")
     print(f"GUARDRAILS_USE_AI: {os.environ.get('GUARDRAILS_USE_AI', 'true')}")
 
     # Run tests
     test_braintrust_client()
 
-    if os.environ.get('ANTHROPIC_API_KEY'):
+    if os.environ.get("ANTHROPIC_API_KEY"):
         test_ai_guardrails()
         test_ai_router()
     else:
@@ -204,6 +206,6 @@ def run_tests():
     print("=" * 70)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Allow running from command line
     run_tests()

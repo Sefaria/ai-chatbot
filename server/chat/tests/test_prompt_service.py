@@ -1,12 +1,13 @@
 """Tests for PromptService - caching, fallback to defaults, Braintrust integration."""
 
-import pytest
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from chat.prompts.prompt_service import (
-    PromptService,
     PromptBundle,
+    PromptService,
     get_prompt_service,
 )
 
@@ -202,9 +203,7 @@ class TestPromptExtraction:
     def test_extract_from_build_content_list(self, service: PromptService) -> None:
         mock_prompt = MagicMock()
         mock_prompt.build.return_value = {
-            "messages": [
-                {"role": "system", "content": [{"text": "Part 1"}, {"text": " Part 2"}]}
-            ]
+            "messages": [{"role": "system", "content": [{"text": "Part 1"}, {"text": " Part 2"}]}]
         }
         assert service._extract_prompt_text(mock_prompt) == "Part 1 Part 2"
 

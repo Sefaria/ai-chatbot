@@ -1,7 +1,8 @@
 """Tests for SefariaToolExecutor - tool dispatch, error handling, result wrapping."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from chat.agent.tool_executor import (
     SefariaToolExecutor,
@@ -74,25 +75,93 @@ class TestToolDispatch:
     """Test tool dispatch to correct methods."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("tool_name,args,expected_method,expected_args", [
-        ("get_text", {"reference": "Genesis 1:1", "version_language": "en"}, "get_text", ("Genesis 1:1", "en")),
-        ("get_text", {"reference": "Genesis 1:1"}, "get_text", ("Genesis 1:1", None)),
-        ("text_search", {"query": "shabbat", "filters": "Talmud", "size": 20}, "text_search", ("shabbat", "Talmud", 20)),
-        ("text_search", {"query": "prayer"}, "text_search", ("prayer", None, 10)),
-        ("get_current_calendar", {}, "get_current_calendar", ()),
-        ("english_semantic_search", {"query": "meaning of life", "filters": "Philosophy"}, "english_semantic_search", ("meaning of life", "Philosophy")),
-        ("get_links_between_texts", {"reference": "Genesis 1:1", "with_text": "1"}, "get_links_between_texts", ("Genesis 1:1", "1")),
-        ("search_in_book", {"query": "light", "book_name": "Genesis", "size": 5}, "search_in_book", ("light", "Genesis", 5)),
-        ("search_in_dictionaries", {"query": "torah"}, "search_in_dictionaries", ("torah",)),
-        ("get_english_translations", {"reference": "Psalm 23:1"}, "get_english_translations", ("Psalm 23:1",)),
-        ("get_topic_details", {"topic_slug": "shabbat", "with_links": True, "with_refs": True}, "get_topic_details", ("shabbat", True, True)),
-        ("clarify_name_argument", {"name": "rashi", "limit": 5, "type_filter": "Person"}, "clarify_name_argument", ("rashi", 5, "Person")),
-        ("get_text_or_category_shape", {"name": "Genesis"}, "get_text_or_category_shape", ("Genesis",)),
-        ("get_text_catalogue_info", {"title": "Mishnah Berakhot"}, "get_text_catalogue_info", ("Mishnah Berakhot",)),
-        ("get_available_manuscripts", {"reference": "Genesis 1:1"}, "get_available_manuscripts", ("Genesis 1:1",)),
-        ("get_manuscript_image", {"image_url": "http://example.com/image.jpg", "manuscript_title": "Leningrad Codex"}, "get_manuscript_image", ("http://example.com/image.jpg", "Leningrad Codex")),
-    ])
-    async def test_dispatch(self, executor, mock_client, tool_name, args, expected_method, expected_args):
+    @pytest.mark.parametrize(
+        "tool_name,args,expected_method,expected_args",
+        [
+            (
+                "get_text",
+                {"reference": "Genesis 1:1", "version_language": "en"},
+                "get_text",
+                ("Genesis 1:1", "en"),
+            ),
+            ("get_text", {"reference": "Genesis 1:1"}, "get_text", ("Genesis 1:1", None)),
+            (
+                "text_search",
+                {"query": "shabbat", "filters": "Talmud", "size": 20},
+                "text_search",
+                ("shabbat", "Talmud", 20),
+            ),
+            ("text_search", {"query": "prayer"}, "text_search", ("prayer", None, 10)),
+            ("get_current_calendar", {}, "get_current_calendar", ()),
+            (
+                "english_semantic_search",
+                {"query": "meaning of life", "filters": "Philosophy"},
+                "english_semantic_search",
+                ("meaning of life", "Philosophy"),
+            ),
+            (
+                "get_links_between_texts",
+                {"reference": "Genesis 1:1", "with_text": "1"},
+                "get_links_between_texts",
+                ("Genesis 1:1", "1"),
+            ),
+            (
+                "search_in_book",
+                {"query": "light", "book_name": "Genesis", "size": 5},
+                "search_in_book",
+                ("light", "Genesis", 5),
+            ),
+            ("search_in_dictionaries", {"query": "torah"}, "search_in_dictionaries", ("torah",)),
+            (
+                "get_english_translations",
+                {"reference": "Psalm 23:1"},
+                "get_english_translations",
+                ("Psalm 23:1",),
+            ),
+            (
+                "get_topic_details",
+                {"topic_slug": "shabbat", "with_links": True, "with_refs": True},
+                "get_topic_details",
+                ("shabbat", True, True),
+            ),
+            (
+                "clarify_name_argument",
+                {"name": "rashi", "limit": 5, "type_filter": "Person"},
+                "clarify_name_argument",
+                ("rashi", 5, "Person"),
+            ),
+            (
+                "get_text_or_category_shape",
+                {"name": "Genesis"},
+                "get_text_or_category_shape",
+                ("Genesis",),
+            ),
+            (
+                "get_text_catalogue_info",
+                {"title": "Mishnah Berakhot"},
+                "get_text_catalogue_info",
+                ("Mishnah Berakhot",),
+            ),
+            (
+                "get_available_manuscripts",
+                {"reference": "Genesis 1:1"},
+                "get_available_manuscripts",
+                ("Genesis 1:1",),
+            ),
+            (
+                "get_manuscript_image",
+                {
+                    "image_url": "http://example.com/image.jpg",
+                    "manuscript_title": "Leningrad Codex",
+                },
+                "get_manuscript_image",
+                ("http://example.com/image.jpg", "Leningrad Codex"),
+            ),
+        ],
+    )
+    async def test_dispatch(
+        self, executor, mock_client, tool_name, args, expected_method, expected_args
+    ):
         result = await executor.execute(tool_name, args)
         getattr(mock_client, expected_method).assert_called_once_with(*expected_args)
         assert result.is_error is False
@@ -132,12 +201,15 @@ class TestResultWrapping:
     def executor(self):
         return SefariaToolExecutor(client=Mock())
 
-    @pytest.mark.parametrize("input_data,check_func", [
-        ("Simple text result", lambda r: r.content[0]["text"] == "Simple text result"),
-        ({"key": "value", "number": 123}, lambda r: '"key": "value"' in r.content[0]["text"]),
-        ([1, 2, 3], lambda r: all(str(n) in r.content[0]["text"] for n in [1, 2, 3])),
-        ({"hebrew": "בראשית"}, lambda r: "בראשית" in r.content[0]["text"]),
-    ])
+    @pytest.mark.parametrize(
+        "input_data,check_func",
+        [
+            ("Simple text result", lambda r: r.content[0]["text"] == "Simple text result"),
+            ({"key": "value", "number": 123}, lambda r: '"key": "value"' in r.content[0]["text"]),
+            ([1, 2, 3], lambda r: all(str(n) in r.content[0]["text"] for n in [1, 2, 3])),
+            ({"hebrew": "בראשית"}, lambda r: "בראשית" in r.content[0]["text"]),
+        ],
+    )
     def test_wrap_result(self, executor, input_data, check_func):
         result = executor._wrap(input_data)
         assert result.is_error is False
@@ -154,19 +226,38 @@ class TestResultWrapping:
 class TestDescribeToolCall:
     """Test describe_tool_call function."""
 
-    @pytest.mark.parametrize("tool_name,args,expected_phrases", [
-        ("text_search", {"query": "shabbat"}, ["Searching texts", "shabbat"]),
-        ("text_search", {"query": "prayer", "filters": "Talmud"}, ["prayer", "Talmud"]),
-        ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
-        ("get_text", {"reference": "Genesis 1:1", "version_language": "he"}, ["Genesis 1:1", "he"]),
-        ("english_semantic_search", {"query": "meaning of life"}, ["Semantic search", "meaning of life"]),
-        ("search_in_book", {"query": "light", "book_name": "Genesis"}, ["Searching in", "Genesis", "light"]),
-        ("get_links_between_texts", {"reference": "Exodus 20:1"}, ["Finding links", "Exodus 20:1"]),
-        ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
-        ("get_current_calendar", {}, ["calendar"]),
-        ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
-        ("unknown_tool", {"arg": "value"}, ["Running tool", "unknown_tool"]),
-    ])
+    @pytest.mark.parametrize(
+        "tool_name,args,expected_phrases",
+        [
+            ("text_search", {"query": "shabbat"}, ["Searching texts", "shabbat"]),
+            ("text_search", {"query": "prayer", "filters": "Talmud"}, ["prayer", "Talmud"]),
+            ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
+            (
+                "get_text",
+                {"reference": "Genesis 1:1", "version_language": "he"},
+                ["Genesis 1:1", "he"],
+            ),
+            (
+                "english_semantic_search",
+                {"query": "meaning of life"},
+                ["Semantic search", "meaning of life"],
+            ),
+            (
+                "search_in_book",
+                {"query": "light", "book_name": "Genesis"},
+                ["Searching in", "Genesis", "light"],
+            ),
+            (
+                "get_links_between_texts",
+                {"reference": "Exodus 20:1"},
+                ["Finding links", "Exodus 20:1"],
+            ),
+            ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
+            ("get_current_calendar", {}, ["calendar"]),
+            ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
+            ("unknown_tool", {"arg": "value"}, ["Running tool", "unknown_tool"]),
+        ],
+    )
     def test_describe_tool(self, tool_name, args, expected_phrases):
         desc = describe_tool_call(tool_name, args)
         for phrase in expected_phrases:

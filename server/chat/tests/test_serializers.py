@@ -3,25 +3,35 @@
 import pytest
 from django.utils import timezone
 
+from chat.models import ChatMessage
 from chat.serializers import (
     ChatRequestSerializer,
     ChatResponseSerializer,
-    MessageContextSerializer,
     HistoryMessageSerializer,
+    MessageContextSerializer,
 )
-from chat.models import ChatMessage
 
 
 class TestMessageContextSerializer:
     """Test MessageContextSerializer."""
 
-    @pytest.mark.parametrize("data,is_valid", [
-        ({"pageUrl": "https://example.com/page", "locale": "en-US", "clientVersion": "1.0.0"}, True),
-        ({}, True),
-        ({"locale": "he"}, True),
-        ({"pageUrl": "", "locale": "", "clientVersion": ""}, True),
-        ({"pageUrl": "not-a-url"}, False),
-    ])
+    @pytest.mark.parametrize(
+        "data,is_valid",
+        [
+            (
+                {
+                    "pageUrl": "https://example.com/page",
+                    "locale": "en-US",
+                    "clientVersion": "1.0.0",
+                },
+                True,
+            ),
+            ({}, True),
+            ({"locale": "he"}, True),
+            ({"pageUrl": "", "locale": "", "clientVersion": ""}, True),
+            ({"pageUrl": "not-a-url"}, False),
+        ],
+    )
     def test_context_validation(self, data, is_valid):
         serializer = MessageContextSerializer(data=data)
         assert serializer.is_valid() == is_valid
@@ -70,12 +80,15 @@ class TestChatRequestSerializer:
         for field in ["sessionId", "messageId", "timestamp", "text"]:
             assert field in serializer.errors
 
-    @pytest.mark.parametrize("field,invalid_value,error_field", [
-        ("userId", "", "userId"),
-        ("text", "x" * 10001, "text"),
-        ("timestamp", "not-a-timestamp", "timestamp"),
-        ("userId", "u" * 101, "userId"),
-    ])
+    @pytest.mark.parametrize(
+        "field,invalid_value,error_field",
+        [
+            ("userId", "", "userId"),
+            ("text", "x" * 10001, "text"),
+            ("timestamp", "not-a-timestamp", "timestamp"),
+            ("userId", "u" * 101, "userId"),
+        ],
+    )
     def test_field_validation_errors(self, valid_request_data, field, invalid_value, error_field):
         valid_request_data[field] = invalid_value
         serializer = ChatRequestSerializer(data=valid_request_data)
@@ -87,11 +100,14 @@ class TestChatRequestSerializer:
         serializer = ChatRequestSerializer(data=valid_request_data)
         assert serializer.is_valid()
 
-    @pytest.mark.parametrize("timestamp", [
-        "2024-01-15T10:30:00Z",
-        "2024-01-15T10:30:00.000Z",
-        "2024-01-15T10:30:00+00:00",
-    ])
+    @pytest.mark.parametrize(
+        "timestamp",
+        [
+            "2024-01-15T10:30:00Z",
+            "2024-01-15T10:30:00.000Z",
+            "2024-01-15T10:30:00+00:00",
+        ],
+    )
     def test_various_timestamp_formats(self, valid_request_data, timestamp):
         valid_request_data["timestamp"] = timestamp
         serializer = ChatRequestSerializer(data=valid_request_data)

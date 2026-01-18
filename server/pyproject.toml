@@ -27,6 +27,8 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "E402",   # module level import not at top - needed for Django setup scripts
+    "B023",   # function definition in loop - false positive for immediately-awaited async functions
 ]
 
 [tool.ruff.lint.isort]

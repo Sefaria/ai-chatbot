@@ -9,91 +9,96 @@ Creates hierarchical traces with spans for:
 - Summary updates
 """
 
+import logging
 import os
 import time
-import logging
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
-from contextlib import contextmanager
-from datetime import datetime
 import uuid
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
 
-logger = logging.getLogger('chat.tracing')
+logger = logging.getLogger("chat.tracing")
 
 
 @dataclass
 class SpanData:
     """Data for a trace span."""
+
     span_id: str
     name: str
     span_type: str  # 'chain', 'llm', 'tool', 'retriever'
     start_time: float
-    end_time: Optional[float] = None
-    inputs: Optional[Dict[str, Any]] = None
-    outputs: Optional[Dict[str, Any]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
-    parent_span_id: Optional[str] = None
+    end_time: float | None = None
+    inputs: dict[str, Any] | None = None
+    outputs: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    parent_span_id: str | None = None
 
 
 @dataclass
 class TraceContext:
     """Context for a trace (parent trace for a turn)."""
+
     run_id: str
     session_id: str
     turn_id: str
-    user_id: Optional[str] = None
-    flow: Optional[str] = None
-    decision_id: Optional[str] = None
+    user_id: str | None = None
+    flow: str | None = None
+    decision_id: str | None = None
     start_time: float = field(default_factory=time.time)
-    spans: List[SpanData] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
+    spans: list[SpanData] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
 
 class LangSmithTracer:
     """
     LangSmith tracer for the Jewish learning agent.
-    
+
     Provides:
     - Automatic trace creation per turn
     - Span management for nested operations
     - Structured logging with metadata
     - Error tracking
     """
-    
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        project_name: Optional[str] = None,
-        endpoint: Optional[str] = None,
+        api_key: str | None = None,
+        project_name: str | None = None,
+        endpoint: str | None = None,
     ):
         """
         Initialize the LangSmith tracer.
-        
+
         Args:
             api_key: LangSmith API key (default: from env)
             project_name: LangSmith project name (default: from env)
             endpoint: LangSmith API endpoint (default: from env or cloud)
         """
-        self.api_key = api_key or os.environ.get('LANGSMITH_API_KEY')
-        self.project_name = project_name or os.environ.get('LANGSMITH_PROJECT', 'sefaria-chatbot')
-        self.endpoint = endpoint or os.environ.get('LANGSMITH_ENDPOINT', 'https://api.smith.langchain.com')
-        
+        self.api_key = api_key or os.environ.get("LANGSMITH_API_KEY")
+        self.project_name = project_name or os.environ.get("LANGSMITH_PROJECT", "sefaria-chatbot")
+        self.endpoint = endpoint or os.environ.get(
+            "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"
+        )
+
         self._client = None
         self._enabled = False
-        self._current_traces: Dict[str, TraceContext] = {}
-        
+        self._current_traces: dict[str, TraceContext] = {}
+
         self._init_client()
-    
+
     def _init_client(self):
         """Initialize the LangSmith client."""
         if not self.api_key:
             logger.info("LangSmith API key not configured, tracing disabled")
             return
-        
+
         try:
             from langsmith import Client
+
             self._client = Client(
                 api_key=self.api_key,
                 api_url=self.endpoint,
@@ -104,25 +109,25 @@ class LangSmithTracer:
             logger.warning("langsmith package not installed, tracing disabled")
         except Exception as e:
             logger.warning(f"Failed to initialize LangSmith: {e}")
-    
+
     @property
     def enabled(self) -> bool:
         """Check if tracing is enabled."""
         return self._enabled
-    
+
     def create_trace(
         self,
         session_id: str,
         turn_id: str,
-        user_id: Optional[str] = None,
-        flow: Optional[str] = None,
-        decision_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
+        user_id: str | None = None,
+        flow: str | None = None,
+        decision_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ) -> TraceContext:
         """
         Create a new trace for a turn.
-        
+
         Args:
             session_id: Session identifier
             turn_id: Turn identifier
@@ -131,12 +136,12 @@ class LangSmithTracer:
             decision_id: Route decision ID
             metadata: Additional metadata
             tags: Tags for filtering
-            
+
         Returns:
             TraceContext for this turn
         """
         run_id = str(uuid.uuid4())
-        
+
         context = TraceContext(
             run_id=run_id,
             session_id=session_id,
@@ -145,11 +150,11 @@ class LangSmithTracer:
             flow=flow,
             decision_id=decision_id,
             metadata=metadata or {},
-            tags=tags or ['sefaria-agent'],
+            tags=tags or ["sefaria-agent"],
         )
-        
+
         self._current_traces[turn_id] = context
-        
+
         if self._enabled and self._client:
             try:
                 # Create the parent run in LangSmith
@@ -171,28 +176,28 @@ class LangSmithTracer:
                 )
             except Exception as e:
                 logger.warning(f"Failed to create LangSmith run: {e}")
-        
+
         return context
-    
+
     @contextmanager
     def span(
         self,
         context: TraceContext,
         name: str,
         span_type: str = "chain",
-        inputs: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Create a span within a trace.
-        
+
         Args:
             context: Parent trace context
             name: Span name
             span_type: Type of span (chain, llm, tool, retriever)
             inputs: Input data
             metadata: Additional metadata
-            
+
         Yields:
             SpanData that can be updated with outputs
         """
@@ -206,9 +211,9 @@ class LangSmithTracer:
             metadata=metadata or {},
             parent_span_id=context.run_id,
         )
-        
+
         context.spans.append(span)
-        
+
         if self._enabled and self._client:
             try:
                 self._client.create_run(
@@ -222,7 +227,7 @@ class LangSmithTracer:
                 )
             except Exception as e:
                 logger.warning(f"Failed to create LangSmith span: {e}")
-        
+
         try:
             yield span
         except Exception as e:
@@ -230,7 +235,7 @@ class LangSmithTracer:
             raise
         finally:
             span.end_time = time.time()
-            
+
             if self._enabled and self._client:
                 try:
                     self._client.update_run(
@@ -241,12 +246,12 @@ class LangSmithTracer:
                     )
                 except Exception as e:
                     logger.warning(f"Failed to update LangSmith span: {e}")
-    
+
     def log_router_decision(
         self,
         context: TraceContext,
         user_message: str,
-        decision: Dict[str, Any],
+        decision: dict[str, Any],
         latency_ms: int,
     ):
         """Log a router decision as a span."""
@@ -258,12 +263,12 @@ class LangSmithTracer:
             metadata={"latency_ms": latency_ms},
         ) as span:
             span.outputs = decision
-    
+
     def log_prompt_fetch(
         self,
         context: TraceContext,
-        prompt_ids: Dict[str, str],
-        prompt_versions: Dict[str, str],
+        prompt_ids: dict[str, str],
+        prompt_versions: dict[str, str],
         latency_ms: int,
     ):
         """Log prompt fetching as a span."""
@@ -275,14 +280,14 @@ class LangSmithTracer:
             metadata={"latency_ms": latency_ms},
         ) as span:
             span.outputs = {"versions": prompt_versions}
-    
+
     def log_llm_call(
         self,
         context: TraceContext,
         model: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         response_content: str,
-        usage: Dict[str, int],
+        usage: dict[str, int],
         latency_ms: int,
         iteration: int = 1,
     ):
@@ -302,16 +307,16 @@ class LangSmithTracer:
                 "content": response_content[:2000],
                 "usage": usage,
             }
-    
+
     def log_tool_call(
         self,
         context: TraceContext,
         tool_name: str,
-        tool_input: Dict[str, Any],
+        tool_input: dict[str, Any],
         tool_output: Any,
         latency_ms: int,
         is_error: bool = False,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ):
         """Log a tool call as a span."""
         with self.span(
@@ -327,7 +332,7 @@ class LangSmithTracer:
             if is_error:
                 span.error = error_message
             span.outputs = {"output": str(tool_output)[:2000] if tool_output else None}
-    
+
     def log_summary_update(
         self,
         context: TraceContext,
@@ -344,17 +349,17 @@ class LangSmithTracer:
             metadata={"latency_ms": latency_ms},
         ) as span:
             span.outputs = {"new_summary": new_summary[:500]}
-    
+
     def end_trace(
         self,
         context: TraceContext,
         output: str,
-        error: Optional[str] = None,
-        metrics: Optional[Dict[str, Any]] = None,
+        error: str | None = None,
+        metrics: dict[str, Any] | None = None,
     ):
         """
         End a trace and flush to LangSmith.
-        
+
         Args:
             context: Trace context
             output: Final output
@@ -377,16 +382,16 @@ class LangSmithTracer:
                 )
             except Exception as e:
                 logger.warning(f"Failed to end LangSmith run: {e}")
-        
+
         # Clean up
         if context.turn_id in self._current_traces:
             del self._current_traces[context.turn_id]
-    
-    def get_trace_url(self, context: TraceContext) -> Optional[str]:
+
+    def get_trace_url(self, context: TraceContext) -> str | None:
         """Get the LangSmith URL for a trace."""
         if not self._enabled:
             return None
-        
+
         return f"{self.endpoint.replace('api.', '')}/o/default/projects/{self.project_name}/r/{context.run_id}"
 
 
@@ -400,5 +405,3 @@ def get_tracer() -> LangSmithTracer:
     if _default_tracer is None:
         _default_tracer = LangSmithTracer()
     return _default_tracer
-
-

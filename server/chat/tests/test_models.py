@@ -1,15 +1,16 @@
 """Tests for Django models - ChatSession, ChatMessage, RouteDecision, etc."""
 
-import pytest
-from django.utils import timezone
 from datetime import timedelta
 
+import pytest
+from django.utils import timezone
+
 from chat.models import (
-    ChatSession,
+    BraintrustLog,
     ChatMessage,
+    ChatSession,
     RouteDecision,
     ToolCallEvent,
-    BraintrustLog,
 )
 
 
@@ -53,8 +54,10 @@ class TestChatSession:
         assert "SEARCH" in str_repr
 
     def test_session_unique_id(self) -> None:
+        from django.db import IntegrityError
+
         ChatSession.objects.create(session_id="unique_id", user_id="user1")
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             ChatSession.objects.create(session_id="unique_id", user_id="user2")
 
     def test_session_auto_timestamps(self) -> None:

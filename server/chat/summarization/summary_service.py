@@ -7,83 +7,83 @@ Creates and maintains rolling summaries of conversations to:
 - Track conversation state without full history
 """
 
-import os
-import time
 import logging
+import os
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any
 
 import anthropic
 
-logger = logging.getLogger('chat.summarization')
+logger = logging.getLogger("chat.summarization")
 
 
 @dataclass
 class ConversationSummary:
     """
     Structured summary of a conversation.
-    
+
     Designed for router consumption with key context signals.
     """
+
     # Core content
     text: str = ""  # Free-form summary text
-    
+
     # Structured fields for routing
     current_topic: str = ""
     user_intent: str = ""  # learning, searching, asking_halacha, etc.
     flow: str = ""  # Current/suggested flow
-    
+
     # Entities mentioned
-    texts_referenced: List[str] = field(default_factory=list)
-    topics_discussed: List[str] = field(default_factory=list)
-    people_mentioned: List[str] = field(default_factory=list)
-    
+    texts_referenced: list[str] = field(default_factory=list)
+    topics_discussed: list[str] = field(default_factory=list)
+    people_mentioned: list[str] = field(default_factory=list)
+
     # Context
     halachic_domain: str = ""  # shabbat, kashrut, etc.
-    constraints: List[str] = field(default_factory=list)  # user-expressed constraints
-    
+    constraints: list[str] = field(default_factory=list)  # user-expressed constraints
+
     # Safety
-    safety_flags: List[str] = field(default_factory=list)
-    
+    safety_flags: list[str] = field(default_factory=list)
+
     # Metadata
     turn_count: int = 0
-    last_updated: Optional[datetime] = None
-    
+    last_updated: datetime | None = None
+
     def to_text(self) -> str:
         """Convert to text format for router input."""
         parts = []
-        
+
         if self.text:
             parts.append(f"Summary: {self.text}")
-        
+
         if self.current_topic:
             parts.append(f"Current Topic: {self.current_topic}")
-        
+
         if self.user_intent:
             parts.append(f"User Intent: {self.user_intent}")
-        
+
         if self.flow:
             parts.append(f"Flow: {self.flow}")
-        
+
         if self.texts_referenced:
             parts.append(f"Texts: {', '.join(self.texts_referenced[:5])}")
-        
+
         if self.topics_discussed:
             parts.append(f"Topics: {', '.join(self.topics_discussed[:5])}")
-        
+
         if self.halachic_domain:
             parts.append(f"Halachic Domain: {self.halachic_domain}")
-        
+
         if self.constraints:
             parts.append(f"Constraints: {', '.join(self.constraints)}")
-        
+
         if self.safety_flags:
             parts.append(f"Safety Flags: {', '.join(self.safety_flags)}")
-        
+
         return "\n".join(parts)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "text": self.text,
@@ -99,9 +99,9 @@ class ConversationSummary:
             "turn_count": self.turn_count,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ConversationSummary':
+    def from_dict(cls, data: dict[str, Any]) -> "ConversationSummary":
         """Create from dictionary."""
         last_updated = None
         if data.get("last_updated"):
@@ -109,7 +109,7 @@ class ConversationSummary:
                 last_updated = datetime.fromisoformat(data["last_updated"])
             except (ValueError, TypeError):
                 pass
-        
+
         return cls(
             text=data.get("text", ""),
             current_topic=data.get("current_topic", ""),
@@ -156,52 +156,52 @@ Keep the summary focused and under 500 characters total."""
 class SummaryService:
     """
     Service for generating and managing conversation summaries.
-    
+
     Uses Claude for intelligent summarization with structured output.
     Falls back to simple extraction for speed when needed.
     """
-    
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "claude-3-haiku-20240307",  # Use fast/cheap model
         use_llm: bool = True,
     ):
         """
         Initialize the summary service.
-        
+
         Args:
             api_key: Anthropic API key (default: from env)
             model: Model to use for summarization
             use_llm: Whether to use LLM (False = simple extraction)
         """
-        self.api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.model = model
         self.use_llm = use_llm and bool(self.api_key)
-        
+
         if self.use_llm:
             self.client = anthropic.Anthropic(api_key=self.api_key)
         else:
             self.client = None
-        
+
         logger.info(f"SummaryService initialized (use_llm={self.use_llm})")
-    
+
     async def update_summary(
         self,
-        current_summary: Optional[ConversationSummary],
+        current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
         flow: str = "",
     ) -> ConversationSummary:
         """
         Update the conversation summary with new messages.
-        
+
         Args:
             current_summary: Existing summary (or None for new conversation)
             new_user_message: Latest user message
             new_assistant_response: Latest assistant response
             flow: Current flow from router
-            
+
         Returns:
             Updated ConversationSummary
         """
@@ -219,10 +219,10 @@ class SummaryService:
                 new_assistant_response,
                 flow,
             )
-    
+
     async def _llm_summarize(
         self,
-        current_summary: Optional[ConversationSummary],
+        current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
         flow: str,
@@ -235,24 +235,23 @@ class SummaryService:
                 context_parts.append(f"Previous Summary: {current_summary.text}")
             context_parts.append(f"User: {new_user_message[:1000]}")
             context_parts.append(f"Assistant: {new_assistant_response[:1000]}")
-            
+
             context = "\n\n".join(context_parts)
-            
+
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=500,
                 temperature=0.0,
                 system=SUMMARY_PROMPT,
-                messages=[
-                    {"role": "user", "content": context}
-                ]
+                messages=[{"role": "user", "content": context}],
             )
-            
+
             # Parse JSON response
             response_text = response.content[0].text
-            
+
             # Try to extract JSON
             import json
+
             try:
                 # Handle potential markdown code blocks
                 if "```json" in response_text:
@@ -261,16 +260,16 @@ class SummaryService:
                     json_str = response_text.split("```")[1].split("```")[0]
                 else:
                     json_str = response_text
-                
+
                 data = json.loads(json_str.strip())
-                
+
                 summary = ConversationSummary.from_dict(data)
                 summary.turn_count = (current_summary.turn_count if current_summary else 0) + 1
                 summary.last_updated = datetime.now()
                 summary.flow = flow or summary.flow
-                
+
                 return summary
-                
+
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
                 return self._simple_summarize(
@@ -279,7 +278,7 @@ class SummaryService:
                     new_assistant_response,
                     flow,
                 )
-                
+
         except Exception as e:
             logger.error(f"LLM summarization error: {e}")
             return self._simple_summarize(
@@ -288,10 +287,10 @@ class SummaryService:
                 new_assistant_response,
                 flow,
             )
-    
+
     def _simple_summarize(
         self,
-        current_summary: Optional[ConversationSummary],
+        current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
         flow: str,
@@ -305,41 +304,43 @@ class SummaryService:
             turn_count=(current_summary.turn_count if current_summary else 0) + 1,
             last_updated=datetime.now(),
         )
-        
+
         # Carry over entities from previous summary
         if current_summary:
             summary.texts_referenced = current_summary.texts_referenced[-5:]
             summary.topics_discussed = current_summary.topics_discussed[-5:]
-        
+
         return summary
-    
+
     def _extract_topic(self, message: str) -> str:
         """Extract the main topic from a message."""
         # Simple extraction - take first 50 chars or first sentence
         message = message.strip()
-        if '?' in message:
-            topic = message.split('?')[0]
-        elif '.' in message:
-            topic = message.split('.')[0]
+        if "?" in message:
+            topic = message.split("?")[0]
+        elif "." in message:
+            topic = message.split(".")[0]
         else:
             topic = message[:50]
-        
+
         return topic.strip()[:100]
-    
+
     def _infer_intent(self, message: str) -> str:
         """Infer user intent from message patterns."""
         message_lower = message.lower()
-        
-        if any(word in message_lower for word in ['find', 'search', 'where', 'source']):
-            return 'searching'
-        elif any(word in message_lower for word in ['permitted', 'allowed', 'halacha', 'mutar', 'assur']):
-            return 'halacha'
-        elif any(word in message_lower for word in ['explain', 'what is', 'teach', 'understand']):
-            return 'learning'
-        elif any(word in message_lower for word in ['compare', 'difference', 'opinions']):
-            return 'discussion'
+
+        if any(word in message_lower for word in ["find", "search", "where", "source"]):
+            return "searching"
+        elif any(
+            word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]
+        ):
+            return "halacha"
+        elif any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
+            return "learning"
+        elif any(word in message_lower for word in ["compare", "difference", "opinions"]):
+            return "discussion"
         else:
-            return 'other'
+            return "other"
 
 
 # Default service instance
@@ -352,5 +353,3 @@ def get_summary_service() -> SummaryService:
     if _default_service is None:
         _default_service = SummaryService()
     return _default_service
-
-

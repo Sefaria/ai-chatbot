@@ -44,6 +44,12 @@ else
     fi
 fi
 
+if [ ! -f ".git/hooks/pre-commit" ]; then
+    echo -e "${YELLOW}⚠${NC} Git hooks not installed - run ${BLUE}./setup.sh${NC} to install"
+else
+    echo -e "${GREEN}✓${NC} Git hooks"
+fi
+
 echo
 
 if [ "$CAN_START" = false ]; then

@@ -1,19 +1,20 @@
 """Tests for RouterService - flow classification, tool/prompt selection, session actions."""
 
-import pytest
 from unittest.mock import Mock, patch
 
-from chat.router.router_service import (
-    RouterService,
-    Flow,
-    SessionAction,
-    RouteResult,
-    HALACHIC_KEYWORDS,
-    SEARCH_KEYWORDS,
-    GENERAL_KEYWORDS,
-)
+import pytest
+
 from chat.router.guardrails import GuardrailResult
 from chat.router.reason_codes import ReasonCode
+from chat.router.router_service import (
+    GENERAL_KEYWORDS,
+    HALACHIC_KEYWORDS,
+    SEARCH_KEYWORDS,
+    Flow,
+    RouteResult,
+    RouterService,
+    SessionAction,
+)
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ class TestRouterServiceInit:
     """Test RouterService initialization."""
 
     def test_init_with_defaults(self):
-        with patch.dict('os.environ', {'ANTHROPIC_API_KEY': ''}, clear=False):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}, clear=False):
             router = RouterService(use_ai_classifier=False, use_ai_guardrails=False)
             assert router.use_ai_classifier is False
             assert router.use_ai_guardrails is False
@@ -42,27 +43,30 @@ class TestRouterServiceInit:
 class TestRuleBasedClassification:
     """Test rule-based intent classification."""
 
-    @pytest.mark.parametrize("message,expected_flow,expected_reason", [
-        ("Is this mutar to do?", Flow.HALACHIC, ReasonCode.ROUTE_HALACHIC_KEYWORDS),
-        ("Is eating this assur?", Flow.HALACHIC, None),
-        ("Can I use my phone on Shabbat?", Flow.HALACHIC, None),
-        ("Is this food kosher?", Flow.HALACHIC, None),
-        ("Is it permitted to work on holidays?", Flow.HALACHIC, None),
-        ("According to halacha, can I do this?", Flow.HALACHIC, None),
-        ("Find sources about prayer", Flow.SEARCH, ReasonCode.ROUTE_SEARCH_KEYWORDS),
-        ("Where does it say that in the Torah?", Flow.SEARCH, None),
-        ("Show me the references to Moses", Flow.SEARCH, None),
-        ("How many times does the word appear?", Flow.SEARCH, None),
-        ("Compare the commentaries on this verse", Flow.SEARCH, None),
-        ("What does Genesis 1:1 say?", Flow.SEARCH, None),
-        ("Look up Berakhot 10a", Flow.SEARCH, None),
-        ("Explain the concept of teshuvah", Flow.GENERAL, ReasonCode.ROUTE_GENERAL_LEARNING),
-        ("Help me understand this passage", Flow.GENERAL, None),
-        ("Teach me about the holidays", Flow.GENERAL, None),
-        ("Why do people study Torah?", Flow.GENERAL, None),
-        ("What is the philosophy of prayer?", Flow.GENERAL, None),
-        ("Challenge me on this topic", Flow.GENERAL, None),
-    ])
+    @pytest.mark.parametrize(
+        "message,expected_flow,expected_reason",
+        [
+            ("Is this mutar to do?", Flow.HALACHIC, ReasonCode.ROUTE_HALACHIC_KEYWORDS),
+            ("Is eating this assur?", Flow.HALACHIC, None),
+            ("Can I use my phone on Shabbat?", Flow.HALACHIC, None),
+            ("Is this food kosher?", Flow.HALACHIC, None),
+            ("Is it permitted to work on holidays?", Flow.HALACHIC, None),
+            ("According to halacha, can I do this?", Flow.HALACHIC, None),
+            ("Find sources about prayer", Flow.SEARCH, ReasonCode.ROUTE_SEARCH_KEYWORDS),
+            ("Where does it say that in the Torah?", Flow.SEARCH, None),
+            ("Show me the references to Moses", Flow.SEARCH, None),
+            ("How many times does the word appear?", Flow.SEARCH, None),
+            ("Compare the commentaries on this verse", Flow.SEARCH, None),
+            ("What does Genesis 1:1 say?", Flow.SEARCH, None),
+            ("Look up Berakhot 10a", Flow.SEARCH, None),
+            ("Explain the concept of teshuvah", Flow.GENERAL, ReasonCode.ROUTE_GENERAL_LEARNING),
+            ("Help me understand this passage", Flow.GENERAL, None),
+            ("Teach me about the holidays", Flow.GENERAL, None),
+            ("Why do people study Torah?", Flow.GENERAL, None),
+            ("What is the philosophy of prayer?", Flow.GENERAL, None),
+            ("Challenge me on this topic", Flow.GENERAL, None),
+        ],
+    )
     def test_intent_classification(self, router, message, expected_flow, expected_reason):
         flow, confidence, reasons = router._classify_intent_rule_based(message, "", None)
         assert flow == expected_flow
@@ -70,7 +74,9 @@ class TestRuleBasedClassification:
             assert expected_reason in reasons
 
     def test_default_to_general(self, router):
-        flow, confidence, reasons = router._classify_intent_rule_based("Hello, how are you?", "", None)
+        flow, confidence, reasons = router._classify_intent_rule_based(
+            "Hello, how are you?", "", None
+        )
         assert flow == Flow.GENERAL
         assert ReasonCode.ROUTE_DEFAULT_GENERAL in reasons
         assert confidence == 0.5
@@ -82,7 +88,9 @@ class TestRuleBasedClassification:
 
     @pytest.mark.parametrize("previous_flow", [Flow.HALACHIC, Flow.SEARCH, Flow.GENERAL])
     def test_flow_stickiness(self, router, previous_flow):
-        flow, _, _ = router._classify_intent_rule_based("What about this case?", "", previous_flow.value)
+        flow, _, _ = router._classify_intent_rule_based(
+            "What about this case?", "", previous_flow.value
+        )
         assert flow == previous_flow
 
     def test_override_stickiness_with_strong_intent(self, router):
@@ -95,13 +103,16 @@ class TestRuleBasedClassification:
 class TestSessionActionDetermination:
     """Test session action determination logic."""
 
-    @pytest.mark.parametrize("new_flow,previous_flow,expected_action", [
-        (Flow.GENERAL, None, SessionAction.CONTINUE),
-        (Flow.HALACHIC, Flow.HALACHIC.value, SessionAction.CONTINUE),
-        (Flow.SEARCH, Flow.HALACHIC.value, SessionAction.SWITCH_FLOW),
-        (Flow.REFUSE, Flow.GENERAL.value, SessionAction.END),
-        (Flow.REFUSE, None, SessionAction.END),
-    ])
+    @pytest.mark.parametrize(
+        "new_flow,previous_flow,expected_action",
+        [
+            (Flow.GENERAL, None, SessionAction.CONTINUE),
+            (Flow.HALACHIC, Flow.HALACHIC.value, SessionAction.CONTINUE),
+            (Flow.SEARCH, Flow.HALACHIC.value, SessionAction.SWITCH_FLOW),
+            (Flow.REFUSE, Flow.GENERAL.value, SessionAction.END),
+            (Flow.REFUSE, None, SessionAction.END),
+        ],
+    )
     def test_session_action(self, router, new_flow, previous_flow, expected_action):
         action = router._determine_session_action(new_flow, previous_flow)
         assert action == expected_action
@@ -110,12 +121,15 @@ class TestSessionActionDetermination:
 class TestPromptSelection:
     """Test prompt selection based on flow."""
 
-    @pytest.mark.parametrize("flow,expected_flow_prompt", [
-        (Flow.HALACHIC, "bt_prompt_halachic"),
-        (Flow.SEARCH, "bt_prompt_search"),
-        (Flow.GENERAL, "bt_prompt_general"),
-        (Flow.REFUSE, "bt_prompt_refuse"),
-    ])
+    @pytest.mark.parametrize(
+        "flow,expected_flow_prompt",
+        [
+            (Flow.HALACHIC, "bt_prompt_halachic"),
+            (Flow.SEARCH, "bt_prompt_search"),
+            (Flow.GENERAL, "bt_prompt_general"),
+            (Flow.REFUSE, "bt_prompt_refuse"),
+        ],
+    )
     def test_select_prompts(self, router, flow, expected_flow_prompt):
         bundle = router._select_prompts(flow)
         assert bundle.flow_prompt_id == expected_flow_prompt
@@ -130,9 +144,15 @@ class TestToolSelection:
 
     def test_halachic_tools(self, router):
         tools = router._select_tools(Flow.HALACHIC)
-        expected = ["get_text", "text_search", "english_semantic_search",
-                    "get_topic_details", "get_links_between_texts", "search_in_book",
-                    "clarify_name_argument"]
+        expected = [
+            "get_text",
+            "text_search",
+            "english_semantic_search",
+            "get_topic_details",
+            "get_links_between_texts",
+            "search_in_book",
+            "clarify_name_argument",
+        ]
         for tool in expected:
             assert tool in tools
 
@@ -158,11 +178,14 @@ class TestToolSelection:
 class TestFullRouting:
     """Test full routing flow."""
 
-    @pytest.mark.parametrize("message,expected_flow,expected_reason_code", [
-        ("Is it mutar to use electricity on Shabbat?", Flow.HALACHIC, None),
-        ("Find sources about Moses in Exodus", Flow.SEARCH, ReasonCode.TOOLS_ADDED_SEARCH_SET),
-        ("Explain the concept of teshuvah", Flow.GENERAL, ReasonCode.TOOLS_MINIMAL_GENERAL_SET),
-    ])
+    @pytest.mark.parametrize(
+        "message,expected_flow,expected_reason_code",
+        [
+            ("Is it mutar to use electricity on Shabbat?", Flow.HALACHIC, None),
+            ("Find sources about Moses in Exodus", Flow.SEARCH, ReasonCode.TOOLS_ADDED_SEARCH_SET),
+            ("Explain the concept of teshuvah", Flow.GENERAL, ReasonCode.TOOLS_MINIMAL_GENERAL_SET),
+        ],
+    )
     def test_route_message(self, router, message, expected_flow, expected_reason_code):
         result = router.route(
             session_id="test_session",
@@ -226,7 +249,15 @@ class TestFullRouting:
             previous_flow=None,
         )
         result_dict = result.to_dict()
-        expected_keys = ["decision_id", "flow", "confidence", "reason_codes", "tools", "session_action", "safety"]
+        expected_keys = [
+            "decision_id",
+            "flow",
+            "confidence",
+            "reason_codes",
+            "tools",
+            "session_action",
+            "safety",
+        ]
         for key in expected_keys:
             assert key in result_dict
 
