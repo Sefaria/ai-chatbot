@@ -72,6 +72,21 @@ def truncate(text: str, max_len: int) -> str:
     return text[:max_len - 1] + '…'
 
 
+def extract_refs(tool_calls: list) -> list:
+    """
+    Extract Sefaria refs from tool calls for Braintrust logging.
+
+    Enables scoring citation accuracy without parsing response markdown.
+    Refs are extracted from tool_input['reference'] for text-fetching tools.
+    """
+    refs = []
+    for tc in tool_calls:
+        ref = tc.get('tool_input', {}).get('reference')
+        if ref and ref not in refs:
+            refs.append(ref)
+    return refs
+
+
 class ClaudeAgentService:
     """
     Claude agent service with routed flow support.
@@ -147,6 +162,11 @@ class ClaudeAgentService:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         turn_id: Optional[str] = None,
+        # Page context for Braintrust logging
+        site: str = '',
+        page_type: str = 'unknown',
+        page_url: str = '',
+        client_version: str = '',
     ) -> AgentResponse:
         """
         Send a message to the agent with routing context.
@@ -174,7 +194,18 @@ class ClaudeAgentService:
 
         # Handle refusal flow
         if route_result.flow == Flow.REFUSE:
-            return self._create_refusal_response(route_result, start_time)
+            return self._create_refusal_response(
+                route_result=route_result,
+                start_time=start_time,
+                messages=messages,
+                last_user_message=last_user_message,
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                site=site,
+                page_type=page_type,
+                page_url=page_url,
+            )
 
         def emit(update: AgentProgressUpdate):
             """Safely emit progress update."""
@@ -233,21 +264,49 @@ class ClaudeAgentService:
         cache_creation_tokens = 0
         cache_read_tokens = 0
 
-        # Log initial input to span
+        # Build messages array in OpenAI format for eval dataset creation
+        formatted_messages = [
+            {"role": "system", "content": prompt_bundle.system_prompt},
+            *[{"role": m.role, "content": m.content} for m in messages]
+        ]
+        environment = os.environ.get('ENVIRONMENT', 'dev')
+
+        # Log structured input to span
         span.log(
-            input=truncate(last_user_message, 2000),
+            input={
+                "query": last_user_message,  # Current turn for quick viewing
+                "messages": formatted_messages,  # Full context for eval replay
+            },
+            tags=[
+                route_result.flow.value.lower(),  # search | halachic | general
+                environment,  # dev | staging | prod
+            ],
             metadata={
-                'model': self.model,
-                'flow': route_result.flow.value,
+                # Session context
                 'session_id': session_id or '',
-                'user_id': user_id or '',
                 'turn_id': turn_id or '',
+                'user_id': user_id or '',
+
+                # Model config
+                'model': self.model,
+                'temperature': self.temperature,
+                'max_tokens': self.max_tokens,
+
+                # Prompt versioning
                 'decision_id': route_result.decision_id,
                 'core_prompt_id': prompt_bundle.core_prompt_id,
                 'core_prompt_version': prompt_bundle.core_prompt_version,
                 'flow_prompt_id': prompt_bundle.flow_prompt_id,
                 'flow_prompt_version': prompt_bundle.flow_prompt_version,
+
+                # Tools
                 'tools_available': route_result.tools,
+
+                # Page context
+                'site': site,
+                'page_type': page_type,
+                'page_url': page_url,
+                'client_version': client_version,
             }
         )
 
@@ -362,11 +421,12 @@ class ClaudeAgentService:
 
                 result, output_preview, tool_latency = await execute_tool_traced()
 
-                # Track tool call
+                # Track tool call with output for final logging
                 tool_call_data = {
                     'tool_name': tool_name,
                     'tool_input': tool_input,
                     'tool_use_id': tool_use_id,
+                    'tool_output': output_preview,  # Store for structured output
                     'is_error': result.is_error,
                     'latency_ms': tool_latency,
                 }
@@ -407,14 +467,33 @@ class ClaudeAgentService:
         elif not output:
             output = 'Sorry, I encountered an issue generating a response.'
 
-        # Log final output and metrics to span
+        # Build tool calls summary for structured output
+        tool_calls_summary = []
+        for tc in tool_calls_list:
+            tool_summary = {
+                "name": tc['tool_name'],
+                "input": tc.get('tool_input', {}),
+                "output_preview": tc.get('tool_output', ''),
+                "is_error": tc.get('is_error', False),
+            }
+            # Include full output only on errors for debugging
+            if tc.get('is_error'):
+                tool_summary["output_full"] = tc.get('tool_output', '')
+            tool_calls_summary.append(tool_summary)
+
+        # Log structured output and metrics to span
         span.log(
-            output=output,
+            output={
+                "response": output,
+                "refs": extract_refs(tool_calls_list),
+                "tool_calls": tool_calls_summary,
+                "was_refused": False,
+            },
             metadata={
-                'outputLength': len(output),
-                'toolNames': [tc['tool_name'] for tc in tool_calls_list],
+                'tools_used': [tc['tool_name'] for tc in tool_calls_list],
             },
             metrics={
+                'latency_ms': latency_ms,
                 'llm_calls': llm_calls,
                 'tool_calls': len(tool_calls_list),
                 'prompt_tokens': input_tokens,
@@ -422,7 +501,6 @@ class ClaudeAgentService:
                 'cache_creation_input_tokens': cache_creation_tokens,
                 'cache_read_input_tokens': cache_read_tokens,
                 'total_tokens': input_tokens + output_tokens + cache_creation_tokens,
-                'latency_ms': latency_ms,
             }
         )
 
@@ -448,12 +526,61 @@ class ClaudeAgentService:
         self,
         route_result: RouteResult,
         start_time: float,
+        messages: List[ConversationMessage],
+        last_user_message: str,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        site: str = '',
+        page_type: str = 'unknown',
+        page_url: str = '',
     ) -> AgentResponse:
-        """Create a response for refused requests."""
+        """Create a response for refused requests with Braintrust logging."""
+        span = current_span()
         latency_ms = int((time.time() - start_time) * 1000)
+        environment = os.environ.get('ENVIRONMENT', 'dev')
 
         refusal_message = route_result.safety.refusal_message or \
             "I'm not able to help with that request. Let me know if there's something else I can help you with."
+
+        # Log structured input (same format as normal requests for consistency)
+        span.log(
+            input={
+                "query": last_user_message,
+                "messages": [{"role": m.role, "content": m.content} for m in messages],
+            },
+            tags=[
+                'refuse',  # Always 'refuse' for this flow
+                environment,
+            ],
+            metadata={
+                'session_id': session_id or '',
+                'turn_id': turn_id or '',
+                'user_id': user_id or '',
+                'decision_id': route_result.decision_id,
+                'site': site,
+                'page_type': page_type,
+                'page_url': page_url,
+            }
+        )
+
+        # Log structured output with refusal details
+        span.log(
+            output={
+                "response": refusal_message,
+                "refs": [],
+                "tool_calls": [],
+                "was_refused": True,
+                "refusal_codes": [c.value for c in route_result.safety.reason_codes],
+            },
+            metrics={
+                'latency_ms': latency_ms,
+                'llm_calls': 0,
+                'tool_calls': 0,
+                'prompt_tokens': 0,
+                'completion_tokens': 0,
+            }
+        )
 
         logger.warning(f"Request refused: {route_result.safety.refusal_message}")
 

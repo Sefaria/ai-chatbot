@@ -156,10 +156,26 @@ span.log(output=output, metadata={...}, metrics={...})
 # Tags are aggregated across all spans in a trace.
 "tags": [
     "search",     # Flow type: search | halachic | general | refuse
-    "web",        # Channel: web | slack | api
     "prod",       # Environment: dev | staging | prod
 ]
 ```
+
+---
+
+## Implementation Progress
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Task 1: Add channel to serializer | ⏭️ SKIPPED | Slack bot uses separate MCP architecture, not this API |
+| Task 2: Extract page context in views.py | ✅ DONE | Added `extract_page_type()`, passing site/page_type/page_url to agent |
+| Task 3: Update send_message signature | ✅ DONE | Added site, page_type, page_url, client_version params |
+| Task 4: Restructure initial span.log | ✅ DONE | Structured input with query + messages array, tags, expanded metadata |
+| Task 5: Restructure final span.log | ✅ DONE | Structured output with response, refs, tool_calls, was_refused |
+| Task 6: Store tool_output in tool_calls_list | ✅ DONE | Added tool_output field for final logging |
+| Task 7: Add refusal logging | ✅ DONE | CRITICAL - Refusals now logged with full context |
+| Task 8: Update frontend | ⏭️ SKIPPED | No channel field needed - Slack uses separate system |
+
+**Tests:** 17 new tests added in `test_braintrust_helpers.py` (272 total passing)
 
 ---
 
@@ -167,20 +183,7 @@ span.log(output=output, metadata={...}, metrics={...})
 
 ### Task 1: Add channel to API serializer
 
-**File:** `server/chat/serializers.py` (line 9)
-
-```python
-class MessageContextSerializer(serializers.Serializer):
-    pageUrl = serializers.URLField(required=False, allow_blank=True)
-    locale = serializers.CharField(max_length=10, required=False, allow_blank=True)
-    clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    # Why: Slack bot and API clients need to identify themselves
-    channel = serializers.ChoiceField(
-        choices=['web', 'slack', 'api'],
-        default='web',
-        required=False
-    )
-```
+⏭️ **SKIPPED** - The Slack bot (`slack-mcp`) uses a separate architecture that calls Claude directly with MCP tools. It does not go through this API, so there's no client to send `channel: 'slack'`. We'll add this if/when we have API clients that need to identify themselves.
 
 ### Task 2: Extract and pass context in views.py
 
@@ -519,19 +522,9 @@ if route_result.flow == Flow.REFUSE:
     )
 ```
 
-### Task 8: Update frontend (optional)
+### Task 8: Update frontend
 
-**File:** `src/lib/api.js`
-
-If Slack bot or other clients need to identify themselves:
-
-```javascript
-const context = {
-  pageUrl: window.location.href,
-  clientVersion: '1.0.0',
-  channel: 'web',  // Slack bot would send 'slack'
-};
-```
+⏭️ **SKIPPED** - No `channel` field needed. The Slack bot uses a separate MCP architecture and doesn't go through this API. Web is the only client using this endpoint.
 
 ---
 
@@ -547,8 +540,7 @@ After deployment, verify in Braintrust UI:
 - [ ] `output.tool_calls` shows tool details with input/output
 
 **Tags & Filtering:**
-- [ ] `tags` contains flow, channel, environment
-- [ ] Can filter by `tags: slack` to see Slack traffic
+- [ ] `tags` contains flow and environment
 - [ ] Can filter by `tags: refuse` to see refusals
 - [ ] Can filter by `tags: search` vs `tags: general`
 

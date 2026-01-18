@@ -19,6 +19,7 @@ import queue
 from datetime import datetime
 from threading import Thread
 from typing import Optional
+from urllib.parse import urlparse
 
 from django.http import StreamingHttpResponse
 from django.utils import timezone
@@ -38,6 +39,43 @@ from .prompts import get_prompt_service
 from .summarization import get_summary_service, ConversationSummary
 
 logger = logging.getLogger('chat')
+
+
+def extract_page_type(url: str) -> str:
+    """
+    Extract page type from Sefaria URL for Braintrust logging.
+
+    Returns:
+        - Subdomain if present (e.g., 'eval' from eval.sefaria.org)
+        - 'home' for /texts (the actual home page)
+        - 'reader' for text pages (most common)
+        - 'other' for anything else
+        - 'unknown' if no URL provided
+    """
+    if not url:
+        return 'unknown'
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return 'unknown'
+
+    # Check for subdomain first (e.g., eval.sefaria.org -> 'eval')
+    host_parts = parsed.netloc.split('.')
+    if len(host_parts) > 2 and host_parts[0] not in ['www']:
+        return host_parts[0]  # 'eval', 'staging', etc.
+
+    path = parsed.path.lower()
+
+    # Known page types
+    if path in ['/texts', '/texts/']:
+        return 'home'  # /texts is the Sefaria home page
+    # Reader pages are text references (most common) - start with /TextName
+    if path and path != '/' and not path.startswith('/static'):
+        return 'reader'
+
+    return 'other'
+
 
 # Global services (initialized lazily)
 _agent_service: Optional[ClaudeAgentService] = None
@@ -214,6 +252,13 @@ def chat(request):
                 content=msg.content
             ))
         
+        # Extract page context for Braintrust logging
+        page_url = context.get('pageUrl', '')
+        client_version = context.get('clientVersion', '')
+        parsed_url = urlparse(page_url) if page_url else None
+        site = parsed_url.netloc if parsed_url else ''
+        page_type = extract_page_type(page_url)
+
         # Execute agent with routing context
         agent = get_agent_service()
         agent_response = run_async(
@@ -223,6 +268,10 @@ def chat(request):
                 session_id=data['sessionId'],
                 user_id=data['userId'],
                 turn_id=turn_id,
+                site=site,
+                page_type=page_type,
+                page_url=page_url,
+                client_version=client_version,
             )
         )
         
@@ -406,7 +455,14 @@ def chat_stream(request):
         client_version=context.get('clientVersion', ''),
         flow=route_result.flow.value,
     )
-    
+
+    # Extract page context for Braintrust logging (captured in closure)
+    page_url = context.get('pageUrl', '')
+    client_version = context.get('clientVersion', '')
+    parsed_url = urlparse(page_url) if page_url else None
+    site = parsed_url.netloc if parsed_url else ''
+    page_type = extract_page_type(page_url)
+
     def generate_sse():
         """Generator that yields SSE events."""
         progress_queue = queue.Queue()
@@ -447,6 +503,10 @@ def chat_stream(request):
                         session_id=data['sessionId'],
                         user_id=data['userId'],
                         turn_id=turn_id,
+                        site=site,
+                        page_type=page_type,
+                        page_url=page_url,
+                        client_version=client_version,
                     )
                 )
             except Exception as e:
