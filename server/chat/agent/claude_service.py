@@ -166,15 +166,15 @@ class ClaudeAgentService:
         start_time = time.time()
         span = current_span()
 
-        # Handle refusal flow
-        if route_result.flow == Flow.REFUSE:
-            return self._create_refusal_response(route_result, start_time)
-
-        # Get last user message
+        # Get last user message - needed for both refusal and normal logging
         last_user_message = next(
             (m.content for m in reversed(messages) if m.role == 'user'),
             ''
         )
+
+        # Handle refusal flow
+        if route_result.flow == Flow.REFUSE:
+            return self._create_refusal_response(route_result, start_time)
 
         def emit(update: AgentProgressUpdate):
             """Safely emit progress update."""
