@@ -45,36 +45,38 @@ def extract_page_type(url: str) -> str:
     """
     Extract page type from Sefaria URL for Braintrust logging.
 
-    Returns:
-        - Subdomain if present (e.g., 'eval' from eval.sefaria.org)
-        - 'home' for /texts (the actual home page)
-        - 'reader' for text pages (most common)
-        - 'other' for anything else
-        - 'unknown' if no URL provided
+    Returns: 'eval'/'staging' (subdomain), 'home', 'reader', 'other', or 'unknown'
     """
     if not url:
         return 'unknown'
 
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return 'unknown'
+    parsed = urlparse(url)
 
-    # Check for subdomain first (e.g., eval.sefaria.org -> 'eval')
+    # Check for subdomain (e.g., eval.sefaria.org -> 'eval')
     host_parts = parsed.netloc.split('.')
-    if len(host_parts) > 2 and host_parts[0] not in ['www']:
-        return host_parts[0]  # 'eval', 'staging', etc.
+    if len(host_parts) > 2 and host_parts[0] != 'www':
+        return host_parts[0]
 
     path = parsed.path.lower()
 
-    # Known page types
-    if path in ['/texts', '/texts/']:
-        return 'home'  # /texts is the Sefaria home page
-    # Reader pages are text references (most common) - start with /TextName
+    if path in ('/texts', '/texts/'):
+        return 'home'
     if path and path != '/' and not path.startswith('/static'):
         return 'reader'
 
     return 'other'
+
+
+def extract_page_context(context: dict) -> dict:
+    """Extract page context from request context for Braintrust logging."""
+    page_url = context.get('pageUrl', '')
+    parsed_url = urlparse(page_url) if page_url else None
+    return {
+        'site': parsed_url.netloc if parsed_url else '',
+        'page_type': extract_page_type(page_url),
+        'page_url': page_url,
+        'client_version': context.get('clientVersion', ''),
+    }
 
 
 # Global services (initialized lazily)
@@ -244,22 +246,14 @@ def chat(request):
         history_messages = ChatMessage.objects.filter(
             session_id=data['sessionId']
         ).order_by('server_timestamp')[:50]
-        
-        conversation = []
-        for msg in history_messages:
-            conversation.append(ConversationMessage(
-                role=msg.role,
-                content=msg.content
-            ))
-        
-        # Extract page context for Braintrust logging
-        page_url = context.get('pageUrl', '')
-        client_version = context.get('clientVersion', '')
-        parsed_url = urlparse(page_url) if page_url else None
-        site = parsed_url.netloc if parsed_url else ''
-        page_type = extract_page_type(page_url)
 
+        conversation = [
+            ConversationMessage(role=msg.role, content=msg.content)
+            for msg in history_messages
+        ]
+        
         # Execute agent with routing context
+        page_context = extract_page_context(context)
         agent = get_agent_service()
         agent_response = run_async(
             agent.send_message(
@@ -268,10 +262,7 @@ def chat(request):
                 session_id=data['sessionId'],
                 user_id=data['userId'],
                 turn_id=turn_id,
-                site=site,
-                page_type=page_type,
-                page_url=page_url,
-                client_version=client_version,
+                **page_context,
             )
         )
         
@@ -457,17 +448,13 @@ def chat_stream(request):
     )
 
     # Extract page context for Braintrust logging (captured in closure)
-    page_url = context.get('pageUrl', '')
-    client_version = context.get('clientVersion', '')
-    parsed_url = urlparse(page_url) if page_url else None
-    site = parsed_url.netloc if parsed_url else ''
-    page_type = extract_page_type(page_url)
+    page_context = extract_page_context(context)
 
     def generate_sse():
         """Generator that yields SSE events."""
         progress_queue = queue.Queue()
         result_holder = {'response': None, 'error': None}
-        
+
         # Emit routing decision first
         routing_event = {
             'type': 'routing',
@@ -477,23 +464,21 @@ def chat_stream(request):
             'reasonCodes': [c.value for c in route_result.reason_codes[:5]],
         }
         yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
-        
+
         def on_progress(update: AgentProgressUpdate):
             progress_queue.put(update)
-        
+
         def run_agent():
             try:
                 history_messages = ChatMessage.objects.filter(
                     session_id=data['sessionId']
                 ).order_by('server_timestamp')[:50]
-                
-                conversation = []
-                for msg in history_messages:
-                    conversation.append(ConversationMessage(
-                        role=msg.role,
-                        content=msg.content
-                    ))
-                
+
+                conversation = [
+                    ConversationMessage(role=msg.role, content=msg.content)
+                    for msg in history_messages
+                ]
+
                 agent = get_agent_service()
                 result_holder['response'] = asyncio.run(
                     agent.send_message(
@@ -503,10 +488,7 @@ def chat_stream(request):
                         session_id=data['sessionId'],
                         user_id=data['userId'],
                         turn_id=turn_id,
-                        site=site,
-                        page_type=page_type,
-                        page_url=page_url,
-                        client_version=client_version,
+                        **page_context,
                     )
                 )
             except Exception as e:

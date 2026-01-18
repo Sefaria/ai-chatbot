@@ -29,14 +29,12 @@ Restructured trace logging to follow Braintrust best practices for eval-ready da
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 1: Add channel to serializer | ⏭️ SKIPPED | Slack bot uses separate MCP architecture |
-| Task 2: Extract page context in views.py | ✅ DONE | Added `extract_page_type()` |
-| Task 3: Update send_message signature | ✅ DONE | Added site, page_type, page_url, client_version |
-| Task 4: Restructure initial span.log | ✅ DONE | Structured input with query + messages array |
-| Task 5: Restructure final span.log | ✅ DONE | Structured output with response, refs, tool_calls |
-| Task 6: Store tool_output in tool_calls_list | ✅ DONE | For final logging |
-| Task 7: Add refusal logging | ✅ DONE | **CRITICAL** - was completely invisible before |
-| Task 8: Update frontend | ⏭️ SKIPPED | No channel field needed |
+| Extract page context in views.py | ✅ DONE | Added `extract_page_type()`, `extract_page_context()` |
+| Update send_message signature | ✅ DONE | Added site, page_type, page_url, client_version |
+| Restructure initial span.log | ✅ DONE | Structured input with query + messages array |
+| Restructure final span.log | ✅ DONE | Structured output with response, refs, tool_calls |
+| Store tool_output in tool_calls_list | ✅ DONE | For final logging |
+| Add refusal logging | ✅ DONE | **CRITICAL** - was completely invisible before |
 
 **Tests:** 17 new tests in `test_braintrust_helpers.py`
 
@@ -78,12 +76,6 @@ Previously, `_create_refusal_response` returned before any `span.log()` call. No
 ### Helper Functions
 - `extract_page_type(url)` - Parse Sefaria URLs to identify page types (home, reader, eval, etc.)
 - `extract_refs(tool_calls)` - Extract Sefaria refs from tool calls for citation scoring
-
----
-
-## What Was Skipped
-
-**Channel field (Tasks 1 & 8):** The Slack bot (`slack-mcp`) uses a separate architecture that calls Claude directly with MCP tools. It does not go through this API, so there's no client to send `channel: 'slack'`. Can be added later if needed.
 
 ---
 

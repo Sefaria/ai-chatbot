@@ -25,10 +25,8 @@ Implemented eval-ready structured logging. See `docs/BRAINTRUST_RESTRUCTURE_PLAN
 | Refusals | Not logged | Fully logged with reason codes |
 
 **Files changed:**
-- `server/chat/views.py` - Added `extract_page_type()`, page context extraction
+- `server/chat/views.py` - Added `extract_page_type()`, `extract_page_context()`
 - `server/chat/agent/claude_service.py` - Restructured span.log, added `extract_refs()`, refusal logging
-
-**Skipped:** Channel field (Tasks 1 & 8) - Slack bot uses separate MCP architecture, not this API.
 
 ---
 

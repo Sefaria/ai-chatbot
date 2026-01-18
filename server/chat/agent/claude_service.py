@@ -73,16 +73,13 @@ def truncate(text: str, max_len: int) -> str:
 
 
 def extract_refs(tool_calls: list) -> list:
-    """
-    Extract Sefaria refs from tool calls for Braintrust logging.
-
-    Enables scoring citation accuracy without parsing response markdown.
-    Refs are extracted from tool_input['reference'] for text-fetching tools.
-    """
+    """Extract unique Sefaria refs from tool calls for Braintrust logging."""
+    seen = set()
     refs = []
     for tc in tool_calls:
         ref = tc.get('tool_input', {}).get('reference')
-        if ref and ref not in refs:
+        if ref and ref not in seen:
+            seen.add(ref)
             refs.append(ref)
     return refs
 
@@ -468,18 +465,18 @@ class ClaudeAgentService:
             output = 'Sorry, I encountered an issue generating a response.'
 
         # Build tool calls summary for structured output
-        tool_calls_summary = []
-        for tc in tool_calls_list:
-            tool_summary = {
+        def summarize_tool_call(tc: dict) -> dict:
+            summary = {
                 "name": tc['tool_name'],
                 "input": tc.get('tool_input', {}),
                 "output_preview": tc.get('tool_output', ''),
                 "is_error": tc.get('is_error', False),
             }
-            # Include full output only on errors for debugging
             if tc.get('is_error'):
-                tool_summary["output_full"] = tc.get('tool_output', '')
-            tool_calls_summary.append(tool_summary)
+                summary["output_full"] = tc.get('tool_output', '')
+            return summary
+
+        tool_calls_summary = [summarize_tool_call(tc) for tc in tool_calls_list]
 
         # Log structured output and metrics to span
         span.log(
@@ -602,15 +599,14 @@ class ClaudeAgentService:
         """Convert an Anthropic content block to a dictionary."""
         if block.type == 'text':
             return {'type': 'text', 'text': block.text}
-        elif block.type == 'tool_use':
+        if block.type == 'tool_use':
             return {
                 'type': 'tool_use',
                 'id': block.id,
                 'name': block.name,
-                'input': block.input
+                'input': block.input,
             }
-        else:
-            return {'type': block.type}
+        return {'type': block.type}
 
     async def close(self):
         """Close the service and cleanup resources."""
