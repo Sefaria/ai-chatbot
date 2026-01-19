@@ -61,6 +61,17 @@ fi
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
+# Kill any processes using our ports
+kill_port() {
+    local pids=$(lsof -ti:$1 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo -e "${YELLOW}⚠${NC} Killing existing process on port $1"
+        echo "$pids" | xargs kill -9 2>/dev/null
+    fi
+}
+kill_port 8001
+kill_port 5173
+
 cleanup() {
     echo
     echo -e "${BLUE}Shutting down...${NC}"
