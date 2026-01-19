@@ -274,8 +274,6 @@ server/
 | `ChatSession` | Session state, flow, summary |
 | `ChatMessage` | Messages with routing context |
 | `RouteDecision` | Audit trail for routing |
-| `ToolCallEvent` | Individual tool executions |
-| `BraintrustLog` | Structured eval-ready logs |
 
 ## Environment Variables
 

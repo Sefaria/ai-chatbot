@@ -26,6 +26,9 @@ npm run dev                               # Frontend dev server
 npm run build                             # Build bundle
 ```
 
+**Note:** If tests fail with `ModuleNotFoundError: No module named 'sefaria'`, prefix with:
+`DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest`
+
 See [TESTING.md](TESTING.md) for PostgreSQL testing and CI details.
 
 ## Architecture

@@ -1,4 +1,4 @@
-"""Tests for Django models - ChatSession, ChatMessage, RouteDecision, etc."""
+"""Tests for Django models - ChatSession, ChatMessage, RouteDecision."""
 
 from datetime import timedelta
 
@@ -6,11 +6,9 @@ import pytest
 from django.utils import timezone
 
 from chat.models import (
-    BraintrustLog,
     ChatMessage,
     ChatSession,
     RouteDecision,
-    ToolCallEvent,
 )
 
 
@@ -314,151 +312,3 @@ class TestMessageRouteDecisionRelation:
             content="test",
         )
         assert message.route_decision is None
-
-
-@pytest.mark.django_db
-class TestToolCallEvent:
-    """Test ToolCallEvent model."""
-
-    def test_create_tool_call_event(self) -> None:
-        event = ToolCallEvent.objects.create(
-            event_id="evt_test123",
-            session_id="sess_123",
-            turn_id="turn_456",
-            tool_name="get_text",
-            tool_input={"reference": "Genesis 1:1"},
-            start_timestamp=timezone.now(),
-        )
-        assert event.event_id == "evt_test123"
-        assert event.tool_name == "get_text"
-        assert event.tool_input["reference"] == "Genesis 1:1"
-
-    def test_tool_call_with_output(self) -> None:
-        event = ToolCallEvent.objects.create(
-            event_id="evt_output",
-            session_id="sess",
-            turn_id="turn",
-            tool_name="text_search",
-            tool_input={"query": "shabbat"},
-            tool_output={"results": [{"ref": "Exodus 20:8"}]},
-            start_timestamp=timezone.now(),
-            end_timestamp=timezone.now(),
-            latency_ms=150,
-            success=True,
-        )
-        assert event.tool_output is not None
-        assert event.latency_ms == 150
-        assert event.success is True
-
-    def test_tool_call_error(self) -> None:
-        event = ToolCallEvent.objects.create(
-            event_id="evt_error",
-            session_id="sess",
-            turn_id="turn",
-            tool_name="get_text",
-            tool_input={"reference": "Invalid Reference"},
-            start_timestamp=timezone.now(),
-            success=False,
-            error_message="Reference not found",
-            error_type="NotFoundError",
-        )
-        assert event.success is False
-        assert event.error_message == "Reference not found"
-
-    def test_generate_event_id(self) -> None:
-        event_id = ToolCallEvent.generate_event_id()
-        assert event_id.startswith("evt_")
-        assert len(event_id) == 20
-
-    def test_tool_call_str(self) -> None:
-        event = ToolCallEvent.objects.create(
-            event_id="evt_str",
-            session_id="sess",
-            turn_id="turn",
-            tool_name="get_text",
-            tool_input={},
-            start_timestamp=timezone.now(),
-            latency_ms=100,
-            success=True,
-        )
-        str_repr = str(event)
-        assert "get_text" in str_repr
-        assert "100ms" in str_repr
-
-
-@pytest.mark.django_db
-class TestBraintrustLog:
-    """Test BraintrustLog model."""
-
-    def test_create_braintrust_log(self) -> None:
-        log = BraintrustLog.objects.create(
-            log_id="log_test123",
-            session_id="sess_123",
-            turn_id="turn_456",
-            user_message="What is kosher?",
-            flow="HALACHIC",
-        )
-        assert log.log_id == "log_test123"
-        assert log.flow == "HALACHIC"
-
-    def test_braintrust_log_with_metrics(self) -> None:
-        log = BraintrustLog.objects.create(
-            log_id="log_metrics",
-            session_id="sess",
-            turn_id="turn",
-            user_message="test",
-            flow="SEARCH",
-            assistant_response="Here are the results...",
-            latency_ms=2500,
-            llm_calls=3,
-            tool_calls_count=5,
-            input_tokens=1000,
-            output_tokens=500,
-            estimated_cost_usd=0.05,
-        )
-        assert log.latency_ms == 2500
-        assert log.llm_calls == 3
-        assert log.estimated_cost_usd == 0.05
-
-    def test_braintrust_log_with_tools(self) -> None:
-        log = BraintrustLog.objects.create(
-            log_id="log_tools",
-            session_id="sess",
-            turn_id="turn",
-            user_message="test",
-            flow="SEARCH",
-            tools_available=["get_text", "text_search", "english_semantic_search"],
-            tools_used=["text_search"],
-        )
-        assert len(log.tools_available) == 3
-        assert len(log.tools_used) == 1
-
-    def test_braintrust_log_refused(self) -> None:
-        log = BraintrustLog.objects.create(
-            log_id="log_refused",
-            session_id="sess",
-            turn_id="turn",
-            user_message="bad message",
-            flow="REFUSE",
-            was_refused=True,
-            refusal_reason_codes=["GUARDRAIL_PROMPT_INJECTION"],
-        )
-        assert log.was_refused is True
-        assert "GUARDRAIL_PROMPT_INJECTION" in log.refusal_reason_codes
-
-    def test_generate_log_id(self) -> None:
-        log_id = BraintrustLog.generate_log_id()
-        assert log_id.startswith("log_")
-        assert len(log_id) == 20
-
-    def test_braintrust_log_str(self) -> None:
-        log = BraintrustLog.objects.create(
-            log_id="log_str",
-            session_id="sess",
-            turn_id="turn",
-            user_message="test",
-            flow="GENERAL",
-        )
-        str_repr = str(log)
-        assert "log_str" in str_repr
-        assert "GENERAL" in str_repr
