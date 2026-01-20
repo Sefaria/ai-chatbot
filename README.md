@@ -263,9 +263,6 @@ server/
 │   ├── tracing/              # LangSmith integration
 │   │   └── langsmith_tracer.py
 │   │
-│   ├── logging/              # Braintrust logging
-│   │   └── braintrust_logger.py
-│   │
 │   └── summarization/        # Conversation context
 │       └── summary_service.py
 ```
@@ -277,8 +274,6 @@ server/
 | `ChatSession` | Session state, flow, summary |
 | `ChatMessage` | Messages with routing context |
 | `RouteDecision` | Audit trail for routing |
-| `ToolCallEvent` | Individual tool executions |
-| `BraintrustLog` | Structured eval-ready logs |
 
 ## Environment Variables
 

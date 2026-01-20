@@ -5,20 +5,21 @@ Provides utilities for loading prompts from Braintrust with local fallbacks
 for both guardrails and routing decisions.
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any
+import os
 from dataclasses import dataclass
+from typing import Any
 
-logger = logging.getLogger('chat.router.braintrust')
+logger = logging.getLogger("chat.router.braintrust")
 
 
 @dataclass
 class PromptTemplate:
     """A prompt template with system and user prompts."""
+
     system_prompt: str
     user_prompt_template: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class BraintrustPromptClient:
@@ -31,14 +32,15 @@ class BraintrustPromptClient:
 
     def __init__(self):
         """Initialize the Braintrust prompt client."""
-        self.api_key = os.environ.get('BRAINTRUST_API_KEY')
-        self.project_name = os.environ.get('BRAINTRUST_PROJECT', 'sefaria-chatbot')
+        self.api_key = os.environ.get("BRAINTRUST_API_KEY")
+        self.project_name = os.environ.get("BRAINTRUST_PROJECT", "sefaria-chatbot")
         self._braintrust = None
         self._prompt_cache = {}
 
         if self.api_key:
             try:
                 import braintrust
+
                 self._braintrust = braintrust
                 logger.info("Braintrust client initialized successfully")
             except ImportError:
@@ -46,7 +48,7 @@ class BraintrustPromptClient:
         else:
             logger.info("BRAINTRUST_API_KEY not set, using fallback prompts only")
 
-    def _extract_prompt_content(self, prompt) -> Dict[str, Any]:
+    def _extract_prompt_content(self, prompt) -> dict[str, Any]:
         """
         Extract prompt content from a Braintrust Prompt object.
 
@@ -56,61 +58,61 @@ class BraintrustPromptClient:
         Returns:
             Dict with 'system', 'user', and 'metadata' keys
         """
-        result = {'system': '', 'user': '', 'metadata': {}}
+        result = {"system": "", "user": "", "metadata": {}}
 
         if prompt is None:
             return result
 
         try:
             # Method 1: Use build() to get formatted messages
-            if hasattr(prompt, 'build'):
+            if hasattr(prompt, "build"):
                 built = prompt.build()
                 if isinstance(built, dict):
-                    messages = built.get('messages', [])
+                    messages = built.get("messages", [])
                     for msg in messages:
                         if isinstance(msg, dict):
-                            role = msg.get('role', '')
-                            content = msg.get('content', '')
+                            role = msg.get("role", "")
+                            content = msg.get("content", "")
                             # Content can be string or list of content blocks
                             if isinstance(content, list):
-                                content = ''.join(
-                                    block.get('text', '') if isinstance(block, dict) else str(block)
+                                content = "".join(
+                                    block.get("text", "") if isinstance(block, dict) else str(block)
                                     for block in content
                                 )
-                            if role == 'system':
-                                result['system'] = content
-                            elif role == 'user':
-                                result['user'] = content
+                            if role == "system":
+                                result["system"] = content
+                            elif role == "user":
+                                result["user"] = content
                     return result
 
             # Method 2: Access prompt_data directly
-            if hasattr(prompt, 'prompt_data'):
+            if hasattr(prompt, "prompt_data"):
                 prompt_data = prompt.prompt_data
-                if hasattr(prompt_data, 'prompt'):
+                if hasattr(prompt_data, "prompt"):
                     block = prompt_data.prompt
                     # Handle PromptChatBlock with messages
-                    if hasattr(block, 'messages'):
+                    if hasattr(block, "messages"):
                         for msg in block.messages:
-                            role = getattr(msg, 'role', '')
-                            content = getattr(msg, 'content', '')
+                            role = getattr(msg, "role", "")
+                            content = getattr(msg, "content", "")
                             if isinstance(content, list):
-                                content = ''.join(
-                                    getattr(part, 'text', str(part)) for part in content
+                                content = "".join(
+                                    getattr(part, "text", str(part)) for part in content
                                 )
-                            if role == 'system':
-                                result['system'] = content
-                            elif role == 'user':
-                                result['user'] = content
+                            if role == "system":
+                                result["system"] = content
+                            elif role == "user":
+                                result["user"] = content
                         return result
                     # Handle PromptCompletionBlock
-                    elif hasattr(block, 'content'):
-                        result['system'] = block.content
+                    elif hasattr(block, "content"):
+                        result["system"] = block.content
                         return result
 
             # Method 3: Try direct string conversion as last resort
             prompt_str = str(prompt)
             if prompt_str and prompt_str != str(type(prompt)):
-                result['system'] = prompt_str
+                result["system"] = prompt_str
 
         except Exception as e:
             logger.warning(f"Error extracting prompt content: {e}")
@@ -137,24 +139,23 @@ class BraintrustPromptClient:
         if self._braintrust and self.api_key:
             try:
                 prompt = self._braintrust.load_prompt(
-                    project=self.project_name,
-                    slug="guardrail-checker"
+                    project=self.project_name, slug="guardrail-checker"
                 )
 
                 if prompt:
                     # Extract content from Braintrust Prompt object
                     content = self._extract_prompt_content(prompt)
-                    user_template = (content.get('user') or '').strip()
+                    user_template = (content.get("user") or "").strip()
                     if not user_template:
                         logger.warning(
                             "Braintrust guardrail prompt missing user template; "
                             "falling back to hardcoded prompt"
                         )
-                    elif content.get('system') or user_template:
+                    elif content.get("system") or user_template:
                         template = PromptTemplate(
-                            system_prompt=content.get('system', ''),
+                            system_prompt=content.get("system", ""),
                             user_prompt_template=user_template,
-                            metadata=content['metadata']
+                            metadata=content["metadata"],
                         )
                         self._prompt_cache[cache_key] = template
                         logger.info(f"Loaded guardrail prompt from Braintrust: version={version}")
@@ -185,25 +186,22 @@ class BraintrustPromptClient:
         # Try Braintrust if available
         if self._braintrust and self.api_key:
             try:
-                prompt = self._braintrust.load_prompt(
-                    project=self.project_name,
-                    slug="flow-router"
-                )
+                prompt = self._braintrust.load_prompt(project=self.project_name, slug="flow-router")
 
                 if prompt:
                     # Extract content from Braintrust Prompt object
                     content = self._extract_prompt_content(prompt)
-                    user_template = (content.get('user') or '').strip()
+                    user_template = (content.get("user") or "").strip()
                     if not user_template:
                         logger.warning(
                             "Braintrust router prompt missing user template; "
                             "falling back to hardcoded prompt"
                         )
-                    elif content.get('system') or user_template:
+                    elif content.get("system") or user_template:
                         template = PromptTemplate(
-                            system_prompt=content.get('system', ''),
+                            system_prompt=content.get("system", ""),
                             user_prompt_template=user_template,
-                            metadata=content['metadata']
+                            metadata=content["metadata"],
                         )
                         self._prompt_cache[cache_key] = template
                         logger.info(f"Loaded router prompt from Braintrust: version={version}")
@@ -234,24 +232,23 @@ class BraintrustPromptClient:
             cached = self._prompt_cache[cache_key]
             if isinstance(cached, str):
                 return cached
-            return cached.system_prompt if hasattr(cached, 'system_prompt') else str(cached)
+            return cached.system_prompt if hasattr(cached, "system_prompt") else str(cached)
 
         # Try Braintrust if available
         if self._braintrust and self.api_key:
             try:
-                prompt = self._braintrust.load_prompt(
-                    project=self.project_name,
-                    slug="core-8fbc"
-                )
+                prompt = self._braintrust.load_prompt(project=self.project_name, slug="core-8fbc")
 
                 if prompt:
                     # Extract content using the helper method
                     content = self._extract_prompt_content(prompt)
-                    prompt_text = content['system']
+                    prompt_text = content["system"]
 
                     if prompt_text:
                         self._prompt_cache[cache_key] = prompt_text
-                        logger.info(f"Loaded core prompt from Braintrust: version={version}, slug=core-8fbc")
+                        logger.info(
+                            f"Loaded core prompt from Braintrust: version={version}, slug=core-8fbc"
+                        )
                         return prompt_text
             except Exception as e:
                 logger.warning(f"Failed to load core prompt from Braintrust: {e}")
@@ -325,7 +322,7 @@ Analyze this message and output your decision as JSON."""
         return PromptTemplate(
             system_prompt=system_prompt,
             user_prompt_template=user_prompt_template,
-            metadata={"version": "fallback", "type": "guardrail"}
+            metadata={"version": "fallback", "type": "guardrail"},
         )
 
     def _get_fallback_router_prompt(self) -> PromptTemplate:
@@ -385,7 +382,7 @@ Classify this message and output your decision as JSON."""
         return PromptTemplate(
             system_prompt=system_prompt,
             user_prompt_template=user_prompt_template,
-            metadata={"version": "fallback", "type": "router"}
+            metadata={"version": "fallback", "type": "router"},
         )
 
     def _get_fallback_core_prompt(self) -> str:

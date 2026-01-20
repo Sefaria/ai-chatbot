@@ -1,0 +1,34 @@
+repos:
+  # Python
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^server/
+      - id: ruff-format
+        files: ^server/
+
+  # JavaScript/Svelte
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.18.0
+    hooks:
+      - id: eslint
+        files: \.(js|svelte)$
+        types: [file]
+        additional_dependencies:
+          - eslint@9.18.0
+          - eslint-plugin-svelte@2.46.1
+          - svelte-eslint-parser@0.43.0
+
+  # General
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key

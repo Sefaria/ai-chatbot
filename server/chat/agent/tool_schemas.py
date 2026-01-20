@@ -7,7 +7,7 @@ Tool Sets:
 - GENERAL: Minimal toolset for general learning
 """
 
-from typing import List, Dict, Any
+from typing import Any
 
 # ============================================================================
 # Individual Tool Schemas
@@ -21,16 +21,16 @@ TOOL_GET_TEXT = {
         "properties": {
             "reference": {
                 "type": "string",
-                "description": 'Specific text reference (e.g. "Genesis 1:1", "Berakhot 2a")'
+                "description": 'Specific text reference (e.g. "Genesis 1:1", "Berakhot 2a")',
             },
             "version_language": {
                 "type": "string",
                 "enum": ["source", "english", "both"],
-                "description": "Which language version to retrieve. Omit for all versions."
-            }
+                "description": "Which language version to retrieve. Omit for all versions.",
+            },
         },
-        "required": ["reference"]
-    }
+        "required": ["reference"],
+    },
 }
 
 TOOL_TEXT_SEARCH = {
@@ -41,16 +41,16 @@ TOOL_TEXT_SEARCH = {
         "properties": {
             "query": {"type": "string"},
             "filters": {"type": "array", "items": {"type": "string"}},
-            "size": {"type": "number", "default": 10}
+            "size": {"type": "number", "default": 10},
         },
-        "required": ["query"]
-    }
+        "required": ["query"],
+    },
 }
 
 TOOL_GET_CURRENT_CALENDAR = {
     "name": "get_current_calendar",
     "description": "Provides current Jewish calendar information including Hebrew date, parasha, holidays, etc.",
-    "input_schema": {"type": "object", "properties": {}}
+    "input_schema": {"type": "object", "properties": {}},
 }
 
 TOOL_ENGLISH_SEMANTIC_SEARCH = {
@@ -58,12 +58,9 @@ TOOL_ENGLISH_SEMANTIC_SEARCH = {
     "description": "Performs semantic similarity search on English embeddings of texts from Sefaria. Uses semantic similarity to find conceptually related text chunks. Works well only with English queries.",
     "input_schema": {
         "type": "object",
-        "properties": {
-            "query": {"type": "string"},
-            "filters": {"type": "object"}
-        },
-        "required": ["query"]
-    }
+        "properties": {"query": {"type": "string"}, "filters": {"type": "object"}},
+        "required": ["query"],
+    },
 }
 
 TOOL_GET_LINKS_BETWEEN_TEXTS = {
@@ -73,10 +70,10 @@ TOOL_GET_LINKS_BETWEEN_TEXTS = {
         "type": "object",
         "properties": {
             "reference": {"type": "string"},
-            "with_text": {"type": "string", "enum": ["0", "1"], "default": "0"}
+            "with_text": {"type": "string", "enum": ["0", "1"], "default": "0"},
         },
-        "required": ["reference"]
-    }
+        "required": ["reference"],
+    },
 }
 
 TOOL_SEARCH_IN_BOOK = {
@@ -87,10 +84,10 @@ TOOL_SEARCH_IN_BOOK = {
         "properties": {
             "query": {"type": "string"},
             "book_name": {"type": "string"},
-            "size": {"type": "number", "default": 10}
+            "size": {"type": "number", "default": 10},
         },
-        "required": ["query", "book_name"]
-    }
+        "required": ["query", "book_name"],
+    },
 }
 
 TOOL_SEARCH_IN_DICTIONARIES = {
@@ -98,11 +95,9 @@ TOOL_SEARCH_IN_DICTIONARIES = {
     "description": "Searches specifically within Jewish reference dictionaries.",
     "input_schema": {
         "type": "object",
-        "properties": {
-            "query": {"type": "string"}
-        },
-        "required": ["query"]
-    }
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
 }
 
 TOOL_GET_ENGLISH_TRANSLATIONS = {
@@ -111,8 +106,8 @@ TOOL_GET_ENGLISH_TRANSLATIONS = {
     "input_schema": {
         "type": "object",
         "properties": {"reference": {"type": "string"}},
-        "required": ["reference"]
-    }
+        "required": ["reference"],
+    },
 }
 
 TOOL_GET_TOPIC_DETAILS = {
@@ -123,10 +118,10 @@ TOOL_GET_TOPIC_DETAILS = {
         "properties": {
             "topic_slug": {"type": "string"},
             "with_links": {"type": "boolean", "default": False},
-            "with_refs": {"type": "boolean", "default": False}
+            "with_refs": {"type": "boolean", "default": False},
         },
-        "required": ["topic_slug"]
-    }
+        "required": ["topic_slug"],
+    },
 }
 
 TOOL_CLARIFY_NAME_ARGUMENT = {
@@ -137,10 +132,10 @@ TOOL_CLARIFY_NAME_ARGUMENT = {
         "properties": {
             "name": {"type": "string"},
             "limit": {"type": "number"},
-            "type_filter": {"type": "string"}
+            "type_filter": {"type": "string"},
         },
-        "required": ["name"]
-    }
+        "required": ["name"],
+    },
 }
 
 TOOL_CLARIFY_SEARCH_PATH_FILTER = {
@@ -149,8 +144,8 @@ TOOL_CLARIFY_SEARCH_PATH_FILTER = {
     "input_schema": {
         "type": "object",
         "properties": {"book_name": {"type": "string"}},
-        "required": ["book_name"]
-    }
+        "required": ["book_name"],
+    },
 }
 
 TOOL_GET_TEXT_OR_CATEGORY_SHAPE = {
@@ -159,8 +154,8 @@ TOOL_GET_TEXT_OR_CATEGORY_SHAPE = {
     "input_schema": {
         "type": "object",
         "properties": {"name": {"type": "string"}},
-        "required": ["name"]
-    }
+        "required": ["name"],
+    },
 }
 
 TOOL_GET_TEXT_CATALOGUE_INFO = {
@@ -169,8 +164,8 @@ TOOL_GET_TEXT_CATALOGUE_INFO = {
     "input_schema": {
         "type": "object",
         "properties": {"title": {"type": "string"}},
-        "required": ["title"]
-    }
+        "required": ["title"],
+    },
 }
 
 TOOL_GET_AVAILABLE_MANUSCRIPTS = {
@@ -179,8 +174,8 @@ TOOL_GET_AVAILABLE_MANUSCRIPTS = {
     "input_schema": {
         "type": "object",
         "properties": {"reference": {"type": "string"}},
-        "required": ["reference"]
-    }
+        "required": ["reference"],
+    },
 }
 
 TOOL_GET_MANUSCRIPT_IMAGE = {
@@ -188,12 +183,9 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
     "description": "Downloads and returns a specific manuscript image from a given image URL.",
     "input_schema": {
         "type": "object",
-        "properties": {
-            "image_url": {"type": "string"},
-            "manuscript_title": {"type": "string"}
-        },
-        "required": ["image_url"]
-    }
+        "properties": {"image_url": {"type": "string"}, "manuscript_title": {"type": "string"}},
+        "required": ["image_url"],
+    },
 }
 
 # ============================================================================
@@ -201,7 +193,7 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
 # ============================================================================
 
 # All tools indexed by name
-ALL_TOOLS: Dict[str, Dict[str, Any]] = {
+ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_text": TOOL_GET_TEXT,
     "text_search": TOOL_TEXT_SEARCH,
     "get_current_calendar": TOOL_GET_CURRENT_CALENDAR,
@@ -263,18 +255,19 @@ GENERAL_TOOL_NAMES = [
 # Helper Functions
 # ============================================================================
 
-def get_tools_for_flow(flow: str) -> List[Dict[str, Any]]:
+
+def get_tools_for_flow(flow: str) -> list[dict[str, Any]]:
     """
     Get the tool schemas for a specific flow.
-    
+
     Args:
         flow: Flow type (HALACHIC, GENERAL, SEARCH)
-        
+
     Returns:
         List of tool schemas for that flow
     """
     flow_upper = flow.upper()
-    
+
     if flow_upper == "HALACHIC":
         tool_names = HALACHIC_TOOL_NAMES
     elif flow_upper == "SEARCH":
@@ -284,24 +277,24 @@ def get_tools_for_flow(flow: str) -> List[Dict[str, Any]]:
     else:
         # Default to general
         tool_names = GENERAL_TOOL_NAMES
-    
+
     return [ALL_TOOLS[name] for name in tool_names if name in ALL_TOOLS]
 
 
-def get_tools_by_names(names: List[str]) -> List[Dict[str, Any]]:
+def get_tools_by_names(names: list[str]) -> list[dict[str, Any]]:
     """
     Get tool schemas by their names.
-    
+
     Args:
         names: List of tool names
-        
+
     Returns:
         List of tool schemas
     """
     return [ALL_TOOLS[name] for name in names if name in ALL_TOOLS]
 
 
-def get_all_tools() -> List[Dict[str, Any]]:
+def get_all_tools() -> list[dict[str, Any]]:
     """Get all available tool schemas."""
     return list(ALL_TOOLS.values())
 

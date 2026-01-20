@@ -9,15 +9,13 @@ Provides rolling summaries that capture:
 """
 
 from .summary_service import (
-    SummaryService,
     ConversationSummary,
+    SummaryService,
     get_summary_service,
 )
 
 __all__ = [
-    'SummaryService',
-    'ConversationSummary',
-    'get_summary_service',
+    "SummaryService",
+    "ConversationSummary",
+    "get_summary_service",
 ]
-
-

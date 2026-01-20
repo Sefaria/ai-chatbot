@@ -5,29 +5,30 @@ This module provides AI-powered guardrail checking that can be updated
 remotely via Braintrust prompts, with fallback to rule-based checking.
 """
 
-import os
 import json
 import logging
-from typing import Optional, Dict, Any, List
+import os
 from dataclasses import dataclass
+from typing import Any
 
 from anthropic import Anthropic
 
-from .reason_codes import ReasonCode
 from .braintrust_client import get_braintrust_client
+from .reason_codes import ReasonCode
 
-logger = logging.getLogger('chat.router.ai_guardrails')
+logger = logging.getLogger("chat.router.ai_guardrails")
 
 
 @dataclass
 class AIGuardrailResult:
     """Result from AI guardrail check."""
+
     allowed: bool = True
     decision: str = "ALLOW"  # ALLOW, BLOCK, WARN
-    reason_codes: List[ReasonCode] = None
-    refusal_message: Optional[str] = None
+    reason_codes: list[ReasonCode] = None
+    refusal_message: str | None = None
     confidence: float = 1.0
-    reasoning: Optional[str] = None
+    reasoning: str | None = None
 
     def __post_init__(self):
         if self.reason_codes is None:
@@ -61,7 +62,7 @@ class AIGuardrailChecker:
         self,
         model: str = "claude-3-5-haiku-20241022",
         prompt_version: str = "stable",
-        fallback_checker: Optional[Any] = None,
+        fallback_checker: Any | None = None,
     ):
         """
         Initialize the AI guardrail checker.
@@ -76,7 +77,7 @@ class AIGuardrailChecker:
         self.fallback_checker = fallback_checker
 
         # Initialize Anthropic client
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable not set")
 
@@ -87,7 +88,7 @@ class AIGuardrailChecker:
 
         logger.info(f"AI Guardrail Checker initialized with model={model}")
 
-    def check(self, message: str, context: Optional[dict] = None) -> AIGuardrailResult:
+    def check(self, message: str, context: dict | None = None) -> AIGuardrailResult:
         """
         Check a message against guardrails using AI.
 
@@ -113,7 +114,7 @@ class AIGuardrailChecker:
                     reason_codes=rule_result.reason_codes,
                     refusal_message=rule_result.refusal_message,
                     confidence=rule_result.confidence,
-                    reasoning="Fallback to rule-based checker due to AI failure"
+                    reasoning="Fallback to rule-based checker due to AI failure",
                 )
 
             # If no fallback, default to allowing (fail open for availability)
@@ -122,10 +123,10 @@ class AIGuardrailChecker:
                 allowed=True,
                 decision="ALLOW",
                 confidence=0.0,
-                reasoning="Failed to check, defaulting to ALLOW"
+                reasoning="Failed to check, defaulting to ALLOW",
             )
 
-    def _check_with_ai(self, message: str, context: Optional[dict]) -> AIGuardrailResult:
+    def _check_with_ai(self, message: str, context: dict | None) -> AIGuardrailResult:
         """Perform AI-based guardrail check."""
         # Get prompt from Braintrust
         prompt_template = self.braintrust_client.get_guardrail_prompt(self.prompt_version)
@@ -135,8 +136,7 @@ class AIGuardrailChecker:
 
         # Format user prompt
         user_prompt = prompt_template.user_prompt_template.format(
-            message=message,
-            context=context_str
+            message=message, context=context_str
         )
 
         # Call Claude API
@@ -145,9 +145,7 @@ class AIGuardrailChecker:
             max_tokens=1024,
             temperature=0.0,  # Deterministic for classification
             system=prompt_template.system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ]
+            messages=[{"role": "user", "content": user_prompt}],
         )
 
         # Parse response
@@ -184,7 +182,7 @@ class AIGuardrailChecker:
                 reason_codes=reason_codes,
                 refusal_message=refusal_message,
                 confidence=confidence,
-                reasoning=reasoning
+                reasoning=reasoning,
             )
 
         except json.JSONDecodeError as e:
@@ -209,7 +207,7 @@ class AIGuardrailChecker:
 
         # Find JSON object boundaries
         # Look for first { and last } to extract just the JSON part
-        start_idx = text.find('{')
+        start_idx = text.find("{")
         if start_idx == -1:
             return text
 
@@ -217,9 +215,9 @@ class AIGuardrailChecker:
         brace_count = 0
         end_idx = start_idx
         for i in range(start_idx, len(text)):
-            if text[i] == '{':
+            if text[i] == "{":
                 brace_count += 1
-            elif text[i] == '}':
+            elif text[i] == "}":
                 brace_count -= 1
                 if brace_count == 0:
                     end_idx = i + 1
@@ -228,10 +226,8 @@ class AIGuardrailChecker:
         return text[start_idx:end_idx]
 
     def check_batch(
-        self,
-        messages: List[str],
-        contexts: Optional[List[dict]] = None
-    ) -> List[AIGuardrailResult]:
+        self, messages: list[str], contexts: list[dict] | None = None
+    ) -> list[AIGuardrailResult]:
         """
         Check multiple messages in batch.
 
@@ -245,7 +241,7 @@ class AIGuardrailChecker:
         contexts = contexts or [None] * len(messages)
         results = []
 
-        for message, context in zip(messages, contexts):
+        for message, context in zip(messages, contexts, strict=False):
             result = self.check(message, context)
             results.append(result)
 
@@ -253,9 +249,9 @@ class AIGuardrailChecker:
 
 
 def get_ai_guardrail_checker(
-    model: Optional[str] = None,
+    model: str | None = None,
     prompt_version: str = "stable",
-    fallback_checker: Optional[Any] = None,
+    fallback_checker: Any | None = None,
 ) -> AIGuardrailChecker:
     """
     Create an AI guardrail checker instance.
@@ -268,9 +264,7 @@ def get_ai_guardrail_checker(
     Returns:
         AIGuardrailChecker instance
     """
-    model = model or os.environ.get('GUARDRAIL_MODEL', 'claude-3-5-haiku-20241022')
+    model = model or os.environ.get("GUARDRAIL_MODEL", "claude-3-5-haiku-20241022")
     return AIGuardrailChecker(
-        model=model,
-        prompt_version=prompt_version,
-        fallback_checker=fallback_checker
+        model=model, prompt_version=prompt_version, fallback_checker=fallback_checker
     )

@@ -19,4 +19,3 @@ Admin configuration for chat models.
 # class ChatSessionAdmin(admin.ModelAdmin):
 #     list_display = ['session_id', 'user_id', 'message_count', 'last_activity']
 #     search_fields = ['session_id', 'user_id']
-

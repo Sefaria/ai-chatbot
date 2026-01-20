@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Test script to verify prompt service loads core prompt correctly."""
+
 import os
 import sys
 
@@ -7,11 +8,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set up Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'chatbot_server.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "chatbot_server.settings")
 import django
+
 django.setup()
 
 from chat.prompts import get_prompt_service
+
 
 def test_prompt_service():
     """Test that prompt service loads core prompt with tool instructions."""
@@ -33,9 +36,10 @@ def test_prompt_service():
 
     # Check for tool usage instructions in system prompt
     checks = {
-        'TOOL USAGE (CRITICAL)': 'TOOL USAGE (CRITICAL)' in bundle.system_prompt,
-        'MUST use tools': 'MUST use the provided Sefaria tools' in bundle.system_prompt,
-        'NEVER answer from memory': 'NEVER answer questions about Jewish texts' in bundle.system_prompt,
+        "TOOL USAGE (CRITICAL)": "TOOL USAGE (CRITICAL)" in bundle.system_prompt,
+        "MUST use tools": "MUST use the provided Sefaria tools" in bundle.system_prompt,
+        "NEVER answer from memory": "NEVER answer questions about Jewish texts"
+        in bundle.system_prompt,
     }
 
     print("\nTool usage checks in system prompt:")
@@ -46,18 +50,21 @@ def test_prompt_service():
         if not result:
             all_passed = False
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("First 600 characters of system prompt:")
-    print("="*60)
+    print("=" * 60)
     print(bundle.system_prompt[:600])
 
     if all_passed:
-        print("\n✓ All checks passed! Prompt service correctly loads core prompt with tool instructions.")
+        print(
+            "\n✓ All checks passed! Prompt service correctly loads core prompt with tool instructions."
+        )
         return True
     else:
         print("\n✗ Some checks failed. Tool instructions may not be in system prompt.")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     success = test_prompt_service()
     sys.exit(0 if success else 1)

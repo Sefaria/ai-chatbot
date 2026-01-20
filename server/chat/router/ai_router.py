@@ -5,22 +5,23 @@ This module provides AI-powered flow classification that can be updated
 remotely via Braintrust prompts, with fallback to rule-based routing.
 """
 
-import os
 import json
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+import os
 from enum import Enum
+from typing import Any
 
 from anthropic import Anthropic
 
-from .reason_codes import ReasonCode
 from .braintrust_client import get_braintrust_client
+from .reason_codes import ReasonCode
 
-logger = logging.getLogger('chat.router.ai_router')
+logger = logging.getLogger("chat.router.ai_router")
 
 
 class Flow(str, Enum):
     """Conversation flow types."""
+
     HALACHIC = "HALACHIC"
     GENERAL = "GENERAL"
     SEARCH = "SEARCH"
@@ -57,7 +58,7 @@ class AIFlowRouter:
         self,
         model: str = "claude-3-5-haiku-20241022",
         prompt_version: str = "stable",
-        fallback_classifier: Optional[Any] = None,
+        fallback_classifier: Any | None = None,
     ):
         """
         Initialize the AI flow router.
@@ -72,7 +73,7 @@ class AIFlowRouter:
         self.fallback_classifier = fallback_classifier
 
         # Initialize Anthropic client
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable not set")
 
@@ -87,8 +88,8 @@ class AIFlowRouter:
         self,
         message: str,
         conversation_summary: str = "",
-        previous_flow: Optional[str] = None,
-    ) -> Tuple[Flow, float, List[ReasonCode]]:
+        previous_flow: str | None = None,
+    ) -> tuple[Flow, float, list[ReasonCode]]:
         """
         Classify user message into a flow using AI.
 
@@ -118,8 +119,8 @@ class AIFlowRouter:
         self,
         message: str,
         conversation_summary: str,
-        previous_flow: Optional[str],
-    ) -> Tuple[Flow, float, List[ReasonCode]]:
+        previous_flow: str | None,
+    ) -> tuple[Flow, float, list[ReasonCode]]:
         """Perform AI-based flow classification."""
         # Get prompt from Braintrust
         prompt_template = self.braintrust_client.get_router_prompt(self.prompt_version)
@@ -128,7 +129,7 @@ class AIFlowRouter:
         user_prompt = prompt_template.user_prompt_template.format(
             message=message,
             conversation_summary=conversation_summary or "None",
-            previous_flow=previous_flow or "None"
+            previous_flow=previous_flow or "None",
         )
 
         # Call Claude API
@@ -137,9 +138,7 @@ class AIFlowRouter:
             max_tokens=1024,
             temperature=0.0,  # Deterministic for classification
             system=prompt_template.system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ]
+            messages=[{"role": "user", "content": user_prompt}],
         )
 
         # Parse response
@@ -198,7 +197,7 @@ class AIFlowRouter:
 
         # Find JSON object boundaries
         # Look for first { and last } to extract just the JSON part
-        start_idx = text.find('{')
+        start_idx = text.find("{")
         if start_idx == -1:
             return text
 
@@ -206,9 +205,9 @@ class AIFlowRouter:
         brace_count = 0
         end_idx = start_idx
         for i in range(start_idx, len(text)):
-            if text[i] == '{':
+            if text[i] == "{":
                 brace_count += 1
-            elif text[i] == '}':
+            elif text[i] == "}":
                 brace_count -= 1
                 if brace_count == 0:
                     end_idx = i + 1
@@ -218,10 +217,10 @@ class AIFlowRouter:
 
     def classify_batch(
         self,
-        messages: List[str],
-        conversation_summaries: Optional[List[str]] = None,
-        previous_flows: Optional[List[Optional[str]]] = None,
-    ) -> List[Tuple[Flow, float, List[ReasonCode]]]:
+        messages: list[str],
+        conversation_summaries: list[str] | None = None,
+        previous_flows: list[str | None] | None = None,
+    ) -> list[tuple[Flow, float, list[ReasonCode]]]:
         """
         Classify multiple messages in batch.
 
@@ -237,7 +236,9 @@ class AIFlowRouter:
         previous_flows = previous_flows or [None] * len(messages)
 
         results = []
-        for message, summary, prev_flow in zip(messages, conversation_summaries, previous_flows):
+        for message, summary, prev_flow in zip(
+            messages, conversation_summaries, previous_flows, strict=False
+        ):
             result = self.classify(message, summary, prev_flow)
             results.append(result)
 
@@ -245,9 +246,9 @@ class AIFlowRouter:
 
 
 def get_ai_flow_router(
-    model: Optional[str] = None,
+    model: str | None = None,
     prompt_version: str = "stable",
-    fallback_classifier: Optional[Any] = None,
+    fallback_classifier: Any | None = None,
 ) -> AIFlowRouter:
     """
     Create an AI flow router instance.
@@ -260,9 +261,7 @@ def get_ai_flow_router(
     Returns:
         AIFlowRouter instance
     """
-    model = model or os.environ.get('ROUTER_MODEL', 'claude-3-5-haiku-20241022')
+    model = model or os.environ.get("ROUTER_MODEL", "claude-3-5-haiku-20241022")
     return AIFlowRouter(
-        model=model,
-        prompt_version=prompt_version,
-        fallback_classifier=fallback_classifier
+        model=model, prompt_version=prompt_version, fallback_classifier=fallback_classifier
     )

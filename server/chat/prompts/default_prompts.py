@@ -144,5 +144,3 @@ COMPARISON REQUESTS:
 • Present comparisons in structured format (tables when helpful)
 • Highlight key differences and similarities
 • Note manuscript variations when relevant"""
-
-

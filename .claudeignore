@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+server/venv/
+*.egg-info/
+
+# Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+.eslintcache
+
+# Database
+*.sqlite3
+*.sqlite3-journal
+
+# Logs
+*.log
+.logs/
+
+# Lock files (large)
+package-lock.json
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
