@@ -7,9 +7,13 @@ RUN npm install
 
 FROM python:3.11-alpine3.23 AS server
 
+# set user as non-root
+RUN adduser -D appuser
+USER appuser
+
 COPY /server /server
 WORKDIR /server
-RUN pip install -r requirements.txt
+RUN pip install -U -r requirements.txt
 COPY --from=script /build/node_modules/svelte/src/internal/client/dom/elements/custom-element.js static/js/
 
 EXPOSE 8080
