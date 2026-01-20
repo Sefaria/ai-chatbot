@@ -8,7 +8,9 @@ RUN npm install
 FROM python:3.11-alpine3.23 AS server
 
 # set user as non-root with a known UID for Kubernetes
-RUN adduser -D -u 1001 appuser
+RUN adduser -D -u 1001 appuser \
+    && mkdir -p /tmp \
+    && chmod 1777 /tmp
 
 COPY /server /server
 WORKDIR /server
