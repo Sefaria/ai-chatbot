@@ -492,8 +492,9 @@
       </header>
 
       <!-- Message List -->
-      <div 
+      <div
       class="lc-chatbot-messages"
+      class:clearing={isClearing}
       bind:this={messageListRef}
       onscroll={handleScroll}
       onclick={handleMessageLinkClick}
@@ -608,25 +609,34 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          placeholder="Type a message..."
-          rows="1"
-          disabled={isSending}
-        ></textarea>
-        <button 
-          class="send-btn" 
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if limitReached}
+          <div class="limit-reached">
+            <p class="limit-hint">{newSessionHintText}</p>
+            <button class="new-session-btn" onclick={startNewSession}>
+              {newSessionButtonText}
+            </button>
+          </div>
+        {:else}
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            placeholder="Type a message..."
+            rows="1"
+            disabled={isSending}
+          ></textarea>
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || isSending}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
     </div>
   {/if}
@@ -1166,5 +1176,49 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  /* Clearing animation for message list */
+  .lc-chatbot-messages.clearing {
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+  }
+
+  /* Limit Reached UI */
+  .limit-reached {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .limit-hint {
+    font-size: 13px;
+    color: var(--lc-text-secondary);
+    text-align: center;
+    margin: 0;
+  }
+
+  .new-session-btn {
+    padding: 10px 20px;
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .new-session-btn:hover {
+    background: var(--lc-primary-hover);
+  }
+
+  .new-session-btn:active {
+    transform: scale(0.98);
   }
 </style>
