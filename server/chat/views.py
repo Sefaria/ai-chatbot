@@ -747,8 +747,10 @@ def history(request):
         session = ChatSession.objects.get(session_id=session_id)
         session_info = {
             "currentFlow": session.current_flow,
-            "turnCount": session.turn_count,
-            "totalTokens": session.total_input_tokens + session.total_output_tokens,
+            "turnCount": session.turn_count or 0,
+            "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
+            "maxTurns": settings.MAX_TURNS,
+            "limitReached": (session.turn_count or 0) >= settings.MAX_TURNS,
         }
     except ChatSession.DoesNotExist:
         session_info = None
