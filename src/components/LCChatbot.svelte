@@ -32,6 +32,19 @@
   let currentProgress = $state(null);
   let toolHistory = $state([]);
 
+  // Turn limit state
+  let maxTurns = $state(null);
+  let limitReached = $state(false);
+  let isClearing = $state(false);
+
+  // Dynamic text based on turn limit
+  let newSessionButtonText = $derived(maxTurns === 1 ? 'New Question' : 'New Conversation');
+  let newSessionHintText = $derived(
+    maxTurns === 1
+      ? 'Start a new question to continue'
+      : 'Start a new conversation to continue'
+  );
+
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
