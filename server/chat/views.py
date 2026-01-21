@@ -20,6 +20,7 @@ from datetime import datetime
 from threading import Thread
 from urllib.parse import urlparse
 
+from django.conf import settings
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -74,6 +75,17 @@ def extract_page_context(context: dict) -> dict:
         "page_type": extract_page_type(page_url),
         "page_url": page_url,
         "client_version": context.get("clientVersion", ""),
+    }
+
+
+def build_session_info(session) -> dict:
+    """Build session info dict for API response."""
+    turn_count = session.turn_count or 0
+    max_turns = settings.MAX_TURNS
+    return {
+        "turnCount": turn_count,
+        "maxTurns": max_turns,
+        "limitReached": turn_count >= max_turns,
     }
 
 
@@ -198,6 +210,17 @@ def chat(request):
             "last_activity": timezone.now(),
         },
     )
+
+    # Check turn limit
+    if (session.turn_count or 0) >= settings.MAX_TURNS:
+        return Response(
+            {
+                "error": "turn_limit_reached",
+                "message": "Turn limit reached. Start a new conversation.",
+                "maxTurns": settings.MAX_TURNS,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # Get conversation summary for routing
     conversation_summary = session.conversation_summary or ""
@@ -347,6 +370,9 @@ def chat(request):
             f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
         )
 
+        # Reload session to get updated turn_count
+        session.refresh_from_db()
+
         # Return response with routing metadata
         response_data = {
             "messageId": response_message.message_id,
@@ -359,6 +385,7 @@ def chat(request):
                 "confidence": route_result.confidence,
                 "wasRefused": agent_response.was_refused,
             },
+            "session": build_session_info(session),
         }
 
         return Response(response_data)
