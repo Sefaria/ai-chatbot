@@ -134,6 +134,11 @@
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
       messages = result.messages;
       hasMoreHistory = result.hasMore;
+      // Update turn limit state from history response
+      if (result.session) {
+        maxTurns = result.session.maxTurns;
+        limitReached = result.session.limitReached;
+      }
       saveMessagesToStorage();
       scrollToBottom();
     } catch (e) {
@@ -253,6 +258,12 @@
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
       scrollToBottom();
+
+      // Update turn limit state from response
+      if (response.session) {
+        maxTurns = response.session.maxTurns;
+        limitReached = response.session.limitReached;
+      }
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
