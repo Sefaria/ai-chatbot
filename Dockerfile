@@ -3,6 +3,7 @@ FROM node:22 AS script
 WORKDIR /build
 COPY . .
 RUN npm install
+RUN npm run build
 
 
 FROM python:3.11-alpine3.23 AS server
@@ -15,7 +16,8 @@ RUN adduser -D -u 1001 appuser \
 COPY /server /server
 WORKDIR /server
 RUN pip install -U -r requirements.txt
-COPY --from=script /build/node_modules/svelte/src/internal/client/dom/elements/custom-element.js static/js/
+RUN mkdir -p static/js
+COPY --from=script /build/dist/lc-chatbot.umd.cjs static/js/
 
 USER 1001
 
