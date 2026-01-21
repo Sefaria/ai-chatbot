@@ -12,5 +12,4 @@ COPY . .
 
 EXPOSE 8000
 
-
 CMD ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8000", "--worker-class", "gthread", "--threads", "4"]
