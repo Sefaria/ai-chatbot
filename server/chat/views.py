@@ -194,30 +194,6 @@ def chat(request):
     data = serializer.validated_data
     context = data.get("context", {})
 
-    # Check for test questions (Q1, Q2, Q3)
-    test_response = get_test_response(data["text"])
-    if test_response:
-        logger.info(f"🧪 Test question detected: {data['text']}")
-        return Response(
-            {
-                "messageId": f"test_{data['text'].lower()}",
-                "sessionId": data["sessionId"],
-                "timestamp": timezone.now().isoformat(),
-                "markdown": test_response["markdown"],
-                "routing": {
-                    "flow": test_response["flow"],
-                    "decisionId": "test_decision",
-                    "confidence": 1.0,
-                    "wasRefused": False,
-                },
-                "session": {
-                    "turnCount": 0,
-                    "maxTurns": settings.MAX_TURNS,
-                    "limitReached": False,
-                },
-            }
-        )
-
     # Generate turn ID
     turn_id = ChatMessage.generate_turn_id()
 
@@ -245,6 +221,26 @@ def chat(request):
                 "maxTurns": settings.MAX_TURNS,
             },
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Check for test questions (Q1, Q2, Q3) - must be after turn limit check
+    test_response = get_test_response(data["text"])
+    if test_response:
+        logger.info(f"🧪 Test question detected: {data['text']}")
+        return Response(
+            {
+                "messageId": f"test_{data['text'].lower()}",
+                "sessionId": data["sessionId"],
+                "timestamp": timezone.now().isoformat(),
+                "markdown": test_response["markdown"],
+                "routing": {
+                    "flow": test_response["flow"],
+                    "decisionId": "test_decision",
+                    "confidence": 1.0,
+                    "wasRefused": False,
+                },
+                "session": build_session_info(session),
+            }
         )
 
     # Get conversation summary for routing
@@ -469,55 +465,6 @@ def chat_stream(request):
 
     data = serializer.validated_data
     context = data.get("context", {})
-
-    # Check for test questions (Q1, Q2, Q3)
-    test_response = get_test_response(data["text"])
-    if test_response:
-        logger.info(f"🧪 [stream] Test question detected: {data['text']}")
-
-        def generate_test_sse():
-            """Generator that yields SSE events for test questions."""
-            # Emit routing event
-            routing_event = {
-                "type": "routing",
-                "flow": test_response["flow"],
-                "decisionId": "test_decision",
-                "confidence": 1.0,
-                "reasonCodes": ["TEST_QUESTION"],
-            }
-            yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
-
-            # Emit final message
-            final_data = {
-                "messageId": f"test_{data['text'].lower()}",
-                "sessionId": data["sessionId"],
-                "timestamp": timezone.now().isoformat(),
-                "markdown": test_response["markdown"],
-                "routing": {
-                    "flow": test_response["flow"],
-                    "decisionId": "test_decision",
-                    "wasRefused": False,
-                },
-                "session": {
-                    "turnCount": 0,
-                    "maxTurns": settings.MAX_TURNS,
-                    "limitReached": False,
-                },
-                "stats": {
-                    "llmCalls": 0,
-                    "toolCalls": 0,
-                    "inputTokens": 0,
-                    "outputTokens": 0,
-                    "latencyMs": 0,
-                },
-            }
-            yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
-
-        response = StreamingHttpResponse(generate_test_sse(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"
-        return response
-
     turn_id = ChatMessage.generate_turn_id()
 
     logger.info(
@@ -544,6 +491,48 @@ def chat_stream(request):
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # Check for test questions (Q1, Q2, Q3) - must be after turn limit check
+    test_response = get_test_response(data["text"])
+    if test_response:
+        logger.info(f"🧪 [stream] Test question detected: {data['text']}")
+
+        def generate_test_sse():
+            """Generator that yields SSE events for test questions."""
+            routing_event = {
+                "type": "routing",
+                "flow": test_response["flow"],
+                "decisionId": "test_decision",
+                "confidence": 1.0,
+                "reasonCodes": ["TEST_QUESTION"],
+            }
+            yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
+
+            final_data = {
+                "messageId": f"test_{data['text'].lower()}",
+                "sessionId": data["sessionId"],
+                "timestamp": timezone.now().isoformat(),
+                "markdown": test_response["markdown"],
+                "routing": {
+                    "flow": test_response["flow"],
+                    "decisionId": "test_decision",
+                    "wasRefused": False,
+                },
+                "session": build_session_info(session),
+                "stats": {
+                    "llmCalls": 0,
+                    "toolCalls": 0,
+                    "inputTokens": 0,
+                    "outputTokens": 0,
+                    "latencyMs": 0,
+                },
+            }
+            yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
+
+        response = StreamingHttpResponse(generate_test_sse(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
     # Route the message
     router = get_router()
