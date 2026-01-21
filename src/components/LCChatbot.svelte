@@ -2,7 +2,7 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId } from '../lib/session.js';
   import { sendMessage, sendMessageStream, loadHistory } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
@@ -318,6 +318,41 @@
     messages = messages.filter(m => m.messageId !== messageId);
     inputText = failedMessage.content;
     await handleSend();
+  }
+
+  function startNewSession() {
+    // Trigger fade animation
+    isClearing = true;
+
+    setTimeout(() => {
+      // Generate new session
+      const newSessionId = generateSessionId();
+      sessionId = newSessionId;
+
+      // Clear messages
+      messages = [];
+
+      // Reset state
+      limitReached = false;
+      maxTurns = null;
+      hasMoreHistory = false;
+
+      // Save new session
+      setStorage(STORAGE_KEYS.SESSION, {
+        sessionId: newSessionId,
+        lastActivity: new Date().toISOString()
+      });
+
+      // Clear old messages from storage
+      setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+
+      isClearing = false;
+
+      // Focus input
+      setTimeout(() => inputRef?.focus(), 100);
+
+      dispatchEvent('session_started', { sessionId: newSessionId });
+    }, 150); // Quick fade duration
   }
 
   // Resize handling
