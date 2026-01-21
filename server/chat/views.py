@@ -460,6 +460,17 @@ def chat_stream(request):
         },
     )
 
+    # Check turn limit
+    if (session.turn_count or 0) >= settings.MAX_TURNS:
+        return Response(
+            {
+                "error": "turn_limit_reached",
+                "message": "Turn limit reached. Start a new conversation.",
+                "maxTurns": settings.MAX_TURNS,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     # Route the message
     router = get_router()
     route_result = router.route(
@@ -658,6 +669,9 @@ def chat_stream(request):
             f"latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
         )
 
+        # Reload session to get updated turn_count
+        session.refresh_from_db()
+
         final_data = {
             "messageId": response_message.message_id,
             "sessionId": data["sessionId"],
@@ -668,6 +682,7 @@ def chat_stream(request):
                 "decisionId": route_result.decision_id,
                 "wasRefused": agent_response.was_refused,
             },
+            "session": build_session_info(session),
             "stats": {
                 "llmCalls": agent_response.llm_calls,
                 "toolCalls": len(agent_response.tool_calls),
