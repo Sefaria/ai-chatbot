@@ -113,6 +113,22 @@
     dispatchEvent('closed');
   }
 
+  function handleNewChat() {
+    if (isSending) return;
+
+    const { sessionId: newSessionId } = getOrCreateSession(true);
+    sessionId = newSessionId;
+    messages = [];
+    inputText = '';
+    isLoadingHistory = false;
+    hasMoreHistory = false;
+    currentProgress = null;
+    toolHistory = [];
+
+    setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+  }
+
   async function loadInitialHistory() {
     if (!userId || !sessionId || !apiBaseUrl) return;
     
@@ -424,12 +440,21 @@
       <!-- Header -->
       <header class="lc-chatbot-header">
         <h2>Chat</h2>
-        <button class="close-btn" onclick={closePanel} aria-label="Close chat">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div class="header-actions">
+          <button class="new-chat-btn" onclick={handleNewChat} disabled={isSending} aria-label="Start a new chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12h18"></path>
+              <path d="M12 3v18"></path>
+            </svg>
+            <span>New chat</span>
+          </button>
+          <button class="close-btn" onclick={closePanel} aria-label="Close chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
       </header>
 
       <!-- Message List -->
@@ -697,6 +722,38 @@
     font-size: 16px;
     font-weight: 600;
     color: var(--lc-text);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .new-chat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--lc-bg-tertiary);
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    color: var(--lc-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--lc-font);
+    transition: all 0.15s ease;
+  }
+
+  .new-chat-btn:hover:not(:disabled) {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .new-chat-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .close-btn {

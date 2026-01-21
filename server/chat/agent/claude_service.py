@@ -464,7 +464,29 @@ class ClaudeAgentService:
         # Final output
         output = final_text.strip()
         if not output and iterations >= self.max_iterations:
-            output = "Sorry, I hit a tool loop limit while processing your request."
+            def build_tool_limit_response(tool_calls: list[dict[str, Any]]) -> str:
+                caveat = (
+                    "I hit the tool-use limit before I could finish. "
+                    "Here is what I have so far:"
+                )
+                if not tool_calls:
+                    return caveat
+
+                lines = [caveat]
+                for tc in tool_calls:
+                    output_preview = (tc.get("tool_output") or "").strip()
+                    if not output_preview:
+                        continue
+                    tool_name = tc.get("tool_name", "tool")
+                    error_suffix = " (error)" if tc.get("is_error") else ""
+                    lines.append(f"- {tool_name}{error_suffix}: {output_preview}")
+
+                if len(lines) == 1:
+                    lines.append("- No tool output was returned.")
+
+                return "\n".join(lines)
+
+            output = build_tool_limit_response(tool_calls_list)
         elif not output:
             output = "Sorry, I encountered an issue generating a response."
 
