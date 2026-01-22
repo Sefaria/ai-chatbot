@@ -30,6 +30,10 @@ class TestExtractPageType:
             ("https://www.sefaria.org/static/js/app.js", "other"),
             ("not-a-url", "reader"),
             ("://invalid", "reader"),
+            # Cauldron dev environments
+            ("https://foo.cauldron.sefaria.org/Genesis.1", "cauldron_foo"),
+            ("https://daniel.cauldron.sefaria.org/texts", "cauldron_daniel"),
+            ("https://test-branch.cauldron.sefaria.org/", "cauldron_test-branch"),
         ],
     )
     def test_extract_page_type(self, url: str, expected: str) -> None:

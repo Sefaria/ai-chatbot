@@ -44,15 +44,27 @@ def extract_page_type(url: str) -> str:
     """
     Extract page type from Sefaria URL for Braintrust logging.
 
-    Returns: 'eval'/'staging' (subdomain), 'home', 'reader', 'other', or 'unknown'
+    Returns:
+        - 'cauldron_<name>' for <name>.cauldron.sefaria.org (dev environments)
+        - 'eval'/'staging' for subdomains like eval.sefaria.org
+        - 'home' for /texts page
+        - 'reader' for text pages like /Genesis.1
+        - 'other' for root or misc pages
+        - 'unknown' if no URL provided
     """
     if not url:
         return "unknown"
 
     parsed = urlparse(url)
+    host = parsed.netloc.lower()
+
+    # Check for cauldron dev environments (e.g., foo.cauldron.sefaria.org -> 'cauldron_foo')
+    if ".cauldron." in host:
+        name = host.split(".")[0]
+        return f"cauldron_{name}"
 
     # Check for subdomain (e.g., eval.sefaria.org -> 'eval')
-    host_parts = parsed.netloc.split(".")
+    host_parts = host.split(".")
     if len(host_parts) > 2 and host_parts[0] != "www":
         return host_parts[0]
 
