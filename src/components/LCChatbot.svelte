@@ -108,15 +108,15 @@
     isOpen = true;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
     dispatchEvent('opened');
-    
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
     }, 100);
 
-    // Load history if no messages
-    if (messages.length === 0 && sessionId && apiBaseUrl) {
-      loadInitialHistory();
+    // Always sync session state from server (for turn limit info)
+    if (sessionId && apiBaseUrl) {
+      syncSessionState();
     }
   }
 
@@ -145,6 +145,30 @@
       console.warn('[lc-chatbot] Failed to load history:', e);
     } finally {
       isLoadingHistory = false;
+    }
+  }
+
+  async function syncSessionState() {
+    if (!userId || !sessionId || !apiBaseUrl) return;
+
+    try {
+      const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
+
+      // Update turn limit state from server
+      if (result.session) {
+        maxTurns = result.session.maxTurns;
+        limitReached = result.session.limitReached;
+      }
+
+      // Only load messages if we don't have any locally
+      if (messages.length === 0 && result.messages.length > 0) {
+        messages = result.messages;
+        hasMoreHistory = result.hasMore;
+        saveMessagesToStorage();
+        scrollToBottom();
+      }
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to sync session state:', e);
     }
   }
 
@@ -274,8 +298,26 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
-      
-      // Mark message as failed
+
+      // Handle turn limit reached error
+      if (e.code === 'turn_limit_reached') {
+        limitReached = true;
+        if (e.maxTurns) {
+          maxTurns = e.maxTurns;
+        }
+        // Remove the unsent message since turn limit was already reached
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+
+        dispatchEvent('error', {
+          type: 'turn_limit_reached',
+          messageId: userMessage.messageId,
+          maxTurns: e.maxTurns
+        });
+        return;
+      }
+
+      // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: 'failed' }

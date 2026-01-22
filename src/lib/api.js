@@ -82,13 +82,23 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response for turn limit info
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
+    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
-  
+
   return response.json();
 }
 
@@ -144,13 +154,23 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response for turn limit info
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
+    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
-  
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
