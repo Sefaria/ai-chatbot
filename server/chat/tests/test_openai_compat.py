@@ -246,3 +246,134 @@ class TestOpenAICompatResponse:
         assert choice["message"]["role"] == "assistant"
         assert choice["message"]["content"] == "Shabbat is the Jewish day of rest..."
         assert choice["finish_reason"] == "stop"
+
+
+@pytest.mark.django_db
+class TestOpenAICompatMultiTurn:
+    """Test multi-turn conversation handling."""
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_extracts_last_user_message(
+        self, mock_router, mock_agent, api_client, mock_agent_response, mock_route_result
+    ):
+        mock_router.return_value.route.return_value = mock_route_result
+        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            data={
+                "model": "sefaria-agent",
+                "messages": [
+                    {"role": "user", "content": "First question"},
+                    {"role": "assistant", "content": "First answer"},
+                    {"role": "user", "content": "Follow-up question"},
+                ],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        # Verify the router was called with the last user message
+        call_args = mock_router.return_value.route.call_args
+        assert call_args.kwargs["user_message"] == "Follow-up question"
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_handles_system_message(
+        self, mock_router, mock_agent, api_client, mock_agent_response, mock_route_result
+    ):
+        mock_router.return_value.route.return_value = mock_route_result
+        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            data={
+                "model": "sefaria-agent",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant"},
+                    {"role": "user", "content": "What is Shabbat?"},
+                ],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+
+
+@pytest.mark.django_db
+class TestOpenAICompatErrors:
+    """Test error handling for OpenAI-compatible endpoint."""
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_agent_error_returns_openai_error_format(
+        self, mock_router, mock_agent, api_client, valid_openai_request, mock_route_result
+    ):
+        mock_router.return_value.route.return_value = mock_route_result
+        mock_agent.return_value.send_message = AsyncMock(side_effect=Exception("Agent failed"))
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            data=valid_openai_request,
+            format="json",
+        )
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "error" in data
+        assert data["error"]["type"] == "internal_error"
+        assert "Agent failed" in data["error"]["message"]
+
+
+@pytest.mark.django_db
+class TestOpenAICompatTraceability:
+    """Test logging and traceability."""
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_generates_bt_prefixed_session_id(
+        self,
+        mock_router,
+        mock_agent,
+        api_client,
+        valid_openai_request,
+        mock_agent_response,
+        mock_route_result,
+    ):
+        mock_router.return_value.route.return_value = mock_route_result
+        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+
+        api_client.post(
+            "/api/v1/chat/completions",
+            data=valid_openai_request,
+            format="json",
+        )
+
+        # Verify session_id passed to router starts with bt-
+        call_args = mock_router.return_value.route.call_args
+        assert call_args.kwargs["session_id"].startswith("bt-")
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_sets_braintrust_source_in_context(
+        self,
+        mock_router,
+        mock_agent,
+        api_client,
+        valid_openai_request,
+        mock_agent_response,
+        mock_route_result,
+    ):
+        mock_router.return_value.route.return_value = mock_route_result
+        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+
+        api_client.post(
+            "/api/v1/chat/completions",
+            data=valid_openai_request,
+            format="json",
+        )
+
+        # Verify agent was called with braintrust source
+        call_args = mock_agent.return_value.send_message.call_args
+        assert call_args.kwargs.get("source") == "braintrust"
