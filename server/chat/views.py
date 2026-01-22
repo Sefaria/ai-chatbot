@@ -34,6 +34,7 @@ from .router import RouteResult, RouterService, get_router_service
 from .serializers import (
     ChatRequestSerializer,
     HistoryMessageSerializer,
+    OpenAIChatRequestSerializer,
 )
 from .summarization import ConversationSummary, get_summary_service
 
@@ -848,3 +849,38 @@ def health(request):
             },
         }
     )
+
+
+def _openai_error_response(message: str, error_type: str, code: str, status_code: int):
+    """Return an OpenAI-style error response."""
+    return Response(
+        {
+            "error": {
+                "message": message,
+                "type": error_type,
+                "code": code,
+            }
+        },
+        status=status_code,
+    )
+
+
+@api_view(["POST"])
+def openai_chat_completions(request):
+    """
+    OpenAI-compatible chat completions endpoint for Braintrust integration.
+
+    POST /api/v1/chat/completions
+    """
+    serializer = OpenAIChatRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        first_error = next(iter(serializer.errors.values()))[0]
+        return _openai_error_response(
+            message=f"Invalid request: {first_error}",
+            error_type="invalid_request_error",
+            code="invalid_request",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Placeholder - will implement full logic in next task
+    return Response({"status": "not_implemented"}, status=501)
