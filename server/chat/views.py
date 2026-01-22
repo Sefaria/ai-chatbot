@@ -46,7 +46,8 @@ def extract_page_type(url: str) -> str:
 
     Returns:
         - 'cauldron_<name>' for <name>.cauldron.sefaria.org (dev environments)
-        - 'eval'/'staging' for subdomains like eval.sefaria.org
+        - 'staging' for sefariastaging.org or sefariastaging-il.org
+        - 'eval' etc. for subdomains like eval.sefaria.org
         - 'home' for /texts page
         - 'reader' for text pages like /Genesis.1
         - 'other' for root or misc pages
@@ -63,10 +64,19 @@ def extract_page_type(url: str) -> str:
         name = host.split(".")[0]
         return f"cauldron_{name}"
 
-    # Check for subdomain (e.g., eval.sefaria.org -> 'eval')
-    host_parts = host.split(".")
-    if len(host_parts) > 2 and host_parts[0] != "www":
-        return host_parts[0]
+    # Check for staging domains (sefariastaging.org, sefariastaging-il.org, www.sefariastaging.org)
+    if "sefariastaging" in host:
+        return "staging"
+
+    # Check for subdomain on sefaria.org or sefaria.org.il (e.g., eval.sefaria.org -> 'eval')
+    # Production domains: sefaria.org, sefaria.org.il, www.sefaria.org, www.sefaria.org.il
+    if "sefaria.org" in host:
+        # Remove www. prefix if present
+        host_clean = host.replace("www.", "")
+        # Check if there's a subdomain before sefaria.org
+        if host_clean not in ("sefaria.org", "sefaria.org.il"):
+            subdomain = host_clean.split(".")[0]
+            return subdomain
 
     path = parsed.path.lower()
 

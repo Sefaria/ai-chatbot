@@ -14,17 +14,26 @@ class TestExtractPageType:
         [
             ("", "unknown"),
             (None, "unknown"),
+            # Subdomains on sefaria.org
             ("https://eval.sefaria.org/Genesis.1", "eval"),
             ("https://staging.sefaria.org/page", "staging"),
+            # Production domains (.org and .org.il)
             ("https://www.sefaria.org/Genesis.1", "reader"),
+            ("https://sefaria.org/Genesis.1", "reader"),
+            ("https://www.sefaria.org.il/Genesis.1", "reader"),
+            ("https://sefaria.org.il/Genesis.1", "reader"),
+            # Home page
             ("https://www.sefaria.org/texts", "home"),
             ("https://www.sefaria.org/texts/", "home"),
             ("https://sefaria.org/texts", "home"),
             ("https://sefaria.org/TEXTS", "home"),
             ("https://sefaria.org/Texts/", "home"),
+            ("https://sefaria.org.il/texts", "home"),
+            # Reader pages
             ("https://www.sefaria.org/Genesis.1", "reader"),
             ("https://www.sefaria.org/Rashi_on_Genesis.1.1", "reader"),
             ("https://sefaria.org/Shulchan_Arukh", "reader"),
+            # Other pages
             ("https://www.sefaria.org/", "other"),
             ("https://sefaria.org", "other"),
             ("https://www.sefaria.org/static/js/app.js", "other"),
@@ -34,6 +43,10 @@ class TestExtractPageType:
             ("https://foo.cauldron.sefaria.org/Genesis.1", "cauldron_foo"),
             ("https://daniel.cauldron.sefaria.org/texts", "cauldron_daniel"),
             ("https://test-branch.cauldron.sefaria.org/", "cauldron_test-branch"),
+            # Staging domains
+            ("https://sefariastaging.org/Genesis.1", "staging"),
+            ("https://sefariastaging-il.org/Genesis.1", "staging"),
+            ("https://www.sefariastaging.org/texts", "staging"),
         ],
     )
     def test_extract_page_type(self, url: str, expected: str) -> None:
