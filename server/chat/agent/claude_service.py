@@ -266,6 +266,7 @@ class ClaudeAgentService:
         environment = os.environ.get("ENVIRONMENT", "dev")
 
         # Log structured input to span
+        # Note: Session context is in parent request span, routing info is in sibling router span
         span.log(
             input={
                 "query": last_user_message,  # Current turn for quick viewing
@@ -276,27 +277,15 @@ class ClaudeAgentService:
                 environment,  # dev | staging | prod
             ],
             metadata={
-                # Session context
-                "session_id": session_id or "",
-                "turn_id": turn_id or "",
-                "user_id": user_id or "",
-                # Model config
+                # Model config (specific to this agent run)
                 "model": self.model,
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
-                # Prompt versioning
-                "decision_id": route_result.decision_id,
+                # Prompt versioning (for reproducibility)
                 "core_prompt_id": prompt_bundle.core_prompt_id,
                 "core_prompt_version": prompt_bundle.core_prompt_version,
                 "flow_prompt_id": prompt_bundle.flow_prompt_id,
                 "flow_prompt_version": prompt_bundle.flow_prompt_version,
-                # Tools
-                "tools_available": route_result.tools,
-                # Page context
-                "site": site,
-                "page_type": page_type,
-                "page_url": page_url,
-                "client_version": client_version,
             },
         )
 
@@ -313,29 +302,70 @@ class ClaudeAgentService:
                 )
             )
 
-            # Call Claude
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=prompt_bundle.system_prompt,
-                messages=conversation,
-                tools=tools,
-                tool_choice={"type": "auto"},
-            )
+            # Call Claude with tracing
+            llm_start = time.time()
+            with braintrust.start_span(name=f"llm-call-{iterations}", type="llm") as llm_span:
+                # Log LLM input
+                llm_span.log(
+                    input={
+                        "messages": conversation[-3:]
+                        if len(conversation) > 3
+                        else conversation,  # Last 3 messages for context
+                        "message_count": len(conversation),
+                    },
+                    metadata={
+                        "model": self.model,
+                        "iteration": iterations,
+                        "tools_count": len(tools),
+                    },
+                )
 
-            # Track token usage
-            usage = response.usage
-            input_tokens += usage.input_tokens
-            output_tokens += usage.output_tokens
-            cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
-            cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                    system=prompt_bundle.system_prompt,
+                    messages=conversation,
+                    tools=tools,
+                    tool_choice={"type": "auto"},
+                )
 
-            # Process response blocks
-            blocks = response.content
-            tool_uses = [b for b in blocks if b.type == "tool_use"]
-            text_blocks = [b for b in blocks if b.type == "text"]
-            text = "".join(b.text for b in text_blocks)
+                # Track token usage
+                usage = response.usage
+                call_input_tokens = usage.input_tokens
+                call_output_tokens = usage.output_tokens
+                call_cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+                call_cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+
+                input_tokens += call_input_tokens
+                output_tokens += call_output_tokens
+                cache_creation_tokens += call_cache_creation
+                cache_read_tokens += call_cache_read
+
+                # Process response blocks
+                blocks = response.content
+                tool_uses = [b for b in blocks if b.type == "tool_use"]
+                text_blocks = [b for b in blocks if b.type == "text"]
+                text = "".join(b.text for b in text_blocks)
+
+                llm_latency = int((time.time() - llm_start) * 1000)
+
+                # Log LLM output
+                llm_span.log(
+                    output={
+                        "text": truncate(text, 500) if text else None,
+                        "tool_calls": [{"name": t.name, "input": t.input} for t in tool_uses],
+                        "stop_reason": response.stop_reason,
+                    },
+                    metrics={
+                        "latency_ms": llm_latency,
+                        "prompt_tokens": call_input_tokens,
+                        "completion_tokens": call_output_tokens,
+                        "cache_creation_tokens": call_cache_creation,
+                        "cache_read_tokens": call_cache_read,
+                    },
+                )
+
             final_text += text
 
             # Add assistant response to conversation
@@ -464,10 +494,10 @@ class ClaudeAgentService:
         # Final output
         output = final_text.strip()
         if not output and iterations >= self.max_iterations:
+
             def build_tool_limit_response(tool_calls: list[dict[str, Any]]) -> str:
                 caveat = (
-                    "I hit the tool-use limit before I could finish. "
-                    "Here is what I have so far:"
+                    "I hit the tool-use limit before I could finish. Here is what I have so far:"
                 )
                 if not tool_calls:
                     return caveat
@@ -569,6 +599,7 @@ class ClaudeAgentService:
         )
 
         # Log structured input (same format as normal requests for consistency)
+        # Note: Session context is in parent request span, routing info is in sibling router span
         span.log(
             input={
                 "query": last_user_message,
@@ -578,15 +609,6 @@ class ClaudeAgentService:
                 "refuse",  # Always 'refuse' for this flow
                 environment,
             ],
-            metadata={
-                "session_id": session_id or "",
-                "turn_id": turn_id or "",
-                "user_id": user_id or "",
-                "decision_id": route_result.decision_id,
-                "site": site,
-                "page_type": page_type,
-                "page_url": page_url,
-            },
         )
 
         # Log structured output with refusal details

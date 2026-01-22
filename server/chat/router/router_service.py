@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from braintrust import current_span, traced
+
 from .guardrails import GuardrailChecker, get_guardrail_checker
 from .reason_codes import ReasonCode
 
@@ -209,6 +211,7 @@ class RouterService:
         self._search_patterns = [re.compile(p, re.IGNORECASE) for p in SEARCH_KEYWORDS]
         self._general_patterns = [re.compile(p, re.IGNORECASE) for p in GENERAL_KEYWORDS]
 
+    @traced(name="router", type="function")
     def route(
         self,
         session_id: str,
@@ -231,11 +234,21 @@ class RouterService:
             RouteResult with complete routing decision
         """
         start_time = time.time()
+        span = current_span()
 
         # Generate unique decision ID using UUID
         decision_id = f"dec_{uuid.uuid4().hex[:16]}"
 
         reason_codes: list[ReasonCode] = []
+
+        # Log router input
+        span.log(
+            input={
+                "query": user_message,
+                "conversation_summary": conversation_summary[:500] if conversation_summary else "",
+                "previous_flow": previous_flow,
+            },
+        )
 
         # Step 1: Apply guardrails
         guardrail_result = self.guardrail_checker.check(user_message)
@@ -243,12 +256,27 @@ class RouterService:
 
         if not guardrail_result.allowed:
             # Return REFUSE flow
-            return self._create_refuse_result(
+            result = self._create_refuse_result(
                 decision_id=decision_id,
                 reason_codes=reason_codes,
                 refusal_message=guardrail_result.refusal_message or "I can't process this request.",
                 start_time=start_time,
             )
+            # Log refusal decision
+            span.log(
+                output={
+                    "flow": result.flow.value,
+                    "decision_id": decision_id,
+                    "reason_codes": [c.value for c in result.reason_codes],
+                    "refused": True,
+                },
+                metadata={
+                    "decision_id": decision_id,
+                    "guardrail_triggered": True,
+                },
+                metrics={"latency_ms": result.router_latency_ms},
+            )
+            return result
 
         # Step 2: Classify intent (AI or rule-based)
         if self.use_ai_classifier and self._ai_router:
@@ -291,6 +319,28 @@ class RouterService:
         logger.info(
             f"Route decision: flow={flow.value} confidence={flow_confidence:.2f} "
             f"reasons={len(reason_codes)} latency={latency_ms}ms"
+        )
+
+        # Log router output
+        span.log(
+            output={
+                "flow": flow.value,
+                "confidence": flow_confidence,
+                "decision_id": decision_id,
+                "reason_codes": [c.value for c in reason_codes],
+                "tools": tools,
+            },
+            metadata={
+                "decision_id": decision_id,
+                "session_action": session_action.value,
+                "core_prompt_id": prompt_bundle.core_prompt_id,
+                "flow_prompt_id": prompt_bundle.flow_prompt_id,
+                "classifier_type": "ai" if (self.use_ai_classifier and self._ai_router) else "rule",
+            },
+            metrics={
+                "latency_ms": latency_ms,
+                "confidence": flow_confidence,
+            },
         )
 
         return RouteResult(

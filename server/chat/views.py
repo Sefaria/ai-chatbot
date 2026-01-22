@@ -20,6 +20,7 @@ from datetime import datetime
 from threading import Thread
 from urllib.parse import urlparse
 
+import braintrust
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -80,6 +81,24 @@ def extract_page_context(context: dict) -> dict:
 # Global services (initialized lazily)
 _agent_service: ClaudeAgentService | None = None
 _router_service: RouterService | None = None
+_bt_logger = None
+
+
+def _get_bt_logger():
+    """Get or create the Braintrust logger for request-level tracing."""
+    global _bt_logger
+    if _bt_logger is None:
+        bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
+        bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
+        if bt_api_key:
+            try:
+                _bt_logger = braintrust.init_logger(
+                    project=bt_project,
+                    api_key=bt_api_key,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize Braintrust logger in views: {e}")
+    return _bt_logger
 
 
 def get_agent_service() -> ClaudeAgentService:
@@ -180,6 +199,8 @@ def chat(request):
 
     data = serializer.validated_data
     context = data.get("context", {})
+    page_context = extract_page_context(context)
+    environment = os.environ.get("ENVIRONMENT", "dev")
 
     # Generate turn ID
     turn_id = ChatMessage.generate_turn_id()
@@ -203,198 +224,238 @@ def chat(request):
     conversation_summary = session.conversation_summary or ""
     previous_flow = session.current_flow or ""
 
-    # Route the message
-    router = get_router()
-    route_result = router.route(
-        session_id=data["sessionId"],
-        user_message=data["text"],
-        conversation_summary=conversation_summary,
-        previous_flow=previous_flow if previous_flow else None,
-        user_metadata={
-            "locale": context.get("locale", ""),
-            "pageUrl": context.get("pageUrl", ""),
-        },
-    )
+    # Initialize Braintrust logger for request-level span
+    _get_bt_logger()
 
-    # Save route decision
-    route_decision = _save_route_decision(
-        route_result=route_result,
-        session_id=data["sessionId"],
-        turn_id=turn_id,
-        user_message=data["text"],
-        summary=conversation_summary,
-        previous_flow=previous_flow,
-    )
+    # Start request-level span
+    with braintrust.start_span(name="request", type="task") as request_span:
+        # Log request input
+        request_span.log(
+            input={"query": data["text"]},
+            metadata={
+                "session_id": data["sessionId"],
+                "user_id": data["userId"],
+                "turn_id": turn_id,
+                **page_context,
+            },
+            tags=[environment],
+        )
 
-    logger.info(
-        f"🔀 Route: flow={route_result.flow.value} confidence={route_result.confidence:.2f} "
-        f"reasons={[c.value for c in route_result.reason_codes[:3]]}"
-    )
+        # Route the message
+        router = get_router()
+        route_result = router.route(
+            session_id=data["sessionId"],
+            user_message=data["text"],
+            conversation_summary=conversation_summary,
+            previous_flow=previous_flow if previous_flow else None,
+            user_metadata={
+                "locale": context.get("locale", ""),
+                "pageUrl": context.get("pageUrl", ""),
+            },
+        )
 
-    # Save user message
-    user_message = ChatMessage.objects.create(
-        message_id=data["messageId"],
-        session_id=data["sessionId"],
-        user_id=data["userId"],
-        turn_id=turn_id,
-        route_decision=route_decision,
-        role=ChatMessage.Role.USER,
-        content=data["text"],
-        client_timestamp=data["timestamp"],
-        page_url=context.get("pageUrl", ""),
-        locale=context.get("locale", ""),
-        client_version=context.get("clientVersion", ""),
-        flow=route_result.flow.value,
-    )
+        # Save route decision
+        route_decision = _save_route_decision(
+            route_result=route_result,
+            session_id=data["sessionId"],
+            turn_id=turn_id,
+            user_message=data["text"],
+            summary=conversation_summary,
+            previous_flow=previous_flow,
+        )
 
-    try:
-        # Get conversation history for context
-        history_messages = ChatMessage.objects.filter(session_id=data["sessionId"]).order_by(
-            "server_timestamp"
-        )[:50]
+        logger.info(
+            f"🔀 Route: flow={route_result.flow.value} confidence={route_result.confidence:.2f} "
+            f"reasons={[c.value for c in route_result.reason_codes[:3]]}"
+        )
 
-        conversation = [
-            ConversationMessage(role=msg.role, content=msg.content) for msg in history_messages
-        ]
+        # Save user message
+        user_message = ChatMessage.objects.create(
+            message_id=data["messageId"],
+            session_id=data["sessionId"],
+            user_id=data["userId"],
+            turn_id=turn_id,
+            route_decision=route_decision,
+            role=ChatMessage.Role.USER,
+            content=data["text"],
+            client_timestamp=data["timestamp"],
+            page_url=context.get("pageUrl", ""),
+            locale=context.get("locale", ""),
+            client_version=context.get("clientVersion", ""),
+            flow=route_result.flow.value,
+        )
 
-        # Execute agent with routing context
-        page_context = extract_page_context(context)
-        agent = get_agent_service()
-        agent_response = run_async(
-            agent.send_message(
-                messages=conversation,
-                route_result=route_result,
+        try:
+            # Get conversation history for context
+            history_messages = ChatMessage.objects.filter(session_id=data["sessionId"]).order_by(
+                "server_timestamp"
+            )[:50]
+
+            conversation = [
+                ConversationMessage(role=msg.role, content=msg.content) for msg in history_messages
+            ]
+
+            # Execute agent with routing context
+            agent = get_agent_service()
+            agent_response = run_async(
+                agent.send_message(
+                    messages=conversation,
+                    route_result=route_result,
+                    session_id=data["sessionId"],
+                    user_id=data["userId"],
+                    turn_id=turn_id,
+                    **page_context,
+                )
+            )
+
+            # Calculate total latency
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # Save assistant response
+            response_message = ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
                 session_id=data["sessionId"],
                 user_id=data["userId"],
                 turn_id=turn_id,
-                **page_context,
-            )
-        )
-
-        # Calculate total latency
-        latency_ms = int((time.time() - start_time) * 1000)
-
-        # Save assistant response
-        response_message = ChatMessage.objects.create(
-            message_id=ChatMessage.generate_message_id(),
-            session_id=data["sessionId"],
-            user_id=data["userId"],
-            turn_id=turn_id,
-            route_decision=route_decision,
-            role=ChatMessage.Role.ASSISTANT,
-            content=agent_response.content,
-            latency_ms=latency_ms,
-            llm_calls=agent_response.llm_calls,
-            tool_calls_count=len(agent_response.tool_calls),
-            tool_calls_data=agent_response.tool_calls,
-            input_tokens=agent_response.input_tokens,
-            output_tokens=agent_response.output_tokens,
-            cache_creation_tokens=agent_response.cache_creation_tokens,
-            cache_read_tokens=agent_response.cache_read_tokens,
-            model_name="claude-sonnet-4-5-20250929",
-            flow=route_result.flow.value,
-            status=ChatMessage.Status.REFUSED
-            if agent_response.was_refused
-            else ChatMessage.Status.SUCCESS,
-        )
-
-        # Link user message to response
-        user_message.response_message = response_message
-        user_message.latency_ms = latency_ms
-        user_message.save(update_fields=["response_message", "latency_ms"])
-
-        # Update session with new summary and flow
-        summary_service = get_summary_service()
-        new_summary = run_async(
-            summary_service.update_summary(
-                current_summary=ConversationSummary(text=conversation_summary)
-                if conversation_summary
-                else None,
-                new_user_message=data["text"],
-                new_assistant_response=agent_response.content,
+                route_decision=route_decision,
+                role=ChatMessage.Role.ASSISTANT,
+                content=agent_response.content,
+                latency_ms=latency_ms,
+                llm_calls=agent_response.llm_calls,
+                tool_calls_count=len(agent_response.tool_calls),
+                tool_calls_data=agent_response.tool_calls,
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_tokens=agent_response.cache_creation_tokens,
+                cache_read_tokens=agent_response.cache_read_tokens,
+                model_name="claude-sonnet-4-5-20250929",
                 flow=route_result.flow.value,
+                status=ChatMessage.Status.REFUSED
+                if agent_response.was_refused
+                else ChatMessage.Status.SUCCESS,
             )
-        )
 
-        session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
-        session.turn_count = (session.turn_count or 0) + 1
-        session.current_flow = route_result.flow.value
-        session.conversation_summary = new_summary.to_text()
-        session.summary_updated_at = timezone.now()
-        session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
-        session.total_output_tokens = (
-            session.total_output_tokens or 0
-        ) + agent_response.output_tokens
-        session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
-        session.save(
-            update_fields=[
-                "message_count",
-                "turn_count",
-                "last_activity",
-                "current_flow",
-                "conversation_summary",
-                "summary_updated_at",
-                "total_input_tokens",
-                "total_output_tokens",
-                "total_tool_calls",
-            ]
-        )
+            # Link user message to response
+            user_message.response_message = response_message
+            user_message.latency_ms = latency_ms
+            user_message.save(update_fields=["response_message", "latency_ms"])
 
-        # Log response
-        logger.info(
-            f"📤 response={response_message.message_id[:20]}... flow={route_result.flow.value} "
-            f"latency={latency_ms}ms tools={len(agent_response.tool_calls)} "
-            f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
-        )
+            # Update session with new summary and flow
+            summary_service = get_summary_service()
+            new_summary = run_async(
+                summary_service.update_summary(
+                    current_summary=ConversationSummary(text=conversation_summary)
+                    if conversation_summary
+                    else None,
+                    new_user_message=data["text"],
+                    new_assistant_response=agent_response.content,
+                    flow=route_result.flow.value,
+                )
+            )
 
-        # Return response with routing metadata
-        response_data = {
-            "messageId": response_message.message_id,
-            "sessionId": data["sessionId"],
-            "timestamp": response_message.server_timestamp.isoformat(),
-            "markdown": agent_response.content,
-            "routing": {
-                "flow": route_result.flow.value,
-                "decisionId": route_result.decision_id,
-                "confidence": route_result.confidence,
-                "wasRefused": agent_response.was_refused,
-            },
-        }
+            session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
+            session.turn_count = (session.turn_count or 0) + 1
+            session.current_flow = route_result.flow.value
+            session.conversation_summary = new_summary.to_text()
+            session.summary_updated_at = timezone.now()
+            session.total_input_tokens = (
+                session.total_input_tokens or 0
+            ) + agent_response.input_tokens
+            session.total_output_tokens = (
+                session.total_output_tokens or 0
+            ) + agent_response.output_tokens
+            session.total_tool_calls = (session.total_tool_calls or 0) + len(
+                agent_response.tool_calls
+            )
+            session.save(
+                update_fields=[
+                    "message_count",
+                    "turn_count",
+                    "last_activity",
+                    "current_flow",
+                    "conversation_summary",
+                    "summary_updated_at",
+                    "total_input_tokens",
+                    "total_output_tokens",
+                    "total_tool_calls",
+                ]
+            )
 
-        return Response(response_data)
+            # Log response
+            logger.info(
+                f"📤 response={response_message.message_id[:20]}... flow={route_result.flow.value} "
+                f"latency={latency_ms}ms tools={len(agent_response.tool_calls)} "
+                f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
+            )
 
-    except Exception as e:
-        logger.error(f"❌ Agent error: {e}", exc_info=True)
+            # Log request output to span
+            request_span.log(
+                output={"response": agent_response.content[:500]},
+                tags=[route_result.flow.value.lower()],
+                metrics={
+                    "latency_ms": latency_ms,
+                    "llm_calls": agent_response.llm_calls,
+                    "tool_calls": len(agent_response.tool_calls),
+                    "input_tokens": agent_response.input_tokens,
+                    "output_tokens": agent_response.output_tokens,
+                },
+            )
 
-        error_message = ChatMessage.objects.create(
-            message_id=ChatMessage.generate_message_id(),
-            session_id=data["sessionId"],
-            user_id=data["userId"],
-            turn_id=turn_id,
-            route_decision=route_decision,
-            role=ChatMessage.Role.ASSISTANT,
-            content="I'm sorry, I encountered an error processing your request. Please try again.",
-            status=ChatMessage.Status.FAILED,
-            latency_ms=int((time.time() - start_time) * 1000),
-            flow=route_result.flow.value,
-        )
-
-        user_message.response_message = error_message
-        user_message.save(update_fields=["response_message"])
-
-        return Response(
-            {
-                "messageId": error_message.message_id,
+            # Return response with routing metadata
+            response_data = {
+                "messageId": response_message.message_id,
                 "sessionId": data["sessionId"],
-                "timestamp": error_message.server_timestamp.isoformat(),
-                "markdown": error_message.content,
+                "timestamp": response_message.server_timestamp.isoformat(),
+                "markdown": agent_response.content,
                 "routing": {
                     "flow": route_result.flow.value,
                     "decisionId": route_result.decision_id,
-                    "wasRefused": False,
+                    "confidence": route_result.confidence,
+                    "wasRefused": agent_response.was_refused,
                 },
             }
-        )
+
+            return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"❌ Agent error: {e}", exc_info=True)
+
+            error_message = ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
+                session_id=data["sessionId"],
+                user_id=data["userId"],
+                turn_id=turn_id,
+                route_decision=route_decision,
+                role=ChatMessage.Role.ASSISTANT,
+                content="I'm sorry, I encountered an error processing your request. Please try again.",
+                status=ChatMessage.Status.FAILED,
+                latency_ms=int((time.time() - start_time) * 1000),
+                flow=route_result.flow.value,
+            )
+
+            user_message.response_message = error_message
+            user_message.save(update_fields=["response_message"])
+
+            # Log error to span
+            request_span.log(
+                output={"error": str(e)},
+                error=str(e),
+                metrics={"latency_ms": int((time.time() - start_time) * 1000)},
+            )
+
+            return Response(
+                {
+                    "messageId": error_message.message_id,
+                    "sessionId": data["sessionId"],
+                    "timestamp": error_message.server_timestamp.isoformat(),
+                    "markdown": error_message.content,
+                    "routing": {
+                        "flow": route_result.flow.value,
+                        "decisionId": route_result.decision_id,
+                        "wasRefused": False,
+                    },
+                }
+            )
 
 
 @api_view(["POST"])
