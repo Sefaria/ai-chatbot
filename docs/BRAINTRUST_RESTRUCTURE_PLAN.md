@@ -31,6 +31,19 @@ request (views.py)
 
 ---
 
+## Key Metadata Fields
+
+| Field | Values | How Set |
+|-------|--------|---------|
+| `environment` | `dev` / `staging` / `prod` | `ENVIRONMENT` env var (defaults to `"dev"`) |
+| `source` | `component` / `api` | Inferred: `clientVersion` present → `component`, else `api` |
+| `page_type` | `home` / `reader` / `eval` / `staging` / `other` | Parsed from `pageUrl` |
+| `site` | e.g., `www.sefaria.org` | Parsed from `pageUrl` |
+
+**Local development** sends `environment: "dev"` and `source: "component"` (when using the widget).
+
+---
+
 ## Span Details
 
 ### 1. Request Span (`views.py`)
@@ -48,7 +61,8 @@ with braintrust.start_span(name="request", type="task") as request_span:
             "site": "www.sefaria.org",
             "page_type": "reader",
             "page_url": "...",
-            "client_version": "...",
+            "client_version": "1.0.0",
+            "source": "component",  # or "api" for direct API calls
         },
         tags=[environment],  # dev | staging | prod
     )
