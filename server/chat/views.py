@@ -871,7 +871,15 @@ def openai_chat_completions(request):
     OpenAI-compatible chat completions endpoint for Braintrust integration.
 
     POST /api/v1/chat/completions
+
+    Accepts OpenAI chat completion format, calls the Sefaria agent,
+    and returns response in OpenAI format with routing metadata.
     """
+    import uuid
+
+    start_time = time.time()
+
+    # Validate request
     serializer = OpenAIChatRequestSerializer(data=request.data)
     if not serializer.is_valid():
         first_error = next(iter(serializer.errors.values()))[0]
@@ -882,5 +890,201 @@ def openai_chat_completions(request):
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Placeholder - will implement full logic in next task
-    return Response({"status": "not_implemented"}, status=501)
+    data = serializer.validated_data
+    messages = data["messages"]
+
+    # Extract last user message
+    user_message = next(
+        (m["content"] for m in reversed(messages) if m["role"] == "user"),
+        None,
+    )
+    if not user_message:
+        return _openai_error_response(
+            message="No user message found in messages array",
+            error_type="invalid_request_error",
+            code="missing_user_message",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Generate identifiers with bt- prefix for traceability
+    session_id = f"bt-{uuid.uuid4().hex[:12]}"
+    user_id = "bt-braintrust-playground"
+    turn_id = ChatMessage.generate_turn_id()
+    message_id = f"msg-{uuid.uuid4().hex[:12]}"
+
+    logger.info(
+        f"[openai-compat] user={user_id} session={session_id[:20]}... text={user_message[:50]}..."
+    )
+
+    # Create session
+    session, _ = ChatSession.objects.update_or_create(
+        session_id=session_id,
+        defaults={
+            "user_id": user_id,
+            "last_activity": timezone.now(),
+        },
+    )
+
+    # Set up Braintrust-specific context
+    page_context = {
+        "site": "braintrust.dev",
+        "page_type": "playground",
+        "page_url": "https://braintrust.dev/playground",
+        "client_version": "openai-compat-1.0",
+        "source": "braintrust",
+    }
+
+    # Initialize Braintrust logger
+    _get_bt_logger()
+
+    with braintrust.start_span(name="openai-compat-request", type="task") as request_span:
+        request_span.log(
+            input={"query": user_message},
+            metadata={
+                "session_id": session_id,
+                "user_id": user_id,
+                "turn_id": turn_id,
+                **page_context,
+            },
+            tags=["braintrust", "openai-compat"],
+        )
+
+        # Route the message
+        router = get_router()
+        route_result = router.route(
+            session_id=session_id,
+            user_message=user_message,
+            conversation_summary="",
+            previous_flow=None,
+            user_metadata={
+                "locale": "",
+                "pageUrl": page_context["page_url"],
+            },
+        )
+
+        logger.info(
+            f"[openai-compat] Route: flow={route_result.flow.value} "
+            f"confidence={route_result.confidence:.2f}"
+        )
+
+        # Save user message
+        ChatMessage.objects.create(
+            message_id=message_id,
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            role=ChatMessage.Role.USER,
+            content=user_message,
+            client_timestamp=timezone.now(),
+            page_url=page_context["page_url"],
+            locale="",
+            client_version=page_context["client_version"],
+            flow=route_result.flow.value,
+        )
+
+        try:
+            # Build conversation from OpenAI messages
+            conversation = [
+                ConversationMessage(role=m["role"], content=m["content"]) for m in messages
+            ]
+
+            # Execute agent
+            agent = get_agent_service()
+            agent_response = run_async(
+                agent.send_message(
+                    messages=conversation,
+                    route_result=route_result,
+                    session_id=session_id,
+                    user_id=user_id,
+                    turn_id=turn_id,
+                    **page_context,
+                )
+            )
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # Save assistant response
+            response_msg = ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                role=ChatMessage.Role.ASSISTANT,
+                content=agent_response.content,
+                latency_ms=latency_ms,
+                llm_calls=agent_response.llm_calls,
+                tool_calls_count=len(agent_response.tool_calls),
+                tool_calls_data=agent_response.tool_calls,
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_tokens=agent_response.cache_creation_tokens,
+                cache_read_tokens=agent_response.cache_read_tokens,
+                model_name="claude-sonnet-4-5-20250929",
+                flow=route_result.flow.value,
+                status=ChatMessage.Status.REFUSED
+                if agent_response.was_refused
+                else ChatMessage.Status.SUCCESS,
+            )
+
+            logger.info(
+                f"[openai-compat] response={response_msg.message_id[:20]}... "
+                f"latency={latency_ms}ms tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
+            )
+
+            request_span.log(
+                output={"response": agent_response.content[:500]},
+                tags=[route_result.flow.value.lower(), "braintrust"],
+                metrics={
+                    "latency_ms": latency_ms,
+                    "input_tokens": agent_response.input_tokens,
+                    "output_tokens": agent_response.output_tokens,
+                },
+            )
+
+            # Return OpenAI-compatible response
+            return Response(
+                {
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": data["model"],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": agent_response.content,
+                            },
+                            "finish_reason": "content_filter"
+                            if agent_response.was_refused
+                            else "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": agent_response.input_tokens,
+                        "completion_tokens": agent_response.output_tokens,
+                        "total_tokens": agent_response.input_tokens + agent_response.output_tokens,
+                    },
+                    "routing": {
+                        "flow": route_result.flow.value,
+                        "decision_id": route_result.decision_id,
+                        "confidence": route_result.confidence,
+                        "was_refused": agent_response.was_refused,
+                    },
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"[openai-compat] Agent error: {e}", exc_info=True)
+
+            request_span.log(
+                output={"error": str(e)},
+                error=str(e),
+            )
+
+            return _openai_error_response(
+                message=f"Internal error: {e!s}",
+                error_type="internal_error",
+                code="agent_error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
