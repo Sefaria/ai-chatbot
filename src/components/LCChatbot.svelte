@@ -458,11 +458,13 @@
       </header>
 
       <!-- Message List -->
-      <div 
+      <div
       class="lc-chatbot-messages"
       bind:this={messageListRef}
       onscroll={handleScroll}
       onclick={handleMessageLinkClick}
+      onkeydown={handleMessageLinkClick}
+      role="log"
     >
         {#if isLoadingHistory}
           <div class="loading-indicator">
