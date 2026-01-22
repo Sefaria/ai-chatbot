@@ -70,11 +70,14 @@ def extract_page_context(context: dict) -> dict:
     """Extract page context from request context for Braintrust logging."""
     page_url = context.get("pageUrl", "")
     parsed_url = urlparse(page_url) if page_url else None
+    client_version = context.get("clientVersion", "")
     return {
         "site": parsed_url.netloc if parsed_url else "",
         "page_type": extract_page_type(page_url),
         "page_url": page_url,
-        "client_version": context.get("clientVersion", ""),
+        "client_version": client_version,
+        # Infer source: component always sends clientVersion, direct API calls typically don't
+        "source": "component" if client_version else "api",
     }
 
 

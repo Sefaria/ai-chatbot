@@ -3,7 +3,7 @@
 import pytest
 
 from chat.agent.claude_service import extract_refs
-from chat.views import extract_page_type
+from chat.views import extract_page_context, extract_page_type
 
 
 class TestExtractPageType:
@@ -89,3 +89,44 @@ class TestExtractRefs:
             {"tool_name": "get_text", "tool_input": {"reference": "Exodus 1:1"}},
         ]
         assert extract_refs(tool_calls) == ["Exodus 1:1", "Genesis 1:1"]
+
+
+class TestExtractPageContext:
+    """Test extract_page_context function for context extraction and source inference."""
+
+    def test_source_is_component_when_client_version_present(self) -> None:
+        """Component always sends clientVersion, so source should be 'component'."""
+        context = {"clientVersion": "1.0.0", "pageUrl": "https://sefaria.org/Genesis.1"}
+        result = extract_page_context(context)
+        assert result["source"] == "component"
+
+    def test_source_is_api_when_client_version_missing(self) -> None:
+        """Direct API calls typically don't send clientVersion."""
+        context = {"pageUrl": "https://sefaria.org/Genesis.1"}
+        result = extract_page_context(context)
+        assert result["source"] == "api"
+
+    def test_source_is_api_when_client_version_empty(self) -> None:
+        """Empty clientVersion should be treated as API."""
+        context = {"clientVersion": "", "pageUrl": "https://sefaria.org/Genesis.1"}
+        result = extract_page_context(context)
+        assert result["source"] == "api"
+
+    def test_source_is_api_when_context_empty(self) -> None:
+        """Empty context should default to API."""
+        result = extract_page_context({})
+        assert result["source"] == "api"
+
+    def test_extracts_all_fields(self) -> None:
+        """Verify all expected fields are extracted."""
+        context = {
+            "pageUrl": "https://www.sefaria.org/Genesis.1",
+            "clientVersion": "1.0.0",
+            "locale": "en-US",
+        }
+        result = extract_page_context(context)
+        assert result["site"] == "www.sefaria.org"
+        assert result["page_type"] == "reader"
+        assert result["page_url"] == "https://www.sefaria.org/Genesis.1"
+        assert result["client_version"] == "1.0.0"
+        assert result["source"] == "component"
