@@ -492,12 +492,16 @@
       </header>
 
       <!-- Message List -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
       class="lc-chatbot-messages"
       class:clearing={isClearing}
       bind:this={messageListRef}
       onscroll={handleScroll}
       onclick={handleMessageLinkClick}
+      onkeydown={(e) => e.key === 'Enter' && handleMessageLinkClick(e)}
+      role="log"
+      aria-label="Chat messages"
     >
         {#if isLoadingHistory}
           <div class="loading-indicator">
