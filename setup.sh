@@ -141,6 +141,33 @@ if [ -f "server/.env" ]; then
         echo -e "${RED}✗${NC} ANTHROPIC_API_KEY missing"
         ISSUES+=("Add ANTHROPIC_API_KEY to server/.env")
     fi
+
+    # Check PostgreSQL configuration
+    if grep -q "^DB_USER=your_database_user" server/.env || grep -q "^DB_NAME=your_database_name" server/.env; then
+        echo -e "${RED}✗${NC} PostgreSQL not configured"
+        echo
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}  PostgreSQL Setup Required${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "  Migrations and the server won't work without it."
+        echo
+        echo -e "  1. Find your existing PostgreSQL user:"
+        echo -e "     ${BLUE}psql postgres -c \"\\du\"${NC}"
+        echo
+        echo -e "  2. Update ${BLUE}server/.env${NC} with your credentials:"
+        echo -e "     DB_NAME=sefaria_chatbot"
+        echo -e "     DB_USER=<your_postgres_user>"
+        echo -e "     DB_PASSWORD=<your_password>"
+        echo
+        echo -e "  3. Create the database:"
+        echo -e "     ${BLUE}createdb sefaria_chatbot${NC}"
+        echo
+        echo -e "  4. Re-run ${BLUE}./setup.sh${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        ISSUES+=("Configure PostgreSQL in server/.env (see instructions above)")
+    elif grep -q "^DB_USER=" server/.env && grep -q "^DB_NAME=" server/.env; then
+        echo -e "${GREEN}✓${NC} PostgreSQL configured"
+    fi
 fi
 
 # --- Summary ---
