@@ -430,6 +430,9 @@ def chat(request):
         user_message.response_message = error_message
         user_message.save(update_fields=["response_message"])
 
+        # Reload session to get current state
+        session.refresh_from_db()
+
         return Response(
             {
                 "messageId": error_message.message_id,
@@ -441,6 +444,7 @@ def chat(request):
                     "decisionId": route_result.decision_id,
                     "wasRefused": False,
                 },
+                "session": build_session_info(session),
             }
         )
 

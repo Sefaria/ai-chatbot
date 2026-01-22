@@ -37,10 +37,10 @@
   let limitReached = $state(false);
   let isClearing = $state(false);
 
-  // Dynamic text based on turn limit
-  let newSessionButtonText = $derived(maxTurns === 1 ? 'New Question' : 'New Conversation');
+  // Dynamic text based on turn limit (default to single-turn mode when unknown)
+  let newSessionButtonText = $derived(maxTurns === 1 || maxTurns === null ? 'New Question' : 'New Conversation');
   let newSessionHintText = $derived(
-    maxTurns === 1
+    maxTurns === 1 || maxTurns === null
       ? 'Start a new question to continue'
       : 'Start a new conversation to continue'
   );
@@ -388,13 +388,15 @@
       // Clear old messages from storage
       setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
 
-      isClearing = false;
-
-      // Focus input
-      setTimeout(() => inputRef?.focus(), 100);
+      // Allow clearing animation to complete before resetting flag
+      setTimeout(() => {
+        isClearing = false;
+        // Focus input after animation completes
+        inputRef?.focus();
+      }, 150);
 
       dispatchEvent('session_started', { sessionId: newSessionId });
-    }, 150); // Quick fade duration
+    }, 150); // Animation start delay
   }
 
   // Resize handling
@@ -534,17 +536,16 @@
       </header>
 
       <!-- Message List -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
-      class="lc-chatbot-messages"
-      class:clearing={isClearing}
-      bind:this={messageListRef}
-      onscroll={handleScroll}
-      onclick={handleMessageLinkClick}
-      onkeydown={(e) => e.key === 'Enter' && handleMessageLinkClick(e)}
-      role="log"
-      aria-label="Chat messages"
-    >
+        class="lc-chatbot-messages"
+        class:clearing={isClearing}
+        bind:this={messageListRef}
+        onscroll={handleScroll}
+        onclick={handleMessageLinkClick}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+      >
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
