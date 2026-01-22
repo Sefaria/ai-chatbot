@@ -53,3 +53,17 @@ class HistoryResponseSerializer(serializers.Serializer):
 
     messages = HistoryMessageSerializer(many=True)
     hasMore = serializers.BooleanField()
+
+
+class OpenAIMessageSerializer(serializers.Serializer):
+    """Single message in OpenAI chat format."""
+
+    role = serializers.ChoiceField(choices=["system", "user", "assistant"])
+    content = serializers.CharField(max_length=50000)
+
+
+class OpenAIChatRequestSerializer(serializers.Serializer):
+    """OpenAI-compatible chat completion request."""
+
+    model = serializers.CharField(max_length=100, default="sefaria-agent")
+    messages = serializers.ListField(child=OpenAIMessageSerializer(), min_length=1, max_length=100)
