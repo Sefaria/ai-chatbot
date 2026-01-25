@@ -112,54 +112,6 @@ def get_router() -> RouterService:
     return _router_service
 
 
-def run_async(coro):
-    """Run an async coroutine in a sync context."""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    if loop.is_running():
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
-            return future.result()
-    else:
-        return loop.run_until_complete(coro)
-
-
-def _save_route_decision(
-    route_result: RouteResult,
-    session_id: str,
-    turn_id: str,
-    user_message: str,
-    summary: str = "",
-    previous_flow: str = "",
-) -> RouteDecision:
-    """Save a route decision to the database."""
-    return RouteDecision.objects.create(
-        decision_id=route_result.decision_id,
-        session_id=session_id,
-        turn_id=turn_id,
-        user_message=user_message[:5000],
-        conversation_summary_used=summary[:5000],
-        previous_flow=previous_flow,
-        flow=route_result.flow.value,
-        confidence=route_result.confidence,
-        reason_codes=[code.value for code in route_result.reason_codes],
-        core_prompt_id=route_result.prompt_bundle.core_prompt_id,
-        core_prompt_version=route_result.prompt_bundle.core_prompt_version,
-        flow_prompt_id=route_result.prompt_bundle.flow_prompt_id,
-        flow_prompt_version=route_result.prompt_bundle.flow_prompt_version,
-        tools_attached=route_result.tools,
-        session_action=route_result.session_action.value,
-        safety_allowed=route_result.safety.allowed,
-        refusal_message=route_result.safety.refusal_message or "",
-        router_latency_ms=route_result.router_latency_ms,
-    )
-
 @api_view(["POST"])
 def chat_stream_v2(request):
     """

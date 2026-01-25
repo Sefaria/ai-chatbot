@@ -69,13 +69,3 @@ export function updateSessionActivity(sessionId) {
     lastActivity: new Date().toISOString()
   });
 }
-
-/**
- * Get current session ID without creating new one
- * @returns {string|null} Session ID or null
- */
-export function getCurrentSessionId() {
-  const stored = getStorage(STORAGE_KEYS.SESSION, null);
-  return stored?.sessionId || null;
-}
-

@@ -2,8 +2,8 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId } from '../lib/session.js';
-  import { sendMessage, sendMessageStream, loadHistory, fetchPromptDefaults } from '../lib/api.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { sendMessageStream, loadHistory, fetchPromptDefaults } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
 
@@ -226,23 +226,6 @@
     }
   }
 
-  async function loadInitialHistory() {
-    if (!userId || !sessionId || !apiBaseUrl) return;
-    
-    isLoadingHistory = true;
-    try {
-      const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
-      messages = result.messages;
-      hasMoreHistory = result.hasMore;
-      saveMessagesToStorage();
-      scrollToBottom();
-    } catch (e) {
-      console.warn('[lc-chatbot] Failed to load history:', e);
-    } finally {
-      isLoadingHistory = false;
-    }
-  }
-
   async function syncSessionState() {
     if (!userId || !sessionId || !apiBaseUrl) return;
 
@@ -427,41 +410,6 @@
     messages = messages.filter(m => m.messageId !== messageId);
     inputText = failedMessage.content;
     await handleSend();
-  }
-
-  function startNewSession() {
-    // Trigger fade animation
-    isClearing = true;
-
-    setTimeout(() => {
-      // Generate new session
-      const newSessionId = generateSessionId();
-      sessionId = newSessionId;
-
-      // Clear messages
-      messages = [];
-
-      // Reset state
-      hasMoreHistory = false;
-
-      // Save new session
-      setStorage(STORAGE_KEYS.SESSION, {
-        sessionId: newSessionId,
-        lastActivity: new Date().toISOString()
-      });
-
-      // Clear old messages from storage
-      setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
-
-      // Allow clearing animation to complete before resetting flag
-      setTimeout(() => {
-        isClearing = false;
-        // Focus input after animation completes
-        inputRef?.focus();
-      }, 150);
-
-      dispatchEvent('session_started', { sessionId: newSessionId });
-    }, 150); // Animation start delay
   }
 
   // Resize handling
