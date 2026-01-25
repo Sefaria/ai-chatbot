@@ -66,6 +66,7 @@ class AgentResponse:
     flow: str = ""
     decision_id: str = ""
     was_refused: bool = False
+    trace_id: str | None = None
 
 
 def truncate(text: str, max_len: int) -> str:
@@ -185,6 +186,7 @@ class ClaudeAgentService:
         """
         start_time = time.time()
         span = current_span()
+        trace_id = getattr(span, "id", None)
 
         # Get last user message - needed for both refusal and normal logging
         last_user_message = next((m.content for m in reversed(messages) if m.role == "user"), "")
@@ -192,16 +194,17 @@ class ClaudeAgentService:
         # Handle refusal flow
         if route_result.flow == Flow.REFUSE:
             return self._create_refusal_response(
-            route_result=route_result,
-            start_time=start_time,
-            messages=messages,
-            last_user_message=last_user_message,
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            summary_text=summary_text,
-            summary_metadata=summary_metadata,
-        )
+                route_result=route_result,
+                start_time=start_time,
+                messages=messages,
+                last_user_message=last_user_message,
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                summary_text=summary_text,
+                summary_metadata=summary_metadata,
+                trace_id=trace_id,
+            )
 
         def emit(update: AgentProgressUpdate):
             """Safely emit progress update."""
@@ -549,6 +552,7 @@ class ClaudeAgentService:
             latency_ms=latency_ms,
             flow=route_result.flow.value,
             decision_id=route_result.decision_id,
+            trace_id=trace_id,
         )
 
     def _create_refusal_response(
@@ -562,6 +566,7 @@ class ClaudeAgentService:
         turn_id: str | None = None,
         summary_text: str | None = None,
         summary_metadata: dict[str, Any] | None = None,
+        trace_id: str | None = None,
     ) -> AgentResponse:
         """Create a response for refused requests with Braintrust logging."""
         span = current_span()
@@ -628,6 +633,7 @@ class ClaudeAgentService:
             flow=route_result.flow.value,
             decision_id=route_result.decision_id,
             was_refused=True,
+            trace_id=trace_id,
         )
 
     def _block_to_dict(self, block: Any) -> dict[str, Any]:

@@ -9,6 +9,7 @@ from . import views
 urlpatterns = [
     # Core chat endpoints
     path("v2/chat/stream", views.chat_stream_v2, name="chat_stream_v2"),
+    path("v2/chat/feedback", views.chat_feedback_v2, name="chat_feedback_v2"),
     path("v2/prompts/defaults", views.prompt_defaults, name="prompt_defaults"),
     path("history", views.history, name="history"),
     # Admin/management endpoints

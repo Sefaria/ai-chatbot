@@ -3,7 +3,7 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessageStream, loadHistory, fetchPromptDefaults } from '../lib/api.js';
+  import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
 
@@ -348,6 +348,8 @@
         content: response.markdown,
         timestamp: response.timestamp,
         status: 'sent',
+        traceId: response.traceId || null,
+        feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats
       };
@@ -391,6 +393,27 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  }
+
+  async function handleFeedback(messageId, score) {
+    const target = messages.find(m => m.messageId === messageId);
+    if (!target?.traceId || !apiBaseUrl) return;
+
+    messages = messages.map(m =>
+      m.messageId === messageId ? { ...m, feedback: score > 0 ? 'like' : 'dislike' } : m
+    );
+
+    try {
+      await sendFeedback(apiBaseUrl, {
+        traceId: target.traceId,
+        score,
+        userId,
+        sessionId,
+        messageId
+      });
+    } catch (e) {
+      console.warn('[lc-chatbot] Feedback failed:', e);
     }
   }
 
@@ -675,6 +698,26 @@
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
+                {/if}
+                {#if item.role === 'assistant' && item.status === 'sent' && item.traceId}
+                  <div class="feedback-buttons">
+                    <button
+                      class="feedback-btn"
+                      class:active={item.feedback === 'like'}
+                      onclick={() => handleFeedback(item.messageId, 1)}
+                      aria-label="Like response"
+                    >
+                      👍
+                    </button>
+                    <button
+                      class="feedback-btn"
+                      class:active={item.feedback === 'dislike'}
+                      onclick={() => handleFeedback(item.messageId, 0)}
+                      aria-label="Dislike response"
+                    >
+                      👎
+                    </button>
+                  </div>
                 {/if}
               </div>
             </div>
@@ -1162,6 +1205,34 @@
 
   .retry-btn:hover {
     color: #dc2626;
+  }
+
+  .feedback-buttons {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 4px;
+  }
+
+  .feedback-btn {
+    border: 1px solid var(--lc-border);
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    font-size: 12px;
+    border-radius: 8px;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .feedback-btn:hover {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .feedback-btn.active {
+    background: var(--lc-primary);
+    color: white;
+    border-color: transparent;
   }
 
   /* Thinking/Progress Indicator */

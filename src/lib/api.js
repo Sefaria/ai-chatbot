@@ -33,6 +33,7 @@ import { generateMessageId } from './session.js';
  * @property {string} sessionId
  * @property {string} timestamp
  * @property {string} markdown
+ * @property {string} [traceId]
  * @property {SessionInfo} [session]
  */
 
@@ -224,6 +225,7 @@ export async function sendMessageStream(
                 sessionId: data.sessionId,
                 timestamp: data.timestamp,
                 markdown: data.markdown,
+                traceId: data.traceId,
                 toolCalls: data.toolCalls,
                 stats: data.stats,
                 session: data.session
@@ -273,6 +275,36 @@ export async function fetchPromptDefaults(apiBaseUrl) {
 
   if (!response.ok) {
     throw new Error(`Failed to load prompt defaults: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Send user feedback for a trace.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {Object} payload - Feedback payload
+ * @returns {Promise<{ success: boolean }>}
+ */
+export async function sendFeedback(apiBaseUrl, payload) {
+  const response = await fetch(`${apiBaseUrl}/v2/chat/feedback`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+    const error = new Error(errorData?.error || `Feedback request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return response.json();
