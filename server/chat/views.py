@@ -881,19 +881,23 @@ def chat_stream(request):
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=["response_message", "latency_ms"])
 
-        # Update conversation summary
+        # Update conversation summary (run in captured context to nest span under request)
         current_summary = session.conversation_summary or ""
         summary_service = get_summary_service()
-        summary_result = asyncio.run(
-            summary_service.update_summary(
-                current_summary=ConversationSummary(text=current_summary)
-                if current_summary
-                else None,
-                new_user_message=data["text"],
-                new_assistant_response=agent_response.content,
-                flow=route_result.flow.value,
+
+        def run_summary():
+            return asyncio.run(
+                summary_service.update_summary(
+                    current_summary=ConversationSummary(text=current_summary)
+                    if current_summary
+                    else None,
+                    new_user_message=data["text"],
+                    new_assistant_response=agent_response.content,
+                    flow=route_result.flow.value,
+                )
             )
-        )
+
+        summary_result = ctx.run(run_summary)
 
         # Update session with summary and stats
         _update_session_after_response(
@@ -1331,29 +1335,12 @@ def openai_chat_completions(request):
             user_msg.latency_ms = latency_ms
             user_msg.save(update_fields=["response_message", "latency_ms"])
 
-            # Update session statistics
-            session.message_count = ChatMessage.objects.filter(session_id=session_id).count()
-            session.turn_count = (session.turn_count or 0) + 1
-            session.current_flow = route_result.flow.value
-            session.total_input_tokens = (
-                session.total_input_tokens or 0
-            ) + agent_response.input_tokens
-            session.total_output_tokens = (
-                session.total_output_tokens or 0
-            ) + agent_response.output_tokens
-            session.total_tool_calls = (session.total_tool_calls or 0) + len(
-                agent_response.tool_calls
-            )
-            session.save(
-                update_fields=[
-                    "message_count",
-                    "turn_count",
-                    "last_activity",
-                    "current_flow",
-                    "total_input_tokens",
-                    "total_output_tokens",
-                    "total_tool_calls",
-                ]
+            # Update session (no summary for single-turn playground use)
+            _update_session_after_response(
+                session=session,
+                agent_response=agent_response,
+                route_result=route_result,
+                new_summary_text=None,  # OpenAI-compat is single-turn, no summary needed
             )
 
             logger.info(
