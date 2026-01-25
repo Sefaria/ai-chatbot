@@ -655,6 +655,26 @@ def chat_stream(request):
         response["X-Accel-Buffering"] = "no"
         return response
 
+    # Extract page context and environment for Braintrust logging
+    page_context = extract_page_context(context)
+    environment = os.environ.get("ENVIRONMENT", "dev")
+
+    # Initialize Braintrust logger for request-level span
+    _get_bt_logger()
+
+    # Start request-level span for Braintrust tracing
+    request_span = braintrust.start_span(name="stream-request", type="task")
+    request_span.log(
+        input={"query": data["text"]},
+        metadata={
+            "session_id": data["sessionId"],
+            "user_id": data["userId"],
+            "turn_id": turn_id,
+            **page_context,
+        },
+        tags=[environment],
+    )
+
     # Route the message
     router = get_router()
     route_result = router.route(
@@ -690,9 +710,6 @@ def chat_stream(request):
         flow=route_result.flow.value,
     )
 
-    # Extract page context for Braintrust logging (captured in closure)
-    page_context = extract_page_context(context)
-
     def generate_sse():
         """Generator that yields SSE events."""
         progress_queue = queue.Queue()
@@ -711,7 +728,11 @@ def chat_stream(request):
         def on_progress(update: AgentProgressUpdate):
             progress_queue.put(update)
 
-        def run_agent():
+        # Capture current context (including Braintrust span) before switching threads
+        ctx = contextvars.copy_context()
+
+        def run_agent_with_context():
+            """Run agent in captured context to preserve Braintrust span."""
             try:
                 history_messages = ChatMessage.objects.filter(
                     session_id=data["sessionId"]
@@ -738,6 +759,9 @@ def chat_stream(request):
                 result_holder["error"] = str(e)
             finally:
                 progress_queue.put(None)
+
+        def run_agent():
+            ctx.run(run_agent_with_context)
 
         agent_thread = Thread(target=run_agent, daemon=True)
         agent_thread.start()
@@ -793,6 +817,16 @@ def chat_stream(request):
 
             user_message.response_message = error_msg
             user_message.save(update_fields=["response_message"])
+
+            # Close the Braintrust span with error
+            try:
+                request_span.log(
+                    output={"error": result_holder["error"]},
+                    metadata={"flow": route_result.flow.value, "was_error": True},
+                    metrics={"latency_ms": latency_ms},
+                )
+            finally:
+                request_span.end()
 
             yield f"event: error\ndata: {json.dumps({'error': result_holder['error']})}\n\n"
             return
@@ -877,6 +911,27 @@ def chat_stream(request):
         }
 
         yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
+
+        # Close the Braintrust span with output
+        try:
+            token_usage = TokenUsage(
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_tokens=agent_response.cache_creation_tokens,
+                cache_read_tokens=agent_response.cache_read_tokens,
+            )
+            request_span.log(
+                output={"response": agent_response.content[:500]},
+                metadata={
+                    "flow": route_result.flow.value,
+                    "was_refused": agent_response.was_refused,
+                    "llm_calls": agent_response.llm_calls,
+                    "tool_calls": len(agent_response.tool_calls),
+                },
+                metrics=token_usage.to_braintrust_metrics(latency_ms),
+            )
+        finally:
+            request_span.end()
 
     response = StreamingHttpResponse(generate_sse(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
