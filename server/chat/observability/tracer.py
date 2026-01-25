@@ -118,6 +118,7 @@ class Span:
         trace_id: str | None = None,
         parent_id: str | None = None,
         backends: list[TracingBackend] | None = None,
+        context_token: contextvars.Token | None = None,
     ):
         self.span_id = uuid.uuid4().hex
         self.trace_id = trace_id or self.span_id  # Root span: trace_id = span_id
@@ -129,6 +130,7 @@ class Span:
         self.data = SpanData()
         self._backends = backends or []
         self._ended = False
+        self._context_token = context_token  # For resetting current_span on end()
 
     def log(
         self,
@@ -159,6 +161,10 @@ class Span:
 
         self._ended = True
         self.duration_ms = int((time.time() - self.start_time) * 1000)
+
+        # Reset context if we have a token (from create_span)
+        if self._context_token is not None:
+            _current_span.reset(self._context_token)
 
         # Record to all backends
         span_dict = self.to_dict()
@@ -200,6 +206,51 @@ _current_span: contextvars.ContextVar[Span | None] = contextvars.ContextVar(
 def current_span() -> Span | None:
     """Get the currently active span, or None if not in a span context."""
     return _current_span.get()
+
+
+def create_span(
+    name: str,
+    type: str,  # noqa: A002 - matches Braintrust API
+    backends: list[TracingBackend] | None = None,
+) -> Span:
+    """Create a span for manual lifecycle management.
+
+    Unlike start_span (context manager), this returns a span that you
+    manage manually. Call span.end() when done.
+
+    This is useful for spans that cross function boundaries, like the
+    request span created in prepare_turn() and ended in views.py.
+
+    Args:
+        name: Human-readable name for the span
+        type: Type of span (task, llm, function, tool)
+        backends: Optional list of backends to record to
+
+    Returns:
+        The created Span instance
+
+    Example:
+        span = create_span(name="request", type="task")
+        span.log(input={"query": "..."})
+        # ... later ...
+        span.log(output={...})
+        span.end()  # Records to backends and restores previous current_span
+    """
+    parent = _current_span.get()
+
+    span = Span(
+        name=name,
+        span_type=type,
+        trace_id=parent.trace_id if parent else None,
+        parent_id=parent.span_id if parent else None,
+        backends=backends or [],
+    )
+
+    # Set as current and store token for reset on end()
+    token = _current_span.set(span)
+    span._context_token = token
+
+    return span
 
 
 @contextmanager

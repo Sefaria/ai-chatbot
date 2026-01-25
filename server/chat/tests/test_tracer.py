@@ -951,3 +951,123 @@ class TestExpectedToolSpanData:
             span.log(output="Error: Reference not found", error="Error: Reference not found")
 
         assert span.data.error == "Error: Reference not found"
+
+
+# =============================================================================
+# Non-Context-Manager Span Tests (for orchestrator pattern)
+# =============================================================================
+
+
+class TestCreateSpan:
+    """Test create_span for non-context-manager usage.
+
+    The orchestrator creates a span in prepare_turn() and ends it in views.py.
+    This pattern requires spans that can be manually managed.
+    """
+
+    def test_create_span_returns_span_instance(self) -> None:
+        """create_span should return a Span instance without context manager."""
+        from chat.observability import create_span
+
+        span = create_span(name="request", type="task")
+        try:
+            from chat.observability.tracer import Span
+
+            assert isinstance(span, Span)
+            assert span.name == "request"
+            assert span.span_type == "task"
+        finally:
+            span.end()
+
+    def test_create_span_sets_current_span(self) -> None:
+        """create_span should set the created span as current."""
+        from chat.observability import create_span, current_span
+
+        span = create_span(name="request", type="task")
+        try:
+            assert current_span() is span
+        finally:
+            span.end()
+
+    def test_create_span_supports_log(self) -> None:
+        """Created span should support logging data."""
+        from chat.observability import create_span
+
+        span = create_span(name="request", type="task")
+        try:
+            span.log(input={"query": "test"})
+            span.log(output={"response": "answer"})
+
+            assert span.data.input == {"query": "test"}
+            assert span.data.output == {"response": "answer"}
+        finally:
+            span.end()
+
+    def test_create_span_supports_manual_end(self) -> None:
+        """Created span should support manual end() call."""
+        from chat.observability import create_span
+
+        recorded_spans = []
+
+        class TestBackend:
+            def record_span(self, span_data: dict):
+                recorded_spans.append(span_data)
+
+        # For this test we need to inject a test backend
+        from chat.observability import _reset_tracer
+
+        _reset_tracer()
+
+        span = create_span(name="request", type="task")
+        span._backends.append(TestBackend())
+        span.log(input={"query": "test"})
+        span.end()
+
+        assert len(recorded_spans) == 1
+        assert recorded_spans[0]["input"] == {"query": "test"}
+
+    def test_create_span_clears_current_on_end(self) -> None:
+        """After end(), the span should no longer be current."""
+        from chat.observability import create_span, current_span
+
+        span = create_span(name="request", type="task")
+        assert current_span() is span
+
+        span.end()
+        # After end, current span should be None (root span)
+        assert current_span() is None
+
+    def test_nested_spans_with_create_span(self) -> None:
+        """Child spans should nest under create_span parent."""
+        from chat.observability import create_span, start_span
+
+        parent = create_span(name="request", type="task")
+        try:
+            with start_span(name="child", type="llm") as child:
+                assert child.parent_id == parent.span_id
+                assert child.trace_id == parent.trace_id
+        finally:
+            parent.end()
+
+    def test_create_span_uses_global_tracer_backends(self) -> None:
+        """create_span should use the global tracer's backends."""
+        from unittest.mock import MagicMock, patch
+
+        from chat.observability import _reset_tracer, create_span
+
+        _reset_tracer()
+
+        mock_bt_span = MagicMock()
+        mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
+        mock_bt_span.__exit__ = MagicMock(return_value=None)
+
+        with patch("braintrust.start_span", return_value=mock_bt_span):
+            with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
+                _reset_tracer()  # Reset to pick up env var
+
+                span = create_span(name="test", type="task")
+                span.log(input={"query": "test"})
+                span.end()
+
+                # Should have recorded to braintrust backend
+                mock_bt_span.log.assert_called()
