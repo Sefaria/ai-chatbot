@@ -842,7 +842,7 @@ def chat_stream(request):
             try:
                 request_span.log(
                     output={"error": result_holder["error"]},
-                    metadata={"flow": route_result.flow.value, "was_error": True},
+                    error=result_holder["error"],
                     metrics={"latency_ms": latency_ms},
                 )
             finally:
@@ -935,21 +935,36 @@ def chat_stream(request):
 
         # Close the Braintrust span with output
         try:
-            token_usage = TokenUsage(
+            # Aggregate token usage from all LLM calls: router + agent + summary
+            total_usage = TokenUsage(
                 input_tokens=agent_response.input_tokens,
                 output_tokens=agent_response.output_tokens,
-                cache_creation_tokens=agent_response.cache_creation_tokens,
-                cache_read_tokens=agent_response.cache_read_tokens,
+                cache_creation_input_tokens=agent_response.cache_creation_tokens,
+                cache_read_input_tokens=agent_response.cache_read_tokens,
             )
+
+            # Add router tokens (guardrails + classifier)
+            if route_result.token_usage:
+                total_usage = total_usage + route_result.token_usage
+
+            # Add summary tokens
+            if summary_result.token_usage:
+                total_usage = total_usage + summary_result.token_usage
+
+            # Count all LLM calls: agent iterations + router (up to 2) + summary (1)
+            router_llm_calls = 2 if route_result.token_usage else 0
+            summary_llm_calls = 1 if summary_result.token_usage else 0
+            total_llm_calls = agent_response.llm_calls + router_llm_calls + summary_llm_calls
+
             request_span.log(
                 output={"response": agent_response.content[:500]},
-                metadata={
-                    "flow": route_result.flow.value,
-                    "was_refused": agent_response.was_refused,
-                    "llm_calls": agent_response.llm_calls,
+                tags=[route_result.flow.value.lower()],
+                metrics={
+                    "latency_ms": latency_ms,
+                    "llm_calls": total_llm_calls,
                     "tool_calls": len(agent_response.tool_calls),
+                    **total_usage.to_braintrust(),
                 },
-                metrics=token_usage.to_braintrust_metrics(latency_ms),
             )
         finally:
             request_span.end()
