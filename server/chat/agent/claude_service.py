@@ -167,6 +167,7 @@ class ClaudeAgentService:
         page_type: str = "unknown",
         page_url: str = "",
         client_version: str = "",
+        source: str = "",
     ) -> AgentResponse:
         """
         Send a message to the agent with routing context.
