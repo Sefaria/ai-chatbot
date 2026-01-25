@@ -1026,6 +1026,31 @@ def openai_chat_completions(request):
                 else ChatMessage.Status.SUCCESS,
             )
 
+            # Update session statistics
+            session.message_count = ChatMessage.objects.filter(session_id=session_id).count()
+            session.turn_count = (session.turn_count or 0) + 1
+            session.current_flow = route_result.flow.value
+            session.total_input_tokens = (
+                session.total_input_tokens or 0
+            ) + agent_response.input_tokens
+            session.total_output_tokens = (
+                session.total_output_tokens or 0
+            ) + agent_response.output_tokens
+            session.total_tool_calls = (session.total_tool_calls or 0) + len(
+                agent_response.tool_calls
+            )
+            session.save(
+                update_fields=[
+                    "message_count",
+                    "turn_count",
+                    "last_activity",
+                    "current_flow",
+                    "total_input_tokens",
+                    "total_output_tokens",
+                    "total_tool_calls",
+                ]
+            )
+
             logger.info(
                 f"[openai-compat] response={response_msg.message_id[:20]}... "
                 f"latency={latency_ms}ms tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
