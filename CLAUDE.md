@@ -53,7 +53,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
 src/components/LCChatbot.svelte  # Main widget
 src/lib/                         # API, session, markdown
 
-server/chat/views.py             # API endpoints
+server/chat/views.py             # API endpoints (thin HTTP layer)
+server/chat/orchestrator.py      # Shared turn logic (prepare→execute→complete)
 server/chat/router/              # Intent classification
 server/chat/agent/               # Claude + tools
 ```

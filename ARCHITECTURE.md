@@ -24,14 +24,15 @@ Svelte Web Component → Django REST → Router → Claude Agent → Sefaria API
 ┌────────────────────────────────▼────────────────────────────────────────┐
 │                              Backend                                     │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐    │
-│  │    views.py     │───▶│  RouterService  │───▶│ GuardrailChecker │    │
-│  │  (Orchestrator) │    │(Flow Classifier)│    │ (Safety Patterns)│    │
-│  └────────┬────────┘    └────────┬────────┘    └──────────────────┘    │
-│           │                      │                                      │
-│           │              RouteResult                                    │
-│           │     (flow, prompts, tools, safety)                         │
-│           │                      │                                      │
-│           ▼                      ▼                                      │
+│  │    views.py     │───▶│  Orchestrator   │───▶│  RouterService   │    │
+│  │  (HTTP Layer)   │    │ (Business Logic)│    │(Flow Classifier) │    │
+│  └─────────────────┘    └────────┬────────┘    └──────────────────┘    │
+│                                  │                                      │
+│                          prepare_turn()                                 │
+│                          execute_agent()                                │
+│                          complete_turn()                                │
+│                                  │                                      │
+│                                  ▼                                      │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐    │
 │  │  AgentService   │◀───│  PromptService  │    │  ToolExecutor    │    │
 │  │  (Claude Loop)  │    │(Braintrust+Cache│    │  (Sefaria APIs)  │    │
@@ -41,6 +42,28 @@ Svelte Web Component → Django REST → Router → Claude Agent → Sefaria API
 │                          Tool Calls                                     │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Request Orchestration
+
+All endpoints share the same turn flow via `orchestrator.py`:
+
+```
+prepare_turn()        → Session, routing, save user message, Braintrust span
+execute_agent()       → Run Claude with tools (optional progress callback)
+complete_turn()       → Save response, summary, session stats, log to Braintrust
+```
+
+**Data Structures:**
+- `TurnContext` - State during turn (session, route, user message, span)
+- `TurnResult` - Final result (agent response, metrics, saved message)
+
+**Endpoint Differences:**
+
+| Endpoint | Response | Conversation Source | Progress |
+|----------|----------|---------------------|----------|
+| `/api/chat` | JSON | Database | None |
+| `/api/chat/stream` | SSE | Database | `on_progress` callback |
+| `/api/v1/chat/completions` | OpenAI format | Request | None |
 
 ## Flows
 
@@ -226,7 +249,8 @@ RouteDecision
 ```
 server/
 ├── chat/
-│   ├── views.py              # API orchestration
+│   ├── views.py              # API endpoints (thin HTTP layer)
+│   ├── orchestrator.py       # Shared turn orchestration logic
 │   ├── models.py             # Data models
 │   ├── serializers.py        # Request/response validation
 │   ├── router/
