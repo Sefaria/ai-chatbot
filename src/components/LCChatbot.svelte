@@ -561,6 +561,7 @@
       </header>
 
       <!-- Message List -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
