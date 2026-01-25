@@ -189,6 +189,46 @@ def run_async(coro):
         return loop.run_until_complete(coro)
 
 
+def _update_session_after_response(
+    session: ChatSession,
+    agent_response,
+    route_result: RouteResult,
+    new_summary_text: str | None = None,
+) -> None:
+    """
+    Update session state after an agent response.
+
+    Args:
+        session: The chat session to update
+        agent_response: The agent's response containing token counts and tool calls
+        route_result: The routing result for this turn
+        new_summary_text: The updated conversation summary (if computed)
+    """
+    session.message_count = ChatMessage.objects.filter(session_id=session.session_id).count()
+    session.turn_count = (session.turn_count or 0) + 1
+    session.current_flow = route_result.flow.value
+    session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
+    session.total_output_tokens = (session.total_output_tokens or 0) + agent_response.output_tokens
+    session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
+
+    update_fields = [
+        "message_count",
+        "turn_count",
+        "last_activity",
+        "current_flow",
+        "total_input_tokens",
+        "total_output_tokens",
+        "total_tool_calls",
+    ]
+
+    if new_summary_text is not None:
+        session.conversation_summary = new_summary_text
+        session.summary_updated_at = timezone.now()
+        update_fields.extend(["conversation_summary", "summary_updated_at"])
+
+    session.save(update_fields=update_fields)
+
+
 def _save_route_decision(
     route_result: RouteResult,
     session_id: str,
@@ -419,7 +459,7 @@ def chat(request):
             user_message.latency_ms = latency_ms
             user_message.save(update_fields=["response_message", "latency_ms"])
 
-            # Update session with new summary and flow
+            # Update conversation summary
             summary_service = get_summary_service()
             summary_result = run_async(
                 summary_service.update_summary(
@@ -432,32 +472,12 @@ def chat(request):
                 )
             )
 
-            session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
-            session.turn_count = (session.turn_count or 0) + 1
-            session.current_flow = route_result.flow.value
-            session.conversation_summary = summary_result.summary.to_text()
-            session.summary_updated_at = timezone.now()
-            session.total_input_tokens = (
-                session.total_input_tokens or 0
-            ) + agent_response.input_tokens
-            session.total_output_tokens = (
-                session.total_output_tokens or 0
-            ) + agent_response.output_tokens
-            session.total_tool_calls = (session.total_tool_calls or 0) + len(
-                agent_response.tool_calls
-            )
-            session.save(
-                update_fields=[
-                    "message_count",
-                    "turn_count",
-                    "last_activity",
-                    "current_flow",
-                    "conversation_summary",
-                    "summary_updated_at",
-                    "total_input_tokens",
-                    "total_output_tokens",
-                    "total_tool_calls",
-                ]
+            # Update session with summary and stats
+            _update_session_after_response(
+                session=session,
+                agent_response=agent_response,
+                route_result=route_result,
+                new_summary_text=summary_result.summary.to_text(),
             )
 
             # Log response
@@ -861,25 +881,26 @@ def chat_stream(request):
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=["response_message", "latency_ms"])
 
-        # Update session
-        session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
-        session.turn_count = (session.turn_count or 0) + 1
-        session.current_flow = route_result.flow.value
-        session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
-        session.total_output_tokens = (
-            session.total_output_tokens or 0
-        ) + agent_response.output_tokens
-        session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
-        session.save(
-            update_fields=[
-                "message_count",
-                "turn_count",
-                "last_activity",
-                "current_flow",
-                "total_input_tokens",
-                "total_output_tokens",
-                "total_tool_calls",
-            ]
+        # Update conversation summary
+        current_summary = session.conversation_summary or ""
+        summary_service = get_summary_service()
+        summary_result = asyncio.run(
+            summary_service.update_summary(
+                current_summary=ConversationSummary(text=current_summary)
+                if current_summary
+                else None,
+                new_user_message=data["text"],
+                new_assistant_response=agent_response.content,
+                flow=route_result.flow.value,
+            )
+        )
+
+        # Update session with summary and stats
+        _update_session_after_response(
+            session=session,
+            agent_response=agent_response,
+            route_result=route_result,
+            new_summary_text=summary_result.summary.to_text(),
         )
 
         logger.info(
