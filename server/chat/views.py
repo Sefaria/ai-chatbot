@@ -702,6 +702,10 @@ def chat_stream(request):
         user_message=data["text"],
         conversation_summary=session.conversation_summary or "",
         previous_flow=session.current_flow if session.current_flow else None,
+        user_metadata={
+            "locale": context.get("locale", ""),
+            "pageUrl": context.get("pageUrl", ""),
+        },
     )
 
     # Save route decision
@@ -1172,6 +1176,7 @@ def openai_chat_completions(request):
 
     # Initialize Braintrust logger
     _get_bt_logger()
+    environment = os.environ.get("ENVIRONMENT", "dev")
 
     with braintrust.start_span(name="openai-compat-request", type="task") as request_span:
         request_span.log(
@@ -1182,7 +1187,7 @@ def openai_chat_completions(request):
                 "turn_id": turn_id,
                 **page_context,
             },
-            tags=["braintrust", "openai-compat"],
+            tags=[environment, "braintrust", "openai-compat"],
         )
 
         # Route the message
@@ -1348,19 +1353,30 @@ def openai_chat_completions(request):
                 f"latency={latency_ms}ms tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
             )
 
-            # Log request output with Braintrust-compatible token metrics
-            usage = TokenUsage(
+            # Aggregate token usage from router + agent (no summary for single-turn)
+            total_usage = TokenUsage(
                 input_tokens=agent_response.input_tokens,
                 output_tokens=agent_response.output_tokens,
                 cache_creation_input_tokens=agent_response.cache_creation_tokens,
                 cache_read_input_tokens=agent_response.cache_read_tokens,
             )
+
+            # Add router tokens (guardrails + classifier)
+            if route_result.token_usage:
+                total_usage = total_usage + route_result.token_usage
+
+            # Count LLM calls: agent + router (no summary for single-turn)
+            router_llm_calls = 2 if route_result.token_usage else 0
+            total_llm_calls = agent_response.llm_calls + router_llm_calls
+
             request_span.log(
                 output={"response": agent_response.content[:500]},
                 tags=[route_result.flow.value.lower(), "braintrust"],
                 metrics={
                     "latency_ms": latency_ms,
-                    **usage.to_braintrust(),
+                    "llm_calls": total_llm_calls,
+                    "tool_calls": len(agent_response.tool_calls),
+                    **total_usage.to_braintrust(),
                 },
             )
 
