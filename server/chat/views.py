@@ -28,6 +28,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage
+from .metrics import TokenUsage
 from .models import ChatMessage, ChatSession, RouteDecision
 from .prompts import get_prompt_service
 from .router import Flow, RouteResult, RouterService, get_router_service
@@ -414,7 +415,13 @@ def chat(request):
                 f"tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
             )
 
-            # Log request output to span
+            # Log request output to span with Braintrust-compatible token metrics
+            usage = TokenUsage(
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_input_tokens=agent_response.cache_creation_tokens,
+                cache_read_input_tokens=agent_response.cache_read_tokens,
+            )
             request_span.log(
                 output={"response": agent_response.content[:500]},
                 tags=[route_result.flow.value.lower()],
@@ -422,8 +429,7 @@ def chat(request):
                     "latency_ms": latency_ms,
                     "llm_calls": agent_response.llm_calls,
                     "tool_calls": len(agent_response.tool_calls),
-                    "input_tokens": agent_response.input_tokens,
-                    "output_tokens": agent_response.output_tokens,
+                    **usage.to_braintrust(),
                 },
             )
 
@@ -1106,13 +1112,19 @@ def openai_chat_completions(request):
                 f"latency={latency_ms}ms tokens={agent_response.input_tokens}+{agent_response.output_tokens}"
             )
 
+            # Log request output with Braintrust-compatible token metrics
+            usage = TokenUsage(
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_input_tokens=agent_response.cache_creation_tokens,
+                cache_read_input_tokens=agent_response.cache_read_tokens,
+            )
             request_span.log(
                 output={"response": agent_response.content[:500]},
                 tags=[route_result.flow.value.lower(), "braintrust"],
                 metrics={
                     "latency_ms": latency_ms,
-                    "input_tokens": agent_response.input_tokens,
-                    "output_tokens": agent_response.output_tokens,
+                    **usage.to_braintrust(),
                 },
             )
 
