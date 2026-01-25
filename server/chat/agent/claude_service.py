@@ -1,11 +1,11 @@
 """
-Claude Agent Service with routed flow support and Braintrust native tracing.
+Claude Agent Service with routed flow support and observability tracing.
 
 This is the core agent runtime that:
 - Receives routing decisions from the router
 - Loads appropriate prompts from Braintrust
 - Executes Claude with flow-specific tools
-- Uses Braintrust native tracing (@traced decorator)
+- Uses observability tracing (@traced decorator, start_span)
 """
 
 import json
@@ -17,10 +17,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import anthropic
-import braintrust
-from braintrust import current_span, traced
 
 from ..metrics import TokenUsage
+from ..observability import current_span, start_span, traced
 from ..prompts import PromptService, get_prompt_service
 from ..router import Flow, RouteResult
 from .sefaria_client import SefariaClient
@@ -290,7 +289,7 @@ class ClaudeAgentService:
 
             # Call Claude with tracing
             llm_start = time.time()
-            with braintrust.start_span(name=f"llm-call-{iterations}", type="llm") as llm_span:
+            with start_span(name=f"llm-call-{iterations}", type="llm") as llm_span:
                 # Log LLM input
                 llm_span.log(
                     input={

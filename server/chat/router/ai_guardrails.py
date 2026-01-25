@@ -12,10 +12,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-import braintrust
 from anthropic import Anthropic
 
 from ..metrics import TokenUsage
+from ..observability import start_span
 from .braintrust_client import get_braintrust_client
 from .reason_codes import ReasonCode
 
@@ -144,7 +144,7 @@ class AIGuardrailChecker:
         )
 
         # Call Claude API with tracing
-        with braintrust.start_span(name="guardrails-llm", type="llm") as span:
+        with start_span(name="guardrails-llm", type="llm") as span:
             span.log(
                 input={"message": message[:500]},
                 metadata={"model": self.model},

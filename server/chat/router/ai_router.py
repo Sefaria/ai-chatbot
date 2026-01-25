@@ -12,10 +12,10 @@ import time
 from enum import Enum
 from typing import Any
 
-import braintrust
 from anthropic import Anthropic
 
 from ..metrics import TokenUsage
+from ..observability import start_span
 from .braintrust_client import get_braintrust_client
 from .reason_codes import ReasonCode
 
@@ -139,7 +139,7 @@ class AIFlowRouter:
         )
 
         # Call Claude API with tracing
-        with braintrust.start_span(name="flow-classifier-llm", type="llm") as span:
+        with start_span(name="flow-classifier-llm", type="llm") as span:
             span.log(
                 input={"message": message[:500], "previous_flow": previous_flow},
                 metadata={"model": self.model},

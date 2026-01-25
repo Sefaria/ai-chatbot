@@ -15,9 +15,9 @@ from datetime import datetime
 from typing import Any
 
 import anthropic
-import braintrust
 
 from ..metrics import TokenUsage
+from ..observability import start_span
 
 logger = logging.getLogger("chat.summarization")
 
@@ -253,7 +253,7 @@ class SummaryService:
             context = "\n\n".join(context_parts)
 
             # Call Claude API with tracing
-            with braintrust.start_span(name="summary-llm", type="llm") as span:
+            with start_span(name="summary-llm", type="llm") as span:
                 span.log(
                     input={"user_message": new_user_message[:200], "flow": flow},
                     metadata={"model": self.model},

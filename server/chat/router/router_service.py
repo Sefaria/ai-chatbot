@@ -17,9 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from braintrust import current_span, traced
-
 from ..metrics import TokenUsage
+from ..observability import current_span, traced
 from .guardrails import GuardrailChecker, get_guardrail_checker
 from .reason_codes import ReasonCode
 
