@@ -11,13 +11,14 @@ Implements the orchestrator pattern:
 """
 
 import asyncio
+import concurrent.futures
+import contextvars
 import json
 import logging
 import os
 import queue
 import time
 from datetime import datetime
-from threading import Thread
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
@@ -86,6 +87,20 @@ def _apply_page_context_to_user_message(message: str, page_url: str) -> str:
     )
 
 
+def _create_traced_executor() -> concurrent.futures.Executor:
+    """Create a ThreadPoolExecutor that preserves Braintrust context when available."""
+    try:
+        import braintrust
+
+        traced_executor = getattr(braintrust, "TracedThreadPoolExecutor", None)
+        if traced_executor:
+            return traced_executor(max_workers=1)
+    except Exception:
+        pass
+
+    return concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+
 # Global services (initialized lazily)
 _agent_service: ClaudeAgentService | None = None
 _router_service: RouterService | None = None
@@ -95,9 +110,6 @@ _bt_logger = None
 def get_braintrust_logger():
     """Get or create a Braintrust logger for feedback."""
     global _bt_logger
-    if _bt_logger is not None:
-        return _bt_logger
-
     api_key = os.environ.get("BRAINTRUST_API_KEY")
     project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
     if not api_key:
@@ -106,6 +118,7 @@ def get_braintrust_logger():
     try:
         import braintrust
 
+        # init_logger also sets the current logger for this thread/context
         _bt_logger = braintrust.init_logger(project=project, api_key=api_key)
         return _bt_logger
     except Exception as e:
@@ -217,6 +230,7 @@ def chat_stream_v2(request):
 
         def run_agent():
             try:
+                get_braintrust_logger()
                 user_content = _apply_page_context_to_user_message(data["text"], page_url)
                 conversation = [ConversationMessage(role="user", content=user_content)]
                 agent = get_agent_service()
@@ -237,8 +251,9 @@ def chat_stream_v2(request):
             finally:
                 progress_queue.put(None)
 
-        agent_thread = Thread(target=run_agent, daemon=True)
-        agent_thread.start()
+        ctx = contextvars.copy_context()
+        executor = _create_traced_executor()
+        future = executor.submit(ctx.run, run_agent)
 
         while True:
             try:
@@ -269,7 +284,11 @@ def chat_stream_v2(request):
             except queue.Empty:
                 yield ": keepalive\n\n"
 
-        agent_thread.join(timeout=5)
+        try:
+            future.result(timeout=5)
+        except Exception:
+            pass
+        executor.shutdown(wait=False)
 
         latency_ms = int((time.time() - start_time) * 1000)
 

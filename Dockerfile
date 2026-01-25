@@ -18,6 +18,7 @@ WORKDIR /server
 RUN pip install -U -r requirements.txt
 RUN mkdir -p static/js
 COPY --from=script /build/dist/lc-chatbot.umd.cjs static/js/
+RUN python manage.py collectstatic --noinput
 
 USER 1001
 

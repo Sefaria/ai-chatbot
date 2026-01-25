@@ -1,6 +1,7 @@
 django>=4.2,<5.0
 djangorestframework>=3.14
 django-cors-headers>=4.3
+whitenoise>=6.6
 
 # AI/LLM
 anthropic>=0.40.0
