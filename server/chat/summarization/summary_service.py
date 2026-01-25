@@ -9,11 +9,15 @@ Creates and maintains rolling summaries of conversations to:
 
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 import anthropic
+import braintrust
+
+from ..metrics import TokenUsage
 
 logger = logging.getLogger("chat.summarization")
 
@@ -238,13 +242,29 @@ class SummaryService:
 
             context = "\n\n".join(context_parts)
 
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=500,
-                temperature=0.0,
-                system=SUMMARY_PROMPT,
-                messages=[{"role": "user", "content": context}],
-            )
+            # Call Claude API with tracing
+            with braintrust.start_span(name="summary-llm", type="llm") as span:
+                span.log(
+                    input={"user_message": new_user_message[:200], "flow": flow},
+                    metadata={"model": self.model},
+                )
+
+                llm_start = time.time()
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=500,
+                    temperature=0.0,
+                    system=SUMMARY_PROMPT,
+                    messages=[{"role": "user", "content": context}],
+                )
+                llm_latency = int((time.time() - llm_start) * 1000)
+
+                # Log token usage
+                usage = TokenUsage.from_anthropic(response.usage)
+                span.log(
+                    output={"summary": response.content[0].text[:200]},
+                    metrics={"latency_ms": llm_latency, **usage.to_braintrust()},
+                )
 
             # Parse JSON response
             response_text = response.content[0].text

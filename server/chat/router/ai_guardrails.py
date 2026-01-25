@@ -8,11 +8,14 @@ remotely via Braintrust prompts, with fallback to rule-based checking.
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
+import braintrust
 from anthropic import Anthropic
 
+from ..metrics import TokenUsage
 from .braintrust_client import get_braintrust_client
 from .reason_codes import ReasonCode
 
@@ -139,14 +142,29 @@ class AIGuardrailChecker:
             message=message, context=context_str
         )
 
-        # Call Claude API
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            temperature=0.0,  # Deterministic for classification
-            system=prompt_template.system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+        # Call Claude API with tracing
+        with braintrust.start_span(name="guardrails-llm", type="llm") as span:
+            span.log(
+                input={"message": message[:500]},
+                metadata={"model": self.model},
+            )
+
+            llm_start = time.time()
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                temperature=0.0,  # Deterministic for classification
+                system=prompt_template.system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            llm_latency = int((time.time() - llm_start) * 1000)
+
+            # Log token usage
+            usage = TokenUsage.from_anthropic(response.usage)
+            span.log(
+                output={"decision": response.content[0].text[:200]},
+                metrics={"latency_ms": llm_latency, **usage.to_braintrust()},
+            )
 
         # Parse response
         response_text = response.content[0].text.strip()
