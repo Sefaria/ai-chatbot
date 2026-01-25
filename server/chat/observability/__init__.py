@@ -1,5 +1,6 @@
 """Observability module for tracing and metrics."""
 
+from .backends import BraintrustBackend
 from .tracer import (
     Span,
     SpanData,
@@ -10,6 +11,7 @@ from .tracer import (
 )
 
 __all__ = [
+    "BraintrustBackend",
     "Span",
     "SpanData",
     "Tracer",
