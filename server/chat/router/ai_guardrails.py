@@ -64,7 +64,7 @@ class AIGuardrailChecker:
 
     def __init__(
         self,
-        model: str = "claude-3-5-haiku-20241022",
+        model: str = "claude-haiku-4-5-20251001",
         prompt_version: str = "stable",
         fallback_checker: Any | None = None,
     ):
@@ -284,7 +284,7 @@ def get_ai_guardrail_checker(
     Returns:
         AIGuardrailChecker instance
     """
-    model = model or os.environ.get("GUARDRAIL_MODEL", "claude-3-5-haiku-20241022")
+    model = model or os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
     return AIGuardrailChecker(
         model=model, prompt_version=prompt_version, fallback_checker=fallback_checker
     )

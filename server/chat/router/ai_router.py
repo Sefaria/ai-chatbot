@@ -59,7 +59,7 @@ class AIFlowRouter:
 
     def __init__(
         self,
-        model: str = "claude-3-5-haiku-20241022",
+        model: str = "claude-haiku-4-5-20251001",
         prompt_version: str = "stable",
         fallback_classifier: Any | None = None,
     ):
@@ -282,7 +282,7 @@ def get_ai_flow_router(
     Returns:
         AIFlowRouter instance
     """
-    model = model or os.environ.get("ROUTER_MODEL", "claude-3-5-haiku-20241022")
+    model = model or os.environ.get("ROUTER_MODEL", "claude-haiku-4-5-20251001")
     return AIFlowRouter(
         model=model, prompt_version=prompt_version, fallback_classifier=fallback_classifier
     )

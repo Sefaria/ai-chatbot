@@ -161,10 +161,10 @@ MAX_TURNS = max(1, int(os.environ.get("MAX_TURNS", 1)))
 # AI Router & Guardrails Configuration:
 # - ROUTER_USE_AI=true/false (default: true) - Enable AI-based flow routing
 # - GUARDRAILS_USE_AI=true/false (default: true) - Enable AI-based guardrails
-# - ROUTER_MODEL=claude-3-5-haiku-20241022 (default) - Model for routing
-# - GUARDRAIL_MODEL=claude-3-5-haiku-20241022 (default) - Model for guardrails
+# - ROUTER_MODEL=claude-haiku-4-5-20251001 (default) - Model for routing
+# - GUARDRAIL_MODEL=claude-haiku-4-5-20251001 (default) - Model for guardrails
 #
-# Note: Uses Claude 3.5 Haiku by default for speed and cost-effectiveness.
+# Note: Uses Claude Haiku 4.5 by default for speed and cost-effectiveness.
 # Falls back to rule-based classification if AI fails or is disabled.
 
 # ============================================================================

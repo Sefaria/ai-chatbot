@@ -176,7 +176,7 @@ class SummaryService:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-3-haiku-20240307",  # Use fast/cheap model
+        model: str = "claude-haiku-4-5-20251001",  # Use fast/cheap model
         use_llm: bool = True,
     ):
         """
