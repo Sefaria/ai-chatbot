@@ -20,6 +20,7 @@ import anthropic
 import braintrust
 from braintrust import current_span, traced
 
+from ..metrics import TokenUsage
 from ..prompts import PromptService, get_prompt_service
 from ..router import Flow, RouteResult
 from .sefaria_client import SefariaClient
@@ -254,10 +255,7 @@ class ClaudeAgentService:
         final_text = ""
         llm_calls = 0
         tool_calls_list = []
-        input_tokens = 0
-        output_tokens = 0
-        cache_creation_tokens = 0
-        cache_read_tokens = 0
+        total_usage = TokenUsage.zero()
 
         # Build messages array in OpenAI format for eval dataset creation
         formatted_messages = [
@@ -331,17 +329,9 @@ class ClaudeAgentService:
                     tool_choice={"type": "auto"},
                 )
 
-                # Track token usage
-                usage = response.usage
-                call_input_tokens = usage.input_tokens
-                call_output_tokens = usage.output_tokens
-                call_cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
-                call_cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-
-                input_tokens += call_input_tokens
-                output_tokens += call_output_tokens
-                cache_creation_tokens += call_cache_creation
-                cache_read_tokens += call_cache_read
+                # Track token usage using canonical format
+                call_usage = TokenUsage.from_anthropic(response.usage)
+                total_usage = total_usage + call_usage
 
                 # Process response blocks
                 blocks = response.content
@@ -351,20 +341,14 @@ class ClaudeAgentService:
 
                 llm_latency = int((time.time() - llm_start) * 1000)
 
-                # Log LLM output
+                # Log LLM output with Braintrust-compatible token metrics
                 llm_span.log(
                     output={
                         "text": truncate(text, 500) if text else None,
                         "tool_calls": [{"name": t.name, "input": t.input} for t in tool_uses],
                         "stop_reason": response.stop_reason,
                     },
-                    metrics={
-                        "latency_ms": llm_latency,
-                        "prompt_tokens": call_input_tokens,
-                        "completion_tokens": call_output_tokens,
-                        "cache_creation_tokens": call_cache_creation,
-                        "cache_read_tokens": call_cache_read,
-                    },
+                    metrics={"latency_ms": llm_latency, **call_usage.to_braintrust()},
                 )
 
             final_text += text
@@ -535,7 +519,7 @@ class ClaudeAgentService:
 
         tool_calls_summary = [summarize_tool_call(tc) for tc in tool_calls_list]
 
-        # Log structured output and metrics to span
+        # Log structured output and metrics to span (using Braintrust-compatible token names)
         span.log(
             output={
                 "response": output,
@@ -550,11 +534,7 @@ class ClaudeAgentService:
                 "latency_ms": latency_ms,
                 "llm_calls": llm_calls,
                 "tool_calls": len(tool_calls_list),
-                "prompt_tokens": input_tokens,
-                "completion_tokens": output_tokens,
-                "cache_creation_input_tokens": cache_creation_tokens,
-                "cache_read_input_tokens": cache_read_tokens,
-                "total_tokens": input_tokens + output_tokens + cache_creation_tokens,
+                **total_usage.to_braintrust(),
             },
         )
 
@@ -567,10 +547,10 @@ class ClaudeAgentService:
             content=output,
             tool_calls=tool_calls_list,
             llm_calls=llm_calls,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_creation_tokens=cache_creation_tokens,
-            cache_read_tokens=cache_read_tokens,
+            input_tokens=total_usage.input_tokens,
+            output_tokens=total_usage.output_tokens,
+            cache_creation_tokens=total_usage.cache_creation_input_tokens,
+            cache_read_tokens=total_usage.cache_read_input_tokens,
             latency_ms=latency_ms,
             flow=route_result.flow.value,
             decision_id=route_result.decision_id,
@@ -625,8 +605,7 @@ class ClaudeAgentService:
                 "latency_ms": latency_ms,
                 "llm_calls": 0,
                 "tool_calls": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
+                **TokenUsage.zero().to_braintrust(),
             },
         )
 
