@@ -57,7 +57,21 @@ server/chat/views.py             # API endpoints (thin HTTP layer)
 server/chat/orchestrator.py      # Shared turn logic (prepare→execute→complete)
 server/chat/router/              # Intent classification
 server/chat/agent/               # Claude + tools
+server/chat/observability/       # Tracing abstraction (see module docstrings)
 ```
+
+## Observability
+
+All tracing uses `chat.observability` abstraction (not direct braintrust SDK):
+
+```python
+from chat.observability import start_span, current_span, create_span, traced
+
+with start_span(name="my-operation", type="task") as span:
+    span.log(input={...}, output={...}, metrics={...})
+```
+
+Backends: BraintrustBackend (active), DatabaseBackend (future).
 
 ## Env
 

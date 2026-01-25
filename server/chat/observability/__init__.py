@@ -1,15 +1,35 @@
 """Observability module for tracing and metrics.
 
+This abstraction decouples application code from specific tracing providers
+(Braintrust, database, etc.), enabling dual-logging and provider swapping.
+
 Usage:
-    from chat.observability import start_span, current_span, traced
+    from chat.observability import start_span, create_span, current_span, traced
 
-    # These use the global tracer configured with BraintrustBackend
-    with start_span(name="request", type="task") as span:
+    # Context manager for scoped spans (most common)
+    with start_span(name="my-operation", type="llm") as span:
         span.log(input={"query": "..."})
+        # do work
+        span.log(output={...}, metrics={"latency_ms": 100})
 
-    # Or get the tracer directly for custom configuration
-    from chat.observability import get_tracer
-    tracer = get_tracer()
+    # Manual lifecycle for cross-function spans (e.g., orchestrator)
+    span = create_span(name="request", type="task")
+    span.log(input={...})
+    # ... later in another function ...
+    span.log(output={...})
+    span.end()  # Must call manually
+
+    # Decorator for automatic function tracing
+    @traced(name="my_function", type="function")
+    def my_function():
+        span = current_span()  # Access current span
+        span.log(metadata={"key": "value"})
+
+Span types: task, llm, function, tool
+
+Backends:
+- BraintrustBackend: Sends to Braintrust (active when BRAINTRUST_API_KEY set)
+- DatabaseBackend: (Future) Logs to local database
 """
 
 from collections.abc import Generator
