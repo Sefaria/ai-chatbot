@@ -11,6 +11,7 @@ Implements the orchestrator pattern:
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -151,7 +152,7 @@ def get_router() -> RouterService:
 
 
 def run_async(coro):
-    """Run an async coroutine in a sync context."""
+    """Run an async coroutine in a sync context, preserving Braintrust span context."""
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -161,8 +162,15 @@ def run_async(coro):
     if loop.is_running():
         import concurrent.futures
 
+        # Capture current context (including Braintrust span) before switching threads
+        ctx = contextvars.copy_context()
+
+        def run_with_context():
+            # Run asyncio.run inside the captured context
+            return ctx.run(asyncio.run, coro)
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
+            future = executor.submit(run_with_context)
             return future.result()
     else:
         return loop.run_until_complete(coro)

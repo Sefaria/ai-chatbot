@@ -135,22 +135,9 @@ class ClaudeAgentService:
         # Services
         self.prompt_service = prompt_service or get_prompt_service()
 
-        # Initialize Braintrust logger for tracing
-        bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
-        bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-        if bt_api_key:
-            try:
-                self.bt_logger = braintrust.init_logger(
-                    project=bt_project,
-                    api_key=bt_api_key,
-                )
-                logger.info(f"✅ Braintrust tracing initialized for project: {bt_project}")
-            except Exception as e:
-                logger.warning(f"⚠️  Failed to initialize Braintrust tracing: {e}")
-                self.bt_logger = None
-        else:
-            logger.warning("⚠️  BRAINTRUST_API_KEY not set, tracing disabled")
-            self.bt_logger = None
+        # Note: Braintrust logger is initialized in views.py at request level.
+        # The @traced decorator will automatically use the current span context
+        # propagated from views.py, so we don't need a separate logger here.
 
         logger.info(f"ClaudeAgentService initialized with model: {model}")
 
