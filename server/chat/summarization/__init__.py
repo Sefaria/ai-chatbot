@@ -10,12 +10,14 @@ Provides rolling summaries that capture:
 
 from .summary_service import (
     ConversationSummary,
+    SummaryResult,
     SummaryService,
     get_summary_service,
 )
 
 __all__ = [
     "SummaryService",
+    "SummaryResult",
     "ConversationSummary",
     "get_summary_service",
 ]

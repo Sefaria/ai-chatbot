@@ -32,6 +32,7 @@ class AIGuardrailResult:
     refusal_message: str | None = None
     confidence: float = 1.0
     reasoning: str | None = None
+    token_usage: TokenUsage | None = None  # Token usage from LLM call (if any)
 
     def __post_init__(self):
         if self.reason_codes is None:
@@ -201,6 +202,7 @@ class AIGuardrailChecker:
                 refusal_message=refusal_message,
                 confidence=confidence,
                 reasoning=reasoning,
+                token_usage=usage,
             )
 
         except json.JSONDecodeError as e:

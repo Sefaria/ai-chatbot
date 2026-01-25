@@ -23,6 +23,14 @@ logger = logging.getLogger("chat.summarization")
 
 
 @dataclass
+class SummaryResult:
+    """Result from summary update including token usage."""
+
+    summary: "ConversationSummary"
+    token_usage: TokenUsage | None = None  # Token usage from LLM call (if any)
+
+
+@dataclass
 class ConversationSummary:
     """
     Structured summary of a conversation.
@@ -196,7 +204,7 @@ class SummaryService:
         new_user_message: str,
         new_assistant_response: str,
         flow: str = "",
-    ) -> ConversationSummary:
+    ) -> SummaryResult:
         """
         Update the conversation summary with new messages.
 
@@ -207,7 +215,7 @@ class SummaryService:
             flow: Current flow from router
 
         Returns:
-            Updated ConversationSummary
+            SummaryResult with updated summary and token usage
         """
         if self.use_llm:
             return await self._llm_summarize(
@@ -217,12 +225,13 @@ class SummaryService:
                 flow,
             )
         else:
-            return self._simple_summarize(
+            summary = self._simple_summarize(
                 current_summary,
                 new_user_message,
                 new_assistant_response,
                 flow,
             )
+            return SummaryResult(summary=summary, token_usage=None)
 
     async def _llm_summarize(
         self,
@@ -230,8 +239,9 @@ class SummaryService:
         new_user_message: str,
         new_assistant_response: str,
         flow: str,
-    ) -> ConversationSummary:
+    ) -> SummaryResult:
         """Use Claude to generate a structured summary."""
+        usage: TokenUsage | None = None
         try:
             # Build context
             context_parts = []
@@ -288,25 +298,28 @@ class SummaryService:
                 summary.last_updated = datetime.now()
                 summary.flow = flow or summary.flow
 
-                return summary
+                return SummaryResult(summary=summary, token_usage=usage)
 
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
-                return self._simple_summarize(
+                summary = self._simple_summarize(
                     current_summary,
                     new_user_message,
                     new_assistant_response,
                     flow,
                 )
+                # Still return token usage since we made the LLM call
+                return SummaryResult(summary=summary, token_usage=usage)
 
         except Exception as e:
             logger.error(f"LLM summarization error: {e}")
-            return self._simple_summarize(
+            summary = self._simple_summarize(
                 current_summary,
                 new_user_message,
                 new_assistant_response,
                 flow,
             )
+            return SummaryResult(summary=summary, token_usage=usage)
 
     def _simple_summarize(
         self,

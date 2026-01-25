@@ -19,6 +19,7 @@ from typing import Any
 
 from braintrust import current_span, traced
 
+from ..metrics import TokenUsage
 from .guardrails import GuardrailChecker, get_guardrail_checker
 from .reason_codes import ReasonCode
 
@@ -73,10 +74,11 @@ class RouteResult:
     session_action: SessionAction
     safety: SafetyResult
     router_latency_ms: int = 0
+    token_usage: TokenUsage | None = None  # Accumulated from guardrails + classifier
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "decision_id": self.decision_id,
             "flow": self.flow.value,
             "confidence": self.confidence,
@@ -95,6 +97,12 @@ class RouteResult:
             },
             "router_latency_ms": self.router_latency_ms,
         }
+        if self.token_usage:
+            result["token_usage"] = {
+                "input_tokens": self.token_usage.input_tokens,
+                "output_tokens": self.token_usage.output_tokens,
+            }
+        return result
 
 
 # Keyword patterns for flow classification
@@ -250,9 +258,17 @@ class RouterService:
             },
         )
 
+        # Track token usage from LLM calls (guardrails + classifier)
+        total_token_usage: TokenUsage | None = None
+
         # Step 1: Apply guardrails
         guardrail_result = self.guardrail_checker.check(user_message)
         reason_codes.extend(guardrail_result.reason_codes)
+
+        # Accumulate guardrail token usage (if AI guardrails used)
+        guardrail_tokens = getattr(guardrail_result, "token_usage", None)
+        if guardrail_tokens:
+            total_token_usage = guardrail_tokens
 
         if not guardrail_result.allowed:
             # Return REFUSE flow
@@ -261,6 +277,7 @@ class RouterService:
                 reason_codes=reason_codes,
                 refusal_message=guardrail_result.refusal_message or "I can't process this request.",
                 start_time=start_time,
+                token_usage=total_token_usage,
             )
             # Log refusal decision
             span.log(
@@ -280,11 +297,17 @@ class RouterService:
 
         # Step 2: Classify intent (AI or rule-based)
         if self.use_ai_classifier and self._ai_router:
-            flow, flow_confidence, flow_reasons = self._ai_router.classify(
+            flow, flow_confidence, flow_reasons, classifier_tokens = self._ai_router.classify(
                 user_message,
                 conversation_summary,
                 previous_flow,
             )
+            # Accumulate classifier token usage
+            if classifier_tokens:
+                if total_token_usage:
+                    total_token_usage = total_token_usage + classifier_tokens
+                else:
+                    total_token_usage = classifier_tokens
         else:
             flow, flow_confidence, flow_reasons = self._classify_intent_rule_based(
                 user_message,
@@ -353,6 +376,7 @@ class RouterService:
             session_action=session_action,
             safety=SafetyResult(allowed=True),
             router_latency_ms=latency_ms,
+            token_usage=total_token_usage,
         )
 
     def _classify_intent_rule_based(
@@ -486,6 +510,7 @@ class RouterService:
         reason_codes: list[ReasonCode],
         refusal_message: str,
         start_time: float,
+        token_usage: TokenUsage | None = None,
     ) -> RouteResult:
         """Create a REFUSE flow result."""
         reason_codes.append(ReasonCode.TOOLS_NONE_ATTACHED)
@@ -501,6 +526,7 @@ class RouterService:
             session_action=SessionAction.END,
             safety=SafetyResult(allowed=False, refusal_message=refusal_message),
             router_latency_ms=latency_ms,
+            token_usage=token_usage,
         )
 
 

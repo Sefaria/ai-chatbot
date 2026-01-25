@@ -92,7 +92,7 @@ class AIFlowRouter:
         message: str,
         conversation_summary: str = "",
         previous_flow: str | None = None,
-    ) -> tuple[Flow, float, list[ReasonCode]]:
+    ) -> tuple[Flow, float, list[ReasonCode], TokenUsage | None]:
         """
         Classify user message into a flow using AI.
 
@@ -102,7 +102,7 @@ class AIFlowRouter:
             previous_flow: The flow from the previous turn (for stickiness)
 
         Returns:
-            Tuple of (flow, confidence, reason_codes)
+            Tuple of (flow, confidence, reason_codes, token_usage)
         """
         try:
             return self._classify_with_ai(message, conversation_summary, previous_flow)
@@ -112,18 +112,21 @@ class AIFlowRouter:
             # Fall back to rule-based classifier if available
             if self.fallback_classifier:
                 logger.info("Falling back to rule-based flow classifier")
-                return self.fallback_classifier(message, conversation_summary, previous_flow)
+                flow, confidence, reason_codes = self.fallback_classifier(
+                    message, conversation_summary, previous_flow
+                )
+                return flow, confidence, reason_codes, None
 
             # If no fallback, default to GENERAL
             logger.warning("No fallback classifier available, defaulting to GENERAL flow")
-            return Flow.GENERAL, 0.5, [ReasonCode.ROUTE_DEFAULT_GENERAL]
+            return Flow.GENERAL, 0.5, [ReasonCode.ROUTE_DEFAULT_GENERAL], None
 
     def _classify_with_ai(
         self,
         message: str,
         conversation_summary: str,
         previous_flow: str | None,
-    ) -> tuple[Flow, float, list[ReasonCode]]:
+    ) -> tuple[Flow, float, list[ReasonCode], TokenUsage]:
         """Perform AI-based flow classification."""
         # Get prompt from Braintrust
         prompt_template = self.braintrust_client.get_router_prompt(self.prompt_version)
@@ -191,7 +194,7 @@ class AIFlowRouter:
             if reasoning:
                 logger.debug(f"AI routing reasoning: {reasoning}")
 
-            return flow, confidence, reason_codes
+            return flow, confidence, reason_codes, usage
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
@@ -238,7 +241,7 @@ class AIFlowRouter:
         messages: list[str],
         conversation_summaries: list[str] | None = None,
         previous_flows: list[str | None] | None = None,
-    ) -> list[tuple[Flow, float, list[ReasonCode]]]:
+    ) -> list[tuple[Flow, float, list[ReasonCode], TokenUsage | None]]:
         """
         Classify multiple messages in batch.
 
