@@ -6,6 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from chat.agent import AgentResponse
+from chat.agent.claude_service import ClaudeAgentService
 from chat.router import Flow, ReasonCode, SessionAction
 from chat.router.router_service import PromptBundle, RouteResult, SafetyResult
 from chat.serializers import OpenAIChatRequestSerializer, OpenAIMessageSerializer
@@ -34,6 +35,18 @@ def mock_agent_response():
         latency_ms=500,
         was_refused=False,
     )
+
+
+@pytest.fixture
+def mock_send_message(mock_agent_response):
+    """
+    Create an AsyncMock for send_message that validates parameter names.
+
+    Using spec= ensures the mock only accepts parameters that the real
+    ClaudeAgentService.send_message method accepts. This catches bugs where
+    callers pass unexpected keyword arguments (like the 'source' parameter bug).
+    """
+    return AsyncMock(spec=ClaudeAgentService.send_message, return_value=mock_agent_response)
 
 
 @pytest.fixture
@@ -153,11 +166,11 @@ class TestOpenAICompatResponse:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions", data=valid_openai_request, format="json"
@@ -181,11 +194,11 @@ class TestOpenAICompatResponse:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions", data=valid_openai_request, format="json"
@@ -205,11 +218,11 @@ class TestOpenAICompatResponse:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions", data=valid_openai_request, format="json"
@@ -230,11 +243,11 @@ class TestOpenAICompatResponse:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions", data=valid_openai_request, format="json"
@@ -255,10 +268,10 @@ class TestOpenAICompatMultiTurn:
     @patch("chat.views.get_agent_service")
     @patch("chat.views.get_router")
     def test_extracts_last_user_message(
-        self, mock_router, mock_agent, api_client, mock_agent_response, mock_route_result
+        self, mock_router, mock_agent, api_client, mock_send_message, mock_route_result
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions",
@@ -281,10 +294,10 @@ class TestOpenAICompatMultiTurn:
     @patch("chat.views.get_agent_service")
     @patch("chat.views.get_router")
     def test_handles_system_message(
-        self, mock_router, mock_agent, api_client, mock_agent_response, mock_route_result
+        self, mock_router, mock_agent, api_client, mock_send_message, mock_route_result
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         response = api_client.post(
             "/api/v1/chat/completions",
@@ -338,11 +351,11 @@ class TestOpenAICompatTraceability:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         api_client.post(
             "/api/v1/chat/completions",
@@ -362,11 +375,11 @@ class TestOpenAICompatTraceability:
         mock_agent,
         api_client,
         valid_openai_request,
-        mock_agent_response,
+        mock_send_message,
         mock_route_result,
     ):
         mock_router.return_value.route.return_value = mock_route_result
-        mock_agent.return_value.send_message = AsyncMock(return_value=mock_agent_response)
+        mock_agent.return_value.send_message = mock_send_message
 
         api_client.post(
             "/api/v1/chat/completions",
@@ -377,3 +390,52 @@ class TestOpenAICompatTraceability:
         # Verify agent was called with braintrust source
         call_args = mock_agent.return_value.send_message.call_args
         assert call_args.kwargs.get("source") == "braintrust"
+
+
+@pytest.mark.django_db
+class TestOpenAICompatRefusals:
+    """Test refusal handling for OpenAI-compatible endpoint."""
+
+    @pytest.fixture
+    def mock_refuse_route_result(self):
+        return RouteResult(
+            flow=Flow.REFUSE,
+            confidence=1.0,
+            reason_codes=[ReasonCode.GUARDRAIL_DISALLOWED_CONTENT],
+            decision_id="route-refuse123",
+            prompt_bundle=PromptBundle(
+                core_prompt_id="core-id",
+                core_prompt_version="v1",
+                flow_prompt_id="refuse-id",
+                flow_prompt_version="v1",
+            ),
+            tools=[],
+            session_action=SessionAction.END,
+            safety=SafetyResult(allowed=False, refusal_message="I can't help with that request."),
+            router_latency_ms=10,
+        )
+
+    @patch("chat.views.get_agent_service")
+    @patch("chat.views.get_router")
+    def test_refusal_returns_early_without_calling_agent(
+        self, mock_router, mock_agent, api_client, valid_openai_request, mock_refuse_route_result
+    ):
+        """Verify that REFUSE flow returns early without calling the agent."""
+        mock_router.return_value.route.return_value = mock_refuse_route_result
+
+        response = api_client.post(
+            "/api/v1/chat/completions",
+            data=valid_openai_request,
+            format="json",
+        )
+
+        # Agent should NOT be called for refusals
+        mock_agent.return_value.send_message.assert_not_called()
+
+        # Should still return 200 with refusal content
+        assert response.status_code == 200
+        data = response.json()
+        assert data["choices"][0]["message"]["content"] == "I can't help with that request."
+        assert data["choices"][0]["finish_reason"] == "content_filter"
+        assert data["routing"]["flow"] == "REFUSE"
+        assert data["routing"]["was_refused"] is True

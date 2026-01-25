@@ -30,7 +30,7 @@ from rest_framework.response import Response
 from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage
 from .models import ChatMessage, ChatSession, RouteDecision
 from .prompts import get_prompt_service
-from .router import RouteResult, RouterService, get_router_service
+from .router import Flow, RouteResult, RouterService, get_router_service
 from .serializers import (
     ChatRequestSerializer,
     HistoryMessageSerializer,
@@ -981,6 +981,56 @@ def openai_chat_completions(request):
             client_version=page_context["client_version"],
             flow=route_result.flow.value,
         )
+
+        # Handle refusals early - don't call agent for refused requests
+        if route_result.flow == Flow.REFUSE:
+            refusal_message = route_result.safety.refusal_message or "I can't process this request."
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # Save refusal response
+            ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                role=ChatMessage.Role.ASSISTANT,
+                content=refusal_message,
+                latency_ms=latency_ms,
+                flow=route_result.flow.value,
+                status=ChatMessage.Status.REFUSED,
+            )
+
+            request_span.log(
+                output={"response": refusal_message, "refused": True},
+                tags=["refuse", "braintrust"],
+                metrics={"latency_ms": latency_ms},
+            )
+
+            return Response(
+                {
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": data["model"],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": refusal_message,
+                            },
+                            "finish_reason": "content_filter",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    "routing": {
+                        "flow": route_result.flow.value,
+                        "decision_id": route_result.decision_id,
+                        "confidence": route_result.confidence,
+                        "was_refused": True,
+                    },
+                }
+            )
 
         try:
             # Build conversation from OpenAI messages
