@@ -153,8 +153,8 @@ class TestOpenAISerializers:
 class TestOpenAICompatResponse:
     """Test response transformation for OpenAI-compatible endpoint."""
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_returns_openai_format_structure(
         self,
         mock_router,
@@ -181,8 +181,8 @@ class TestOpenAICompatResponse:
         assert "choices" in data
         assert len(data["choices"]) == 1
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_includes_usage_tokens(
         self,
         mock_router,
@@ -205,8 +205,8 @@ class TestOpenAICompatResponse:
         assert data["usage"]["completion_tokens"] == 280
         assert data["usage"]["total_tokens"] == 430
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_includes_routing_metadata(
         self,
         mock_router,
@@ -230,8 +230,8 @@ class TestOpenAICompatResponse:
         assert data["routing"]["decision_id"] == "route-test123"
         assert data["routing"]["was_refused"] is False
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_maps_content_to_choices(
         self,
         mock_router,
@@ -260,8 +260,8 @@ class TestOpenAICompatResponse:
 class TestOpenAICompatMultiTurn:
     """Test multi-turn conversation handling."""
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_extracts_last_user_message(
         self, mock_router, mock_agent, api_client, mock_send_message, mock_route_result
     ):
@@ -286,8 +286,8 @@ class TestOpenAICompatMultiTurn:
         call_args = mock_router.return_value.route.call_args
         assert call_args.kwargs["user_message"] == "Follow-up question"
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_handles_system_message(
         self, mock_router, mock_agent, api_client, mock_send_message, mock_route_result
     ):
@@ -313,8 +313,8 @@ class TestOpenAICompatMultiTurn:
 class TestOpenAICompatErrors:
     """Test error handling for OpenAI-compatible endpoint."""
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_agent_error_returns_openai_error_format(
         self, mock_router, mock_agent, api_client, valid_openai_request, mock_route_result
     ):
@@ -338,8 +338,8 @@ class TestOpenAICompatErrors:
 class TestOpenAICompatTraceability:
     """Test logging and traceability."""
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_generates_bt_prefixed_session_id(
         self,
         mock_router,
@@ -362,8 +362,8 @@ class TestOpenAICompatTraceability:
         call_args = mock_router.return_value.route.call_args
         assert call_args.kwargs["session_id"].startswith("bt-")
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_sets_braintrust_source_in_context(
         self,
         mock_router,
@@ -410,8 +410,8 @@ class TestOpenAICompatRefusals:
             router_latency_ms=10,
         )
 
-    @patch("chat.views.get_agent_service")
-    @patch("chat.views.get_router")
+    @patch("chat.orchestrator.get_agent_service")
+    @patch("chat.orchestrator.get_router")
     def test_refusal_returns_early_without_calling_agent(
         self, mock_router, mock_agent, api_client, valid_openai_request, mock_refuse_route_result
     ):
@@ -441,13 +441,13 @@ class TestPageContextContract:
 
     def test_page_context_keys_match_send_message_signature(self):
         """
-        Ensure page_context keys from views.py match send_message parameters.
+        Ensure page_context keys from orchestrator.py match send_message parameters.
 
         This catches bugs where views pass kwargs that send_message doesn't accept.
         """
-        from chat.views import extract_page_context
+        from chat.orchestrator import extract_page_context
 
-        # Get the page_context keys that views.py passes to send_message
+        # Get the page_context keys that orchestrator.py passes to send_message
         page_context = extract_page_context(
             {"pageUrl": "https://example.com", "clientVersion": "1.0"}
         )
@@ -456,8 +456,8 @@ class TestPageContextContract:
         sig = inspect.signature(ClaudeAgentService.send_message)
         valid_params = set(sig.parameters.keys())
 
-        # Verify all page_context keys are valid parameters
-        for key in page_context.keys():
+        # Verify all page_context keys are valid parameters (use to_dict() for dict representation)
+        for key in page_context.to_dict().keys():
             assert key in valid_params, (
                 f"page_context has '{key}' but ClaudeAgentService.send_message doesn't accept it. "
                 f"Valid params: {sorted(valid_params)}"
