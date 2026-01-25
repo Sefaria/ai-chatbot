@@ -2,7 +2,7 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId } from '../lib/session.js';
   import { sendMessage, sendMessageStream, loadHistory } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
@@ -31,6 +31,19 @@
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
+
+  // Turn limit state
+  let maxTurns = $state(null);
+  let limitReached = $state(false);
+  let isClearing = $state(false);
+
+  // Dynamic text based on turn limit (default to single-turn mode when unknown)
+  let newSessionButtonText = $derived(maxTurns === 1 || maxTurns === null ? 'New Question' : 'New Conversation');
+  let newSessionHintText = $derived(
+    maxTurns === 1 || maxTurns === null
+      ? 'Start a new question to continue'
+      : 'Start a new conversation to continue'
+  );
 
   // Refs
   let messageListRef = $state(null);
@@ -95,15 +108,15 @@
     isOpen = true;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
     dispatchEvent('opened');
-    
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
     }, 100);
 
-    // Load history if no messages
-    if (messages.length === 0 && sessionId && apiBaseUrl) {
-      loadInitialHistory();
+    // Always sync session state from server (for turn limit info)
+    if (sessionId && apiBaseUrl) {
+      syncSessionState();
     }
   }
 
@@ -137,12 +150,41 @@
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
       messages = result.messages;
       hasMoreHistory = result.hasMore;
+      // Update turn limit state from history response
+      if (result.session) {
+        maxTurns = result.session.maxTurns;
+        limitReached = result.session.limitReached;
+      }
       saveMessagesToStorage();
       scrollToBottom();
     } catch (e) {
       console.warn('[lc-chatbot] Failed to load history:', e);
     } finally {
       isLoadingHistory = false;
+    }
+  }
+
+  async function syncSessionState() {
+    if (!userId || !sessionId || !apiBaseUrl) return;
+
+    try {
+      const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
+
+      // Update turn limit state from server
+      if (result.session) {
+        maxTurns = result.session.maxTurns;
+        limitReached = result.session.limitReached;
+      }
+
+      // Only load messages if we don't have any locally
+      if (messages.length === 0 && result.messages.length > 0) {
+        messages = result.messages;
+        hasMoreHistory = result.hasMore;
+        saveMessagesToStorage();
+        scrollToBottom();
+      }
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to sync session state:', e);
     }
   }
 
@@ -257,6 +299,12 @@
       saveMessagesToStorage();
       scrollToBottom();
 
+      // Update turn limit state from response
+      if (response.session) {
+        maxTurns = response.session.maxTurns;
+        limitReached = response.session.limitReached;
+      }
+
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
         sessionId,
@@ -266,8 +314,26 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
-      
-      // Mark message as failed
+
+      // Handle turn limit reached error
+      if (e.code === 'turn_limit_reached') {
+        limitReached = true;
+        if (e.maxTurns) {
+          maxTurns = e.maxTurns;
+        }
+        // Remove the unsent message since turn limit was already reached
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+
+        dispatchEvent('error', {
+          type: 'turn_limit_reached',
+          messageId: userMessage.messageId,
+          maxTurns: e.maxTurns
+        });
+        return;
+      }
+
+      // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: 'failed' }
@@ -310,6 +376,43 @@
     messages = messages.filter(m => m.messageId !== messageId);
     inputText = failedMessage.content;
     await handleSend();
+  }
+
+  function startNewSession() {
+    // Trigger fade animation
+    isClearing = true;
+
+    setTimeout(() => {
+      // Generate new session
+      const newSessionId = generateSessionId();
+      sessionId = newSessionId;
+
+      // Clear messages
+      messages = [];
+
+      // Reset state
+      limitReached = false;
+      maxTurns = null;
+      hasMoreHistory = false;
+
+      // Save new session
+      setStorage(STORAGE_KEYS.SESSION, {
+        sessionId: newSessionId,
+        lastActivity: new Date().toISOString()
+      });
+
+      // Clear old messages from storage
+      setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+
+      // Allow clearing animation to complete before resetting flag
+      setTimeout(() => {
+        isClearing = false;
+        // Focus input after animation completes
+        inputRef?.focus();
+      }, 150);
+
+      dispatchEvent('session_started', { sessionId: newSessionId });
+    }, 150); // Animation start delay
   }
 
   // Resize handling
@@ -458,12 +561,16 @@
       </header>
 
       <!-- Message List -->
-      <div 
-      class="lc-chatbot-messages"
-      bind:this={messageListRef}
-      onscroll={handleScroll}
-      onclick={handleMessageLinkClick}
-    >
+      <div
+        class="lc-chatbot-messages"
+        class:clearing={isClearing}
+        bind:this={messageListRef}
+        onscroll={handleScroll}
+        onclick={handleMessageLinkClick}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+      >
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
@@ -574,25 +681,34 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          placeholder="Type a message..."
-          rows="1"
-          disabled={isSending}
-        ></textarea>
-        <button 
-          class="send-btn" 
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if limitReached}
+          <div class="limit-reached">
+            <p class="limit-hint">{newSessionHintText}</p>
+            <button class="new-session-btn" onclick={startNewSession}>
+              {newSessionButtonText}
+            </button>
+          </div>
+        {:else}
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            placeholder="Type a message..."
+            rows="1"
+            disabled={isSending}
+          ></textarea>
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || isSending}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
     </div>
   {/if}
@@ -1164,5 +1280,49 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  /* Clearing animation for message list */
+  .lc-chatbot-messages.clearing {
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+  }
+
+  /* Limit Reached UI */
+  .limit-reached {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 0;
+  }
+
+  .limit-hint {
+    font-size: 13px;
+    color: var(--lc-text-secondary);
+    text-align: center;
+    margin: 0;
+  }
+
+  .new-session-btn {
+    padding: 10px 20px;
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .new-session-btn:hover {
+    background: var(--lc-primary-hover);
+  }
+
+  .new-session-btn:active {
+    transform: scale(0.98);
   }
 </style>
