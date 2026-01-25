@@ -1,5 +1,6 @@
 """Tests for OpenAI-compatible chat completions endpoint."""
 
+import inspect
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -39,14 +40,8 @@ def mock_agent_response():
 
 @pytest.fixture
 def mock_send_message(mock_agent_response):
-    """
-    Create an AsyncMock for send_message that validates parameter names.
-
-    Using spec= ensures the mock only accepts parameters that the real
-    ClaudeAgentService.send_message method accepts. This catches bugs where
-    callers pass unexpected keyword arguments (like the 'source' parameter bug).
-    """
-    return AsyncMock(spec=ClaudeAgentService.send_message, return_value=mock_agent_response)
+    """Create an AsyncMock for send_message with the expected return value."""
+    return AsyncMock(return_value=mock_agent_response)
 
 
 @pytest.fixture
@@ -439,3 +434,31 @@ class TestOpenAICompatRefusals:
         assert data["choices"][0]["finish_reason"] == "content_filter"
         assert data["routing"]["flow"] == "REFUSE"
         assert data["routing"]["was_refused"] is True
+
+
+class TestPageContextContract:
+    """Contract tests to ensure views pass valid parameters to agent service."""
+
+    def test_page_context_keys_match_send_message_signature(self):
+        """
+        Ensure page_context keys from views.py match send_message parameters.
+
+        This catches bugs where views pass kwargs that send_message doesn't accept.
+        """
+        from chat.views import extract_page_context
+
+        # Get the page_context keys that views.py passes to send_message
+        page_context = extract_page_context(
+            {"pageUrl": "https://example.com", "clientVersion": "1.0"}
+        )
+
+        # Get the send_message parameter names
+        sig = inspect.signature(ClaudeAgentService.send_message)
+        valid_params = set(sig.parameters.keys())
+
+        # Verify all page_context keys are valid parameters
+        for key in page_context.keys():
+            assert key in valid_params, (
+                f"page_context has '{key}' but ClaudeAgentService.send_message doesn't accept it. "
+                f"Valid params: {sorted(valid_params)}"
+            )
