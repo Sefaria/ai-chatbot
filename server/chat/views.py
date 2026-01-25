@@ -40,7 +40,7 @@ from .serializers import (
     OpenAIChatRequestSerializer,
 )
 from .summarization import ConversationSummary, get_summary_service
-from .test_questions import get_test_response
+from .test_questions import build_test_response_data, get_test_response
 
 logger = logging.getLogger("chat")
 
@@ -324,19 +324,13 @@ def chat(request):
     if test_response:
         logger.info(f"🧪 Test question detected: {data['text']}")
         return Response(
-            {
-                "messageId": f"test_{data['text'].lower()}",
-                "sessionId": data["sessionId"],
-                "timestamp": timezone.now().isoformat(),
-                "markdown": test_response["markdown"],
-                "routing": {
-                    "flow": test_response["flow"],
-                    "decisionId": "test_decision",
-                    "confidence": 1.0,
-                    "wasRefused": False,
-                },
-                "session": build_session_info(session),
-            }
+            build_test_response_data(
+                test_response=test_response,
+                session_id=data["sessionId"],
+                message_text=data["text"],
+                session_info=build_session_info(session),
+                timestamp_iso=timezone.now().isoformat(),
+            )
         )
 
     # Get conversation summary for routing
@@ -649,24 +643,19 @@ def chat_stream(request):
             }
             yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
 
-            final_data = {
-                "messageId": f"test_{data['text'].lower()}",
-                "sessionId": data["sessionId"],
-                "timestamp": timezone.now().isoformat(),
-                "markdown": test_response["markdown"],
-                "routing": {
-                    "flow": test_response["flow"],
-                    "decisionId": "test_decision",
-                    "wasRefused": False,
-                },
-                "session": build_session_info(session),
-                "stats": {
-                    "llmCalls": 0,
-                    "toolCalls": 0,
-                    "inputTokens": 0,
-                    "outputTokens": 0,
-                    "latencyMs": 0,
-                },
+            final_data = build_test_response_data(
+                test_response=test_response,
+                session_id=data["sessionId"],
+                message_text=data["text"],
+                session_info=build_session_info(session),
+                timestamp_iso=timezone.now().isoformat(),
+            )
+            final_data["stats"] = {
+                "llmCalls": 0,
+                "toolCalls": 0,
+                "inputTokens": 0,
+                "outputTokens": 0,
+                "latencyMs": 0,
             }
             yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
 
@@ -1165,6 +1154,15 @@ def openai_chat_completions(request):
         },
     )
 
+    # Check turn limit
+    if (session.turn_count or 0) >= settings.MAX_TURNS:
+        return _openai_error_response(
+            message="Turn limit reached. Start a new conversation.",
+            error_type="invalid_request_error",
+            code="turn_limit_reached",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
     # Set up Braintrust-specific context
     page_context = {
         "site": "braintrust.dev",
@@ -1287,6 +1285,7 @@ def openai_chat_completions(request):
                         "confidence": route_result.confidence,
                         "was_refused": True,
                     },
+                    "session": build_session_info(session),
                 }
             )
 
@@ -1347,6 +1346,9 @@ def openai_chat_completions(request):
                 route_result=route_result,
                 new_summary_text=None,  # OpenAI-compat is single-turn, no summary needed
             )
+
+            # Reload session to get updated turn_count
+            session.refresh_from_db()
 
             logger.info(
                 f"[openai-compat] response={response_msg.message_id[:20]}... "
@@ -1410,6 +1412,7 @@ def openai_chat_completions(request):
                         "confidence": route_result.confidence,
                         "was_refused": agent_response.was_refused,
                     },
+                    "session": build_session_info(session),
                 }
             )
 

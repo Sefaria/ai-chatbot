@@ -91,3 +91,38 @@ def get_test_response(message: str) -> dict | None:
     """
     normalized = message.strip().lower()
     return TEST_QUESTIONS.get(normalized)
+
+
+def build_test_response_data(
+    test_response: dict,
+    session_id: str,
+    message_text: str,
+    session_info: dict,
+    timestamp_iso: str,
+) -> dict:
+    """
+    Build the response data dict for a test question.
+
+    Args:
+        test_response: The test response from TEST_QUESTIONS
+        session_id: The session ID
+        message_text: Original message text (e.g., "Q1")
+        session_info: Session info dict from build_session_info
+        timestamp_iso: ISO timestamp string
+
+    Returns:
+        Response data dict ready for JSON serialization
+    """
+    return {
+        "messageId": f"test_{message_text.strip().lower()}",
+        "sessionId": session_id,
+        "timestamp": timestamp_iso,
+        "markdown": test_response["markdown"],
+        "routing": {
+            "flow": test_response["flow"],
+            "decisionId": "test_decision",
+            "confidence": 1.0,
+            "wasRefused": False,
+        },
+        "session": session_info,
+    }
