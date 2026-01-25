@@ -257,3 +257,65 @@ class TestBraintrustBackendIntegration:
 
             # Verify braintrust was called
             mock_bt_span.log.assert_called()
+
+
+class TestGetTracer:
+    """Test the get_tracer() function for global tracer access."""
+
+    def test_get_tracer_returns_tracer_instance(self) -> None:
+        """get_tracer() should return a Tracer instance."""
+        from chat.observability import get_tracer
+        from chat.observability.tracer import Tracer
+
+        tracer = get_tracer()
+        assert isinstance(tracer, Tracer)
+
+    def test_get_tracer_returns_same_instance(self) -> None:
+        """get_tracer() should return the same singleton instance."""
+        from chat.observability import get_tracer
+
+        tracer1 = get_tracer()
+        tracer2 = get_tracer()
+        assert tracer1 is tracer2
+
+    def test_get_tracer_has_braintrust_backend(self) -> None:
+        """get_tracer() should include BraintrustBackend."""
+        from chat.observability import get_tracer
+        from chat.observability.backends import BraintrustBackend
+
+        tracer = get_tracer()
+        backend_types = [type(b) for b in tracer.backends]
+        assert BraintrustBackend in backend_types
+
+    def test_reset_tracer_clears_singleton(self) -> None:
+        """_reset_tracer() should clear the singleton for testing."""
+        from chat.observability import _reset_tracer, get_tracer
+
+        tracer1 = get_tracer()
+        _reset_tracer()
+        tracer2 = get_tracer()
+        assert tracer1 is not tracer2
+
+
+class TestModuleLevelFunctions:
+    """Test module-level convenience functions that use the global tracer."""
+
+    def test_module_start_span_uses_global_tracer(self) -> None:
+        """Module-level start_span should use the global tracer's backends."""
+        from chat.observability import _reset_tracer, start_span
+
+        _reset_tracer()
+
+        mock_bt_span = MagicMock()
+        with patch("braintrust.start_span", return_value=mock_bt_span):
+            mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
+            mock_bt_span.__exit__ = MagicMock(return_value=None)
+
+            with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
+                _reset_tracer()  # Reset to pick up env var
+
+                with start_span(name="test", type="task") as span:
+                    span.log(input={"query": "test"})
+
+                # The span should have recorded to braintrust
+                mock_bt_span.log.assert_called()
