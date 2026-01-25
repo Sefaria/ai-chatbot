@@ -22,6 +22,7 @@ from threading import Thread
 from urllib.parse import urlparse
 
 import braintrust
+from django.conf import settings
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -39,6 +40,7 @@ from .serializers import (
     OpenAIChatRequestSerializer,
 )
 from .summarization import ConversationSummary, get_summary_service
+from .test_questions import get_test_response
 
 logger = logging.getLogger("chat")
 
@@ -103,6 +105,17 @@ def extract_page_context(context: dict) -> dict:
         "client_version": client_version,
         # Infer source: component always sends clientVersion, direct API calls typically don't
         "source": "component" if client_version else "api",
+    }
+
+
+def build_session_info(session) -> dict:
+    """Build session info dict for API response."""
+    turn_count = session.turn_count or 0
+    max_turns = settings.MAX_TURNS
+    return {
+        "turnCount": turn_count,
+        "maxTurns": max_turns,
+        "limitReached": turn_count >= max_turns,
     }
 
 
@@ -254,6 +267,37 @@ def chat(request):
             "last_activity": timezone.now(),
         },
     )
+
+    # Check turn limit
+    if (session.turn_count or 0) >= settings.MAX_TURNS:
+        return Response(
+            {
+                "error": "turn_limit_reached",
+                "message": "Turn limit reached. Start a new conversation.",
+                "maxTurns": settings.MAX_TURNS,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Check for test questions (Q1, Q2, Q3) - must be after turn limit check
+    test_response = get_test_response(data["text"])
+    if test_response:
+        logger.info(f"🧪 Test question detected: {data['text']}")
+        return Response(
+            {
+                "messageId": f"test_{data['text'].lower()}",
+                "sessionId": data["sessionId"],
+                "timestamp": timezone.now().isoformat(),
+                "markdown": test_response["markdown"],
+                "routing": {
+                    "flow": test_response["flow"],
+                    "decisionId": "test_decision",
+                    "confidence": 1.0,
+                    "wasRefused": False,
+                },
+                "session": build_session_info(session),
+            }
+        )
 
     # Get conversation summary for routing
     conversation_summary = session.conversation_summary or ""
@@ -441,6 +485,9 @@ def chat(request):
                 },
             )
 
+            # Reload session to get updated turn_count
+            session.refresh_from_db()
+
             # Return response with routing metadata
             response_data = {
                 "messageId": response_message.message_id,
@@ -453,6 +500,7 @@ def chat(request):
                     "confidence": route_result.confidence,
                     "wasRefused": agent_response.was_refused,
                 },
+                "session": build_session_info(session),
             }
 
             return Response(response_data)
@@ -483,6 +531,9 @@ def chat(request):
                 metrics={"latency_ms": int((time.time() - start_time) * 1000)},
             )
 
+            # Reload session to get current state
+            session.refresh_from_db()
+
             return Response(
                 {
                     "messageId": error_message.message_id,
@@ -494,6 +545,7 @@ def chat(request):
                         "decisionId": route_result.decision_id,
                         "wasRefused": False,
                     },
+                    "session": build_session_info(session),
                 }
             )
 
@@ -533,6 +585,59 @@ def chat_stream(request):
             "last_activity": timezone.now(),
         },
     )
+
+    # Check turn limit
+    if (session.turn_count or 0) >= settings.MAX_TURNS:
+        return Response(
+            {
+                "error": "turn_limit_reached",
+                "message": "Turn limit reached. Start a new conversation.",
+                "maxTurns": settings.MAX_TURNS,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Check for test questions (Q1, Q2, Q3) - must be after turn limit check
+    test_response = get_test_response(data["text"])
+    if test_response:
+        logger.info(f"🧪 [stream] Test question detected: {data['text']}")
+
+        def generate_test_sse():
+            """Generator that yields SSE events for test questions."""
+            routing_event = {
+                "type": "routing",
+                "flow": test_response["flow"],
+                "decisionId": "test_decision",
+                "confidence": 1.0,
+                "reasonCodes": ["TEST_QUESTION"],
+            }
+            yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
+
+            final_data = {
+                "messageId": f"test_{data['text'].lower()}",
+                "sessionId": data["sessionId"],
+                "timestamp": timezone.now().isoformat(),
+                "markdown": test_response["markdown"],
+                "routing": {
+                    "flow": test_response["flow"],
+                    "decisionId": "test_decision",
+                    "wasRefused": False,
+                },
+                "session": build_session_info(session),
+                "stats": {
+                    "llmCalls": 0,
+                    "toolCalls": 0,
+                    "inputTokens": 0,
+                    "outputTokens": 0,
+                    "latencyMs": 0,
+                },
+            }
+            yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
+
+        response = StreamingHttpResponse(generate_test_sse(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
     # Route the message
     router = get_router()
@@ -732,6 +837,9 @@ def chat_stream(request):
             f"latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
         )
 
+        # Reload session to get updated turn_count
+        session.refresh_from_db()
+
         final_data = {
             "messageId": response_message.message_id,
             "sessionId": data["sessionId"],
@@ -742,6 +850,7 @@ def chat_stream(request):
                 "decisionId": route_result.decision_id,
                 "wasRefused": agent_response.was_refused,
             },
+            "session": build_session_info(session),
             "stats": {
                 "llmCalls": agent_response.llm_calls,
                 "toolCalls": len(agent_response.tool_calls),
@@ -806,8 +915,10 @@ def history(request):
         session = ChatSession.objects.get(session_id=session_id)
         session_info = {
             "currentFlow": session.current_flow,
-            "turnCount": session.turn_count,
-            "totalTokens": session.total_input_tokens + session.total_output_tokens,
+            "turnCount": session.turn_count or 0,
+            "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
+            "maxTurns": settings.MAX_TURNS,
+            "limitReached": (session.turn_count or 0) >= settings.MAX_TURNS,
         }
     except ChatSession.DoesNotExist:
         session_info = None

@@ -150,6 +150,9 @@ REST_FRAMEWORK = {
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
+# Chat turn limit (1 = single Q&A, higher = multi-turn conversation)
+MAX_TURNS = max(1, int(os.environ.get("MAX_TURNS", 1)))
+
 # ============================================================================
 # Anthropic API Configuration
 # ============================================================================

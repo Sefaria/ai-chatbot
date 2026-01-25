@@ -11,7 +11,7 @@ const SESSION_TIMEOUT_MINUTES = 30;
  * Generate a unique session ID
  * @returns {string} Session ID
  */
-function generateSessionId() {
+export function generateSessionId() {
   return 'sess_' + crypto.randomUUID();
 }
 

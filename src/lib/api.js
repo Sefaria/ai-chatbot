@@ -22,11 +22,19 @@ import { generateMessageId } from './session.js';
  */
 
 /**
+ * @typedef {Object} SessionInfo
+ * @property {number} turnCount
+ * @property {number} maxTurns
+ * @property {boolean} limitReached
+ */
+
+/**
  * @typedef {Object} ChatResponse
  * @property {string} messageId
  * @property {string} sessionId
  * @property {string} timestamp
  * @property {string} markdown
+ * @property {SessionInfo} [session]
  */
 
 /**
@@ -74,13 +82,23 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response for turn limit info
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
+    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
-  
+
   return response.json();
 }
 
@@ -136,13 +154,23 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response for turn limit info
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
+    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
-  
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -181,7 +209,8 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
                 timestamp: data.timestamp,
                 markdown: data.markdown,
                 toolCalls: data.toolCalls,
-                stats: data.stats
+                stats: data.stats,
+                session: data.session
               };
               if (callbacks.onMessage) {
                 callbacks.onMessage(finalMessage);
@@ -220,7 +249,7 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
  * @param {string} sessionId - Session ID
  * @param {string} [before] - Load messages before this timestamp
  * @param {number} [limit=20] - Number of messages to load
- * @returns {Promise<{ messages: HistoryMessage[], hasMore: boolean }>}
+ * @returns {Promise<{ messages: HistoryMessage[], hasMore: boolean, session: SessionInfo | null }>}
  */
 export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, limit = 20) {
   const params = new URLSearchParams({
@@ -250,7 +279,8 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
   
   return {
     messages: data.messages || [],
-    hasMore: data.hasMore ?? false
+    hasMore: data.hasMore ?? false,
+    session: data.session || null
   };
 }
 
