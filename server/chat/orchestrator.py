@@ -21,6 +21,7 @@ from django.utils import timezone
 from .agent import AgentProgressUpdate, AgentResponse, ClaudeAgentService, ConversationMessage
 from .metrics import TokenUsage
 from .models import ChatMessage, ChatSession, RouteDecision
+from .observability import Span, create_span
 from .prompts import get_prompt_service
 from .router import RouteResult, RouterService, get_router_service
 from .summarization import ConversationSummary, get_summary_service
@@ -67,7 +68,7 @@ class TurnContext:
     session_id: str
     page_context: PageContext
     start_time: float
-    request_span: braintrust.Span
+    request_span: Span
     environment: str = "dev"
 
 
@@ -283,8 +284,8 @@ def prepare_turn(
     # Initialize Braintrust logger
     _get_bt_logger()
 
-    # Start request-level span
-    request_span = braintrust.start_span(name=span_name, type="task")
+    # Start request-level span (using our tracer abstraction)
+    request_span = create_span(name=span_name, type="task")
     request_span.log(
         input={"query": user_message},
         metadata={
