@@ -206,6 +206,7 @@ RouteDecision
 |----------|--------|-------------|
 | `/api/chat/stream` | POST | Send message (SSE streaming) |
 | `/api/chat` | POST | Send message (non-streaming) |
+| `/api/v1/chat/completions` | POST | OpenAI-compatible (for Braintrust) |
 | `/api/history` | GET | Load conversation history |
 | `/api/health` | GET | Health check |
 
@@ -232,17 +233,35 @@ RouteDecision
 
 ## Observability
 
-**Braintrust Integration:**
-- Native tracing via `@traced` decorators
-- Logs: input, prompts, tools, output, metrics
-- Nested spans for tool execution
+All tracing uses the `chat.observability` abstraction (not direct Braintrust SDK):
+
+```python
+from chat.observability import start_span, create_span, current_span, traced
+
+with start_span(name="my-operation", type="llm") as span:
+    span.log(input={...}, output={...}, metrics={...})
+```
+
+**Backends:**
+- `BraintrustBackend`: Active when `BRAINTRUST_API_KEY` is set
+- `DatabaseBackend`: (Future) Local logging
+
+**Trace Hierarchy:**
+```
+request → router → guardrails-llm
+                 → flow-classifier-llm
+        → chat-agent → llm-call-N → tool:X
+        → summary-llm
+```
 
 **Metrics Tracked:**
-- Input/output tokens
+- Input/output tokens (Braintrust-compatible field names)
 - Cache tokens (creation + read)
 - Tool calls (count, latency, errors)
-- Router latency
+- LLM calls (total across router, agent, summary)
 - Total latency
+
+See `docs/BRAINTRUST_RESTRUCTURE_PLAN.md` for detailed span documentation.
 
 ## Directory Structure
 
@@ -251,8 +270,13 @@ server/
 ├── chat/
 │   ├── views.py              # API endpoints (thin HTTP layer)
 │   ├── orchestrator.py       # Shared turn orchestration logic
+│   ├── metrics.py            # TokenUsage for Braintrust cost tracking
 │   ├── models.py             # Data models
 │   ├── serializers.py        # Request/response validation
+│   ├── observability/        # Tracing abstraction
+│   │   ├── __init__.py       # start_span, create_span, traced
+│   │   ├── tracer.py         # Span, Tracer classes
+│   │   └── backends.py       # BraintrustBackend
 │   ├── router/
 │   │   ├── router_service.py # Flow classification
 │   │   ├── ai_router.py      # Claude-based classifier
@@ -265,7 +289,7 @@ server/
 │   ├── prompts/
 │   │   ├── prompt_service.py # Braintrust + cache
 │   │   └── defaults.py       # Local fallbacks
-│   └── tests/                # 255 tests
+│   └── tests/                # 350+ tests
 └── chatbot_server/
     └── settings.py           # Django config
 

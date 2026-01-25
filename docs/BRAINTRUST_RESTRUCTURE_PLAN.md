@@ -69,12 +69,14 @@ This conversion is handled by `TokenUsage.to_braintrust()` in `chat/metrics.py`.
 
 ## Span Details
 
-### 1. Request Span (`views.py`)
+### 1. Request Span (`orchestrator.py`)
 
 Top-level span wrapping the entire request. Aggregates token usage from ALL LLM calls.
 
 ```python
-with braintrust.start_span(name="request", type="task") as request_span:
+from chat.observability import create_span
+
+request_span = create_span(name="request", type="task")
     request_span.log(
         input={"query": user_message},
         metadata={
@@ -112,8 +114,11 @@ with braintrust.start_span(name="request", type="task") as request_span:
 Captures the routing decision with full context. Contains nested LLM spans.
 
 ```python
+from chat.observability import traced, current_span
+
 @traced(name="router", type="function")
 def route(...):
+    span = current_span()
     span.log(
         input={
             "query": user_message,
@@ -149,7 +154,9 @@ def route(...):
 Individual LLM call for content safety check. Nested under router span.
 
 ```python
-with braintrust.start_span(name="guardrails-llm", type="llm") as span:
+from chat.observability import start_span
+
+with start_span(name="guardrails-llm", type="llm") as span:
     span.log(
         input={"message": message[:500]},
         metadata={"model": "claude-3-5-haiku-20241022"},
@@ -167,7 +174,9 @@ with braintrust.start_span(name="guardrails-llm", type="llm") as span:
 Individual LLM call for intent classification. Nested under router span.
 
 ```python
-with braintrust.start_span(name="flow-classifier-llm", type="llm") as span:
+from chat.observability import start_span
+
+with start_span(name="flow-classifier-llm", type="llm") as span:
     span.log(
         input={"message": message[:500], "previous_flow": previous_flow},
         metadata={"model": "claude-3-5-haiku-20241022"},
@@ -185,8 +194,11 @@ with braintrust.start_span(name="flow-classifier-llm", type="llm") as span:
 Agent-level span with model config and prompt versioning.
 
 ```python
+from chat.observability import traced, current_span
+
 @traced(name="chat-agent", type="llm")
 async def send_message(...):
+    span = current_span()
     span.log(
         input={
             "query": last_user_message,
@@ -232,7 +244,9 @@ async def send_message(...):
 Individual Claude API calls within the agent loop. Nested under chat-agent span.
 
 ```python
-with braintrust.start_span(name=f"llm-call-{iteration}", type="llm") as llm_span:
+from chat.observability import start_span
+
+with start_span(name=f"llm-call-{iteration}", type="llm") as llm_span:
     llm_span.log(
         input={
             "messages": conversation[-3:],  # Last 3 messages for context
@@ -261,7 +275,9 @@ with braintrust.start_span(name=f"llm-call-{iteration}", type="llm") as llm_span
 Individual tool executions. Nested under chat-agent span.
 
 ```python
-with braintrust.start_span(name=f"tool:{tool_name}", type="tool") as tool_span:
+from chat.observability import start_span
+
+with start_span(name=f"tool:{tool_name}", type="tool") as tool_span:
     tool_span.log(
         input=json.dumps(tool_input),
         metadata={"tool_name": "get_text", "tool_use_id": "..."},
@@ -279,7 +295,9 @@ with braintrust.start_span(name=f"tool:{tool_name}", type="tool") as tool_span:
 Individual LLM call for conversation summarization.
 
 ```python
-with braintrust.start_span(name="summary-llm", type="llm") as span:
+from chat.observability import start_span
+
+with start_span(name="summary-llm", type="llm") as span:
     span.log(
         input={"user_message": new_user_message[:200], "flow": flow},
         metadata={"model": "claude-3-haiku-20240307"},
@@ -379,8 +397,10 @@ After deployment, verify in Braintrust UI:
 
 | File | Purpose |
 |------|---------|
+| `chat/observability/` | Tracing abstraction (`start_span`, `create_span`, `traced`) |
+| `chat/observability/backends.py` | `BraintrustBackend` implementation |
 | `chat/metrics.py` | `TokenUsage` dataclass with `to_braintrust()` conversion |
-| `chat/views.py` | Request span, token aggregation, LLM call counting |
+| `chat/orchestrator.py` | Request span, token aggregation, LLM call counting |
 | `chat/router/router_service.py` | Router span, token accumulation from guardrails + classifier |
 | `chat/router/ai_guardrails.py` | Guardrails-llm span |
 | `chat/router/ai_router.py` | Flow-classifier-llm span |
