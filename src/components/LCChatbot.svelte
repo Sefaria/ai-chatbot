@@ -89,9 +89,7 @@
 
   // Save draft on input change
   $effect(() => {
-    if (inputText) {
-      setStorage(STORAGE_KEYS.DRAFT, { text: inputText });
-    }
+    setStorage(STORAGE_KEYS.DRAFT, { text: inputText || '' });
   });
 
   // Dispatch custom events
