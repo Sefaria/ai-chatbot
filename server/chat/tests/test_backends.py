@@ -16,7 +16,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span) as mock_start:
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ) as mock_start:
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -41,7 +44,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -69,7 +75,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -96,7 +105,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -122,7 +134,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -148,7 +163,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -174,7 +192,10 @@ class TestBraintrustBackend:
         from chat.observability.backends import BraintrustBackend
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -214,7 +235,7 @@ class TestBraintrustBackend:
         """Disabled backend should skip recording without error."""
         from chat.observability.backends import BraintrustBackend
 
-        with patch("braintrust.start_span") as mock_start:
+        with patch("chat.observability.backends.braintrust.start_span") as mock_start:
             backend = BraintrustBackend()
             backend.enabled = False
 
@@ -243,7 +264,10 @@ class TestBraintrustBackendIntegration:
         from chat.observability.tracer import Tracer
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
@@ -307,7 +331,10 @@ class TestModuleLevelFunctions:
         _reset_tracer()
 
         mock_bt_span = MagicMock()
-        with patch("braintrust.start_span", return_value=mock_bt_span):
+        with patch(
+            "chat.observability.backends.braintrust.start_span",
+            return_value=mock_bt_span,
+        ):
             mock_bt_span.__enter__ = MagicMock(return_value=mock_bt_span)
             mock_bt_span.__exit__ = MagicMock(return_value=None)
 
