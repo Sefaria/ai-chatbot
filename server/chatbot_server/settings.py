@@ -150,8 +150,10 @@ REST_FRAMEWORK = {
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
-# Chat turn limit (1 = single Q&A, higher = multi-turn conversation)
-MAX_TURNS = max(1, int(os.environ.get("MAX_TURNS", 1)))
+# Prompt slug defaults (Braintrust)
+CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
+ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
+GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
 
 # ============================================================================
 # Anthropic API Configuration

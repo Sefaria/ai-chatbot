@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
+from django.conf import settings
 logger = logging.getLogger("chat.prompts")
 
 
@@ -109,7 +110,7 @@ class PromptService:
     def get_prompt_bundle(
         self,
         flow: str,
-        core_prompt_id: str = "core-8fbc",
+        core_prompt_id: str | None = None,
         flow_prompt_id: str | None = None,
         version: str = "stable",
     ) -> PromptBundle:
@@ -118,7 +119,7 @@ class PromptService:
 
         Args:
             flow: Flow type (HALACHIC, GENERAL, SEARCH)
-            core_prompt_id: Braintrust slug for core prompt (default: "core-8fbc")
+            core_prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             flow_prompt_id: Braintrust ID for flow prompt (default: derived from flow)
             version: Prompt version to fetch
 
@@ -126,11 +127,12 @@ class PromptService:
             PromptBundle with core and flow prompts
         """
         flow_lower = flow.lower()
+        core_prompt_id = core_prompt_id or settings.CORE_PROMPT_SLUG
         flow_prompt_id = flow_prompt_id or f"bt_prompt_{flow_lower}"
 
-        # Fetch core prompt using the router's Braintrust client (supports core-8fbc slug)
+        # Fetch core prompt using the router's Braintrust client for the default core slug
         if (
-            core_prompt_id == "core-8fbc"
+            core_prompt_id == settings.CORE_PROMPT_SLUG
             and hasattr(self, "_router_braintrust_client")
             and self._router_braintrust_client
         ):

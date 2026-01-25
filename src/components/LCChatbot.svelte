@@ -3,7 +3,7 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId } from '../lib/session.js';
-  import { sendMessage, sendMessageStream, loadHistory } from '../lib/api.js';
+  import { sendMessage, sendMessageStream, loadHistory, fetchPromptDefaults } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
 
@@ -32,18 +32,23 @@
   let currentProgress = $state(null);
   let toolHistory = $state([]);
 
-  // Turn limit state
-  let maxTurns = $state(null);
-  let limitReached = $state(false);
-  let isClearing = $state(false);
+  // Settings state
+  let showSettings = $state(false);
+  let promptSlugs = $state({
+    corePromptSlug: '',
+    routerPromptSlug: '',
+    guardrailsPromptSlug: ''
+  });
+  let defaultPromptSlugs = $state({
+    corePromptSlug: '',
+    routerPromptSlug: '',
+    guardrailsPromptSlug: ''
+  });
+  let settingsLoaded = $state(false);
+  let isLoadingSettings = $state(false);
+  let settingsError = $state('');
 
-  // Dynamic text based on turn limit (default to single-turn mode when unknown)
-  let newSessionButtonText = $derived(maxTurns === 1 || maxTurns === null ? 'New Question' : 'New Conversation');
-  let newSessionHintText = $derived(
-    maxTurns === 1 || maxTurns === null
-      ? 'Start a new question to continue'
-      : 'Start a new conversation to continue'
-  );
+  let isClearing = $state(false);
 
   // Refs
   let messageListRef = $state(null);
@@ -82,6 +87,17 @@
       inputText = savedDraft.text;
     }
 
+    // Restore prompt slugs
+    const savedPromptSlugs = getStorage(STORAGE_KEYS.PROMPT_SLUGS, null);
+    if (savedPromptSlugs) {
+      promptSlugs = {
+        corePromptSlug: savedPromptSlugs.corePromptSlug || '',
+        routerPromptSlug: savedPromptSlugs.routerPromptSlug || '',
+        guardrailsPromptSlug: savedPromptSlugs.guardrailsPromptSlug || ''
+      };
+      settingsLoaded = true;
+    }
+
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
@@ -106,6 +122,7 @@
 
   function openPanel() {
     isOpen = true;
+    showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
     dispatchEvent('opened');
 
@@ -122,6 +139,7 @@
 
   function closePanel() {
     isOpen = false;
+    showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, placement });
     dispatchEvent('closed');
   }
@@ -142,6 +160,72 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
   }
 
+  async function openSettings() {
+    showSettings = true;
+    settingsError = '';
+
+    if (!settingsLoaded && apiBaseUrl) {
+      isLoadingSettings = true;
+      try {
+        const defaults = await fetchPromptDefaults(apiBaseUrl);
+        defaultPromptSlugs = {
+          corePromptSlug: defaults.corePromptSlug || '',
+          routerPromptSlug: defaults.routerPromptSlug || '',
+          guardrailsPromptSlug: defaults.guardrailsPromptSlug || ''
+        };
+        promptSlugs = {
+          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug,
+          routerPromptSlug: promptSlugs.routerPromptSlug || defaultPromptSlugs.routerPromptSlug,
+          guardrailsPromptSlug: promptSlugs.guardrailsPromptSlug || defaultPromptSlugs.guardrailsPromptSlug
+        };
+        settingsLoaded = true;
+      } catch (e) {
+        settingsError = e.message || 'Failed to load settings.';
+      } finally {
+        isLoadingSettings = false;
+      }
+    }
+  }
+
+  function closeSettings() {
+    showSettings = false;
+    settingsError = '';
+  }
+
+  function saveSettings() {
+    setStorage(STORAGE_KEYS.PROMPT_SLUGS, {
+      corePromptSlug: promptSlugs.corePromptSlug || '',
+      routerPromptSlug: promptSlugs.routerPromptSlug || '',
+      guardrailsPromptSlug: promptSlugs.guardrailsPromptSlug || ''
+    });
+    settingsError = '';
+  }
+
+  async function resetSettings() {
+    settingsError = '';
+    if (!apiBaseUrl) {
+      settingsError = 'API base URL is missing.';
+      return;
+    }
+
+    isLoadingSettings = true;
+    try {
+      const defaults = await fetchPromptDefaults(apiBaseUrl);
+      defaultPromptSlugs = {
+        corePromptSlug: defaults.corePromptSlug || '',
+        routerPromptSlug: defaults.routerPromptSlug || '',
+        guardrailsPromptSlug: defaults.guardrailsPromptSlug || ''
+      };
+      promptSlugs = { ...defaultPromptSlugs };
+      setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
+      settingsLoaded = true;
+    } catch (e) {
+      settingsError = e.message || 'Failed to reset settings.';
+    } finally {
+      isLoadingSettings = false;
+    }
+  }
+
   async function loadInitialHistory() {
     if (!userId || !sessionId || !apiBaseUrl) return;
     
@@ -150,11 +234,6 @@
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
       messages = result.messages;
       hasMoreHistory = result.hasMore;
-      // Update turn limit state from history response
-      if (result.session) {
-        maxTurns = result.session.maxTurns;
-        limitReached = result.session.limitReached;
-      }
       saveMessagesToStorage();
       scrollToBottom();
     } catch (e) {
@@ -170,11 +249,6 @@
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
 
-      // Update turn limit state from server
-      if (result.session) {
-        maxTurns = result.session.maxTurns;
-        limitReached = result.session.limitReached;
-      }
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
@@ -273,7 +347,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      });
+      }, promptSlugs);
 
       // Update user message status
       messages = messages.map(m => 
@@ -299,11 +373,6 @@
       saveMessagesToStorage();
       scrollToBottom();
 
-      // Update turn limit state from response
-      if (response.session) {
-        maxTurns = response.session.maxTurns;
-        limitReached = response.session.limitReached;
-      }
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -314,24 +383,6 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
-
-      // Handle turn limit reached error
-      if (e.code === 'turn_limit_reached') {
-        limitReached = true;
-        if (e.maxTurns) {
-          maxTurns = e.maxTurns;
-        }
-        // Remove the unsent message since turn limit was already reached
-        messages = messages.filter(m => m.messageId !== userMessage.messageId);
-        saveMessagesToStorage();
-
-        dispatchEvent('error', {
-          type: 'turn_limit_reached',
-          messageId: userMessage.messageId,
-          maxTurns: e.maxTurns
-        });
-        return;
-      }
 
       // Mark message as failed for other errors
       messages = messages.map(m =>
@@ -391,8 +442,6 @@
       messages = [];
 
       // Reset state
-      limitReached = false;
-      maxTurns = null;
       hasMoreHistory = false;
 
       // Save new session
@@ -542,7 +591,15 @@
 
       <!-- Header -->
       <header class="lc-chatbot-header">
-        <h2>Chat</h2>
+        <div class="header-left">
+          <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+          <h2>Library Assistant</h2>
+        </div>
         <div class="header-actions">
           <button class="new-chat-btn" onclick={handleNewChat} disabled={isSending} aria-label="Start a new chat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -560,6 +617,67 @@
         </div>
       </header>
 
+      {#if showSettings}
+        <div class="settings-panel">
+          <div class="settings-header">
+            <button class="settings-back" onclick={closeSettings} aria-label="Back to chat">
+              ← Back
+            </button>
+            <div class="settings-title">Agent Settings</div>
+          </div>
+
+          {#if isLoadingSettings}
+            <div class="settings-loading">Loading defaults...</div>
+          {/if}
+
+          {#if settingsError}
+            <div class="settings-error">{settingsError}</div>
+          {/if}
+
+          <div class="settings-fields">
+            <label class="settings-field">
+              <span>Core prompt slug</span>
+              <input
+                type="text"
+                bind:value={promptSlugs.corePromptSlug}
+                placeholder="core-8fbc"
+                disabled={isLoadingSettings}
+              />
+            </label>
+
+            <label class="settings-field">
+              <span>Router prompt slug</span>
+              <input
+                type="text"
+                bind:value={promptSlugs.routerPromptSlug}
+                placeholder="flow-router"
+                disabled={isLoadingSettings}
+              />
+            </label>
+
+            <label class="settings-field">
+              <span>Guardrails prompt slug</span>
+              <input
+                type="text"
+                bind:value={promptSlugs.guardrailsPromptSlug}
+                placeholder="guardrail-checker"
+                disabled={isLoadingSettings}
+              />
+            </label>
+          </div>
+
+          <div class="settings-actions">
+            <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
+              Save
+            </button>
+            <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
+              Reset to defaults
+            </button>
+          </div>
+
+          <p class="settings-note">Changes apply to new messages.</p>
+        </div>
+      {:else}
       <!-- Message List -->
       <div
         class="lc-chatbot-messages"
@@ -681,35 +799,27 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
-        {#if limitReached}
-          <div class="limit-reached">
-            <p class="limit-hint">{newSessionHintText}</p>
-            <button class="new-session-btn" onclick={startNewSession}>
-              {newSessionButtonText}
-            </button>
-          </div>
-        {:else}
-          <textarea
-            bind:this={inputRef}
-            bind:value={inputText}
-            onkeydown={handleKeydown}
-            placeholder="Type a message..."
-            rows="1"
-            disabled={isSending}
-          ></textarea>
-          <button
-            class="send-btn"
-            onclick={handleSend}
-            disabled={!inputText.trim() || isSending}
-            aria-label="Send message"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          </button>
-        {/if}
+        <textarea
+          bind:this={inputRef}
+          bind:value={inputText}
+          onkeydown={handleKeydown}
+          placeholder="Type a message..."
+          rows="1"
+          disabled={isSending}
+        ></textarea>
+        <button
+          class="send-btn"
+          onclick={handleSend}
+          disabled={!inputText.trim() || isSending}
+          aria-label="Send message"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
       </footer>
+      {/if}
     </div>
   {/if}
 </div>
@@ -834,9 +944,34 @@
     border-bottom: 1px solid var(--lc-border);
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   .lc-chatbot-header h2 {
     font-size: 16px;
     font-weight: 600;
+    color: var(--lc-text);
+  }
+
+  .settings-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--lc-border);
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-btn:hover {
+    background: var(--lc-bg-secondary);
     color: var(--lc-text);
   }
 
@@ -1282,47 +1417,127 @@
     transform: scale(0.95);
   }
 
+  /* Settings Panel */
+  .settings-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 20px 20px;
+    overflow: auto;
+    flex: 1;
+    background: var(--lc-bg);
+  }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .settings-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--lc-text);
+  }
+
+  .settings-back {
+    border: none;
+    background: transparent;
+    color: var(--lc-primary);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+
+  .settings-loading {
+    font-size: 12px;
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-error {
+    font-size: 12px;
+    color: var(--lc-error);
+  }
+
+  .settings-fields {
+    display: grid;
+    gap: 12px;
+  }
+
+  .settings-field {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-field input {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--lc-font);
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+  }
+
+  .settings-field input:disabled {
+    opacity: 0.6;
+  }
+
+  .settings-note {
+    font-size: 12px;
+    color: var(--lc-text-muted);
+  }
+
+  .settings-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .settings-save,
+  .settings-reset {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--lc-font);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-save {
+    background: var(--lc-primary);
+    color: white;
+    border-color: transparent;
+  }
+
+  .settings-save:hover:not(:disabled) {
+    background: var(--lc-primary-hover);
+  }
+
+  .settings-reset {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-reset:hover:not(:disabled) {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .settings-save:disabled,
+  .settings-reset:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   /* Clearing animation for message list */
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;
   }
 
-  /* Limit Reached UI */
-  .limit-reached {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 8px 0;
-  }
-
-  .limit-hint {
-    font-size: 13px;
-    color: var(--lc-text-secondary);
-    text-align: center;
-    margin: 0;
-  }
-
-  .new-session-btn {
-    padding: 10px 20px;
-    background: var(--lc-primary);
-    color: white;
-    border: none;
-    border-radius: var(--lc-radius-sm);
-    font-family: var(--lc-font);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .new-session-btn:hover {
-    background: var(--lc-primary-hover);
-  }
-
-  .new-session-btn:active {
-    transform: scale(0.98);
-  }
 </style>

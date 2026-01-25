@@ -11,6 +11,7 @@ Or in Django shell:
 
 import os
 
+from django.conf import settings
 
 def test_braintrust_client():
     """Test Braintrust client initialization and prompt loading."""
@@ -25,7 +26,7 @@ def test_braintrust_client():
     # Test loading core prompt
     try:
         core_prompt = client.get_core_prompt()
-        print("✓ Core prompt loaded (slug: core-8fbc)")
+        print(f"✓ Core prompt loaded (slug: {settings.CORE_PROMPT_SLUG})")
         print(f"  - Prompt length: {len(core_prompt)} chars")
         print(f"  - Preview: {core_prompt[:100]}...")
     except Exception as e:

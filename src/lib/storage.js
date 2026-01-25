@@ -51,6 +51,6 @@ export const STORAGE_KEYS = {
   SESSION: 'session',
   DRAFT: 'draft',
   UI: 'ui',
-  MESSAGES: 'messages'
+  MESSAGES: 'messages',
+  PROMPT_SLUGS: 'prompt_slugs'
 };
-

@@ -4,6 +4,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.conf import settings
 
 from chat.prompts.prompt_service import (
     PromptBundle,
@@ -254,7 +255,7 @@ class TestPromptBundleVersionTracking:
 
     def test_bundle_includes_version_info(self, service: PromptService) -> None:
         bundle = service.get_prompt_bundle("HALACHIC")
-        assert bundle.core_prompt_id == "core-8fbc"
+        assert bundle.core_prompt_id == settings.CORE_PROMPT_SLUG
         assert bundle.core_prompt_version is not None
         assert bundle.flow_prompt_id is not None
         assert bundle.flow_prompt_version is not None

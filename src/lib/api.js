@@ -19,13 +19,12 @@ import { generateMessageId } from './session.js';
  * @property {string} timestamp
  * @property {string} text
  * @property {MessageContext} context
+ * @property {PromptSlugs} [promptSlugs]
  */
 
 /**
  * @typedef {Object} SessionInfo
  * @property {number} turnCount
- * @property {number} maxTurns
- * @property {boolean} limitReached
  */
 
 /**
@@ -35,6 +34,13 @@ import { generateMessageId } from './session.js';
  * @property {string} timestamp
  * @property {string} markdown
  * @property {SessionInfo} [session]
+ */
+
+/**
+ * @typedef {Object} PromptSlugs
+ * @property {string} [corePromptSlug]
+ * @property {string} [routerPromptSlug]
+ * @property {string} [guardrailsPromptSlug]
  */
 
 /**
@@ -84,7 +90,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
   });
 
   if (!response.ok) {
-    // Try to parse error response for turn limit info
+    // Try to parse error response
     let errorData = null;
     try {
       errorData = await response.json();
@@ -95,7 +101,6 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
     const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
     error.code = errorData?.error;
-    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
 
@@ -127,9 +132,17 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} sessionId - Session ID
  * @param {string} text - Message text
  * @param {StreamCallbacks} callbacks - Streaming callbacks
+ * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @returns {Promise<ChatResponse>}
  */
-export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, callbacks = {}) {
+export async function sendMessageStream(
+  apiBaseUrl,
+  userId,
+  sessionId,
+  text,
+  callbacks = {},
+  promptSlugs = null
+) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
   
@@ -146,8 +159,12 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
       clientVersion: CLIENT_VERSION
     }
   };
+
+  if (promptSlugs) {
+    payload.promptSlugs = promptSlugs;
+  }
   
-  const response = await fetch(`${apiBaseUrl}/chat/stream`, {
+  const response = await fetch(`${apiBaseUrl}/v2/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -156,7 +173,7 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
   });
 
   if (!response.ok) {
-    // Try to parse error response for turn limit info
+    // Try to parse error response
     let errorData = null;
     try {
       errorData = await response.json();
@@ -167,7 +184,6 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
     const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
     error.code = errorData?.error;
-    error.maxTurns = errorData?.maxTurns;
     throw error;
   }
 
@@ -243,6 +259,26 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
 }
 
 /**
+ * Fetch default prompt slugs from the server.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @returns {Promise<PromptSlugs>}
+ */
+export async function fetchPromptDefaults(apiBaseUrl) {
+  const response = await fetch(`${apiBaseUrl}/v2/prompts/defaults`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to load prompt defaults: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Load conversation history
  * @param {string} apiBaseUrl - Base URL for API
  * @param {string} userId - User ID
@@ -283,4 +319,3 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
     session: data.session || null
   };
 }
-

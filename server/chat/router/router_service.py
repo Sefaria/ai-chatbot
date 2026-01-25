@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from django.conf import settings
 from .guardrails import GuardrailChecker, get_guardrail_checker
 from .reason_codes import ReasonCode
 
@@ -384,7 +385,7 @@ class RouterService:
         """Select prompt IDs based on flow."""
         # These IDs will be looked up in Braintrust
         return PromptBundle(
-            core_prompt_id="core-8fbc",
+            core_prompt_id=settings.CORE_PROMPT_SLUG,
             core_prompt_version="stable",
             flow_prompt_id=f"bt_prompt_{flow.value.lower()}",
             flow_prompt_version="stable",

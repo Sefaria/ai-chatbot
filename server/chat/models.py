@@ -56,6 +56,85 @@ class ChatSession(models.Model):
         return f"Session {self.session_id} (user: {self.user_id}, flow: {self.current_flow})"
 
 
+class ConversationSummary(models.Model):
+    """
+    Structured, rolling summary for a chat session.
+
+    Updated by an AI summarizer and used as compact context for future turns.
+    """
+
+    session = models.OneToOneField(
+        ChatSession, on_delete=models.CASCADE, related_name="summary"
+    )
+
+    text = models.TextField(blank=True, default="")
+    current_topic = models.CharField(max_length=255, blank=True, default="")
+    user_intent = models.CharField(max_length=100, blank=True, default="")
+    flow = models.CharField(max_length=20, blank=True, default="")
+
+    texts_referenced = models.JSONField(default=list)
+    topics_discussed = models.JSONField(default=list)
+    people_mentioned = models.JSONField(default=list)
+
+    halachic_domain = models.CharField(max_length=100, blank=True, default="")
+    constraints = models.JSONField(default=list)
+    safety_flags = models.JSONField(default=list)
+
+    turn_count = models.IntegerField(default=0)
+    last_updated = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-last_updated", "-created_at"]
+
+    def __str__(self):
+        return f"Summary {self.session.session_id[:12]}... ({self.turn_count} turns)"
+
+    def to_prompt_text(self) -> str:
+        """Convert to a compact text block for prompt context."""
+        parts = []
+
+        if self.text:
+            parts.append(f"Summary: {self.text}")
+        if self.current_topic:
+            parts.append(f"Current Topic: {self.current_topic}")
+        if self.user_intent:
+            parts.append(f"User Intent: {self.user_intent}")
+        if self.flow:
+            parts.append(f"Flow: {self.flow}")
+        if self.texts_referenced:
+            parts.append(f"Texts: {', '.join(self.texts_referenced[:5])}")
+        if self.topics_discussed:
+            parts.append(f"Topics: {', '.join(self.topics_discussed[:5])}")
+        if self.people_mentioned:
+            parts.append(f"People: {', '.join(self.people_mentioned[:5])}")
+        if self.halachic_domain:
+            parts.append(f"Halachic Domain: {self.halachic_domain}")
+        if self.constraints:
+            parts.append(f"Constraints: {', '.join(self.constraints)}")
+        if self.safety_flags:
+            parts.append(f"Safety Flags: {', '.join(self.safety_flags)}")
+
+        return "\n".join(parts)
+
+    def to_metadata(self) -> dict:
+        """Convert to metadata-friendly dictionary."""
+        return {
+            "text": self.text,
+            "current_topic": self.current_topic,
+            "user_intent": self.user_intent,
+            "flow": self.flow,
+            "texts_referenced": self.texts_referenced,
+            "topics_discussed": self.topics_discussed,
+            "people_mentioned": self.people_mentioned,
+            "halachic_domain": self.halachic_domain,
+            "constraints": self.constraints,
+            "safety_flags": self.safety_flags,
+            "turn_count": self.turn_count,
+            "last_updated": self.last_updated.isoformat() if self.last_updated else None,
+        }
+
+
 class RouteDecision(models.Model):
     """
     Records routing decisions for each turn.

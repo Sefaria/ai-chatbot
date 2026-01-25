@@ -6,6 +6,8 @@ import pytest
 
 from chat.router.guardrails import GuardrailResult
 from chat.router.reason_codes import ReasonCode
+from django.conf import settings
+
 from chat.router.router_service import (
     GENERAL_KEYWORDS,
     HALACHIC_KEYWORDS,
@@ -136,7 +138,7 @@ class TestPromptSelection:
 
     def test_halachic_has_core_prompt(self, router):
         bundle = router._select_prompts(Flow.HALACHIC)
-        assert bundle.core_prompt_id == "core-8fbc"
+        assert bundle.core_prompt_id == settings.CORE_PROMPT_SLUG
 
 
 class TestToolSelection:

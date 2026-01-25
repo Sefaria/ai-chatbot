@@ -8,11 +8,8 @@ Provides rolling summaries that capture:
 - Constraints and preferences
 """
 
-from .summary_service import (
-    ConversationSummary,
-    SummaryService,
-    get_summary_service,
-)
+from ..models import ConversationSummary
+from .summary_service import SummaryService, get_summary_service
 
 __all__ = [
     "SummaryService",

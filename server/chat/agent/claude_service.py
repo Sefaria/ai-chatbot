@@ -162,10 +162,8 @@ class ClaudeAgentService:
         session_id: str | None = None,
         user_id: str | None = None,
         turn_id: str | None = None,
-        # Page context for Braintrust logging
-        site: str = "",
-        page_type: str = "unknown",
-        page_url: str = "",
+        summary_text: str | None = None,
+        summary_metadata: dict[str, Any] | None = None,
         client_version: str = "",
     ) -> AgentResponse:
         """
@@ -179,6 +177,8 @@ class ClaudeAgentService:
             session_id: Session ID for logging
             user_id: User ID for logging
             turn_id: Turn ID for logging
+            summary_text: Optional summary text to include in the system prompt
+            summary_metadata: Optional structured summary metadata for tracing
 
         Returns:
             AgentResponse with content and metadata
@@ -192,17 +192,16 @@ class ClaudeAgentService:
         # Handle refusal flow
         if route_result.flow == Flow.REFUSE:
             return self._create_refusal_response(
-                route_result=route_result,
-                start_time=start_time,
-                messages=messages,
-                last_user_message=last_user_message,
-                session_id=session_id,
-                user_id=user_id,
-                turn_id=turn_id,
-                site=site,
-                page_type=page_type,
-                page_url=page_url,
-            )
+            route_result=route_result,
+            start_time=start_time,
+            messages=messages,
+            last_user_message=last_user_message,
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            summary_text=summary_text,
+            summary_metadata=summary_metadata,
+        )
 
         def emit(update: AgentProgressUpdate):
             """Safely emit progress update."""
@@ -258,14 +257,43 @@ class ClaudeAgentService:
         cache_creation_tokens = 0
         cache_read_tokens = 0
 
+        # Build system prompt with optional summary
+        system_prompt = prompt_bundle.system_prompt
+        if summary_text:
+            system_prompt = f"{system_prompt}\n\nConversation summary:\n{summary_text}"
+
         # Build messages array in OpenAI format for eval dataset creation
         formatted_messages = [
-            {"role": "system", "content": prompt_bundle.system_prompt},
+            {"role": "system", "content": system_prompt},
             *[{"role": m.role, "content": m.content} for m in messages],
         ]
         environment = os.environ.get("ENVIRONMENT", "dev")
 
         # Log structured input to span
+        metadata = {
+            # Session context
+            "session_id": session_id or "",
+            "turn_id": turn_id or "",
+            "user_id": user_id or "",
+            # Model config
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            # Prompt versioning
+            "decision_id": route_result.decision_id,
+            "core_prompt_id": prompt_bundle.core_prompt_id,
+            "core_prompt_version": prompt_bundle.core_prompt_version,
+            "flow_prompt_id": prompt_bundle.flow_prompt_id,
+            "flow_prompt_version": prompt_bundle.flow_prompt_version,
+            # Tools
+            "tools_available": route_result.tools,
+            "client_version": client_version,
+        }
+
+        if summary_text:
+            metadata["conversation_summary"] = summary_text
+        if summary_metadata:
+            metadata["conversation_summary_structured"] = summary_metadata
         span.log(
             input={
                 "query": last_user_message,  # Current turn for quick viewing
@@ -275,29 +303,7 @@ class ClaudeAgentService:
                 route_result.flow.value.lower(),  # search | halachic | general
                 environment,  # dev | staging | prod
             ],
-            metadata={
-                # Session context
-                "session_id": session_id or "",
-                "turn_id": turn_id or "",
-                "user_id": user_id or "",
-                # Model config
-                "model": self.model,
-                "temperature": self.temperature,
-                "max_tokens": self.max_tokens,
-                # Prompt versioning
-                "decision_id": route_result.decision_id,
-                "core_prompt_id": prompt_bundle.core_prompt_id,
-                "core_prompt_version": prompt_bundle.core_prompt_version,
-                "flow_prompt_id": prompt_bundle.flow_prompt_id,
-                "flow_prompt_version": prompt_bundle.flow_prompt_version,
-                # Tools
-                "tools_available": route_result.tools,
-                # Page context
-                "site": site,
-                "page_type": page_type,
-                "page_url": page_url,
-                "client_version": client_version,
-            },
+            metadata=metadata,
         )
 
         # Agent loop
@@ -318,7 +324,7 @@ class ClaudeAgentService:
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                system=prompt_bundle.system_prompt,
+                system=system_prompt,
                 messages=conversation,
                 tools=tools,
                 tool_choice={"type": "auto"},
@@ -554,9 +560,8 @@ class ClaudeAgentService:
         session_id: str | None = None,
         user_id: str | None = None,
         turn_id: str | None = None,
-        site: str = "",
-        page_type: str = "unknown",
-        page_url: str = "",
+        summary_text: str | None = None,
+        summary_metadata: dict[str, Any] | None = None,
     ) -> AgentResponse:
         """Create a response for refused requests with Braintrust logging."""
         span = current_span()
@@ -569,6 +574,16 @@ class ClaudeAgentService:
         )
 
         # Log structured input (same format as normal requests for consistency)
+        metadata = {
+            "session_id": session_id or "",
+            "turn_id": turn_id or "",
+            "user_id": user_id or "",
+            "decision_id": route_result.decision_id,
+        }
+        if summary_text:
+            metadata["conversation_summary"] = summary_text
+        if summary_metadata:
+            metadata["conversation_summary_structured"] = summary_metadata
         span.log(
             input={
                 "query": last_user_message,
@@ -578,15 +593,7 @@ class ClaudeAgentService:
                 "refuse",  # Always 'refuse' for this flow
                 environment,
             ],
-            metadata={
-                "session_id": session_id or "",
-                "turn_id": turn_id or "",
-                "user_id": user_id or "",
-                "decision_id": route_result.decision_id,
-                "site": site,
-                "page_type": page_type,
-                "page_url": page_url,
-            },
+            metadata=metadata,
         )
 
         # Log structured output with refusal details

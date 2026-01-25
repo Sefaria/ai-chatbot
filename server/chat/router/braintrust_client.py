@@ -10,6 +10,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from django.conf import settings
+
 logger = logging.getLogger("chat.router.braintrust")
 
 
@@ -139,7 +141,7 @@ class BraintrustPromptClient:
         if self._braintrust and self.api_key:
             try:
                 prompt = self._braintrust.load_prompt(
-                    project=self.project_name, slug="guardrail-checker"
+                    project=self.project_name, slug=settings.GUARDRAILS_PROMPT_SLUG
                 )
 
                 if prompt:
@@ -186,7 +188,9 @@ class BraintrustPromptClient:
         # Try Braintrust if available
         if self._braintrust and self.api_key:
             try:
-                prompt = self._braintrust.load_prompt(project=self.project_name, slug="flow-router")
+                prompt = self._braintrust.load_prompt(
+                    project=self.project_name, slug=settings.ROUTER_PROMPT_SLUG
+                )
 
                 if prompt:
                     # Extract content from Braintrust Prompt object
@@ -237,7 +241,9 @@ class BraintrustPromptClient:
         # Try Braintrust if available
         if self._braintrust and self.api_key:
             try:
-                prompt = self._braintrust.load_prompt(project=self.project_name, slug="core-8fbc")
+                prompt = self._braintrust.load_prompt(
+                    project=self.project_name, slug=settings.CORE_PROMPT_SLUG
+                )
 
                 if prompt:
                     # Extract content using the helper method
@@ -247,7 +253,8 @@ class BraintrustPromptClient:
                     if prompt_text:
                         self._prompt_cache[cache_key] = prompt_text
                         logger.info(
-                            f"Loaded core prompt from Braintrust: version={version}, slug=core-8fbc"
+                            f"Loaded core prompt from Braintrust: version={version}, "
+                            f"slug={settings.CORE_PROMPT_SLUG}"
                         )
                         return prompt_text
             except Exception as e:

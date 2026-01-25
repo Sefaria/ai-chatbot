@@ -15,6 +15,14 @@ class MessageContextSerializer(serializers.Serializer):
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
 
+class PromptSlugsSerializer(serializers.Serializer):
+    """Optional prompt slug overrides for Braintrust."""
+
+    corePromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    routerPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    guardrailsPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
+
+
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
@@ -24,6 +32,7 @@ class ChatRequestSerializer(serializers.Serializer):
     timestamp = serializers.DateTimeField()
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
+    promptSlugs = PromptSlugsSerializer(required=False)
 
 
 class ChatResponseSerializer(serializers.Serializer):

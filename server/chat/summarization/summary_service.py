@@ -9,121 +9,14 @@ Creates and maintains rolling summaries of conversations to:
 
 import logging
 import os
-from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 import anthropic
+from django.utils import timezone
+
+from ..models import ChatSession, ConversationSummary
 
 logger = logging.getLogger("chat.summarization")
-
-
-@dataclass
-class ConversationSummary:
-    """
-    Structured summary of a conversation.
-
-    Designed for router consumption with key context signals.
-    """
-
-    # Core content
-    text: str = ""  # Free-form summary text
-
-    # Structured fields for routing
-    current_topic: str = ""
-    user_intent: str = ""  # learning, searching, asking_halacha, etc.
-    flow: str = ""  # Current/suggested flow
-
-    # Entities mentioned
-    texts_referenced: list[str] = field(default_factory=list)
-    topics_discussed: list[str] = field(default_factory=list)
-    people_mentioned: list[str] = field(default_factory=list)
-
-    # Context
-    halachic_domain: str = ""  # shabbat, kashrut, etc.
-    constraints: list[str] = field(default_factory=list)  # user-expressed constraints
-
-    # Safety
-    safety_flags: list[str] = field(default_factory=list)
-
-    # Metadata
-    turn_count: int = 0
-    last_updated: datetime | None = None
-
-    def to_text(self) -> str:
-        """Convert to text format for router input."""
-        parts = []
-
-        if self.text:
-            parts.append(f"Summary: {self.text}")
-
-        if self.current_topic:
-            parts.append(f"Current Topic: {self.current_topic}")
-
-        if self.user_intent:
-            parts.append(f"User Intent: {self.user_intent}")
-
-        if self.flow:
-            parts.append(f"Flow: {self.flow}")
-
-        if self.texts_referenced:
-            parts.append(f"Texts: {', '.join(self.texts_referenced[:5])}")
-
-        if self.topics_discussed:
-            parts.append(f"Topics: {', '.join(self.topics_discussed[:5])}")
-
-        if self.halachic_domain:
-            parts.append(f"Halachic Domain: {self.halachic_domain}")
-
-        if self.constraints:
-            parts.append(f"Constraints: {', '.join(self.constraints)}")
-
-        if self.safety_flags:
-            parts.append(f"Safety Flags: {', '.join(self.safety_flags)}")
-
-        return "\n".join(parts)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for storage."""
-        return {
-            "text": self.text,
-            "current_topic": self.current_topic,
-            "user_intent": self.user_intent,
-            "flow": self.flow,
-            "texts_referenced": self.texts_referenced,
-            "topics_discussed": self.topics_discussed,
-            "people_mentioned": self.people_mentioned,
-            "halachic_domain": self.halachic_domain,
-            "constraints": self.constraints,
-            "safety_flags": self.safety_flags,
-            "turn_count": self.turn_count,
-            "last_updated": self.last_updated.isoformat() if self.last_updated else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ConversationSummary":
-        """Create from dictionary."""
-        last_updated = None
-        if data.get("last_updated"):
-            try:
-                last_updated = datetime.fromisoformat(data["last_updated"])
-            except (ValueError, TypeError):
-                pass
-
-        return cls(
-            text=data.get("text", ""),
-            current_topic=data.get("current_topic", ""),
-            user_intent=data.get("user_intent", ""),
-            flow=data.get("flow", ""),
-            texts_referenced=data.get("texts_referenced", []),
-            topics_discussed=data.get("topics_discussed", []),
-            people_mentioned=data.get("people_mentioned", []),
-            halachic_domain=data.get("halachic_domain", ""),
-            constraints=data.get("constraints", []),
-            safety_flags=data.get("safety_flags", []),
-            turn_count=data.get("turn_count", 0),
-            last_updated=last_updated,
-        )
 
 
 # Prompt for generating summaries
@@ -186,9 +79,9 @@ class SummaryService:
 
         logger.info(f"SummaryService initialized (use_llm={self.use_llm})")
 
-    async def update_summary(
+    def update_summary(
         self,
-        current_summary: ConversationSummary | None,
+        session: ChatSession,
         new_user_message: str,
         new_assistant_response: str,
         flow: str = "",
@@ -197,31 +90,36 @@ class SummaryService:
         Update the conversation summary with new messages.
 
         Args:
-            current_summary: Existing summary (or None for new conversation)
+            session: Chat session to update/create summary for
             new_user_message: Latest user message
             new_assistant_response: Latest assistant response
-            flow: Current flow from router
+            flow: Current flow label (optional)
 
         Returns:
             Updated ConversationSummary
         """
+        current_summary = ConversationSummary.objects.filter(session=session).first()
+
         if self.use_llm:
-            return await self._llm_summarize(
-                current_summary,
-                new_user_message,
-                new_assistant_response,
-                flow,
-            )
-        else:
-            return self._simple_summarize(
+            return self._llm_summarize(
+                session,
                 current_summary,
                 new_user_message,
                 new_assistant_response,
                 flow,
             )
 
-    async def _llm_summarize(
+        return self._simple_summarize(
+            session,
+            current_summary,
+            new_user_message,
+            new_assistant_response,
+            flow,
+        )
+
+    def _llm_summarize(
         self,
+        session: ChatSession,
         current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
@@ -231,8 +129,10 @@ class SummaryService:
         try:
             # Build context
             context_parts = []
-            if current_summary and current_summary.text:
-                context_parts.append(f"Previous Summary: {current_summary.text}")
+            if current_summary:
+                summary_text = current_summary.to_prompt_text()
+                if summary_text:
+                    context_parts.append(f"Previous Summary:\n{summary_text}")
             context_parts.append(f"User: {new_user_message[:1000]}")
             context_parts.append(f"Assistant: {new_assistant_response[:1000]}")
 
@@ -263,16 +163,17 @@ class SummaryService:
 
                 data = json.loads(json_str.strip())
 
-                summary = ConversationSummary.from_dict(data)
-                summary.turn_count = (current_summary.turn_count if current_summary else 0) + 1
-                summary.last_updated = datetime.now()
-                summary.flow = flow or summary.flow
-
-                return summary
+                return self._apply_summary_data(
+                    session=session,
+                    current_summary=current_summary,
+                    data=data,
+                    flow=flow,
+                )
 
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
                 return self._simple_summarize(
+                    session,
                     current_summary,
                     new_user_message,
                     new_assistant_response,
@@ -282,6 +183,7 @@ class SummaryService:
         except Exception as e:
             logger.error(f"LLM summarization error: {e}")
             return self._simple_summarize(
+                session,
                 current_summary,
                 new_user_message,
                 new_assistant_response,
@@ -290,26 +192,57 @@ class SummaryService:
 
     def _simple_summarize(
         self,
+        session: ChatSession,
         current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
         flow: str,
     ) -> ConversationSummary:
         """Simple rule-based summarization (fast fallback)."""
-        summary = ConversationSummary(
-            text=f"User asked: {new_user_message[:100]}...",
-            current_topic=self._extract_topic(new_user_message),
-            user_intent=self._infer_intent(new_user_message),
-            flow=flow,
-            turn_count=(current_summary.turn_count if current_summary else 0) + 1,
-            last_updated=datetime.now(),
-        )
+        summary = current_summary or ConversationSummary(session=session)
+        summary.text = f"User asked: {new_user_message[:100]}..."
+        summary.current_topic = self._extract_topic(new_user_message)
+        summary.user_intent = self._infer_intent(new_user_message)
+        summary.flow = flow or summary.flow
+        summary.turn_count = (summary.turn_count or 0) + 1
+        summary.last_updated = timezone.now()
 
         # Carry over entities from previous summary
         if current_summary:
             summary.texts_referenced = current_summary.texts_referenced[-5:]
             summary.topics_discussed = current_summary.topics_discussed[-5:]
+            summary.people_mentioned = current_summary.people_mentioned[-5:]
 
+        summary.save()
+        return summary
+
+    def _apply_summary_data(
+        self,
+        session: ChatSession,
+        current_summary: ConversationSummary | None,
+        data: dict[str, Any],
+        flow: str,
+    ) -> ConversationSummary:
+        """Apply structured summary data to the model and persist."""
+
+        def _safe_list(value: Any) -> list:
+            return value if isinstance(value, list) else []
+
+        summary = current_summary or ConversationSummary(session=session)
+        summary.text = data.get("text", summary.text)
+        summary.current_topic = data.get("current_topic", "")
+        summary.user_intent = data.get("user_intent", "")
+        summary.flow = flow or data.get("flow", summary.flow)
+        summary.texts_referenced = _safe_list(data.get("texts_referenced", []))
+        summary.topics_discussed = _safe_list(data.get("topics_discussed", []))
+        summary.people_mentioned = _safe_list(data.get("people_mentioned", []))
+        summary.halachic_domain = data.get("halachic_domain", "")
+        summary.constraints = _safe_list(data.get("constraints", []))
+        summary.safety_flags = _safe_list(data.get("safety_flags", []))
+        summary.turn_count = (summary.turn_count or 0) + 1
+        summary.last_updated = timezone.now()
+
+        summary.save()
         return summary
 
     def _extract_topic(self, message: str) -> str:
