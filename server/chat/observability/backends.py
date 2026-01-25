@@ -19,6 +19,8 @@ from typing import Any
 
 import braintrust
 
+__all__ = ["BraintrustBackend"]
+
 
 class BraintrustBackend:
     """Backend that sends spans to Braintrust.

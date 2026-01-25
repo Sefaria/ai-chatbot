@@ -9,8 +9,10 @@ import asyncio
 import contextvars
 import logging
 import os
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -112,50 +114,57 @@ class SessionInfo:
 
 
 # ---------------------------------------------------------------------------
-# Service Singletons
+# Service Singletons (thread-safe initialization)
 # ---------------------------------------------------------------------------
 
 _agent_service: ClaudeAgentService | None = None
 _router_service: RouterService | None = None
 _bt_logger = None
+_service_lock = threading.Lock()
 
 
 def _get_bt_logger():
     """Get or create the Braintrust logger for request-level tracing."""
     global _bt_logger
     if _bt_logger is None:
-        bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
-        bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-        if bt_api_key:
-            try:
-                _bt_logger = braintrust.init_logger(
-                    project=bt_project,
-                    api_key=bt_api_key,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to initialize Braintrust logger: {e}")
+        with _service_lock:
+            if _bt_logger is None:  # Double-check after acquiring lock
+                bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
+                bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
+                if bt_api_key:
+                    try:
+                        _bt_logger = braintrust.init_logger(
+                            project=bt_project,
+                            api_key=bt_api_key,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Braintrust logger: {e}")
     return _bt_logger
 
 
 def get_agent_service() -> ClaudeAgentService:
-    """Get or create the agent service singleton."""
+    """Get or create the agent service singleton (thread-safe)."""
     global _agent_service
     if _agent_service is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
-        _agent_service = ClaudeAgentService(
-            api_key=api_key,
-            prompt_service=get_prompt_service(),
-        )
+        with _service_lock:
+            if _agent_service is None:  # Double-check after acquiring lock
+                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+                _agent_service = ClaudeAgentService(
+                    api_key=api_key,
+                    prompt_service=get_prompt_service(),
+                )
     return _agent_service
 
 
 def get_router() -> RouterService:
-    """Get or create the router service singleton."""
+    """Get or create the router service singleton (thread-safe)."""
     global _router_service
     if _router_service is None:
-        _router_service = get_router_service()
+        with _service_lock:
+            if _router_service is None:  # Double-check after acquiring lock
+                _router_service = get_router_service()
     return _router_service
 
 
@@ -553,6 +562,92 @@ def complete_turn_with_error(
     ctx.session.refresh_from_db()
 
     return error_message
+
+
+@dataclass
+class RefusalResult:
+    """Result of a refusal turn (before agent execution)."""
+
+    response_message: ChatMessage
+    route_result: RouteResult
+    session: ChatSession
+    latency_ms: int
+
+
+def complete_turn_with_refusal(
+    ctx: TurnContext,
+    refusal_message: str | None = None,
+) -> RefusalResult:
+    """Handle turn completion for router-level refusals (before agent execution).
+
+    Use this when the router determines the request should be refused
+    without calling the agent.
+    """
+    latency_ms = int((time.time() - ctx.start_time) * 1000)
+    message = (
+        refusal_message
+        or ctx.route_result.safety.refusal_message
+        or "I can't process this request."
+    )
+
+    logger.info(f"🚫 Refusal: flow={ctx.route_result.flow.value} message={message[:50]}...")
+
+    response_msg = ChatMessage.objects.create(
+        message_id=ChatMessage.generate_message_id(),
+        session_id=ctx.session_id,
+        user_id=ctx.user_id,
+        turn_id=ctx.turn_id,
+        route_decision=ctx.route_decision,
+        role=ChatMessage.Role.ASSISTANT,
+        content=message,
+        latency_ms=latency_ms,
+        flow=ctx.route_result.flow.value,
+        status=ChatMessage.Status.REFUSED,
+    )
+
+    ctx.user_message_record.response_message = response_msg
+    ctx.user_message_record.latency_ms = latency_ms
+    ctx.user_message_record.save(update_fields=["response_message", "latency_ms"])
+
+    # Update session (increment turn count for refusals too)
+    ctx.session.message_count = ChatMessage.objects.filter(session_id=ctx.session_id).count()
+    ctx.session.turn_count = (ctx.session.turn_count or 0) + 1
+    ctx.session.current_flow = ctx.route_result.flow.value
+    ctx.session.save(update_fields=["message_count", "turn_count", "current_flow", "last_activity"])
+
+    # Log to span
+    ctx.request_span.log(
+        output={"response": message, "refused": True},
+        tags=["refuse"],
+        metrics={"latency_ms": latency_ms},
+    )
+
+    ctx.session.refresh_from_db()
+
+    return RefusalResult(
+        response_message=response_msg,
+        route_result=ctx.route_result,
+        session=ctx.session,
+        latency_ms=latency_ms,
+    )
+
+
+@contextmanager
+def turn_span_context(ctx: TurnContext) -> Generator[TurnContext, None, None]:
+    """Context manager that ensures the request span is properly ended.
+
+    Use this to wrap turn execution to guarantee span cleanup even on exceptions.
+
+    Example:
+        ctx = prepare_turn(...)
+        with turn_span_context(ctx):
+            agent_response = execute_agent(ctx)
+            result = complete_turn(ctx, agent_response)
+    """
+    try:
+        yield ctx
+    finally:
+        ctx.request_span.end()
 
 
 def _update_session_after_response(

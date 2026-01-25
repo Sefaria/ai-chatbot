@@ -25,16 +25,19 @@ from rest_framework.response import Response
 from .agent import AgentProgressUpdate, ConversationMessage
 from .models import ChatMessage, ChatSession
 from .orchestrator import (
+    RefusalResult,
     SessionInfo,
     TurnLimitReached,
     check_turn_limit,
     complete_turn,
     complete_turn_with_error,
+    complete_turn_with_refusal,
     execute_agent,
     get_agent_service,
     get_router,
     load_conversation_from_db,
     prepare_turn,
+    turn_span_context,
 )
 from .prompts import get_prompt_service
 from .router import Flow
@@ -118,6 +121,34 @@ def format_openai_response(result, model: str) -> dict:
             "was_refused": result.agent_response.was_refused,
         },
         "session": SessionInfo.from_session(result.session).to_dict(),
+    }
+
+
+def format_openai_refusal_response(refusal: RefusalResult, model: str) -> dict:
+    """Format refusal response for OpenAI-compatible endpoint."""
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": refusal.response_message.content,
+                },
+                "finish_reason": "content_filter",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "routing": {
+            "flow": refusal.route_result.flow.value,
+            "decision_id": refusal.route_result.decision_id,
+            "confidence": refusal.route_result.confidence,
+            "was_refused": True,
+        },
+        "session": SessionInfo.from_session(refusal.session).to_dict(),
     }
 
 
@@ -273,22 +304,21 @@ def chat(request):
         span_name="request",
     )
 
-    try:
-        # Execute agent
-        agent_response = execute_agent(ctx)
+    with turn_span_context(ctx):
+        try:
+            # Execute agent
+            agent_response = execute_agent(ctx)
 
-        # Complete turn
-        result = complete_turn(ctx, agent_response)
+            # Complete turn
+            result = complete_turn(ctx, agent_response)
 
-        return Response(format_standard_response(result, session_id))
+            return Response(format_standard_response(result, session_id))
 
-    except Exception as e:
-        error_message = complete_turn_with_error(ctx, e)
-        return Response(
-            format_error_response(error_message, ctx.route_result, ctx.session, session_id)
-        )
-    finally:
-        ctx.request_span.end()
+        except Exception as e:
+            error_message = complete_turn_with_error(ctx, e)
+            return Response(
+                format_error_response(error_message, ctx.route_result, ctx.session, session_id)
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -569,86 +599,31 @@ def openai_chat_completions(request):
     # Add braintrust tag
     ctx.request_span.log(tags=["braintrust", "openai-compat"])
 
-    # Handle early refusal (before calling agent)
-    if ctx.route_result.flow == Flow.REFUSE:
-        refusal_message = ctx.route_result.safety.refusal_message or "I can't process this request."
-        latency_ms = int((time.time() - ctx.start_time) * 1000)
+    with turn_span_context(ctx):
+        # Handle early refusal (before calling agent)
+        if ctx.route_result.flow == Flow.REFUSE:
+            refusal = complete_turn_with_refusal(ctx)
+            ctx.request_span.log(tags=["braintrust"])  # Add braintrust tag to refusal
+            return Response(format_openai_refusal_response(refusal, model))
 
-        # Save refusal response
-        response_msg = ChatMessage.objects.create(
-            message_id=ChatMessage.generate_message_id(),
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=ctx.turn_id,
-            route_decision=ctx.route_decision,
-            role=ChatMessage.Role.ASSISTANT,
-            content=refusal_message,
-            latency_ms=latency_ms,
-            flow=ctx.route_result.flow.value,
-            status=ChatMessage.Status.REFUSED,
-        )
+        try:
+            # Execute agent
+            agent_response = execute_agent(ctx)
 
-        ctx.user_message_record.response_message = response_msg
-        ctx.user_message_record.latency_ms = latency_ms
-        ctx.user_message_record.save(update_fields=["response_message", "latency_ms"])
+            # Complete turn (includes summary)
+            result = complete_turn(ctx, agent_response, include_summary=True)
 
-        ctx.request_span.log(
-            output={"response": refusal_message, "refused": True},
-            tags=["refuse", "braintrust"],
-            metrics={"latency_ms": latency_ms},
-        )
-        ctx.request_span.end()
+            return Response(format_openai_response(result, model))
 
-        return Response(
-            {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": refusal_message,
-                        },
-                        "finish_reason": "content_filter",
-                    }
-                ],
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                "routing": {
-                    "flow": ctx.route_result.flow.value,
-                    "decision_id": ctx.route_result.decision_id,
-                    "confidence": ctx.route_result.confidence,
-                    "was_refused": True,
-                },
-                "session": SessionInfo.from_session(session).to_dict(),
-            }
-        )
-
-    try:
-        # Execute agent
-        agent_response = execute_agent(ctx)
-
-        # Complete turn (includes summary)
-        result = complete_turn(ctx, agent_response, include_summary=True)
-
-        return Response(format_openai_response(result, model))
-
-    except Exception as e:
-        logger.error(f"[openai-compat] Agent error: {e}", exc_info=True)
-        ctx.request_span.log(
-            output={"error": str(e)},
-            error=str(e),
-        )
-        return _openai_error_response(
-            message=f"Internal error: {e!s}",
-            error_type="internal_error",
-            code="agent_error",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-    finally:
-        ctx.request_span.end()
+        except Exception as e:
+            logger.error(f"[openai-compat] Agent error: {e}", exc_info=True)
+            complete_turn_with_error(ctx, e)
+            return _openai_error_response(
+                message=f"Internal error: {e!s}",
+                error_type="internal_error",
+                code="agent_error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # ---------------------------------------------------------------------------
