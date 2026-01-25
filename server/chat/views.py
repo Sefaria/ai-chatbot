@@ -968,17 +968,28 @@ def openai_chat_completions(request):
             },
         )
 
+        # Save route decision (same as regular endpoint)
+        route_decision = _save_route_decision(
+            route_result=route_result,
+            session_id=session_id,
+            turn_id=turn_id,
+            user_message=user_message,
+            summary="",
+            previous_flow="",
+        )
+
         logger.info(
             f"[openai-compat] Route: flow={route_result.flow.value} "
             f"confidence={route_result.confidence:.2f}"
         )
 
         # Save user message
-        ChatMessage.objects.create(
+        user_msg = ChatMessage.objects.create(
             message_id=message_id,
             session_id=session_id,
             user_id=user_id,
             turn_id=turn_id,
+            route_decision=route_decision,
             role=ChatMessage.Role.USER,
             content=user_message,
             client_timestamp=timezone.now(),
@@ -994,17 +1005,23 @@ def openai_chat_completions(request):
             latency_ms = int((time.time() - start_time) * 1000)
 
             # Save refusal response
-            ChatMessage.objects.create(
+            response_msg = ChatMessage.objects.create(
                 message_id=ChatMessage.generate_message_id(),
                 session_id=session_id,
                 user_id=user_id,
                 turn_id=turn_id,
+                route_decision=route_decision,
                 role=ChatMessage.Role.ASSISTANT,
                 content=refusal_message,
                 latency_ms=latency_ms,
                 flow=route_result.flow.value,
                 status=ChatMessage.Status.REFUSED,
             )
+
+            # Link user message to response
+            user_msg.response_message = response_msg
+            user_msg.latency_ms = latency_ms
+            user_msg.save(update_fields=["response_message", "latency_ms"])
 
             request_span.log(
                 output={"response": refusal_message, "refused": True},
@@ -1065,6 +1082,7 @@ def openai_chat_completions(request):
                 session_id=session_id,
                 user_id=user_id,
                 turn_id=turn_id,
+                route_decision=route_decision,
                 role=ChatMessage.Role.ASSISTANT,
                 content=agent_response.content,
                 latency_ms=latency_ms,
@@ -1081,6 +1099,11 @@ def openai_chat_completions(request):
                 if agent_response.was_refused
                 else ChatMessage.Status.SUCCESS,
             )
+
+            # Link user message to response
+            user_msg.response_message = response_msg
+            user_msg.latency_ms = latency_ms
+            user_msg.save(update_fields=["response_message", "latency_ms"])
 
             # Update session statistics
             session.message_count = ChatMessage.objects.filter(session_id=session_id).count()
