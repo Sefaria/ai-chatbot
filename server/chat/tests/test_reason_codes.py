@@ -16,11 +16,11 @@ class TestReasonCodeEnum:
     @pytest.mark.parametrize(
         "code",
         [
-            ReasonCode.ROUTE_HALACHIC_INTENT,
-            ReasonCode.ROUTE_SEARCH_INTENT,
-            ReasonCode.ROUTE_GENERAL_INTENT,
+            ReasonCode.ROUTE_TRANSLATION_INTENT,
+            ReasonCode.ROUTE_DISCOVERY_INTENT,
+            ReasonCode.ROUTE_DEEP_ENGAGEMENT_INTENT,
             ReasonCode.ROUTE_FLOW_STICKINESS,
-            ReasonCode.ROUTE_DEFAULT_GENERAL,
+            ReasonCode.ROUTE_DEFAULT_DEEP_ENGAGEMENT,
         ],
     )
     def test_routing_codes_exist(self, code):
@@ -42,9 +42,9 @@ class TestReasonCodeEnum:
     @pytest.mark.parametrize(
         "code",
         [
-            ReasonCode.TOOLS_ADDED_HALACHIC_SET,
-            ReasonCode.TOOLS_ADDED_SEARCH_SET,
-            ReasonCode.TOOLS_MINIMAL_GENERAL_SET,
+            ReasonCode.TOOLS_ADDED_TRANSLATION_SET,
+            ReasonCode.TOOLS_ADDED_DISCOVERY_SET,
+            ReasonCode.TOOLS_ADDED_DEEP_ENGAGEMENT_SET,
             ReasonCode.TOOLS_NONE_ATTACHED,
         ],
     )
@@ -64,10 +64,10 @@ class TestReasonCodeEnum:
         assert code
 
     def test_enum_is_string_enum(self):
-        code = ReasonCode.ROUTE_HALACHIC_INTENT
+        code = ReasonCode.ROUTE_TRANSLATION_INTENT
         assert isinstance(code, str)
         assert isinstance(code.value, str)
-        assert code == "ROUTE_HALACHIC_INTENT"
+        assert code == "ROUTE_TRANSLATION_INTENT"
 
 
 class TestReasonCodesDict:
@@ -90,9 +90,9 @@ class TestGetReasonDescription:
     @pytest.mark.parametrize(
         "code,expected_substring",
         [
-            (ReasonCode.ROUTE_HALACHIC_INTENT, "halachic"),
+            (ReasonCode.ROUTE_TRANSLATION_INTENT, "translation"),
             (ReasonCode.GUARDRAIL_PROMPT_INJECTION, "injection"),
-            (ReasonCode.TOOLS_ADDED_SEARCH_SET, "search"),
+            (ReasonCode.TOOLS_ADDED_DISCOVERY_SET, "discovery"),
         ],
     )
     def test_get_description_contains_expected_text(self, code, expected_substring):
@@ -122,11 +122,13 @@ class TestFilterReasonsByCategory:
 
     def test_filter_subset(self):
         subset = [
-            ReasonCode.ROUTE_HALACHIC_INTENT,
+            ReasonCode.ROUTE_TRANSLATION_INTENT,
             ReasonCode.GUARDRAIL_PROMPT_INJECTION,
-            ReasonCode.TOOLS_ADDED_SEARCH_SET,
+            ReasonCode.TOOLS_ADDED_DISCOVERY_SET,
         ]
-        assert filter_reasons_by_category(subset, "routing") == [ReasonCode.ROUTE_HALACHIC_INTENT]
+        assert filter_reasons_by_category(subset, "routing") == [
+            ReasonCode.ROUTE_TRANSLATION_INTENT
+        ]
         assert filter_reasons_by_category(subset, "guardrail") == [
             ReasonCode.GUARDRAIL_PROMPT_INJECTION
         ]
@@ -157,33 +159,33 @@ class TestReasonCodeUsageInRouting:
 
     def test_reason_codes_serializable(self):
         codes = [
-            ReasonCode.ROUTE_HALACHIC_INTENT,
+            ReasonCode.ROUTE_TRANSLATION_INTENT,
             ReasonCode.GUARDRAIL_HIGH_RISK_PSAK,
-            ReasonCode.TOOLS_ADDED_HALACHIC_SET,
+            ReasonCode.TOOLS_ADDED_TRANSLATION_SET,
         ]
         values = [code.value for code in codes]
         assert values == [
-            "ROUTE_HALACHIC_INTENT",
+            "ROUTE_TRANSLATION_INTENT",
             "GUARDRAIL_HIGH_RISK_PSAK",
-            "TOOLS_ADDED_HALACHIC_SET",
+            "TOOLS_ADDED_TRANSLATION_SET",
         ]
 
     def test_reason_codes_comparable(self):
-        code1 = ReasonCode.ROUTE_HALACHIC_INTENT
-        code2 = ReasonCode.ROUTE_HALACHIC_INTENT
-        code3 = ReasonCode.ROUTE_SEARCH_INTENT
+        code1 = ReasonCode.ROUTE_TRANSLATION_INTENT
+        code2 = ReasonCode.ROUTE_TRANSLATION_INTENT
+        code3 = ReasonCode.ROUTE_DISCOVERY_INTENT
         assert code1 == code2
         assert code1 != code3
 
     def test_reason_codes_hashable(self):
         codes = {
-            ReasonCode.ROUTE_HALACHIC_INTENT,
-            ReasonCode.ROUTE_HALACHIC_KEYWORDS,
-            ReasonCode.ROUTE_HALACHIC_INTENT,  # Duplicate
+            ReasonCode.ROUTE_TRANSLATION_INTENT,
+            ReasonCode.ROUTE_TRANSLATION_KEYWORDS,
+            ReasonCode.ROUTE_TRANSLATION_INTENT,  # Duplicate
         }
         assert len(codes) == 2
 
     def test_reason_codes_in_list(self):
-        codes = [ReasonCode.ROUTE_HALACHIC_INTENT, ReasonCode.ROUTE_HALACHIC_KEYWORDS]
-        assert ReasonCode.ROUTE_HALACHIC_INTENT in codes
-        assert ReasonCode.ROUTE_SEARCH_INTENT not in codes
+        codes = [ReasonCode.ROUTE_TRANSLATION_INTENT, ReasonCode.ROUTE_TRANSLATION_KEYWORDS]
+        assert ReasonCode.ROUTE_TRANSLATION_INTENT in codes
+        assert ReasonCode.ROUTE_DISCOVERY_INTENT not in codes

@@ -44,13 +44,13 @@ def build_session_info(session) -> dict:
 
 
 def _resolve_summary_flow(summary: ConversationSummary | None) -> Flow:
-    """Resolve a flow from stored summary, falling back to GENERAL."""
+    """Resolve a flow from stored summary, falling back to DEEP_ENGAGEMENT."""
     if summary and summary.flow:
         try:
             return Flow(summary.flow)
         except ValueError:
             pass
-    return Flow.GENERAL
+    return Flow.DEEP_ENGAGEMENT
 
 
 def _build_v2_route_result(flow: Flow, core_prompt_id: str) -> RouteResult:

@@ -7,7 +7,7 @@ This module provides intelligent routing and content safety for the Sefaria chat
 The system has been upgraded from deterministic heuristics to AI-powered classification while maintaining rule-based fallbacks for reliability:
 
 - **AI Guardrails**: Uses Claude to detect unsafe content, prompt injections, and out-of-scope requests
-- **AI Router**: Uses Claude to classify user intent into conversation flows (HALACHIC, SEARCH, GENERAL)
+- **AI Router**: Uses Claude to classify user intent into conversation flows (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT)
 - **Braintrust Integration**: Prompts can be updated remotely without code deployment
 - **Automatic Fallback**: Falls back to rule-based classification if AI fails
 
@@ -26,7 +26,7 @@ User Message
 [AI Router] ----fallback----> [Rule-based Router]
      |
      v
-Flow Decision (HALACHIC/SEARCH/GENERAL/REFUSE)
+Flow Decision (TRANSLATION/DISCOVERY/DEEP_ENGAGEMENT/REFUSE)
 ```
 
 ## Configuration
@@ -128,10 +128,10 @@ router = get_ai_flow_router()
 flow, confidence, reason_codes = router.classify(
     message="Find all sources about tzedakah in Pirkei Avot",
     conversation_summary="User is studying ethics",
-    previous_flow="GENERAL"
+    previous_flow="DEEP_ENGAGEMENT"
 )
 
-print(f"Flow: {flow}")  # HALACHIC, SEARCH, GENERAL
+print(f"Flow: {flow}")  # TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT
 print(f"Confidence: {confidence}")
 print(f"Reasons: {reason_codes}")
 ```
@@ -152,7 +152,7 @@ result = router.route(
     session_id="sess_123",
     user_message="Can I use my phone on Shabbat?",
     conversation_summary="Discussing Shabbat observance",
-    previous_flow="HALACHIC"
+    previous_flow="DEEP_ENGAGEMENT"
 )
 
 print(result.to_dict())
@@ -238,9 +238,9 @@ router = get_ai_flow_router()
 
 # Test cases
 test_messages = [
-    ("Can I use electricity on Shabbat?", "HALACHIC"),
-    ("Find all mentions of Moses in Exodus", "SEARCH"),
-    ("Explain the concept of teshuvah", "GENERAL"),
+    ("Translate Genesis 1:1", "TRANSLATION"),
+    ("Find all mentions of Moses in Exodus", "DISCOVERY"),
+    ("Explain the concept of teshuvah", "DEEP_ENGAGEMENT"),
 ]
 
 for msg, expected_flow in test_messages:

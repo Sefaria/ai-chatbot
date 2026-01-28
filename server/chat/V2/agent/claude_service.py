@@ -305,7 +305,7 @@ class ClaudeAgentService:
         span.log(
             input=last_user_message,  # Flat text for Input column
             tags=[
-                route_result.flow.value.lower(),  # search | halachic | general
+                route_result.flow.value.lower(),  # translation | discovery | deep_engagement
                 environment,  # dev | staging | prod
             ],
             metadata=metadata,

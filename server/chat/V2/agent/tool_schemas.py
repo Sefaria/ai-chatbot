@@ -2,9 +2,9 @@
 Tool schemas for Claude agent - Sefaria API tools organized by flow.
 
 Tool Sets:
-- HALACHIC: Specialized tools for halachic inquiries
-- SEARCH: Tools for finding and comparing sources
-- GENERAL: Minimal toolset for general learning
+- TRANSLATION: get_text + dictionary lookup
+- DISCOVERY: Full toolset for searching and discovery
+- DEEP_ENGAGEMENT: Full toolset for deep study and commentaries
 """
 
 from typing import Any
@@ -215,41 +215,17 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
 # Flow-Specific Tool Sets
 # ============================================================================
 
-# Halachic flow: Core text retrieval + topic lookup
-HALACHIC_TOOL_NAMES = [
+# Translation flow: Text retrieval + dictionary lookup
+TRANSLATION_TOOL_NAMES = [
     "get_text",
-    "text_search",
-    "english_semantic_search",
-    "get_topic_details",
-    "get_links_between_texts",
-    "search_in_book",
-    "clarify_name_argument",
-]
-
-# Search flow: Full search capabilities + structure tools
-SEARCH_TOOL_NAMES = [
-    "get_text",
-    "text_search",
-    "english_semantic_search",
-    "search_in_book",
     "search_in_dictionaries",
-    "get_links_between_texts",
-    "get_english_translations",
-    "get_text_or_category_shape",
-    "get_text_catalogue_info",
-    "get_available_manuscripts",
-    "clarify_name_argument",
-    "clarify_search_path_filter",
 ]
 
-# General flow: Minimal toolset
-GENERAL_TOOL_NAMES = [
-    "get_text",
-    "text_search",
-    "english_semantic_search",
-    "get_topic_details",
-    "get_current_calendar",
-]
+# Discovery flow: Full toolset
+DISCOVERY_TOOL_NAMES = list(ALL_TOOLS.keys())
+
+# Deep engagement flow: Full toolset
+DEEP_ENGAGEMENT_TOOL_NAMES = list(ALL_TOOLS.keys())
 
 # ============================================================================
 # Helper Functions
@@ -261,22 +237,22 @@ def get_tools_for_flow(flow: str) -> list[dict[str, Any]]:
     Get the tool schemas for a specific flow.
 
     Args:
-        flow: Flow type (HALACHIC, GENERAL, SEARCH)
+        flow: Flow type (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT)
 
     Returns:
         List of tool schemas for that flow
     """
     flow_upper = flow.upper()
 
-    if flow_upper == "HALACHIC":
-        tool_names = HALACHIC_TOOL_NAMES
-    elif flow_upper == "SEARCH":
-        tool_names = SEARCH_TOOL_NAMES
-    elif flow_upper == "GENERAL":
-        tool_names = GENERAL_TOOL_NAMES
+    if flow_upper == "TRANSLATION":
+        tool_names = TRANSLATION_TOOL_NAMES
+    elif flow_upper == "DISCOVERY":
+        tool_names = DISCOVERY_TOOL_NAMES
+    elif flow_upper == "DEEP_ENGAGEMENT":
+        tool_names = DEEP_ENGAGEMENT_TOOL_NAMES
     else:
-        # Default to general
-        tool_names = GENERAL_TOOL_NAMES
+        # Default to deep engagement
+        tool_names = DEEP_ENGAGEMENT_TOOL_NAMES
 
     return [ALL_TOOLS[name] for name in tool_names if name in ALL_TOOLS]
 

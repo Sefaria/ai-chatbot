@@ -173,6 +173,9 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
 ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
 GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
+DISCOVERY_PROMPT_SLUG = os.environ.get("DISCOVERY_PROMPT_SLUG", "discovery")
+TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "translation")
+DEEP_ENGAGEMENT_PROMPT_SLUG = os.environ.get("DEEP_ENGAGEMENT_PROMPT_SLUG", "deep_engagement")
 
 # ============================================================================
 # Chat User Token Configuration

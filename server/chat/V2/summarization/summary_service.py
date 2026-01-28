@@ -23,8 +23,8 @@ logger = logging.getLogger("chat.summarization")
 SUMMARY_PROMPT = """You are a summarization assistant for a Jewish learning chatbot. Given the conversation history, create a concise summary that captures:
 
 1. Current Topic: What is the main subject being discussed?
-2. User Intent: What is the user trying to accomplish? (learning, searching for sources, asking halachic questions, etc.)
-3. Flow: Is this primarily HALACHIC (practical law questions), SEARCH (finding sources), or GENERAL (learning/discussion)?
+2. User Intent: What is the user trying to accomplish? (translation, discovery, deep engagement, etc.)
+3. Flow: Is this primarily TRANSLATION, DISCOVERY, or DEEP_ENGAGEMENT?
 4. Key References: What texts, people, or topics have been mentioned?
 5. Constraints: Any user-expressed preferences or limitations?
 6. Safety Concerns: Any content that might require guardrails?
@@ -33,8 +33,8 @@ Output a JSON object with this structure:
 {
   "text": "Brief 1-2 sentence summary of the conversation",
   "current_topic": "Main topic being discussed",
-  "user_intent": "learning|searching|halacha|discussion|other",
-  "flow": "HALACHIC|SEARCH|GENERAL",
+  "user_intent": "translation|discovery|deep_engagement|other",
+  "flow": "TRANSLATION|DISCOVERY|DEEP_ENGAGEMENT",
   "texts_referenced": ["Genesis 1:1", "Berakhot 2a"],
   "topics_discussed": ["shabbat", "creation"],
   "people_mentioned": ["Rashi", "Maimonides"],
@@ -262,16 +262,18 @@ class SummaryService:
         """Infer user intent from message patterns."""
         message_lower = message.lower()
 
-        if any(word in message_lower for word in ["find", "search", "where", "source"]):
-            return "searching"
+        if any(word in message_lower for word in ["translate", "translation", "render", "in english"]):
+            return "translation"
+        elif any(word in message_lower for word in ["find", "search", "where", "source"]):
+            return "discovery"
         elif any(
             word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]
         ):
-            return "halacha"
+            return "deep_engagement"
         elif any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
-            return "learning"
+            return "deep_engagement"
         elif any(word in message_lower for word in ["compare", "difference", "opinions"]):
-            return "discussion"
+            return "deep_engagement"
         else:
             return "other"
 

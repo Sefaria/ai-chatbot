@@ -9,9 +9,9 @@ Provides:
 
 from .default_prompts import (
     CORE_PROMPT,
-    GENERAL_PROMPT,
-    HALACHIC_PROMPT,
-    SEARCH_PROMPT,
+    DEEP_ENGAGEMENT_PROMPT,
+    DISCOVERY_PROMPT,
+    TRANSLATION_PROMPT,
 )
 from .prompt_service import PromptBundle, PromptService, get_prompt_service
 
@@ -20,7 +20,7 @@ __all__ = [
     "PromptBundle",
     "get_prompt_service",
     "CORE_PROMPT",
-    "HALACHIC_PROMPT",
-    "GENERAL_PROMPT",
-    "SEARCH_PROMPT",
+    "TRANSLATION_PROMPT",
+    "DISCOVERY_PROMPT",
+    "DEEP_ENGAGEMENT_PROMPT",
 ]

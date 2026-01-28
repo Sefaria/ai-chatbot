@@ -22,9 +22,9 @@ logger = logging.getLogger("chat.router.ai_router")
 class Flow(str, Enum):
     """Conversation flow types."""
 
-    HALACHIC = "HALACHIC"
-    GENERAL = "GENERAL"
-    SEARCH = "SEARCH"
+    TRANSLATION = "TRANSLATION"
+    DISCOVERY = "DISCOVERY"
+    DEEP_ENGAGEMENT = "DEEP_ENGAGEMENT"
     REFUSE = "REFUSE"
 
 
@@ -41,17 +41,17 @@ class AIFlowRouter:
 
     # Map AI reason codes to ReasonCode enum
     REASON_CODE_MAP = {
-        "HALACHIC_KEYWORDS": ReasonCode.ROUTE_HALACHIC_KEYWORDS,
-        "HALACHIC_QUESTION_PATTERN": ReasonCode.ROUTE_HALACHIC_QUESTION_PATTERN,
-        "HALACHIC_INTENT": ReasonCode.ROUTE_HALACHIC_INTENT,
-        "SEARCH_KEYWORDS": ReasonCode.ROUTE_SEARCH_KEYWORDS,
-        "SEARCH_REFERENCE_REQUEST": ReasonCode.ROUTE_SEARCH_REFERENCE_REQUEST,
-        "SEARCH_INTENT": ReasonCode.ROUTE_SEARCH_INTENT,
-        "GENERAL_LEARNING": ReasonCode.ROUTE_GENERAL_LEARNING,
-        "GENERAL_EXPLANATION": ReasonCode.ROUTE_GENERAL_EXPLANATION,
-        "GENERAL_INTENT": ReasonCode.ROUTE_GENERAL_INTENT,
+        "TRANSLATION_KEYWORDS": ReasonCode.ROUTE_TRANSLATION_KEYWORDS,
+        "TRANSLATION_REQUEST": ReasonCode.ROUTE_TRANSLATION_REQUEST,
+        "TRANSLATION_INTENT": ReasonCode.ROUTE_TRANSLATION_INTENT,
+        "DISCOVERY_KEYWORDS": ReasonCode.ROUTE_DISCOVERY_KEYWORDS,
+        "DISCOVERY_REFERENCE_REQUEST": ReasonCode.ROUTE_DISCOVERY_REFERENCE_REQUEST,
+        "DISCOVERY_INTENT": ReasonCode.ROUTE_DISCOVERY_INTENT,
+        "DEEP_ENGAGEMENT_LEARNING": ReasonCode.ROUTE_DEEP_ENGAGEMENT_LEARNING,
+        "DEEP_ENGAGEMENT_EXPLANATION": ReasonCode.ROUTE_DEEP_ENGAGEMENT_EXPLANATION,
+        "DEEP_ENGAGEMENT_INTENT": ReasonCode.ROUTE_DEEP_ENGAGEMENT_INTENT,
         "FLOW_STICKINESS": ReasonCode.ROUTE_FLOW_STICKINESS,
-        "DEFAULT_GENERAL": ReasonCode.ROUTE_DEFAULT_GENERAL,
+        "DEFAULT_DEEP_ENGAGEMENT": ReasonCode.ROUTE_DEFAULT_DEEP_ENGAGEMENT,
     }
 
     def __init__(
@@ -111,9 +111,9 @@ class AIFlowRouter:
                 logger.info("Falling back to rule-based flow classifier")
                 return self.fallback_classifier(message, conversation_summary, previous_flow)
 
-            # If no fallback, default to GENERAL
-            logger.warning("No fallback classifier available, defaulting to GENERAL flow")
-            return Flow.GENERAL, 0.5, [ReasonCode.ROUTE_DEFAULT_GENERAL]
+            # If no fallback, default to deep engagement
+            logger.warning("No fallback classifier available, defaulting to DEEP_ENGAGEMENT flow")
+            return Flow.DEEP_ENGAGEMENT, 0.5, [ReasonCode.ROUTE_DEFAULT_DEEP_ENGAGEMENT]
 
     def _classify_with_ai(
         self,
@@ -152,12 +152,12 @@ class AIFlowRouter:
             result_data = json.loads(json_text)
 
             # Extract flow
-            flow_str = result_data.get("flow", "GENERAL")
+            flow_str = result_data.get("flow", "DEEP_ENGAGEMENT")
             try:
                 flow = Flow[flow_str]
             except KeyError:
-                logger.warning(f"Unknown flow '{flow_str}', defaulting to GENERAL")
-                flow = Flow.GENERAL
+                logger.warning(f"Unknown flow '{flow_str}', defaulting to DEEP_ENGAGEMENT")
+                flow = Flow.DEEP_ENGAGEMENT
 
             # Extract confidence
             confidence = result_data.get("confidence", 0.8)

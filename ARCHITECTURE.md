@@ -48,9 +48,9 @@ Four routing flows determine behavior:
 
 | Flow | Description | Tools | Use Case |
 |------|-------------|-------|----------|
-| `HALACHIC` | Jewish law questions | 7 | "Is it mutar to...?", "What does halacha say about...?" |
-| `SEARCH` | Source/text finding | 10 | "Find sources about...", "Where is it written...?" |
-| `GENERAL` | Learning/understanding | 5 | "Explain the concept of...", "Teach me about..." |
+| `TRANSLATION` | Translation requests | 2 | "Translate this verse", "What does X mean in English?" |
+| `DISCOVERY` | Source/text finding | 14 | "Find sources about...", "Where is it written...?" |
+| `DEEP_ENGAGEMENT` | Learning/understanding | 14 | "Explain the concept of...", "Go deep on this text..." |
 | `REFUSE` | Blocked content | 0 | Safety guardrails triggered |
 
 ## Components
@@ -61,9 +61,9 @@ Classifies intent and selects resources per turn.
 
 ```python
 RouteResult:
-  flow: Flow              # HALACHIC | SEARCH | GENERAL | REFUSE
+  flow: Flow              # TRANSLATION | DISCOVERY | DEEP_ENGAGEMENT | REFUSE
   confidence: float       # 0.0 - 1.0
-  reason_codes: List      # ROUTE_HALACHIC_KEYWORDS, GUARDRAIL_*, etc.
+  reason_codes: List      # ROUTE_TRANSLATION_KEYWORDS, GUARDRAIL_*, etc.
   prompt_bundle: Bundle   # core + flow-specific prompts
   tools: List[str]        # tool names for this flow
   session_action: Action  # CONTINUE | SWITCH_FLOW | END

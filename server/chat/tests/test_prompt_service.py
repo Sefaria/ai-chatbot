@@ -62,7 +62,9 @@ class TestPromptServiceInit:
 
     def test_init_loads_defaults(self) -> None:
         svc = PromptService(api_key=None)
-        assert all(key in svc._defaults for key in ["core", "halachic", "general", "search"])
+        assert all(
+            key in svc._defaults for key in ["core", "translation", "discovery", "deep_engagement"]
+        )
 
     def test_init_custom_project_name(self) -> None:
         svc = PromptService(api_key=None, project_name="custom-project")
@@ -81,7 +83,7 @@ class TestPromptServiceInit:
 class TestFallbackToDefaults:
     """Test fallback to local default prompts."""
 
-    @pytest.mark.parametrize("flow", ["HALACHIC", "SEARCH", "GENERAL"])
+    @pytest.mark.parametrize("flow", ["TRANSLATION", "DISCOVERY", "DEEP_ENGAGEMENT"])
     def test_get_prompt_bundle(self, service: PromptService, flow: str) -> None:
         bundle = service.get_prompt_bundle(flow)
         assert bundle.core_prompt is not None
@@ -111,8 +113,8 @@ class TestCaching:
         assert "test_prompt:v1" in service_short_ttl._cache
 
     def test_cache_hit(self, service_short_ttl: PromptService) -> None:
-        bundle1 = service_short_ttl.get_prompt_bundle("HALACHIC")
-        bundle2 = service_short_ttl.get_prompt_bundle("HALACHIC")
+        bundle1 = service_short_ttl.get_prompt_bundle("TRANSLATION")
+        bundle2 = service_short_ttl.get_prompt_bundle("TRANSLATION")
         assert bundle1.core_prompt == bundle2.core_prompt
 
     def test_cache_expiry(self, service_short_ttl: PromptService) -> None:
@@ -254,7 +256,7 @@ class TestPromptBundleVersionTracking:
     """Test version tracking in prompt bundles."""
 
     def test_bundle_includes_version_info(self, service: PromptService) -> None:
-        bundle = service.get_prompt_bundle("HALACHIC")
+        bundle = service.get_prompt_bundle("TRANSLATION")
         assert bundle.core_prompt_id == settings.CORE_PROMPT_SLUG
         assert bundle.core_prompt_version is not None
         assert bundle.flow_prompt_id is not None
@@ -262,11 +264,11 @@ class TestPromptBundleVersionTracking:
 
     def test_bundle_custom_prompt_ids(self, service: PromptService) -> None:
         bundle = service.get_prompt_bundle(
-            "HALACHIC", core_prompt_id="custom_core", flow_prompt_id="custom_flow"
+            "TRANSLATION", core_prompt_id="custom_core", flow_prompt_id="custom_flow"
         )
         assert bundle.core_prompt_id == "custom_core"
         assert bundle.flow_prompt_id == "custom_flow"
 
     def test_bundle_local_version(self, service: PromptService) -> None:
-        bundle = service.get_prompt_bundle("GENERAL")
+        bundle = service.get_prompt_bundle("DEEP_ENGAGEMENT")
         assert bundle.flow_prompt_version == "local"

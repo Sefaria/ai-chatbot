@@ -36,20 +36,20 @@ class TestChatSession:
         session = ChatSession.objects.create(
             session_id="sess_flow",
             user_id="user",
-            current_flow="HALACHIC",
+            current_flow="DEEP_ENGAGEMENT",
             conversation_summary="User asked about Shabbat laws.",
         )
-        assert session.current_flow == "HALACHIC"
+        assert session.current_flow == "DEEP_ENGAGEMENT"
         assert session.conversation_summary == "User asked about Shabbat laws."
 
     def test_session_str(self) -> None:
         session = ChatSession.objects.create(
-            session_id="sess_str", user_id="user_str", current_flow="SEARCH"
+            session_id="sess_str", user_id="user_str", current_flow="DISCOVERY"
         )
         str_repr = str(session)
         assert "sess_str" in str_repr
         assert "user_str" in str_repr
-        assert "SEARCH" in str_repr
+        assert "DISCOVERY" in str_repr
 
     def test_session_unique_id(self) -> None:
         from django.db import IntegrityError
@@ -83,11 +83,11 @@ class TestRouteDecision:
             session_id="sess_123",
             turn_id="turn_456",
             user_message="Is this kosher?",
-            flow="HALACHIC",
+            flow="DEEP_ENGAGEMENT",
             confidence=0.85,
         )
         assert decision.decision_id == "dec_test123"
-        assert decision.flow == "HALACHIC"
+        assert decision.flow == "DEEP_ENGAGEMENT"
         assert decision.confidence == 0.85
 
     def test_route_decision_defaults(self) -> None:
@@ -96,7 +96,7 @@ class TestRouteDecision:
             session_id="sess",
             turn_id="turn",
             user_message="test",
-            flow="GENERAL",
+            flow="DEEP_ENGAGEMENT",
         )
         assert decision.reason_codes == []
         assert decision.tools_attached == []
@@ -110,12 +110,12 @@ class TestRouteDecision:
             session_id="sess",
             turn_id="turn",
             user_message="test",
-            flow="SEARCH",
-            reason_codes=["ROUTE_HALACHIC_KEYWORDS", "ROUTE_HALACHIC_INTENT"],
+            flow="DISCOVERY",
+            reason_codes=["ROUTE_DISCOVERY_KEYWORDS", "ROUTE_DISCOVERY_INTENT"],
             tools_attached=["get_text", "text_search", "english_semantic_search"],
         )
         assert len(decision.reason_codes) == 2
-        assert "ROUTE_HALACHIC_KEYWORDS" in decision.reason_codes
+        assert "ROUTE_DISCOVERY_KEYWORDS" in decision.reason_codes
         assert len(decision.tools_attached) == 3
         assert "get_text" in decision.tools_attached
 
@@ -146,12 +146,12 @@ class TestRouteDecision:
             session_id="sess",
             turn_id="turn",
             user_message="test",
-            flow="GENERAL",
-            reason_codes=["ROUTE_GENERAL_LEARNING"],
+            flow="DEEP_ENGAGEMENT",
+            reason_codes=["ROUTE_DEEP_ENGAGEMENT_LEARNING"],
         )
         str_repr = str(decision)
         assert "dec_str" in str_repr
-        assert "GENERAL" in str_repr
+        assert "DEEP_ENGAGEMENT" in str_repr
 
 
 @pytest.mark.django_db
@@ -204,14 +204,14 @@ class TestChatMessage:
             user_id="user",
             role="assistant",
             content="Here is what I found...",
-            flow="HALACHIC",
+            flow="DEEP_ENGAGEMENT",
             tool_calls_count=3,
             tool_calls_data=[
                 {"tool": "get_text", "input": {"reference": "Genesis 1:1"}},
                 {"tool": "text_search", "input": {"query": "creation"}},
             ],
         )
-        assert message.flow == "HALACHIC"
+        assert message.flow == "DEEP_ENGAGEMENT"
         assert message.tool_calls_count == 3
         assert len(message.tool_calls_data) == 2
 
@@ -290,7 +290,7 @@ class TestMessageRouteDecisionRelation:
             session_id="sess",
             turn_id="turn",
             user_message="test",
-            flow="HALACHIC",
+            flow="DEEP_ENGAGEMENT",
         )
         message = ChatMessage.objects.create(
             message_id="msg_rel",

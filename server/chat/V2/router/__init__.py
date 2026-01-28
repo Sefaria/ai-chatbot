@@ -2,7 +2,7 @@
 Router module for flow classification and guardrails.
 
 The router decides:
-- Which flow to use (HALACHIC, GENERAL, SEARCH, REFUSE)
+- Which flow to use (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT, REFUSE)
 - Which prompts and tools to attach
 - Whether to continue, switch flow, or end the conversation
 

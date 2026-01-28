@@ -109,9 +109,9 @@ def test_ai_router():
 
         # Test cases
         test_cases = [
-            ("Can I use electricity on Shabbat?", "HALACHIC"),
-            ("Find all mentions of Moses in Exodus", "SEARCH"),
-            ("Explain the concept of teshuvah", "GENERAL"),
+            ("Translate Genesis 1:1", "TRANSLATION"),
+            ("Find all mentions of Moses in Exodus", "DISCOVERY"),
+            ("Explain the concept of teshuvah", "DEEP_ENGAGEMENT"),
         ]
 
         print("\nRunning test cases:")

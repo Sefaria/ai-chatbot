@@ -9,7 +9,7 @@ returns these pre-defined responses instead of calling the AI agent.
 TEST_QUESTIONS = {
     "q1": {
         "question": "What commentaries explain the first verse of Genesis?",
-        "flow": "SEARCH",
+        "flow": "DEEP_ENGAGEMENT",
         "markdown": """The opening verse of the Torah, [Genesis 1:1](https://www.sefaria.org/Genesis.1.1), "In the beginning God created the heaven and the earth," has inspired extensive commentary throughout Jewish tradition.
 
 ## Key Commentaries
@@ -28,7 +28,7 @@ TEST_QUESTIONS = {
     },
     "q2": {
         "question": "What are the halachic requirements for lighting Shabbat candles?",
-        "flow": "HALACHIC",
+        "flow": "DEEP_ENGAGEMENT",
         "markdown": """The laws of Shabbat candle lighting are detailed in several halachic sources.
 
 ## Primary Sources
@@ -54,7 +54,7 @@ According to [Shulchan Arukh, Orach Chaim 263:10](https://www.sefaria.org/Shulch
     },
     "q3": {
         "question": "Explain the opening of Tractate Berakhot about when to recite Shema.",
-        "flow": "GENERAL",
+        "flow": "DEEP_ENGAGEMENT",
         "markdown": """The Talmud opens with one of its most famous discussions in [Berakhot 2a](https://www.sefaria.org/Berakhot.2a).
 
 ## The Opening Mishnah

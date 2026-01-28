@@ -11,23 +11,23 @@ class ReasonCode(str, Enum):
     """Enumeration of all possible reason codes."""
 
     # Routing - Flow Detection
-    ROUTE_HALACHIC_INTENT = "ROUTE_HALACHIC_INTENT"
-    ROUTE_HALACHIC_KEYWORDS = "ROUTE_HALACHIC_KEYWORDS"
-    ROUTE_HALACHIC_QUESTION_PATTERN = "ROUTE_HALACHIC_QUESTION_PATTERN"
+    ROUTE_TRANSLATION_INTENT = "ROUTE_TRANSLATION_INTENT"
+    ROUTE_TRANSLATION_KEYWORDS = "ROUTE_TRANSLATION_KEYWORDS"
+    ROUTE_TRANSLATION_REQUEST = "ROUTE_TRANSLATION_REQUEST"
 
-    ROUTE_SEARCH_INTENT = "ROUTE_SEARCH_INTENT"
-    ROUTE_SEARCH_KEYWORDS = "ROUTE_SEARCH_KEYWORDS"
-    ROUTE_SEARCH_REFERENCE_REQUEST = "ROUTE_SEARCH_REFERENCE_REQUEST"
-    ROUTE_SEARCH_PATTERN_QUERY = "ROUTE_SEARCH_PATTERN_QUERY"
+    ROUTE_DISCOVERY_INTENT = "ROUTE_DISCOVERY_INTENT"
+    ROUTE_DISCOVERY_KEYWORDS = "ROUTE_DISCOVERY_KEYWORDS"
+    ROUTE_DISCOVERY_REFERENCE_REQUEST = "ROUTE_DISCOVERY_REFERENCE_REQUEST"
+    ROUTE_DISCOVERY_PATTERN_QUERY = "ROUTE_DISCOVERY_PATTERN_QUERY"
 
-    ROUTE_GENERAL_INTENT = "ROUTE_GENERAL_INTENT"
-    ROUTE_GENERAL_LEARNING = "ROUTE_GENERAL_LEARNING"
-    ROUTE_GENERAL_EXPLANATION = "ROUTE_GENERAL_EXPLANATION"
-    ROUTE_GENERAL_CHALLENGE = "ROUTE_GENERAL_CHALLENGE"
+    ROUTE_DEEP_ENGAGEMENT_INTENT = "ROUTE_DEEP_ENGAGEMENT_INTENT"
+    ROUTE_DEEP_ENGAGEMENT_LEARNING = "ROUTE_DEEP_ENGAGEMENT_LEARNING"
+    ROUTE_DEEP_ENGAGEMENT_EXPLANATION = "ROUTE_DEEP_ENGAGEMENT_EXPLANATION"
+    ROUTE_DEEP_ENGAGEMENT_CHALLENGE = "ROUTE_DEEP_ENGAGEMENT_CHALLENGE"
 
     ROUTE_FLOW_STICKINESS = "ROUTE_FLOW_STICKINESS"
     ROUTE_FLOW_SWITCH_DETECTED = "ROUTE_FLOW_SWITCH_DETECTED"
-    ROUTE_DEFAULT_GENERAL = "ROUTE_DEFAULT_GENERAL"
+    ROUTE_DEFAULT_DEEP_ENGAGEMENT = "ROUTE_DEFAULT_DEEP_ENGAGEMENT"
 
     # Guardrails - Content Policy
     GUARDRAIL_DISALLOWED_CONTENT = "GUARDRAIL_DISALLOWED_CONTENT"
@@ -48,9 +48,9 @@ class ReasonCode(str, Enum):
     GUARDRAIL_PII_DETECTED = "GUARDRAIL_PII_DETECTED"
 
     # Tooling
-    TOOLS_ADDED_HALACHIC_SET = "TOOLS_ADDED_HALACHIC_SET"
-    TOOLS_ADDED_SEARCH_SET = "TOOLS_ADDED_SEARCH_SET"
-    TOOLS_MINIMAL_GENERAL_SET = "TOOLS_MINIMAL_GENERAL_SET"
+    TOOLS_ADDED_TRANSLATION_SET = "TOOLS_ADDED_TRANSLATION_SET"
+    TOOLS_ADDED_DISCOVERY_SET = "TOOLS_ADDED_DISCOVERY_SET"
+    TOOLS_ADDED_DEEP_ENGAGEMENT_SET = "TOOLS_ADDED_DEEP_ENGAGEMENT_SET"
     TOOLS_NONE_ATTACHED = "TOOLS_NONE_ATTACHED"
 
     # Session
@@ -62,50 +62,50 @@ class ReasonCode(str, Enum):
 
 # Human-readable descriptions for each reason code
 REASON_CODES: dict[ReasonCode, dict[str, str]] = {
-    # Halachic routing
-    ReasonCode.ROUTE_HALACHIC_INTENT: {
-        "description": "User intent detected as halachic inquiry",
+    # Translation routing
+    ReasonCode.ROUTE_TRANSLATION_INTENT: {
+        "description": "User intent detected as translation request",
         "category": "routing",
     },
-    ReasonCode.ROUTE_HALACHIC_KEYWORDS: {
-        "description": "Halachic keywords detected (e.g., mutar, assur, din)",
+    ReasonCode.ROUTE_TRANSLATION_KEYWORDS: {
+        "description": "Translation keywords detected (e.g., translate, render, in English)",
         "category": "routing",
     },
-    ReasonCode.ROUTE_HALACHIC_QUESTION_PATTERN: {
-        "description": "Question pattern matches halachic inquiry (e.g., 'Is it permitted...')",
+    ReasonCode.ROUTE_TRANSLATION_REQUEST: {
+        "description": "User explicitly requested a translation",
         "category": "routing",
     },
-    # Search routing
-    ReasonCode.ROUTE_SEARCH_INTENT: {
-        "description": "User intent detected as source search",
+    # Discovery routing
+    ReasonCode.ROUTE_DISCOVERY_INTENT: {
+        "description": "User intent detected as discovery/search request",
         "category": "routing",
     },
-    ReasonCode.ROUTE_SEARCH_KEYWORDS: {
-        "description": "Search keywords detected (e.g., 'find', 'where does it say')",
+    ReasonCode.ROUTE_DISCOVERY_KEYWORDS: {
+        "description": "Discovery keywords detected (e.g., find, where does it say)",
         "category": "routing",
     },
-    ReasonCode.ROUTE_SEARCH_REFERENCE_REQUEST: {
+    ReasonCode.ROUTE_DISCOVERY_REFERENCE_REQUEST: {
         "description": "User requesting specific text references",
         "category": "routing",
     },
-    ReasonCode.ROUTE_SEARCH_PATTERN_QUERY: {
+    ReasonCode.ROUTE_DISCOVERY_PATTERN_QUERY: {
         "description": "User requesting pattern or count query",
         "category": "routing",
     },
-    # General routing
-    ReasonCode.ROUTE_GENERAL_INTENT: {
-        "description": "User intent detected as general learning",
+    # Deep engagement routing
+    ReasonCode.ROUTE_DEEP_ENGAGEMENT_INTENT: {
+        "description": "User intent detected as deep engagement",
         "category": "routing",
     },
-    ReasonCode.ROUTE_GENERAL_LEARNING: {
-        "description": "User seeking conceptual understanding or ideas",
+    ReasonCode.ROUTE_DEEP_ENGAGEMENT_LEARNING: {
+        "description": "User seeking conceptual understanding or deep study",
         "category": "routing",
     },
-    ReasonCode.ROUTE_GENERAL_EXPLANATION: {
-        "description": "User requesting explanation of concept or text",
+    ReasonCode.ROUTE_DEEP_ENGAGEMENT_EXPLANATION: {
+        "description": "User requesting explanation of a text or concept",
         "category": "routing",
     },
-    ReasonCode.ROUTE_GENERAL_CHALLENGE: {
+    ReasonCode.ROUTE_DEEP_ENGAGEMENT_CHALLENGE: {
         "description": "User requesting to be challenged or tested",
         "category": "routing",
     },
@@ -118,8 +118,8 @@ REASON_CODES: dict[ReasonCode, dict[str, str]] = {
         "description": "User intent shifted, switching flow",
         "category": "routing",
     },
-    ReasonCode.ROUTE_DEFAULT_GENERAL: {
-        "description": "Defaulting to general flow (no specific intent detected)",
+    ReasonCode.ROUTE_DEFAULT_DEEP_ENGAGEMENT: {
+        "description": "Defaulting to deep engagement (no specific intent detected)",
         "category": "routing",
     },
     # Guardrails - Content
@@ -174,16 +174,16 @@ REASON_CODES: dict[ReasonCode, dict[str, str]] = {
         "category": "guardrail",
     },
     # Tooling
-    ReasonCode.TOOLS_ADDED_HALACHIC_SET: {
-        "description": "Halachic toolset attached",
+    ReasonCode.TOOLS_ADDED_TRANSLATION_SET: {
+        "description": "Translation toolset attached",
         "category": "tooling",
     },
-    ReasonCode.TOOLS_ADDED_SEARCH_SET: {
-        "description": "Search toolset attached",
+    ReasonCode.TOOLS_ADDED_DISCOVERY_SET: {
+        "description": "Discovery toolset attached",
         "category": "tooling",
     },
-    ReasonCode.TOOLS_MINIMAL_GENERAL_SET: {
-        "description": "Minimal general toolset attached",
+    ReasonCode.TOOLS_ADDED_DEEP_ENGAGEMENT_SET: {
+        "description": "Deep engagement toolset attached",
         "category": "tooling",
     },
     ReasonCode.TOOLS_NONE_ATTACHED: {

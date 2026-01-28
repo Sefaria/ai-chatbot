@@ -2,7 +2,7 @@
 Router service for flow classification and routing decisions.
 
 The router:
-1. Classifies user intent into flows (HALACHIC, GENERAL, SEARCH)
+1. Classifies user intent into flows (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT)
 2. Applies guardrails to detect disallowed content
 3. Selects appropriate prompts and tools
 4. Determines session actions (continue, switch, end)
@@ -27,9 +27,9 @@ logger = logging.getLogger("chat.router")
 class Flow(str, Enum):
     """Conversation flow types."""
 
-    HALACHIC = "HALACHIC"
-    GENERAL = "GENERAL"
-    SEARCH = "SEARCH"
+    TRANSLATION = "TRANSLATION"
+    DISCOVERY = "DISCOVERY"
+    DEEP_ENGAGEMENT = "DEEP_ENGAGEMENT"
     REFUSE = "REFUSE"
 
 
@@ -97,31 +97,24 @@ class RouteResult:
 
 
 # Keyword patterns for flow classification
-HALACHIC_KEYWORDS = [
-    # Hebrew/Aramaic terms
-    r"\b(mutar|assur|מותר|אסור)\b",
-    r"\b(halacha|halachah|halakha|הלכה)\b",
-    r"\b(psak|פסק|posek|פוסק)\b",
-    r"\b(issur|איסור|hetter|היתר)\b",
-    r"\b(din|דין|dinim|דינים)\b",
-    r"\b(shabbat|shabbos|שבת)\b",
-    r"\b(kashrut|kashrus|kosher|כשרות)\b",
-    r"\b(tum'ah|tumah|טומאה|taharah|טהרה)\b",
-    r"\b(niddah|נידה|mikvah|mikveh|מקווה)\b",
-    # Question patterns
-    r"\bis\s+(it|this)\s+(permitted|allowed|forbidden|prohibited)",
-    r"\bcan\s+(i|we|one|a\s+jew)\b.*\b(on\s+shabbat|during|while)",
-    r"\bwhat\s+is\s+the\s+(halacha|din|law)\b",
-    r"\baccording\s+to\s+(halacha|jewish\s+law)",
-    r"\bis\s+there\s+a\s+(prohibition|issur)",
+TRANSLATION_KEYWORDS = [
+    r"\btranslate\b",
+    r"\btranslation\b",
+    r"\btranslate\s+(this|the|it|that)\b",
+    r"\binto\s+(english|hebrew|aramaic)\b",
+    r"\b(in\s+english|in\s+hebrew|in\s+aramaic)\b",
+    r"\bhow\s+do\s+you\s+say\b",
+    r"\bwhat\s+does\s+\w+\s+mean\s+in\s+(english|hebrew|aramaic)\b",
+    r"\brender\s+(this|the|it|that)\b",
 ]
 
-SEARCH_KEYWORDS = [
+DISCOVERY_KEYWORDS = [
     # Source finding
     r"\b(find|search|look\s+for|locate)\s+(sources?|texts?|passages?|quotes?)",
     r"\bwhere\s+(does\s+it\s+say|is\s+it\s+written|can\s+i\s+find)",
     r"\bshow\s+me\s+(the|all)\s+(sources?|texts?|references?)",
     r"\bwhat\s+(does|did)\s+\w+\s+say\s+about",
+    r"\bwhere\s+is\s+.*\s+(in\s+tanach|in\s+torah|in\s+the\s+torah)\b",
     # Pattern/counting
     r"\bhow\s+many\s+times\s+(does|is)\b",
     r"\bcount\s+(the|all)\s+(occurrences?|instances?|mentions?)",
@@ -135,7 +128,7 @@ SEARCH_KEYWORDS = [
     r"\bmishnah?\s+\w+\s+\d+[:\s]\d+",
 ]
 
-GENERAL_KEYWORDS = [
+DEEP_ENGAGEMENT_KEYWORDS = [
     # Learning/understanding
     r"\bexplain\s+(to\s+me\s+)?(the|this|what)",
     r"\bwhat\s+(is|are)\s+(the\s+)?(meaning|significance|importance)",
@@ -153,6 +146,28 @@ GENERAL_KEYWORDS = [
     r"\bwhat\s+would\s+(you|a)\s+(rabbi|scholar)\s+say",
     r"\bplay\s+devil'?s?\s+advocate",
     r"\bargue\s+(for|against)",
+    # Commentary/deep dive cues
+    r"\bcommentary\b",
+    r"\bcommentaries\b",
+    r"\binterpret\b",
+    r"\binterpretation\b",
+    r"\bgo\s+deep\b",
+    r"\bdeep\s+dive\b",
+    # Halachic cues map to deep engagement
+    r"\b(mutar|assur|מותר|אסור)\b",
+    r"\b(halacha|halachah|halakha|הלכה)\b",
+    r"\b(psak|פסק|posek|פוסק)\b",
+    r"\b(issur|איסור|hetter|היתר)\b",
+    r"\b(din|דין|dinim|דינים)\b",
+    r"\b(shabbat|shabbos|שבת)\b",
+    r"\b(kashrut|kashrus|kosher|כשרות)\b",
+    r"\b(tum'ah|tumah|טומאה|taharah|טהרה)\b",
+    r"\b(niddah|נידה|mikvah|mikveh|מקווה)\b",
+    r"\bis\s+(it|this)\s+(permitted|allowed|forbidden|prohibited)",
+    r"\bcan\s+(i|we|one|a\s+jew)\b.*\b(on\s+shabbat|during|while)",
+    r"\bwhat\s+is\s+the\s+(halacha|din|law)\b",
+    r"\baccording\s+to\s+(halacha|jewish\s+law)",
+    r"\bis\s+there\s+a\s+(prohibition|issur)",
 ]
 
 
@@ -206,9 +221,11 @@ class RouterService:
                 self.use_ai_classifier = False
 
         # Compile rule-based patterns (used for fallback or if AI disabled)
-        self._halachic_patterns = [re.compile(p, re.IGNORECASE) for p in HALACHIC_KEYWORDS]
-        self._search_patterns = [re.compile(p, re.IGNORECASE) for p in SEARCH_KEYWORDS]
-        self._general_patterns = [re.compile(p, re.IGNORECASE) for p in GENERAL_KEYWORDS]
+        self._translation_patterns = [re.compile(p, re.IGNORECASE) for p in TRANSLATION_KEYWORDS]
+        self._discovery_patterns = [re.compile(p, re.IGNORECASE) for p in DISCOVERY_KEYWORDS]
+        self._deep_engagement_patterns = [
+            re.compile(p, re.IGNORECASE) for p in DEEP_ENGAGEMENT_KEYWORDS
+        ]
 
     def route(
         self,
@@ -279,9 +296,9 @@ class RouterService:
         # Step 5: Select tools
         tools = self._select_tools(flow)
         tool_reason = {
-            Flow.HALACHIC: ReasonCode.TOOLS_ADDED_HALACHIC_SET,
-            Flow.SEARCH: ReasonCode.TOOLS_ADDED_SEARCH_SET,
-            Flow.GENERAL: ReasonCode.TOOLS_MINIMAL_GENERAL_SET,
+            Flow.TRANSLATION: ReasonCode.TOOLS_ADDED_TRANSLATION_SET,
+            Flow.DISCOVERY: ReasonCode.TOOLS_ADDED_DISCOVERY_SET,
+            Flow.DEEP_ENGAGEMENT: ReasonCode.TOOLS_ADDED_DEEP_ENGAGEMENT_SET,
         }.get(flow)
         if tool_reason:
             reason_codes.append(tool_reason)
@@ -322,47 +339,49 @@ class RouterService:
         reason_codes = []
 
         # Count pattern matches for each flow
-        halachic_score = sum(1 for p in self._halachic_patterns if p.search(message))
-        search_score = sum(1 for p in self._search_patterns if p.search(message))
-        general_score = sum(1 for p in self._general_patterns if p.search(message))
+        translation_score = sum(1 for p in self._translation_patterns if p.search(message))
+        discovery_score = sum(1 for p in self._discovery_patterns if p.search(message))
+        deep_engagement_score = sum(
+            1 for p in self._deep_engagement_patterns if p.search(message)
+        )
 
         # Add weight from previous flow (stickiness)
-        if previous_flow == Flow.HALACHIC.value:
-            halachic_score += 0.5
-        elif previous_flow == Flow.SEARCH.value:
-            search_score += 0.5
-        elif previous_flow == Flow.GENERAL.value:
-            general_score += 0.5
+        if previous_flow == Flow.TRANSLATION.value:
+            translation_score += 0.5
+        elif previous_flow == Flow.DISCOVERY.value:
+            discovery_score += 0.5
+        elif previous_flow == Flow.DEEP_ENGAGEMENT.value:
+            deep_engagement_score += 0.5
 
         # Determine winner
-        max_score = max(halachic_score, search_score, general_score)
+        max_score = max(translation_score, discovery_score, deep_engagement_score)
 
         if max_score == 0:
-            # No clear intent, default to general
-            reason_codes.append(ReasonCode.ROUTE_DEFAULT_GENERAL)
-            return Flow.GENERAL, 0.5, reason_codes
+            # No clear intent, default to deep engagement
+            reason_codes.append(ReasonCode.ROUTE_DEFAULT_DEEP_ENGAGEMENT)
+            return Flow.DEEP_ENGAGEMENT, 0.5, reason_codes
 
         # Calculate confidence based on margin
-        total_score = halachic_score + search_score + general_score
+        total_score = translation_score + discovery_score + deep_engagement_score
         confidence = max_score / total_score if total_score > 0 else 0.5
 
-        if halachic_score == max_score:
-            if halachic_score > 0:
-                reason_codes.append(ReasonCode.ROUTE_HALACHIC_KEYWORDS)
-            reason_codes.append(ReasonCode.ROUTE_HALACHIC_INTENT)
-            return Flow.HALACHIC, confidence, reason_codes
+        if translation_score == max_score:
+            if translation_score > 0:
+                reason_codes.append(ReasonCode.ROUTE_TRANSLATION_KEYWORDS)
+            reason_codes.append(ReasonCode.ROUTE_TRANSLATION_INTENT)
+            return Flow.TRANSLATION, confidence, reason_codes
 
-        if search_score == max_score:
-            if search_score > 0:
-                reason_codes.append(ReasonCode.ROUTE_SEARCH_KEYWORDS)
-            reason_codes.append(ReasonCode.ROUTE_SEARCH_INTENT)
-            return Flow.SEARCH, confidence, reason_codes
+        if discovery_score == max_score:
+            if discovery_score > 0:
+                reason_codes.append(ReasonCode.ROUTE_DISCOVERY_KEYWORDS)
+            reason_codes.append(ReasonCode.ROUTE_DISCOVERY_INTENT)
+            return Flow.DISCOVERY, confidence, reason_codes
 
-        # General wins
-        if general_score > 0:
-            reason_codes.append(ReasonCode.ROUTE_GENERAL_LEARNING)
-        reason_codes.append(ReasonCode.ROUTE_GENERAL_INTENT)
-        return Flow.GENERAL, confidence, reason_codes
+        # Deep engagement wins
+        if deep_engagement_score > 0:
+            reason_codes.append(ReasonCode.ROUTE_DEEP_ENGAGEMENT_LEARNING)
+        reason_codes.append(ReasonCode.ROUTE_DEEP_ENGAGEMENT_INTENT)
+        return Flow.DEEP_ENGAGEMENT, confidence, reason_codes
 
     def _determine_session_action(
         self,
@@ -384,48 +403,64 @@ class RouterService:
     def _select_prompts(self, flow: Flow) -> PromptBundle:
         """Select prompt IDs based on flow."""
         # These IDs will be looked up in Braintrust
+        flow_slug_map = {
+            Flow.TRANSLATION: settings.TRANSLATION_PROMPT_SLUG,
+            Flow.DISCOVERY: settings.DISCOVERY_PROMPT_SLUG,
+            Flow.DEEP_ENGAGEMENT: settings.DEEP_ENGAGEMENT_PROMPT_SLUG,
+        }
+        flow_slug = flow_slug_map.get(flow) or f"bt_prompt_{flow.value.lower()}"
         return PromptBundle(
             core_prompt_id=settings.CORE_PROMPT_SLUG,
             core_prompt_version="stable",
-            flow_prompt_id=f"bt_prompt_{flow.value.lower()}",
+            flow_prompt_id=flow_slug,
             flow_prompt_version="stable",
         )
 
     def _select_tools(self, flow: Flow) -> list[str]:
         """Select tools based on flow."""
         # Tool names that will be filtered from the full tool list
-        if flow == Flow.HALACHIC:
+        if flow == Flow.TRANSLATION:
             return [
                 "get_text",
-                "text_search",
-                "english_semantic_search",
-                "get_topic_details",
-                "get_links_between_texts",
-                "search_in_book",
-                "clarify_name_argument",
+                "search_in_dictionaries",
             ]
 
-        if flow == Flow.SEARCH:
+        if flow == Flow.DISCOVERY:
             return [
                 "get_text",
                 "text_search",
+                "get_current_calendar",
                 "english_semantic_search",
                 "search_in_book",
                 "search_in_dictionaries",
                 "get_links_between_texts",
+                "get_english_translations",
+                "get_topic_details",
                 "get_text_or_category_shape",
                 "get_text_catalogue_info",
+                "get_available_manuscripts",
+                "get_manuscript_image",
                 "clarify_name_argument",
                 "clarify_search_path_filter",
             ]
 
-        if flow == Flow.GENERAL:
+        if flow == Flow.DEEP_ENGAGEMENT:
             return [
                 "get_text",
                 "text_search",
-                "english_semantic_search",
-                "get_topic_details",
                 "get_current_calendar",
+                "english_semantic_search",
+                "search_in_book",
+                "search_in_dictionaries",
+                "get_links_between_texts",
+                "get_english_translations",
+                "get_topic_details",
+                "get_text_or_category_shape",
+                "get_text_catalogue_info",
+                "get_available_manuscripts",
+                "get_manuscript_image",
+                "clarify_name_argument",
+                "clarify_search_path_filter",
             ]
 
         # REFUSE flow - no tools

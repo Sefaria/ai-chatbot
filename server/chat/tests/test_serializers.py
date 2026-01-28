@@ -199,7 +199,7 @@ class TestHistoryMessageSerializer:
             user_id="user_fields",
             role="user",
             content="test",
-            flow="HALACHIC",
+            flow="DEEP_ENGAGEMENT",
             latency_ms=100,
             input_tokens=50,
         )

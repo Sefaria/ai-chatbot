@@ -338,20 +338,20 @@ Analyze this message and output your decision as JSON."""
 
 Analyze the user's message and determine the appropriate flow:
 
-**HALACHIC**: Practical Jewish law questions seeking rulings or guidance
-- Keywords: mutar, assur, permitted, forbidden, allowed, halacha, din, issur, hetter
-- Patterns: "Is it permitted to...", "Can I... on Shabbat", "What is the halacha..."
-- Examples: "Can I use my phone on Shabbat?", "Is this food kosher?"
+**TRANSLATION**: Requests to translate or render text or phrases
+- Keywords: translate, translation, render, in English, in Hebrew
+- Patterns: "Translate this...", "What does X mean in English?"
+- Examples: "Translate this verse", "What does \"chesed\" mean in English?"
 
-**SEARCH**: Requests to find, locate, or search for specific texts or sources
+**DISCOVERY**: Requests to find, locate, or search for specific texts or sources
 - Keywords: find, search, locate, where does it say, show me sources
 - Patterns: "Find all sources about...", "Where is it written...", "Show me references..."
 - Examples: "Find all mentions of tzedakah in Pirkei Avot", "Where does Rashi discuss this?"
 
-**GENERAL**: Learning, understanding, explanation, or conceptual discussion
-- Keywords: explain, teach, why, what does it mean, help me understand
-- Patterns: "Explain...", "What is the significance of...", "Tell me about..."
-- Examples: "Explain the concept of teshuvah", "Why do we celebrate Purim?"
+**DEEP_ENGAGEMENT**: Learning, explanation, or deep study of a particular text or topic
+- Keywords: explain, teach, why, commentaries, interpretation, help me understand
+- Patterns: "Explain...", "What is the significance of...", "Go deep on..."
+- Examples: "Explain the concept of teshuvah", "Go deep on Genesis 1:1"
 
 Consider:
 - Previous conversation flow (flow stickiness)
@@ -360,21 +360,21 @@ Consider:
 
 CRITICAL: Output ONLY valid JSON, with no additional text before or after. Use this exact structure:
 {
-  "flow": "HALACHIC" | "SEARCH" | "GENERAL",
+  "flow": "TRANSLATION" | "DISCOVERY" | "DEEP_ENGAGEMENT",
   "confidence": 0.0-1.0,
   "reason_codes": ["CODE1", "CODE2"],
   "reasoning": "Brief explanation of the decision"
 }
 
 Reason codes:
-- HALACHIC_KEYWORDS
-- HALACHIC_QUESTION_PATTERN
-- SEARCH_KEYWORDS
-- SEARCH_REFERENCE_REQUEST
-- GENERAL_LEARNING
-- GENERAL_EXPLANATION
+- TRANSLATION_KEYWORDS
+- TRANSLATION_REQUEST
+- DISCOVERY_KEYWORDS
+- DISCOVERY_REFERENCE_REQUEST
+- DEEP_ENGAGEMENT_LEARNING
+- DEEP_ENGAGEMENT_EXPLANATION
 - FLOW_STICKINESS (continuing previous flow)
-- DEFAULT_GENERAL (unclear intent)
+- DEFAULT_DEEP_ENGAGEMENT (unclear intent)
 
 Remember: OUTPUT ONLY JSON, NO EXPLANATORY TEXT BEFORE OR AFTER."""
 

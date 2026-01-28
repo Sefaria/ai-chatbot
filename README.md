@@ -192,7 +192,7 @@ Invalidate prompt cache (reloads from Braintrust on next request).
 
 The router classifies user intent using:
 
-1. **Keyword patterns** - Hebrew/English terms for halacha, search, learning
+1. **Keyword patterns** - Translation, discovery/search, deep engagement cues
 2. **Guardrail checks** - Prompt injection, harassment, high-risk content
 3. **Flow stickiness** - Maintains flow unless intent clearly shifts
 
@@ -201,9 +201,9 @@ The router classifies user intent using:
 Routing decisions include explainable reason codes:
 
 ```python
-ROUTE_HALACHIC_KEYWORDS     # Detected halachic terms
-ROUTE_SEARCH_INTENT         # User wants to find sources
-ROUTE_GENERAL_LEARNING      # Conceptual/learning question
+ROUTE_TRANSLATION_KEYWORDS  # Detected translation cues
+ROUTE_DISCOVERY_INTENT      # User wants to find sources
+ROUTE_DEEP_ENGAGEMENT_LEARNING  # Deep study/learning question
 ROUTE_FLOW_STICKINESS       # Continuing previous flow
 GUARDRAIL_PROMPT_INJECTION  # Blocked injection attempt
 GUARDRAIL_HIGH_RISK_PSAK    # High-risk halachic question
@@ -213,9 +213,9 @@ GUARDRAIL_HIGH_RISK_PSAK    # High-risk halachic question
 
 | Flow | Tools |
 |------|-------|
-| HALACHIC | get_text, text_search, semantic_search, topic_details, links, search_in_book, clarify_name |
-| SEARCH | All search tools + dictionaries, manuscripts, catalogue info |
-| GENERAL | get_text, text_search, semantic_search, topic_details, calendar |
+| TRANSLATION | get_text, search_in_dictionaries |
+| DISCOVERY | All tools (search, dictionaries, manuscripts, catalogue info, etc.) |
+| DEEP_ENGAGEMENT | All tools with emphasis on commentaries and deep study |
 
 ## Observability
 

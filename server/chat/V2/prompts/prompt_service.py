@@ -69,16 +69,16 @@ class PromptService:
         # Load local defaults
         from .default_prompts import (
             CORE_PROMPT,
-            GENERAL_PROMPT,
-            HALACHIC_PROMPT,
-            SEARCH_PROMPT,
+            DEEP_ENGAGEMENT_PROMPT,
+            DISCOVERY_PROMPT,
+            TRANSLATION_PROMPT,
         )
 
         self._defaults = {
             "core": CORE_PROMPT,
-            "halachic": HALACHIC_PROMPT,
-            "general": GENERAL_PROMPT,
-            "search": SEARCH_PROMPT,
+            "translation": TRANSLATION_PROMPT,
+            "discovery": DISCOVERY_PROMPT,
+            "deep_engagement": DEEP_ENGAGEMENT_PROMPT,
         }
 
         self._init_braintrust()
@@ -118,7 +118,7 @@ class PromptService:
         Get a complete prompt bundle for a flow.
 
         Args:
-            flow: Flow type (HALACHIC, GENERAL, SEARCH)
+            flow: Flow type (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT)
             core_prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             flow_prompt_id: Braintrust ID for flow prompt (default: derived from flow)
             version: Prompt version to fetch
@@ -128,7 +128,12 @@ class PromptService:
         """
         flow_lower = flow.lower()
         core_prompt_id = core_prompt_id or settings.CORE_PROMPT_SLUG
-        flow_prompt_id = flow_prompt_id or f"bt_prompt_{flow_lower}"
+        flow_slug_map = {
+            "translation": settings.TRANSLATION_PROMPT_SLUG,
+            "discovery": settings.DISCOVERY_PROMPT_SLUG,
+            "deep_engagement": settings.DEEP_ENGAGEMENT_PROMPT_SLUG,
+        }
+        flow_prompt_id = flow_prompt_id or flow_slug_map.get(flow_lower) or f"bt_prompt_{flow_lower}"
 
         # Fetch core prompt using the router's Braintrust client for the default core slug
         if (

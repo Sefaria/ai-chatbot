@@ -19,9 +19,9 @@ from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
 from .tool_schemas import (
     ALL_TOOLS,
-    GENERAL_TOOL_NAMES,
-    HALACHIC_TOOL_NAMES,
-    SEARCH_TOOL_NAMES,
+    DEEP_ENGAGEMENT_TOOL_NAMES,
+    DISCOVERY_TOOL_NAMES,
+    TRANSLATION_TOOL_NAMES,
     SEFARIA_TOOL_SCHEMAS,
     get_tools_by_names,
     get_tools_for_flow,
@@ -40,9 +40,9 @@ __all__ = [
     "ALL_TOOLS",
     "get_tools_for_flow",
     "get_tools_by_names",
-    "HALACHIC_TOOL_NAMES",
-    "SEARCH_TOOL_NAMES",
-    "GENERAL_TOOL_NAMES",
+    "TRANSLATION_TOOL_NAMES",
+    "DISCOVERY_TOOL_NAMES",
+    "DEEP_ENGAGEMENT_TOOL_NAMES",
     # Sefaria client
     "SefariaClient",
     "SefariaToolExecutor",
