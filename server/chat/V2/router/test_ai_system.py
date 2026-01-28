@@ -2,10 +2,10 @@
 Test script for AI-based guardrails and router.
 
 Run with:
-    python manage.py shell < chat/router/test_ai_system.py
+    python manage.py shell < chat/V2/router/test_ai_system.py
 
 Or in Django shell:
-    from chat.router.test_ai_system import run_tests
+    from chat.V2.router.test_ai_system import run_tests
     run_tests()
 """
 
@@ -16,7 +16,7 @@ from django.conf import settings
 def test_braintrust_client():
     """Test Braintrust client initialization and prompt loading."""
     print("\n=== Testing Braintrust Client ===")
-    from chat.router import get_braintrust_client
+    from chat.V2.router import get_braintrust_client
 
     client = get_braintrust_client()
     print("✓ Braintrust client initialized")
@@ -61,7 +61,7 @@ def test_ai_guardrails():
         return
 
     try:
-        from chat.router import get_ai_guardrail_checker
+        from chat.V2.router import get_ai_guardrail_checker
 
         checker = get_ai_guardrail_checker()
         print("✓ AI Guardrail checker initialized")
@@ -101,7 +101,7 @@ def test_ai_router():
         return
 
     try:
-        from chat.router import get_ai_flow_router
+        from chat.V2.router import get_ai_flow_router
 
         router = get_ai_flow_router()
         print("✓ AI Flow router initialized")
@@ -136,7 +136,7 @@ def test_integrated_router():
     print("\n=== Testing Integrated Router Service ===")
 
     try:
-        from chat.router import get_router_service
+        from chat.V2.router import get_router_service
 
         # Test with AI enabled
         print("\nTesting with AI enabled:")

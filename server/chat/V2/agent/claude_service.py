@@ -273,6 +273,10 @@ class ClaudeAgentService:
         environment = os.environ.get("ENVIRONMENT", "dev")
 
         # Log structured input to span
+        input_payload = {
+            "query": last_user_message,  # Current turn for quick viewing
+            "messages": formatted_messages,  # Full context for eval replay
+        }
         metadata = {
             # Session context
             "session_id": session_id or "",
@@ -297,11 +301,9 @@ class ClaudeAgentService:
             metadata["conversation_summary"] = summary_text
         if summary_metadata:
             metadata["conversation_summary_structured"] = summary_metadata
+        metadata["input_json"] = input_payload
         span.log(
-            input={
-                "query": last_user_message,  # Current turn for quick viewing
-                "messages": formatted_messages,  # Full context for eval replay
-            },
+            input=last_user_message,  # Flat text for Input column
             tags=[
                 route_result.flow.value.lower(),  # search | halachic | general
                 environment,  # dev | staging | prod
@@ -514,15 +516,17 @@ class ClaudeAgentService:
         tool_calls_summary = [summarize_tool_call(tc) for tc in tool_calls_list]
 
         # Log structured output and metrics to span
+        output_payload = {
+            "response": output,
+            "refs": extract_refs(tool_calls_list),
+            "tool_calls": tool_calls_summary,
+            "was_refused": False,
+        }
         span.log(
-            output={
-                "response": output,
-                "refs": extract_refs(tool_calls_list),
-                "tool_calls": tool_calls_summary,
-                "was_refused": False,
-            },
+            output=output,
             metadata={
                 "tools_used": [tc["tool_name"] for tc in tool_calls_list],
+                "output_json": output_payload,
             },
             metrics={
                 "latency_ms": latency_ms,
@@ -579,6 +583,10 @@ class ClaudeAgentService:
         )
 
         # Log structured input (same format as normal requests for consistency)
+        input_payload = {
+            "query": last_user_message,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+        }
         metadata = {
             "session_id": session_id or "",
             "turn_id": turn_id or "",
@@ -589,11 +597,9 @@ class ClaudeAgentService:
             metadata["conversation_summary"] = summary_text
         if summary_metadata:
             metadata["conversation_summary_structured"] = summary_metadata
+        metadata["input_json"] = input_payload
         span.log(
-            input={
-                "query": last_user_message,
-                "messages": [{"role": m.role, "content": m.content} for m in messages],
-            },
+            input=last_user_message,  # Flat text for Input column
             tags=[
                 "refuse",  # Always 'refuse' for this flow
                 environment,
@@ -602,13 +608,17 @@ class ClaudeAgentService:
         )
 
         # Log structured output with refusal details
+        output_payload = {
+            "response": refusal_message,
+            "refs": [],
+            "tool_calls": [],
+            "was_refused": True,
+            "refusal_codes": [c.value for c in route_result.reason_codes],
+        }
         span.log(
-            output={
-                "response": refusal_message,
-                "refs": [],
-                "tool_calls": [],
-                "was_refused": True,
-                "refusal_codes": [c.value for c in route_result.reason_codes],
+            output=refusal_message,  # Flat text for Output column
+            metadata={
+                "output_json": output_payload,
             },
             metrics={
                 "latency_ms": latency_ms,

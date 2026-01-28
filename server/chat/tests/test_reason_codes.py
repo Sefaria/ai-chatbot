@@ -2,7 +2,7 @@
 
 import pytest
 
-from chat.router.reason_codes import (
+from chat.V2.router.reason_codes import (
     REASON_CODES,
     ReasonCode,
     filter_reasons_by_category,

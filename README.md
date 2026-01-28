@@ -22,6 +22,17 @@ User Message → Router → Flow Selection → Claude Agent → Response
 - **LangSmith** - End-to-end tracing with spans for router, agent, and tools
 - **Braintrust** - Prompt management, structured logging, and evaluations
 
+## Versioned Agents
+
+Agent logic is organized by version under `server/chat/`. The current implementation lives in `server/chat/V2/`.
+
+To add a new version (e.g. V3):
+1. Copy `server/chat/V2` to `server/chat/V3`.
+2. Update your agent logic inside `server/chat/V3`.
+3. Add URLs in `server/chat/urls.py` pointing to the new views.
+4. Update `server/chat/views.py` health/version reporting (and prompt reloads if needed).
+5. In the widget settings, set **Bot version** to `v3` to route requests to the new endpoints.
+
 ## Features
 
 - 🔀 **Flow-Based Routing** - Automatic classification to appropriate handling mode
@@ -32,6 +43,7 @@ User Message → Router → Flow Selection → Claude Agent → Response
 - 💬 **Markdown Rendering** - Rich responses with headings, code blocks, links
 - 📐 **Resizable Panel** - Drag to resize, dimensions persist
 - 📜 **Infinite Scroll History** - Load older messages with date markers
+- 🧩 **Versioned Agents** - Run multiple bot versions in parallel
 - 🎨 **Themeable** - CSS custom properties
 - 💾 **Local Persistence** - Session and UI state saved to localStorage
 - ⚡ **Lightweight** - Single JS bundle
@@ -111,11 +123,13 @@ Visit `http://localhost:5173` to see the widget.
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
 
+Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
+
 ## API Reference
 
-### POST /api/chat
+### POST /api/v2/chat/stream
 
-Send a message and receive a routed response.
+Send a message and receive a streamed response with Server-Sent Events.
 
 **Request:**
 ```json
@@ -148,15 +162,19 @@ Send a message and receive a routed response.
 }
 ```
 
-### POST /api/chat/stream
-
-Same as `/api/chat` but with Server-Sent Events for real-time progress:
-
 **Events:**
 - `routing` - Flow decision with reason codes
 - `progress` - Tool execution updates
 - `message` - Final response
 - `error` - Error details
+
+### POST /api/v2/chat/feedback
+
+Send user feedback tied to a response trace.
+
+### GET /api/v2/prompts/defaults
+
+Fetch default prompt slugs for client settings.
 
 ### GET /api/history
 

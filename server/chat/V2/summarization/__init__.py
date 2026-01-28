@@ -8,7 +8,7 @@ Provides rolling summaries that capture:
 - Constraints and preferences
 """
 
-from ..models import ConversationSummary
+from ...models import ConversationSummary
 from .summary_service import SummaryService, get_summary_service
 
 __all__ = [

@@ -175,6 +175,12 @@ ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
 GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
 
 # ============================================================================
+# Chat User Token Configuration
+# ============================================================================
+# Token secret used to decrypt incoming userId values for chat requests.
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
+
+# ============================================================================
 # Anthropic API Configuration
 # ============================================================================
 # Set ANTHROPIC_API_KEY environment variable

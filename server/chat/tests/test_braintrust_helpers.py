@@ -2,7 +2,7 @@
 
 import pytest
 
-from chat.agent.claude_service import extract_refs
+from chat.V2.agent.claude_service import extract_refs
 from chat.views import extract_page_type
 
 

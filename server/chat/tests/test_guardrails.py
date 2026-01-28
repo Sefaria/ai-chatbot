@@ -2,7 +2,7 @@
 
 import pytest
 
-from chat.router.guardrails import (
+from chat.V2.router.guardrails import (
     HARASSMENT_PATTERNS,
     HIGH_RISK_HALACHIC_PATTERNS,
     MEDICAL_LEGAL_PATTERNS,
@@ -10,7 +10,7 @@ from chat.router.guardrails import (
     GuardrailChecker,
     GuardrailResult,
 )
-from chat.router.reason_codes import ReasonCode
+from chat.V2.router.reason_codes import ReasonCode
 
 
 @pytest.fixture

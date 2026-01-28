@@ -67,7 +67,7 @@ You can override to use other models via environment variables:
 Manages prompt loading from Braintrust with local fallbacks:
 
 ```python
-from chat.router import get_braintrust_client
+from chat.V2.router import get_braintrust_client
 
 client = get_braintrust_client()
 
@@ -96,7 +96,7 @@ client.invalidate_cache()
 AI-powered content safety checking:
 
 ```python
-from chat.router import get_ai_guardrail_checker
+from chat.V2.router import get_ai_guardrail_checker
 
 checker = get_ai_guardrail_checker()
 
@@ -121,7 +121,7 @@ print(f"Reason codes: {result.reason_codes}")
 AI-powered flow classification:
 
 ```python
-from chat.router import get_ai_flow_router
+from chat.V2.router import get_ai_flow_router
 
 router = get_ai_flow_router()
 
@@ -141,7 +141,7 @@ print(f"Reasons: {reason_codes}")
 High-level service combining guardrails and routing:
 
 ```python
-from chat.router import get_router_service
+from chat.V2.router import get_router_service
 
 router = get_router_service(
     use_ai_classifier=True,
@@ -200,7 +200,7 @@ print(result.to_dict())
    # Changes take effect immediately (subject to cache)
 
    # To force reload:
-   from chat.router import get_braintrust_client
+   from chat.V2.router import get_braintrust_client
    get_braintrust_client().invalidate_cache()
    ```
 
@@ -213,7 +213,7 @@ If Braintrust is unavailable or `BRAINTRUST_API_KEY` is not set, the system uses
 ### Testing AI Guardrails
 
 ```python
-from chat.router.ai_guardrails import get_ai_guardrail_checker
+from chat.V2.router.ai_guardrails import get_ai_guardrail_checker
 
 checker = get_ai_guardrail_checker()
 
@@ -232,7 +232,7 @@ for msg in test_messages:
 ### Testing AI Router
 
 ```python
-from chat.router.ai_router import get_ai_flow_router
+from chat.V2.router.ai_router import get_ai_flow_router
 
 router = get_ai_flow_router()
 
@@ -295,7 +295,7 @@ The system is **backward compatible**. Existing code continues to work:
 
 ```python
 # Old way (still works, uses AI by default)
-from chat.router import get_router_service
+from chat.V2.router import get_router_service
 router = get_router_service()
 
 # Explicitly disable AI to use old behavior
@@ -352,7 +352,7 @@ Edit the `_get_fallback_*_prompt()` methods in `braintrust_client.py`.
 ### Using Different Models
 
 ```python
-from chat.router import get_ai_guardrail_checker
+from chat.V2.router import get_ai_guardrail_checker
 
 # Use Sonnet for higher accuracy
 checker = get_ai_guardrail_checker(model="claude-3-5-sonnet-20241022")

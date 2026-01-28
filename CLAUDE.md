@@ -54,8 +54,8 @@ src/components/LCChatbot.svelte  # Main widget
 src/lib/                         # API, session, markdown
 
 server/chat/views.py             # API endpoints
-server/chat/router/              # Intent classification
-server/chat/agent/               # Claude + tools
+server/chat/V2/router/           # Intent classification
+server/chat/V2/agent/            # Claude + tools
 ```
 
 ## Env

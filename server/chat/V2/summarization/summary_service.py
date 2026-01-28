@@ -14,7 +14,7 @@ from typing import Any
 import anthropic
 from django.utils import timezone
 
-from ..models import ChatSession, ConversationSummary
+from ...models import ChatSession, ConversationSummary
 
 logger = logging.getLogger("chat.summarization")
 

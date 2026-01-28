@@ -19,7 +19,7 @@ Svelte Web Component → Django REST → Router → Claude Agent → Sefaria API
 │  └─────────────────┘    └─────────────────┘    └──────────────────┘    │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
-                    POST /api/chat/stream
+                    POST /api/v2/chat/stream
                                  │
 ┌────────────────────────────────▼────────────────────────────────────────┐
 │                              Backend                                     │
@@ -55,7 +55,7 @@ Four routing flows determine behavior:
 
 ## Components
 
-### Router (`server/chat/router/`)
+### Router (`server/chat/V2/router/`)
 
 Classifies intent and selects resources per turn.
 
@@ -79,7 +79,7 @@ RouteResult:
 - Harassment/hate speech
 - High-risk halachic topics (e.g., life-threatening situations)
 
-### Agent (`server/chat/agent/`)
+### Agent (`server/chat/V2/agent/`)
 
 Executes Claude with tools in an agentic loop.
 
@@ -99,7 +99,7 @@ Loop (max 10 iterations):
 - Max tokens: 8000
 - Temperature: 0.7
 
-### Tools (`server/chat/agent/tool_executor.py`)
+### Tools (`server/chat/V2/agent/tool_executor.py`)
 
 Sefaria API wrapper providing text access:
 
@@ -116,7 +116,7 @@ Sefaria API wrapper providing text access:
 | `clarify_name_argument` | Autocomplete text names |
 | `clarify_search_path_filter` | Validate book paths |
 
-### Prompts (`server/chat/prompts/`)
+### Prompts (`server/chat/V2/prompts/`)
 
 Two-layer prompt system:
 1. **Core prompt** (`core-8fbc`): System-wide instructions

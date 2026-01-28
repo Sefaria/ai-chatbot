@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.conf import settings
 
-from chat.prompts.prompt_service import (
+from chat.V2.prompts.prompt_service import (
     PromptBundle,
     PromptService,
     get_prompt_service,
@@ -235,14 +235,14 @@ class TestGetPromptService:
     """Test get_prompt_service singleton function."""
 
     def test_returns_service_instance(self) -> None:
-        import chat.prompts.prompt_service as ps
+        import chat.V2.prompts.prompt_service as ps
 
         ps._default_service = None
         svc = get_prompt_service()
         assert isinstance(svc, PromptService)
 
     def test_returns_same_instance(self) -> None:
-        import chat.prompts.prompt_service as ps
+        import chat.V2.prompts.prompt_service as ps
 
         ps._default_service = None
         service1 = get_prompt_service()

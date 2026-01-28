@@ -4,11 +4,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from chat.router.guardrails import GuardrailResult
-from chat.router.reason_codes import ReasonCode
+from chat.V2.router.guardrails import GuardrailResult
+from chat.V2.router.reason_codes import ReasonCode
 from django.conf import settings
 
-from chat.router.router_service import (
+from chat.V2.router.router_service import (
     GENERAL_KEYWORDS,
     HALACHIC_KEYWORDS,
     SEARCH_KEYWORDS,

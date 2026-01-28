@@ -13,7 +13,7 @@ import django
 
 django.setup()
 
-from chat.router.braintrust_client import get_braintrust_client
+from chat.V2.router.braintrust_client import get_braintrust_client
 
 
 def test_core_prompt():

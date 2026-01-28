@@ -13,7 +13,7 @@ import django
 
 django.setup()
 
-from chat.prompts import get_prompt_service
+from chat.V2.prompts import get_prompt_service
 
 
 def test_prompt_service():

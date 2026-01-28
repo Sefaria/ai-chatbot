@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from chat.agent.claude_service import AgentResponse, ClaudeAgentService, ConversationMessage
-from chat.router.reason_codes import ReasonCode
-from chat.router.router_service import (
+from chat.V2.agent.claude_service import AgentResponse, ClaudeAgentService, ConversationMessage
+from chat.V2.router.reason_codes import ReasonCode
+from chat.V2.router.router_service import (
     Flow,
     PromptBundle,
     RouteResult,
@@ -55,7 +55,7 @@ class TestCreateRefusalResponse:
 
         messages = [ConversationMessage(role="user", content="malicious prompt")]
 
-        with patch("chat.agent.claude_service.current_span") as mock_span:
+        with patch("chat.V2.agent.claude_service.current_span") as mock_span:
             mock_span.return_value = MagicMock()
 
             response = agent_service._create_refusal_response(
@@ -97,7 +97,7 @@ class TestCreateRefusalResponse:
             if "output" in kwargs:
                 logged_output.update(kwargs["output"])
 
-        with patch("chat.agent.claude_service.current_span") as mock_current_span:
+        with patch("chat.V2.agent.claude_service.current_span") as mock_current_span:
             mock_span = MagicMock()
             mock_span.log = capture_log
             mock_current_span.return_value = mock_span
