@@ -89,7 +89,6 @@ def history(request):
     try:
         session = ChatSession.objects.get(session_id=session_id)
         session_info = {
-            "currentFlow": session.current_flow,
             "turnCount": session.turn_count or 0,
             "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
         }

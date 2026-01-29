@@ -13,6 +13,7 @@ import inspect
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,7 +28,7 @@ except Exception:  # pragma: no cover - optional dependency
     setup_claude_agent_sdk = None
     current_span = None
 
-_BRAINTRUST_SETUP_DONE = False
+_BRAINTRUST_SETUP_STATE = threading.local()
 
 try:
     from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
@@ -155,15 +156,14 @@ class ClaudeAgentService:
             logger.warning("Braintrust Claude Agent SDK wrapper not available")
             return
 
-        global _BRAINTRUST_SETUP_DONE
-        if _BRAINTRUST_SETUP_DONE:
+        if getattr(_BRAINTRUST_SETUP_STATE, "done", False):
             self._braintrust_enabled = True
             return
 
         try:
             setup_claude_agent_sdk(project=bt_project, api_key=bt_api_key)
             self._braintrust_enabled = True
-            _BRAINTRUST_SETUP_DONE = True
+            _BRAINTRUST_SETUP_STATE.done = True
         except Exception as exc:
             logger.warning(f"Failed to setup Braintrust Claude Agent SDK: {exc}")
 

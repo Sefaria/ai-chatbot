@@ -168,7 +168,6 @@ def chat_stream_v2(request):
         client_timestamp=data["timestamp"],
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
-        flow="",
     )
 
     def generate_sse():

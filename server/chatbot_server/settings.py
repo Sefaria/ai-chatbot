@@ -172,13 +172,6 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 # Prompt slug defaults (Braintrust)
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
 
-# Legacy prompt slugs (unused in the simplified v2 flow)
-ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
-GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
-DISCOVERY_PROMPT_SLUG = os.environ.get("DISCOVERY_PROMPT_SLUG", "discovery")
-TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "translation")
-DEEP_ENGAGEMENT_PROMPT_SLUG = os.environ.get("DEEP_ENGAGEMENT_PROMPT_SLUG", "deep_engagement")
-
 # ============================================================================
 # Chat User Token Configuration
 # ============================================================================
@@ -235,16 +228,6 @@ LOGGING = {
         "chat.agent": {
             "handlers": ["chat_console"],
             "level": "INFO",
-            "propagate": False,
-        },
-        "chat.router": {
-            "handlers": ["chat_console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "chat.router.guardrails": {
-            "handlers": ["chat_console"],
-            "level": "WARNING",
             "propagate": False,
         },
         "chat.prompts": {

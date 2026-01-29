@@ -49,7 +49,6 @@ class TestChatSession:
         str_repr = str(session)
         assert "sess_str" in str_repr
         assert "user_str" in str_repr
-        assert "DISCOVERY" in str_repr
 
     def test_session_unique_id(self) -> None:
         from django.db import IntegrityError

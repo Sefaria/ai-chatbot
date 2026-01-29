@@ -9,7 +9,7 @@ from django.db import models
 
 class ChatSession(models.Model):
     """
-    Tracks chat sessions with flow state and summaries.
+    Tracks chat sessions with summaries and metadata.
     """
 
     session_id = models.CharField(max_length=100, unique=True, db_index=True)
@@ -21,7 +21,7 @@ class ChatSession(models.Model):
     message_count = models.IntegerField(default=0)
     turn_count = models.IntegerField(default=0)
 
-    # Current flow state
+    # Legacy flow state (unused in v2 agent flow)
     current_flow = models.CharField(
         max_length=20,
         blank=True,
@@ -29,9 +29,9 @@ class ChatSession(models.Model):
         help_text="Current conversation label (optional)",
     )
 
-    # Rolling conversation summary for router context
+    # Rolling conversation summary for agent context
     conversation_summary = models.TextField(
-        blank=True, default="", help_text="Rolling summary of conversation for router context"
+        blank=True, default="", help_text="Rolling summary of conversation for agent context"
     )
     summary_updated_at = models.DateTimeField(null=True, blank=True)
 
@@ -48,7 +48,7 @@ class ChatSession(models.Model):
         ordering = ["-last_activity"]
 
     def __str__(self):
-        return f"Session {self.session_id} (user: {self.user_id}, flow: {self.current_flow})"
+        return f"Session {self.session_id} (user: {self.user_id})"
 
 
 class ConversationSummary(models.Model):
@@ -95,8 +95,6 @@ class ConversationSummary(models.Model):
             parts.append(f"Current Topic: {self.current_topic}")
         if self.user_intent:
             parts.append(f"User Intent: {self.user_intent}")
-        if self.flow:
-            parts.append(f"Flow: {self.flow}")
         if self.texts_referenced:
             parts.append(f"Texts: {', '.join(self.texts_referenced[:5])}")
         if self.topics_discussed:
@@ -118,7 +116,6 @@ class ConversationSummary(models.Model):
             "text": self.text,
             "current_topic": self.current_topic,
             "user_intent": self.user_intent,
-            "flow": self.flow,
             "texts_referenced": self.texts_referenced,
             "topics_discussed": self.topics_discussed,
             "people_mentioned": self.people_mentioned,
@@ -132,7 +129,7 @@ class ConversationSummary(models.Model):
 
 class RouteDecision(models.Model):
     """
-    Records routing decisions for each turn.
+    Legacy routing decision record (kept for historical analytics).
 
     Provides audit trail and analytics for:
     - Flow classification accuracy

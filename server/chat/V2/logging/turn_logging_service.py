@@ -40,7 +40,6 @@ class TurnLoggingService:
             content=error_text,
             status=ChatMessage.Status.FAILED,
             latency_ms=latency_ms,
-            flow="",
         )
 
     def finalize_success(
@@ -65,7 +64,6 @@ class TurnLoggingService:
             tool_calls_count=len(agent_response.tool_calls),
             tool_calls_data=agent_response.tool_calls,
             model_name=model_name,
-            flow="",
             status=ChatMessage.Status.SUCCESS,
         )
 
@@ -75,7 +73,6 @@ class TurnLoggingService:
 
         session.message_count = ChatMessage.objects.filter(session_id=user_message.session_id).count()
         session.turn_count = (session.turn_count or 0) + 1
-        session.current_flow = ""
         session.conversation_summary = summary_text
         session.summary_updated_at = timezone.now()
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
@@ -84,7 +81,6 @@ class TurnLoggingService:
                 "message_count",
                 "turn_count",
                 "last_activity",
-                "current_flow",
                 "conversation_summary",
                 "summary_updated_at",
                 "total_tool_calls",

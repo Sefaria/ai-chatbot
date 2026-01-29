@@ -22,24 +22,17 @@ def test_prompt_service():
 
     service = get_prompt_service()
 
-    # Get prompt bundle for HALACHIC flow (which should include core prompt)
-    bundle = service.get_prompt_bundle(flow="HALACHIC")
+    core_prompt = service.get_core_prompt()
 
-    print(f"Core prompt ID: {bundle.core_prompt_id}")
-    print(f"Core prompt length: {len(bundle.core_prompt)} chars")
-    print(f"Flow prompt length: {len(bundle.flow_prompt)} chars")
-    print(f"Combined system prompt length: {len(bundle.system_prompt)} chars\n")
-
-    # Check that system prompt includes both core and flow prompts
-    has_core = bundle.core_prompt in bundle.system_prompt
-    print(f"System prompt includes core prompt: {has_core}")
+    print(f"Core prompt ID: {core_prompt.prompt_id}")
+    print(f"Core prompt length: {len(core_prompt.text)} chars\n")
 
     # Check for tool usage instructions in system prompt
     checks = {
-        "TOOL USAGE (CRITICAL)": "TOOL USAGE (CRITICAL)" in bundle.system_prompt,
-        "MUST use tools": "MUST use the provided Sefaria tools" in bundle.system_prompt,
+        "TOOL USAGE (CRITICAL)": "TOOL USAGE (CRITICAL)" in core_prompt.text,
+        "MUST use tools": "MUST use the provided Sefaria tools" in core_prompt.text,
         "NEVER answer from memory": "NEVER answer questions about Jewish texts"
-        in bundle.system_prompt,
+        in core_prompt.text,
     }
 
     print("\nTool usage checks in system prompt:")
@@ -51,9 +44,9 @@ def test_prompt_service():
             all_passed = False
 
     print("\n" + "=" * 60)
-    print("First 600 characters of system prompt:")
+    print("First 600 characters of core prompt:")
     print("=" * 60)
-    print(bundle.system_prompt[:600])
+    print(core_prompt.text[:600])
 
     if all_passed:
         print(

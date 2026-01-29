@@ -1,5 +1,5 @@
 """
-Conversation summary service for router context.
+Conversation summary service for agent context.
 
 Creates and maintains rolling summaries of conversations to:
 - Provide efficient context to the agent
@@ -22,14 +22,14 @@ logger = logging.getLogger("chat.summarization")
 SUMMARY_PROMPT = """You are a summarization assistant for a Jewish learning chatbot. Given the conversation history, create a concise summary that captures:
 
 1. Current Topic: What is the main subject being discussed?
-2. User Intent: What is the user trying to accomplish? (translation, discovery, deep engagement, etc.)
-4. Key References: What texts, people, or topics have been mentioned?
-5. Constraints: Any user-expressed preferences or limitations?
+2. User Intent: What is the user trying to accomplish?
+3. Key References: What texts, people, or topics have been mentioned?
+4. Constraints: Any user-expressed preferences or limitations?
 Output a JSON object with this structure:
 {
   "text": "Brief 1-2 sentence summary of the conversation",
   "current_topic": "Main topic being discussed",
-  "user_intent": "translation|discovery|deep_engagement|other",
+  "user_intent": "Short description of the user's intent",
   "texts_referenced": ["Genesis 1:1", "Berakhot 2a"],
   "topics_discussed": ["shabbat", "creation"],
   "people_mentioned": ["Rashi", "Maimonides"],
@@ -213,7 +213,6 @@ class SummaryService:
         summary.text = data.get("text", summary.text)
         summary.current_topic = data.get("current_topic", "")
         summary.user_intent = data.get("user_intent", "")
-        summary.flow = data.get("flow", summary.flow)
         summary.texts_referenced = _safe_list(data.get("texts_referenced", []))
         summary.topics_discussed = _safe_list(data.get("topics_discussed", []))
         summary.people_mentioned = _safe_list(data.get("people_mentioned", []))
@@ -244,19 +243,16 @@ class SummaryService:
         message_lower = message.lower()
 
         if any(word in message_lower for word in ["translate", "translation", "render", "in english"]):
-            return "translation"
-        elif any(word in message_lower for word in ["find", "search", "where", "source"]):
-            return "discovery"
-        elif any(
-            word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]
-        ):
-            return "deep_engagement"
-        elif any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
-            return "deep_engagement"
-        elif any(word in message_lower for word in ["compare", "difference", "opinions"]):
-            return "deep_engagement"
-        else:
-            return "other"
+            return "translation request"
+        if any(word in message_lower for word in ["find", "search", "where", "source"]):
+            return "source lookup"
+        if any(word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]):
+            return "halachic guidance"
+        if any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
+            return "explanation"
+        if any(word in message_lower for word in ["compare", "difference", "opinions"]):
+            return "comparison"
+        return "other"
 
 
 # Default service instance

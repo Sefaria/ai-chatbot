@@ -13,15 +13,15 @@ import django
 
 django.setup()
 
-from chat.V2.router.braintrust_client import get_braintrust_client
+from chat.V2.prompts import get_prompt_service
 
 
 def test_core_prompt():
     """Test that core prompt contains proper tool usage instructions."""
     print("=== Testing Core Prompt ===\n")
 
-    client = get_braintrust_client()
-    core_prompt = client.get_core_prompt()
+    service = get_prompt_service()
+    core_prompt = service.get_core_prompt().text
 
     # Check for critical sections
     checks = {
