@@ -63,8 +63,6 @@ def history(request):
             {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    logger.info(f"📜 history user={user_id} session={session_id[:20]}... limit={limit}")
-
     queryset = ChatMessage.objects.filter(
         user_id=user_id,
         session_id=session_id,
@@ -118,8 +116,6 @@ def reload_prompts(request):
         prompt_service = get_prompt_service()
         prompt_service.invalidate_cache()
 
-        logger.info("🔄 Prompts cache invalidated")
-
         return Response(
             {
                 "success": True,
@@ -139,16 +135,10 @@ def health(request):
     GET /api/health
     """
     agent_ok = False
-    router_ok = False
     try:
         agent_ok = v2_views.get_agent_service() is not None
     except Exception:
         agent_ok = False
-
-    try:
-        router_ok = v2_views.get_router() is not None
-    except Exception:
-        router_ok = False
 
     return Response(
         {
@@ -156,7 +146,6 @@ def health(request):
             "timestamp": datetime.now().isoformat(),
             "services": {
                 "agent": agent_ok,
-                "router": router_ok,
                 "braintrust": True,  # Native tracing always available
             },
             "versions": ["v2"],

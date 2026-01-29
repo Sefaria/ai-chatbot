@@ -10,7 +10,6 @@ import logging
 import os
 import queue
 import time
-from datetime import datetime
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
@@ -20,6 +19,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage
+from .logging import get_turn_logging_service
 from .summarization import get_summary_service
 from ..models import ChatMessage, ChatSession, ConversationSummary
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
@@ -140,11 +140,6 @@ def chat_stream_v2(request):
     prompt_slugs = data.get("promptSlugs") or {}
     turn_id = ChatMessage.generate_turn_id()
 
-    logger.info(
-        f"📨 [v2 stream] user={data['userId']} session={data['sessionId'][:20]}... "
-        f"turn={turn_id[:20]}... text={data['text'][:50]}..."
-    )
-
     # Update or create session
     session, _ = ChatSession.objects.update_or_create(
         session_id=data["sessionId"],
@@ -157,8 +152,6 @@ def chat_stream_v2(request):
     # Load summary for this session (if any)
     summary = ConversationSummary.objects.filter(session=session).first()
     summary_text = summary.to_prompt_text() if summary else ""
-    summary_metadata = summary.to_metadata() if summary else {}
-
     # Only core prompt slug is used for v2 streaming.
     core_prompt_slug = (prompt_slugs.get("corePromptSlug") or "").strip()
     if not core_prompt_slug:
@@ -188,7 +181,6 @@ def chat_stream_v2(request):
 
         def run_agent():
             try:
-                get_braintrust_logger()
                 user_content = _apply_page_context_to_user_message(data["text"], page_url)
                 conversation = [ConversationMessage(role="user", content=user_content)]
                 agent = get_agent_service()
@@ -197,12 +189,7 @@ def chat_stream_v2(request):
                         messages=conversation,
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
-                        session_id=data["sessionId"],
-                        user_id=data["userId"],
-                        turn_id=turn_id,
                         summary_text=summary_text,
-                        summary_metadata=summary_metadata,
-                        client_version=context.get("clientVersion", ""),
                     )
                 )
             except Exception as e:
@@ -253,16 +240,13 @@ def chat_stream_v2(request):
         if result_holder["error"]:
             logger.error(f"❌ [v2 stream] Agent error: {result_holder['error']}")
 
-            error_msg = ChatMessage.objects.create(
-                message_id=ChatMessage.generate_message_id(),
+            logging_service = get_turn_logging_service()
+            error_msg = logging_service.record_error_message(
                 session_id=data["sessionId"],
                 user_id=data["userId"],
                 turn_id=turn_id,
-                role=ChatMessage.Role.ASSISTANT,
-                content="I'm sorry, I encountered an error processing your request.",
-                status=ChatMessage.Status.FAILED,
                 latency_ms=latency_ms,
-                flow="",
+                error_text="I'm sorry, I encountered an error processing your request.",
             )
 
             user_message.response_message = error_msg
@@ -273,31 +257,6 @@ def chat_stream_v2(request):
 
         agent_response = result_holder["response"]
 
-        # Save assistant response
-        response_message = ChatMessage.objects.create(
-            message_id=ChatMessage.generate_message_id(),
-            session_id=data["sessionId"],
-            user_id=data["userId"],
-            turn_id=turn_id,
-            role=ChatMessage.Role.ASSISTANT,
-            content=agent_response.content,
-            latency_ms=latency_ms,
-            llm_calls=agent_response.llm_calls,
-            tool_calls_count=len(agent_response.tool_calls),
-            tool_calls_data=agent_response.tool_calls,
-            input_tokens=agent_response.input_tokens,
-            output_tokens=agent_response.output_tokens,
-            cache_creation_tokens=agent_response.cache_creation_tokens,
-            cache_read_tokens=agent_response.cache_read_tokens,
-            model_name="claude-sonnet-4-5-20250929",
-            flow="",
-            status=ChatMessage.Status.SUCCESS,
-        )
-
-        user_message.response_message = response_message
-        user_message.latency_ms = latency_ms
-        user_message.save(update_fields=["response_message", "latency_ms"])
-
         # Update summary
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
@@ -305,36 +264,17 @@ def chat_stream_v2(request):
             new_user_message=data["text"],
             new_assistant_response=agent_response.content,
         )
-
-        # Update session
-        session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
-        session.turn_count = (session.turn_count or 0) + 1
-        session.current_flow = ""
-        session.conversation_summary = new_summary.to_prompt_text()
-        session.summary_updated_at = timezone.now()
-        session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
-        session.total_output_tokens = (
-            session.total_output_tokens or 0
-        ) + agent_response.output_tokens
-        session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
-        session.save(
-            update_fields=[
-                "message_count",
-                "turn_count",
-                "last_activity",
-                "current_flow",
-                "conversation_summary",
-                "summary_updated_at",
-                "total_input_tokens",
-                "total_output_tokens",
-                "total_tool_calls",
-            ]
+        logging_service = get_turn_logging_service()
+        logging_result = logging_service.finalize_success(
+            session=session,
+            user_message=user_message,
+            agent_response=agent_response,
+            latency_ms=latency_ms,
+            model_name="claude-sonnet-4-5-20250929",
+            summary_text=new_summary.to_prompt_text(),
         )
 
-        logger.info(
-            f"📤 [v2 stream] response={response_message.message_id[:20]}... "
-            f"latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
-        )
+        response_message = logging_result.response_message
 
         # Reload session to get updated turn_count
         session.refresh_from_db()
@@ -347,13 +287,7 @@ def chat_stream_v2(request):
             "traceId": agent_response.trace_id,
             "toolCalls": agent_response.tool_calls,
             "session": build_session_info(session),
-            "stats": {
-                "llmCalls": agent_response.llm_calls,
-                "toolCalls": len(agent_response.tool_calls),
-                "inputTokens": agent_response.input_tokens,
-                "outputTokens": agent_response.output_tokens,
-                "latencyMs": latency_ms,
-            },
+            "stats": logging_result.stats,
         }
 
         yield f"event: message\ndata: {json.dumps(final_data)}\n\n"

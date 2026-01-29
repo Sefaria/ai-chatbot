@@ -1,5 +1,7 @@
 # AI-Powered Router & Guardrails
 
+> Deprecated: V2 no longer uses routing or guardrails. This module is kept for reference only.
+
 This module provides intelligent routing and content safety for the Sefaria chatbot using AI-based classification with Braintrust prompt management.
 
 ## Overview
