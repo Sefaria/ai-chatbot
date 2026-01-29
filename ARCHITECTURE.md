@@ -14,12 +14,12 @@ Svelte Web Component → Django REST → Claude Agent SDK → Sefaria API
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              Frontend                                    │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐    │
-│  │ LCChatbot.svelte│───▶│     api.js      │───▶│  SSE Streaming   │    │
+│  │ LCChatbot.svelte│───▶│     api.js      │───▶│   WebSocket     │    │
 │  │  (Web Component)│    │  (HTTP Client)  │    │ (Progress Events)│    │
 │  └─────────────────┘    └─────────────────┘    └──────────────────┘    │
 └────────────────────────────────┬────────────────────────────────────────┘
                                  │
-                    POST /api/v2/chat/stream
+                    WebSocket /api/ws/v2/chat
                                  │
 ┌────────────────────────────────▼────────────────────────────────────────┐
 │                              Backend                                     │
@@ -98,14 +98,14 @@ RouteDecision (legacy)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v2/chat/stream` | POST | Send message (SSE streaming) |
+| `/api/ws/v2/chat` | WebSocket | Send message (progress + response) |
 | `/api/v2/chat/feedback` | POST | Feedback for Braintrust trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
 | `/api/history` | GET | Load conversation history |
 | `/api/health` | GET | Health check |
 | `/api/admin/reload-prompts` | POST | Invalidate prompt cache |
 
-**SSE Events:**
+**WebSocket Events:**
 - `progress` - Tool execution updates
 - `message` - Final response
 - `error` - Error details
@@ -172,7 +172,7 @@ DB_PASSWORD=...
 
 1. **Single Core Prompt** - One Braintrust-managed system prompt for the agent.
 2. **Tool-First Responses** - Prefer tools for sources and citations.
-3. **Streaming Progress** - SSE keeps UI responsive during tool calls.
+3. **Streaming Progress** - WebSocket updates keep UI responsive during tool calls.
 4. **Prompt Caching** - 5-minute TTL reduces external calls.
 5. **Conversation Summarization** - Rolling summaries for token efficiency.
 6. **Web Component** - Embeddable across any site.

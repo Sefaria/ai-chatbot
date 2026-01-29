@@ -111,11 +111,11 @@ Bot version and prompt slugs can be configured from the widget settings panel (g
 
 ## API Reference
 
-### POST /api/v2/chat/stream
+### WebSocket /api/ws/v2/chat
 
-Send a message and receive a streamed response with Server-Sent Events.
+Send a message and receive progress updates and the final response over a websocket.
 
-**Request:**
+**Client → Server (JSON message):**
 ```json
 {
   "userId": "abc123",
@@ -130,9 +130,20 @@ Send a message and receive a streamed response with Server-Sent Events.
 }
 ```
 
-**Response:**
+**Server → Client (progress event):**
 ```json
 {
+  "event": "progress",
+  "type": "tool_start",
+  "toolName": "get_text",
+  "description": "Fetching text \"Genesis 1:1\""
+}
+```
+
+**Server → Client (final message):**
+```json
+{
+  "event": "message",
   "messageId": "msg_reply_...",
   "sessionId": "sess_...",
   "timestamp": "2026-01-05T08:12:36.000Z",

@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
     "corsheaders",
+    "channels",
     "rest_framework",
     "chat",
 ]
@@ -69,6 +70,13 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "chatbot_server.wsgi.application"
+ASGI_APPLICATION = "chatbot_server.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
 
 # Database - using postgres for production
 DATABASES = {
@@ -120,7 +128,7 @@ CORS_ALLOW_METHODS = [
     "PUT",
 ]
 
-# CORS headers for SSE streaming (include Sentry tracing headers)
+# CORS headers (include Sentry tracing headers)
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "sentry-trace",
     "baggage",
@@ -130,7 +138,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True
 
-# Expose headers needed for SSE
+# Expose headers for API responses
 CORS_EXPOSE_HEADERS = [
     "Content-Type",
     "Cache-Control",

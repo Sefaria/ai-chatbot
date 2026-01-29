@@ -1,6 +1,7 @@
 """Shared chat API views."""
 
 import logging
+import os
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -11,7 +12,6 @@ from rest_framework.response import Response
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
 from .V2.prompts import get_prompt_service
-from .V2 import views as v2_views
 
 logger = logging.getLogger("chat")
 
@@ -134,11 +134,7 @@ def health(request):
 
     GET /api/health
     """
-    agent_ok = False
-    try:
-        agent_ok = v2_views.get_agent_service() is not None
-    except Exception:
-        agent_ok = False
+    agent_ok = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     return Response(
         {
