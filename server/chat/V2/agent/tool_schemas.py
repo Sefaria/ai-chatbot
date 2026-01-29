@@ -1,10 +1,7 @@
 """
-Tool schemas for Claude agent - Sefaria API tools organized by flow.
+Tool schemas for Claude agent - Sefaria API tools.
 
-Tool Sets:
-- HALACHIC: Specialized tools for halachic inquiries
-- SEARCH: Tools for finding and comparing sources
-- GENERAL: Minimal toolset for general learning
+Includes individual tool definitions and helper functions to retrieve tools.
 """
 
 from typing import Any
@@ -212,73 +209,8 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
 }
 
 # ============================================================================
-# Flow-Specific Tool Sets
-# ============================================================================
-
-# Halachic flow: Core text retrieval + topic lookup
-HALACHIC_TOOL_NAMES = [
-    "get_text",
-    "text_search",
-    "english_semantic_search",
-    "get_topic_details",
-    "get_links_between_texts",
-    "search_in_book",
-    "clarify_name_argument",
-]
-
-# Search flow: Full search capabilities + structure tools
-SEARCH_TOOL_NAMES = [
-    "get_text",
-    "text_search",
-    "english_semantic_search",
-    "search_in_book",
-    "search_in_dictionaries",
-    "get_links_between_texts",
-    "get_english_translations",
-    "get_text_or_category_shape",
-    "get_text_catalogue_info",
-    "get_available_manuscripts",
-    "clarify_name_argument",
-    "clarify_search_path_filter",
-]
-
-# General flow: Minimal toolset
-GENERAL_TOOL_NAMES = [
-    "get_text",
-    "text_search",
-    "english_semantic_search",
-    "get_topic_details",
-    "get_current_calendar",
-]
-
-# ============================================================================
 # Helper Functions
 # ============================================================================
-
-
-def get_tools_for_flow(flow: str) -> list[dict[str, Any]]:
-    """
-    Get the tool schemas for a specific flow.
-
-    Args:
-        flow: Flow type (HALACHIC, GENERAL, SEARCH)
-
-    Returns:
-        List of tool schemas for that flow
-    """
-    flow_upper = flow.upper()
-
-    if flow_upper == "HALACHIC":
-        tool_names = HALACHIC_TOOL_NAMES
-    elif flow_upper == "SEARCH":
-        tool_names = SEARCH_TOOL_NAMES
-    elif flow_upper == "GENERAL":
-        tool_names = GENERAL_TOOL_NAMES
-    else:
-        # Default to general
-        tool_names = GENERAL_TOOL_NAMES
-
-    return [ALL_TOOLS[name] for name in tool_names if name in ALL_TOOLS]
 
 
 def get_tools_by_names(names: list[str]) -> list[dict[str, Any]]:

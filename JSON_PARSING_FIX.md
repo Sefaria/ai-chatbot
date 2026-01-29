@@ -31,7 +31,7 @@ Added `_extract_json()` method to both `AIGuardrailChecker` and `AIFlowRouter` t
 - Extracts only the JSON portion, ignoring trailing text
 - Works even if AI adds explanations before or after
 
-**Implementation** ([ai_guardrails.py](server/chat/router/ai_guardrails.py) and [ai_router.py](server/chat/router/ai_router.py)):
+**Implementation** ([ai_guardrails.py](server/chat/V2/router/ai_guardrails.py) and [ai_router.py](server/chat/V2/router/ai_router.py)):
 
 ```python
 def _extract_json(self, text: str) -> str:
@@ -64,7 +64,7 @@ def _extract_json(self, text: str) -> str:
 
 ### 2. Updated Prompts
 
-Modified fallback prompts in [braintrust_client.py](server/chat/router/braintrust_client.py) to explicitly instruct:
+Modified fallback prompts in [braintrust_client.py](server/chat/V2/router/braintrust_client.py) to explicitly instruct:
 
 **Before:**
 ```
@@ -132,15 +132,15 @@ Here's why...
 
 ## Files Modified
 
-- [ai_guardrails.py](server/chat/router/ai_guardrails.py)
+- [ai_guardrails.py](server/chat/V2/router/ai_guardrails.py)
   - Added `_extract_json()` method
   - Updated `_check_with_ai()` to use it
 
-- [ai_router.py](server/chat/router/ai_router.py)
+- [ai_router.py](server/chat/V2/router/ai_router.py)
   - Added `_extract_json()` method
   - Updated `_classify_with_ai()` to use it
 
-- [braintrust_client.py](server/chat/router/braintrust_client.py)
+- [braintrust_client.py](server/chat/V2/router/braintrust_client.py)
   - Updated `_get_fallback_guardrail_prompt()` - emphasized JSON-only output
   - Updated `_get_fallback_router_prompt()` - emphasized JSON-only output
 

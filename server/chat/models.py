@@ -1,10 +1,5 @@
 """
-Chat models for message persistence and routing.
-
-Supports the routed Claude agent architecture with:
-- Flow-based routing (HALACHIC, GENERAL, SEARCH, REFUSE)
-- Conversation summaries for efficient context
-- Route decisions per turn
+Chat models for message persistence and metadata.
 """
 
 import uuid
@@ -31,7 +26,7 @@ class ChatSession(models.Model):
         max_length=20,
         blank=True,
         default="",
-        help_text="Current conversation flow (HALACHIC, GENERAL, SEARCH)",
+        help_text="Current conversation label (optional)",
     )
 
     # Rolling conversation summary for router context
@@ -146,9 +141,9 @@ class RouteDecision(models.Model):
     """
 
     class Flow(models.TextChoices):
-        HALACHIC = "HALACHIC", "Halachic"
-        GENERAL = "GENERAL", "General Learning"
-        SEARCH = "SEARCH", "Search"
+        TRANSLATION = "TRANSLATION", "Translation"
+        DISCOVERY = "DISCOVERY", "Discovery"
+        DEEP_ENGAGEMENT = "DEEP_ENGAGEMENT", "Deep Engagement"
         REFUSE = "REFUSE", "Refuse/Guardrail"
 
     class SessionAction(models.TextChoices):

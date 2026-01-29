@@ -8,7 +8,7 @@ After implementing the remote prompt system using Braintrust, the AI stopped usi
 
 ### 1. Generic Fallback Core Prompt
 
-The fallback core prompt in [braintrust_client.py](server/chat/router/braintrust_client.py) was too generic and lacked explicit tool usage instructions.
+The fallback core prompt in [braintrust_client.py](server/chat/V2/router/braintrust_client.py) was too generic and lacked explicit tool usage instructions.
 
 **Before (Generic):**
 ```python
@@ -26,7 +26,7 @@ This was too vague and didn't **mandate** tool usage.
 
 ### 2. Conditional Logic Issue
 
-The conditional in [prompt_service.py](server/chat/prompts/prompt_service.py) was incorrectly simplified:
+The conditional in [prompt_service.py](server/chat/V2/prompts/prompt_service.py) was incorrectly simplified:
 
 **Before (Broken):**
 ```python
@@ -48,7 +48,7 @@ The simplified condition would try to call `get_core_prompt()` even when the rou
 
 ### 1. Updated Fallback Core Prompt
 
-Updated `_get_fallback_core_prompt()` in [braintrust_client.py](server/chat/router/braintrust_client.py) to include **explicit, emphatic** tool usage instructions:
+Updated `_get_fallback_core_prompt()` in [braintrust_client.py](server/chat/V2/router/braintrust_client.py) to include **explicit, emphatic** tool usage instructions:
 
 ```python
 def _get_fallback_core_prompt(self) -> str:
@@ -106,7 +106,7 @@ MARKDOWN FORMATTING:
 
 ### 2. Fixed Conditional Logic
 
-Restored proper conditional check in [prompt_service.py](server/chat/prompts/prompt_service.py:127-139):
+Restored proper conditional check in [prompt_service.py](server/chat/V2/prompts/prompt_service.py:127-139):
 
 ```python
 # Fetch core prompt using the router's Braintrust client (supports core-8fbc slug)
@@ -135,8 +135,8 @@ This ensures:
 Fixed type annotation issues for Python 3.7 compatibility:
 
 **Files Updated:**
-- [router_service.py](server/chat/router/router_service.py): Changed `tuple[...]` → `Tuple[...]`
-- [prompt_service.py](server/chat/prompts/prompt_service.py): Changed `tuple[...]` → `Tuple[...]`
+- [router_service.py](server/chat/V2/router/router_service.py): Changed `tuple[...]` → `Tuple[...]`
+- [prompt_service.py](server/chat/V2/prompts/prompt_service.py): Changed `tuple[...]` → `Tuple[...]`
 
 Added `from typing import Tuple` imports and replaced all lowercase `tuple[...]` annotations with `Tuple[...]`.
 
@@ -146,7 +146,7 @@ Created test scripts to verify the fix:
 
 ### Test 1: Core Prompt Content
 
-**File:** [test_core_prompt.py](server/chat/router/test_core_prompt.py)
+**File:** [test_core_prompt.py](server/chat/V2/router/test_core_prompt.py)
 
 ```bash
 cd server && python test_core_prompt.py
@@ -170,7 +170,7 @@ Checks:
 
 ### Test 2: Prompt Service Integration
 
-**File:** [test_prompt_service.py](server/chat/prompts/prompt_service.py)
+**File:** [test_prompt_service.py](server/chat/V2/prompts/prompt_service.py)
 
 ```bash
 cd server && python test_prompt_service.py

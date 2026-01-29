@@ -16,17 +16,15 @@ class MessageContextSerializer(serializers.Serializer):
 
 
 class PromptSlugsSerializer(serializers.Serializer):
-    """Optional prompt slug overrides for Braintrust."""
+    """Optional core prompt slug override for Braintrust."""
 
     corePromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    routerPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    guardrailsPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
-    userId = serializers.CharField(max_length=100)
+    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
     timestamp = serializers.DateTimeField()
@@ -41,7 +39,7 @@ class FeedbackRequestSerializer(serializers.Serializer):
     traceId = serializers.CharField(max_length=200)
     score = serializers.FloatField(min_value=0.0, max_value=1.0)
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
-    userId = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100, required=False, allow_blank=True)
     messageId = serializers.CharField(max_length=100, required=False, allow_blank=True)
 

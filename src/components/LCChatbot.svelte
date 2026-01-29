@@ -35,14 +35,10 @@
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
-    corePromptSlug: '',
-    routerPromptSlug: '',
-    guardrailsPromptSlug: ''
+    corePromptSlug: ''
   });
   let defaultPromptSlugs = $state({
-    corePromptSlug: '',
-    routerPromptSlug: '',
-    guardrailsPromptSlug: ''
+    corePromptSlug: ''
   });
   let settingsLoaded = $state(false);
   let isLoadingSettings = $state(false);
@@ -91,9 +87,7 @@
     const savedPromptSlugs = getStorage(STORAGE_KEYS.PROMPT_SLUGS, null);
     if (savedPromptSlugs) {
       promptSlugs = {
-        corePromptSlug: savedPromptSlugs.corePromptSlug || '',
-        routerPromptSlug: savedPromptSlugs.routerPromptSlug || '',
-        guardrailsPromptSlug: savedPromptSlugs.guardrailsPromptSlug || ''
+        corePromptSlug: savedPromptSlugs.corePromptSlug || ''
       };
       settingsLoaded = true;
     }
@@ -169,14 +163,10 @@
       try {
         const defaults = await fetchPromptDefaults(apiBaseUrl);
         defaultPromptSlugs = {
-          corePromptSlug: defaults.corePromptSlug || '',
-          routerPromptSlug: defaults.routerPromptSlug || '',
-          guardrailsPromptSlug: defaults.guardrailsPromptSlug || ''
+          corePromptSlug: defaults.corePromptSlug || ''
         };
         promptSlugs = {
-          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug,
-          routerPromptSlug: promptSlugs.routerPromptSlug || defaultPromptSlugs.routerPromptSlug,
-          guardrailsPromptSlug: promptSlugs.guardrailsPromptSlug || defaultPromptSlugs.guardrailsPromptSlug
+          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug
         };
         settingsLoaded = true;
       } catch (e) {
@@ -194,9 +184,7 @@
 
   function saveSettings() {
     setStorage(STORAGE_KEYS.PROMPT_SLUGS, {
-      corePromptSlug: promptSlugs.corePromptSlug || '',
-      routerPromptSlug: promptSlugs.routerPromptSlug || '',
-      guardrailsPromptSlug: promptSlugs.guardrailsPromptSlug || ''
+      corePromptSlug: promptSlugs.corePromptSlug || ''
     });
     settingsError = '';
   }
@@ -212,9 +200,7 @@
     try {
       const defaults = await fetchPromptDefaults(apiBaseUrl);
       defaultPromptSlugs = {
-        corePromptSlug: defaults.corePromptSlug || '',
-        routerPromptSlug: defaults.routerPromptSlug || '',
-        guardrailsPromptSlug: defaults.guardrailsPromptSlug || ''
+        corePromptSlug: defaults.corePromptSlug || ''
       };
       promptSlugs = { ...defaultPromptSlugs };
       setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
@@ -612,26 +598,6 @@
                 type="text"
                 bind:value={promptSlugs.corePromptSlug}
                 placeholder="core-8fbc"
-                disabled={isLoadingSettings}
-              />
-            </label>
-
-            <label class="settings-field">
-              <span>Router prompt slug</span>
-              <input
-                type="text"
-                bind:value={promptSlugs.routerPromptSlug}
-                placeholder="flow-router"
-                disabled={isLoadingSettings}
-              />
-            </label>
-
-            <label class="settings-field">
-              <span>Guardrails prompt slug</span>
-              <input
-                type="text"
-                bind:value={promptSlugs.guardrailsPromptSlug}
-                placeholder="guardrail-checker"
                 disabled={isLoadingSettings}
               />
             </label>

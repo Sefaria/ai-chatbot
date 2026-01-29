@@ -86,7 +86,7 @@ class TestChatRequestSerializer:
             ("userId", "", "userId"),
             ("text", "x" * 10001, "text"),
             ("timestamp", "not-a-timestamp", "timestamp"),
-            ("userId", "u" * 101, "userId"),
+            ("userId", "u" * 513, "userId"),
         ],
     )
     def test_field_validation_errors(self, valid_request_data, field, invalid_value, error_field):
@@ -199,7 +199,7 @@ class TestHistoryMessageSerializer:
             user_id="user_fields",
             role="user",
             content="test",
-            flow="HALACHIC",
+            flow="DEEP_ENGAGEMENT",
             latency_ms=100,
             input_tokens=50,
         )

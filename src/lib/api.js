@@ -40,8 +40,6 @@ import { generateMessageId } from './session.js';
 /**
  * @typedef {Object} PromptSlugs
  * @property {string} [corePromptSlug]
- * @property {string} [routerPromptSlug]
- * @property {string} [guardrailsPromptSlug]
  */
 
 /**
@@ -127,7 +125,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  */
 
 /**
- * Send a chat message with streaming progress
+ * Send a chat message with websocket progress updates
  * @param {string} apiBaseUrl - Base URL for API
  * @param {string} userId - User ID
  * @param {string} sessionId - Session ID
@@ -164,100 +162,89 @@ export async function sendMessageStream(
   if (promptSlugs) {
     payload.promptSlugs = promptSlugs;
   }
-  
-  const response = await fetch(`${apiBaseUrl}/v2/chat/stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
 
-  if (!response.ok) {
-    // Try to parse error response
-    let errorData = null;
-    try {
-      errorData = await response.json();
-    } catch {
-      // Ignore JSON parse errors
-    }
-
-    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
-    error.status = response.status;
-    error.code = errorData?.error;
-    throw error;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  const wsUrl = buildWebSocketUrl(apiBaseUrl);
   let finalMessage = null;
-  
-  while (true) {
-    const { done, value } = await reader.read();
-    
-    if (done) break;
-    
-    buffer += decoder.decode(value, { stream: true });
-    
-    // Process complete SSE events
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // Keep incomplete line in buffer
-    
-    let currentEvent = null;
-    let currentData = '';
-    
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim();
-      } else if (line.startsWith('data: ')) {
-        currentData = line.slice(6);
-        
-        if (currentEvent && currentData) {
-          try {
-            const data = JSON.parse(currentData);
-            
-            if (currentEvent === 'progress' && callbacks.onProgress) {
-              callbacks.onProgress(data);
-            } else if (currentEvent === 'message') {
-              finalMessage = {
-                messageId: data.messageId,
-                sessionId: data.sessionId,
-                timestamp: data.timestamp,
-                markdown: data.markdown,
-                traceId: data.traceId,
-                toolCalls: data.toolCalls,
-                stats: data.stats,
-                session: data.session
-              };
-              if (callbacks.onMessage) {
-                callbacks.onMessage(finalMessage);
-              }
-            } else if (currentEvent === 'error' && callbacks.onError) {
-              callbacks.onError(data.error);
-            }
-          } catch (e) {
-            console.warn('[lc-chatbot] Failed to parse SSE data:', e);
-          }
-        }
-        
-        currentEvent = null;
-        currentData = '';
-      } else if (line.startsWith(':')) {
-        // Comment (keepalive), ignore
-      } else if (line === '') {
-        // Empty line, reset
-        currentEvent = null;
-        currentData = '';
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const socket = new WebSocket(wsUrl);
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.close();
+      } catch {
+        // ignore close errors
       }
-    }
-  }
-  
-  if (!finalMessage) {
-    throw new Error('Stream ended without message');
-  }
-  
-  return finalMessage;
+      reject(error);
+    };
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify(payload));
+    };
+
+    socket.onmessage = (event) => {
+      let data = null;
+      try {
+        data = JSON.parse(event.data);
+      } catch (e) {
+        console.warn('[lc-chatbot] Failed to parse websocket data:', e);
+        return;
+      }
+
+      const eventType = data.event || data.type;
+      if (eventType === 'progress' && callbacks.onProgress) {
+        callbacks.onProgress(data);
+      } else if (eventType === 'message') {
+        finalMessage = {
+          messageId: data.messageId,
+          sessionId: data.sessionId,
+          timestamp: data.timestamp,
+          markdown: data.markdown,
+          traceId: data.traceId,
+          toolCalls: data.toolCalls,
+          stats: data.stats,
+          session: data.session
+        };
+        if (callbacks.onMessage) {
+          callbacks.onMessage(finalMessage);
+        }
+        settled = true;
+        socket.close();
+        resolve(finalMessage);
+      } else if (eventType === 'error') {
+        if (callbacks.onError) {
+          callbacks.onError(data.error);
+        }
+        fail(new Error(data.error || 'Chat request failed'));
+      }
+    };
+
+    socket.onerror = () => {
+      if (!settled) {
+        fail(new Error('WebSocket error'));
+      }
+    };
+
+    socket.onclose = () => {
+      if (!settled) {
+        fail(new Error('Stream ended without message'));
+      }
+    };
+  });
+}
+
+function buildWebSocketUrl(apiBaseUrl) {
+  const base = apiBaseUrl.startsWith('http')
+    ? new URL(apiBaseUrl)
+    : new URL(apiBaseUrl, window.location.origin);
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  base.pathname = base.pathname.replace(/\/$/, '') + '/ws/v2/chat';
+  base.search = '';
+  base.hash = '';
+  return base.toString();
 }
 
 /**

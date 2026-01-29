@@ -24,4 +24,4 @@ USER 1001
 
 EXPOSE 8080
 
-ENTRYPOINT ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8080", "--worker-class", "gthread", "--threads", "4"]
+ENTRYPOINT ["daphne", "-b", "0.0.0.0", "-p", "8080", "chatbot_server.asgi:application"]
