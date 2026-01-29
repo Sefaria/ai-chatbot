@@ -16,11 +16,9 @@ class MessageContextSerializer(serializers.Serializer):
 
 
 class PromptSlugsSerializer(serializers.Serializer):
-    """Optional prompt slug overrides for Braintrust."""
+    """Optional core prompt slug override for Braintrust."""
 
     corePromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    routerPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    guardrailsPromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
 class ChatRequestSerializer(serializers.Serializer):

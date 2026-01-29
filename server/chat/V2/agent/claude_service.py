@@ -1,10 +1,9 @@
 """
-Claude Agent Service with routed flow support and Braintrust native tracing.
+Claude Agent Service with Braintrust tracing.
 
 This is the core agent runtime that:
-- Receives routing decisions from the router
-- Loads appropriate prompts from Braintrust
-- Executes Claude with flow-specific tools
+- Loads the core system prompt from Braintrust
+- Executes Claude with the full toolset
 - Uses Braintrust native tracing (@traced decorator)
 """
 
@@ -21,10 +20,9 @@ import braintrust
 from braintrust import current_span, traced
 
 from ..prompts import PromptService, get_prompt_service
-from ..router import Flow, RouteResult
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
-from .tool_schemas import get_tools_by_names
+from .tool_schemas import get_all_tools
 
 logger = logging.getLogger("chat.agent")
 
@@ -33,14 +31,13 @@ logger = logging.getLogger("chat.agent")
 class AgentProgressUpdate:
     """Progress update from the agent."""
 
-    type: str  # 'status', 'tool_start', 'tool_end', 'routing', 'complete'
+    type: str  # 'status', 'tool_start', 'tool_end', 'complete'
     text: str | None = None
     tool_name: str | None = None
     tool_input: dict | None = None
     description: str | None = None
     is_error: bool | None = None
     output_preview: str | None = None
-    flow: str | None = None
 
 
 @dataclass
@@ -63,9 +60,6 @@ class AgentResponse:
     cache_creation_tokens: int
     cache_read_tokens: int
     latency_ms: int
-    flow: str = ""
-    decision_id: str = ""
-    was_refused: bool = False
     trace_id: str | None = None
 
 
@@ -90,11 +84,10 @@ def extract_refs(tool_calls: list) -> list:
 
 class ClaudeAgentService:
     """
-    Claude agent service with routed flow support.
+    Claude agent service with the core prompt and full toolset.
 
     Integrates:
-    - Flow-specific prompt loading from Braintrust
-    - Flow-specific tool selection
+    - Core prompt loading from Braintrust
     - Braintrust native tracing (@traced decorator)
     """
 
@@ -128,14 +121,10 @@ class ClaudeAgentService:
         self.max_tokens = max_tokens
         self.temperature = temperature
 
-        # Sefaria tools
         self.sefaria_client = SefariaClient()
         self.tool_executor = SefariaToolExecutor(self.sefaria_client)
-
-        # Services
         self.prompt_service = prompt_service or get_prompt_service()
 
-        # Initialize Braintrust logger for tracing
         bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
         bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         if bt_api_key:
@@ -145,8 +134,8 @@ class ClaudeAgentService:
                     api_key=bt_api_key,
                 )
                 logger.info(f"✅ Braintrust tracing initialized for project: {bt_project}")
-            except Exception as e:
-                logger.warning(f"⚠️  Failed to initialize Braintrust tracing: {e}")
+            except Exception as exc:
+                logger.warning(f"⚠️  Failed to initialize Braintrust tracing: {exc}")
                 self.bt_logger = None
         else:
             logger.warning("⚠️  BRAINTRUST_API_KEY not set, tracing disabled")
@@ -158,7 +147,7 @@ class ClaudeAgentService:
     async def send_message(
         self,
         messages: list[ConversationMessage],
-        route_result: RouteResult,
+        core_prompt_id: str | None = None,
         on_progress: Callable[[AgentProgressUpdate], None] | None = None,
         session_id: str | None = None,
         user_id: str | None = None,
@@ -168,12 +157,11 @@ class ClaudeAgentService:
         client_version: str = "",
     ) -> AgentResponse:
         """
-        Send a message to the agent with routing context.
-        Uses Braintrust native tracing.
+        Send a message to the agent using the core prompt and full toolset.
 
         Args:
             messages: Conversation history
-            route_result: Routing decision from the router
+            core_prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             on_progress: Optional callback for progress updates
             session_id: Session ID for logging
             user_id: User ID for logging
@@ -188,69 +176,30 @@ class ClaudeAgentService:
         span = current_span()
         trace_id = getattr(span, "id", None)
 
-        # Get last user message - needed for both refusal and normal logging
         last_user_message = next((m.content for m in reversed(messages) if m.role == "user"), "")
 
-        # Handle refusal flow
-        if route_result.flow == Flow.REFUSE:
-            return self._create_refusal_response(
-                route_result=route_result,
-                start_time=start_time,
-                messages=messages,
-                last_user_message=last_user_message,
-                session_id=session_id,
-                user_id=user_id,
-                turn_id=turn_id,
-                summary_text=summary_text,
-                summary_metadata=summary_metadata,
-                trace_id=trace_id,
-            )
-
-        def emit(update: AgentProgressUpdate):
-            """Safely emit progress update."""
+        def emit(update: AgentProgressUpdate) -> None:
             if on_progress:
                 try:
                     on_progress(update)
-                except Exception as e:
-                    logger.warning(f"Progress callback error: {e}")
+                except Exception as exc:
+                    logger.warning(f"Progress callback error: {exc}")
 
-        # Emit routing info
-        emit(
-            AgentProgressUpdate(
-                type="routing",
-                flow=route_result.flow.value,
-                text=f"Routing to {route_result.flow.value} flow",
-            )
-        )
+        core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
 
-        # Load prompts for this flow
-        prompt_bundle = self.prompt_service.get_prompt_bundle(
-            flow=route_result.flow.value,
-            core_prompt_id=route_result.prompt_bundle.core_prompt_id,
-            flow_prompt_id=route_result.prompt_bundle.flow_prompt_id,
-        )
+        system_prompt = core_prompt.text
+        if summary_text:
+            system_prompt = f"{system_prompt}\n\nConversation summary:\n{summary_text}"
 
-        # Get tools for this flow
-        tools = get_tools_by_names(route_result.tools)
-
-        # Log tools being passed to Claude
+        tools = get_all_tools()
         tool_names = [t["name"] for t in tools]
-        logger.info(
-            f"Tools for flow {route_result.flow.value}: {len(tools)} tools loaded ({tool_names})"
-        )
+        logger.info(f"Tools loaded: {len(tools)} tools ({tool_names})")
 
-        if not tools:
-            logger.warning(
-                f"No tools loaded for flow {route_result.flow.value}! "
-                f"Requested tools: {route_result.tools}"
-            )
-
-        # Convert messages to Anthropic format
         conversation = [
-            {"role": m.role, "content": [{"type": "text", "text": m.content}]} for m in messages
+            {"role": m.role, "content": [{"type": "text", "text": m.content}]}
+            for m in messages
         ]
 
-        # Initialize counters
         iterations = 0
         final_text = ""
         llm_calls = 0
@@ -260,71 +209,46 @@ class ClaudeAgentService:
         cache_creation_tokens = 0
         cache_read_tokens = 0
 
-        # Build system prompt with optional summary
-        system_prompt = prompt_bundle.system_prompt
-        if summary_text:
-            system_prompt = f"{system_prompt}\n\nConversation summary:\n{summary_text}"
-
-        # Build messages array in OpenAI format for eval dataset creation
         formatted_messages = [
             {"role": "system", "content": system_prompt},
             *[{"role": m.role, "content": m.content} for m in messages],
         ]
         environment = os.environ.get("ENVIRONMENT", "dev")
 
-        # Log structured input to span
         input_payload = {
-            "query": last_user_message,  # Current turn for quick viewing
-            "messages": formatted_messages,  # Full context for eval replay
+            "query": last_user_message,
+            "messages": formatted_messages,
         }
         metadata = {
-            # Session context
             "session_id": session_id or "",
             "turn_id": turn_id or "",
             "user_id": user_id or "",
-            # Model config
             "model": self.model,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            # Prompt versioning
-            "decision_id": route_result.decision_id,
-            "core_prompt_id": prompt_bundle.core_prompt_id,
-            "core_prompt_version": prompt_bundle.core_prompt_version,
-            "flow_prompt_id": prompt_bundle.flow_prompt_id,
-            "flow_prompt_version": prompt_bundle.flow_prompt_version,
-            # Tools
-            "tools_available": route_result.tools,
+            "core_prompt_id": core_prompt.prompt_id,
+            "core_prompt_version": core_prompt.version,
+            "tools_available": tool_names,
             "client_version": client_version,
+            "input_json": input_payload,
         }
-
         if summary_text:
             metadata["conversation_summary"] = summary_text
         if summary_metadata:
             metadata["conversation_summary_structured"] = summary_metadata
-        metadata["input_json"] = input_payload
+
         span.log(
-            input=last_user_message,  # Flat text for Input column
-            tags=[
-                route_result.flow.value.lower(),  # translation | discovery | deep_engagement
-                environment,  # dev | staging | prod
-            ],
+            input=last_user_message,
+            tags=["core", environment],
             metadata=metadata,
         )
 
-        # Agent loop
         while iterations < self.max_iterations:
             iterations += 1
             llm_calls += 1
 
-            emit(
-                AgentProgressUpdate(
-                    type="status",
-                    text=f"Thinking (pass {iterations})…",
-                    flow=route_result.flow.value,
-                )
-            )
+            emit(AgentProgressUpdate(type="status", text=f"Thinking (pass {iterations})…"))
 
-            # Call Claude
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
@@ -335,35 +259,30 @@ class ClaudeAgentService:
                 tool_choice={"type": "auto"},
             )
 
-            # Track token usage
             usage = response.usage
             input_tokens += usage.input_tokens
             output_tokens += usage.output_tokens
             cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
             cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
 
-            # Process response blocks
             blocks = response.content
             tool_uses = [b for b in blocks if b.type == "tool_use"]
             text_blocks = [b for b in blocks if b.type == "text"]
             text = "".join(b.text for b in text_blocks)
             final_text += text
 
-            # Add assistant response to conversation
             conversation.append(
                 {"role": "assistant", "content": [self._block_to_dict(b) for b in blocks]}
             )
 
-            # If no tool uses, we're done
             if not tool_uses:
                 if iterations == 1:
                     logger.warning(
-                        f"Claude did not use any tools on first iteration. "
-                        f"Flow: {route_result.flow.value}, Tools available: {len(tools)}"
+                        "Claude did not use any tools on first iteration. "
+                        f"Tools available: {len(tools)}"
                     )
                 break
 
-            # Execute tool calls
             for tool_use in tool_uses:
                 tool_name = tool_use.name
                 tool_input = tool_use.input or {}
@@ -377,17 +296,14 @@ class ClaudeAgentService:
                         tool_name=tool_name,
                         tool_input=tool_input,
                         description=tool_desc,
-                        flow=route_result.flow.value,
                     )
                 )
 
-                # Execute tool with nested span
                 @traced(name=f"tool:{tool_name}", type="tool")
                 async def execute_tool_traced():
                     tool_span = current_span()
                     tool_start = time.time()
 
-                    # Log tool input
                     tool_span.log(
                         input=json.dumps(tool_input),
                         metadata={
@@ -396,18 +312,15 @@ class ClaudeAgentService:
                         },
                     )
 
-                    # Execute the tool
                     result = await self.tool_executor.execute(tool_name, tool_input)
                     tool_latency = int((time.time() - tool_start) * 1000)
 
-                    # Get output preview
                     output_text = "".join(
                         b.get("text", "") if b.get("type") == "text" else json.dumps(b)
                         for b in result.content
                     )
                     output_preview = truncate(output_text, 500)
 
-                    # Log tool output
                     tool_span.log(
                         output=output_preview,
                         **({"error": output_preview} if result.is_error else {}),
@@ -425,12 +338,11 @@ class ClaudeAgentService:
 
                 result, output_preview, tool_latency = await execute_tool_traced()
 
-                # Track tool call with output for final logging
                 tool_call_data = {
                     "tool_name": tool_name,
                     "tool_input": tool_input,
                     "tool_use_id": tool_use_id,
-                    "tool_output": output_preview,  # Store for structured output
+                    "tool_output": output_preview,
                     "is_error": result.is_error,
                     "latency_ms": tool_latency,
                 }
@@ -442,11 +354,9 @@ class ClaudeAgentService:
                         tool_name=tool_name,
                         is_error=result.is_error,
                         output_preview=output_preview,
-                        flow=route_result.flow.value,
                     )
                 )
 
-                # Add tool result to conversation
                 conversation.append(
                     {
                         "role": "user",
@@ -461,20 +371,13 @@ class ClaudeAgentService:
                     }
                 )
 
-        emit(
-            AgentProgressUpdate(
-                type="status",
-                text="Synthesizing response…",
-                flow=route_result.flow.value,
-            )
-        )
+        emit(AgentProgressUpdate(type="status", text="Synthesizing response…"))
 
-        # Calculate latency
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Final output
         output = final_text.strip()
         if not output and iterations >= self.max_iterations:
+
             def build_tool_limit_response(tool_calls: list[dict[str, Any]]) -> str:
                 caveat = (
                     "I hit the tool-use limit before I could finish. "
@@ -501,7 +404,6 @@ class ClaudeAgentService:
         elif not output:
             output = "Sorry, I encountered an issue generating a response."
 
-        # Build tool calls summary for structured output
         def summarize_tool_call(tc: dict) -> dict:
             summary = {
                 "name": tc["tool_name"],
@@ -515,12 +417,10 @@ class ClaudeAgentService:
 
         tool_calls_summary = [summarize_tool_call(tc) for tc in tool_calls_list]
 
-        # Log structured output and metrics to span
         output_payload = {
             "response": output,
             "refs": extract_refs(tool_calls_list),
             "tool_calls": tool_calls_summary,
-            "was_refused": False,
         }
         span.log(
             output=output,
@@ -541,7 +441,7 @@ class ClaudeAgentService:
         )
 
         logger.info(
-            f"Agent response: user={user_id} session={session_id} flow={route_result.flow.value} "
+            f"Agent response: user={user_id} session={session_id} "
             f"iterations={iterations} tools={len(tool_calls_list)} latency={latency_ms}ms"
         )
 
@@ -554,95 +454,6 @@ class ClaudeAgentService:
             cache_creation_tokens=cache_creation_tokens,
             cache_read_tokens=cache_read_tokens,
             latency_ms=latency_ms,
-            flow=route_result.flow.value,
-            decision_id=route_result.decision_id,
-            trace_id=trace_id,
-        )
-
-    def _create_refusal_response(
-        self,
-        route_result: RouteResult,
-        start_time: float,
-        messages: list[ConversationMessage],
-        last_user_message: str,
-        session_id: str | None = None,
-        user_id: str | None = None,
-        turn_id: str | None = None,
-        summary_text: str | None = None,
-        summary_metadata: dict[str, Any] | None = None,
-        trace_id: str | None = None,
-    ) -> AgentResponse:
-        """Create a response for refused requests with Braintrust logging."""
-        span = current_span()
-        latency_ms = int((time.time() - start_time) * 1000)
-        environment = os.environ.get("ENVIRONMENT", "dev")
-
-        refusal_message = (
-            route_result.safety.refusal_message
-            or "I'm not able to help with that request. Let me know if there's something else I can help you with."
-        )
-
-        # Log structured input (same format as normal requests for consistency)
-        input_payload = {
-            "query": last_user_message,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-        }
-        metadata = {
-            "session_id": session_id or "",
-            "turn_id": turn_id or "",
-            "user_id": user_id or "",
-            "decision_id": route_result.decision_id,
-        }
-        if summary_text:
-            metadata["conversation_summary"] = summary_text
-        if summary_metadata:
-            metadata["conversation_summary_structured"] = summary_metadata
-        metadata["input_json"] = input_payload
-        span.log(
-            input=last_user_message,  # Flat text for Input column
-            tags=[
-                "refuse",  # Always 'refuse' for this flow
-                environment,
-            ],
-            metadata=metadata,
-        )
-
-        # Log structured output with refusal details
-        output_payload = {
-            "response": refusal_message,
-            "refs": [],
-            "tool_calls": [],
-            "was_refused": True,
-            "refusal_codes": [c.value for c in route_result.reason_codes],
-        }
-        span.log(
-            output=refusal_message,  # Flat text for Output column
-            metadata={
-                "output_json": output_payload,
-            },
-            metrics={
-                "latency_ms": latency_ms,
-                "llm_calls": 0,
-                "tool_calls": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-            },
-        )
-
-        logger.warning(f"Request refused: {route_result.safety.refusal_message}")
-
-        return AgentResponse(
-            content=refusal_message,
-            tool_calls=[],
-            llm_calls=0,
-            input_tokens=0,
-            output_tokens=0,
-            cache_creation_tokens=0,
-            cache_read_tokens=0,
-            latency_ms=latency_ms,
-            flow=route_result.flow.value,
-            decision_id=route_result.decision_id,
-            was_refused=True,
             trace_id=trace_id,
         )
 
@@ -659,7 +470,7 @@ class ClaudeAgentService:
             }
         return {"type": block.type}
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the service and cleanup resources."""
         await self.sefaria_client.close()
 
@@ -667,5 +478,4 @@ class ClaudeAgentService:
 # Convenience function
 def get_agent_service() -> ClaudeAgentService:
     """Get a singleton agent service instance."""
-    # Note: In production, you might want to cache this
     return ClaudeAgentService()

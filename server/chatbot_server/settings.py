@@ -171,6 +171,8 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
 # Prompt slug defaults (Braintrust)
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
+
+# Legacy prompt slugs (unused in the simplified v2 flow)
 ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
 GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
 DISCOVERY_PROMPT_SLUG = os.environ.get("DISCOVERY_PROMPT_SLUG", "discovery")
@@ -188,14 +190,7 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # ============================================================================
 # Set ANTHROPIC_API_KEY environment variable
 #
-# AI Router & Guardrails Configuration:
-# - ROUTER_USE_AI=true/false (default: true) - Enable AI-based flow routing
-# - GUARDRAILS_USE_AI=true/false (default: true) - Enable AI-based guardrails
-# - ROUTER_MODEL=claude-3-5-haiku-20241022 (default) - Model for routing
-# - GUARDRAIL_MODEL=claude-3-5-haiku-20241022 (default) - Model for guardrails
-#
-# Note: Uses Claude 3.5 Haiku by default for speed and cost-effectiveness.
-# Falls back to rule-based classification if AI fails or is disabled.
+# Note: Uses Claude Sonnet by default for the main agent.
 
 # ============================================================================
 # Sefaria API Configuration (optional)

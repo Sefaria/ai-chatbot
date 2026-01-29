@@ -1,10 +1,7 @@
 """
-Tool schemas for Claude agent - Sefaria API tools organized by flow.
+Tool schemas for Claude agent - Sefaria API tools.
 
-Tool Sets:
-- TRANSLATION: get_text + dictionary lookup
-- DISCOVERY: Full toolset for searching and discovery
-- DEEP_ENGAGEMENT: Full toolset for deep study and commentaries
+Includes individual tool definitions and helper functions to retrieve tools.
 """
 
 from typing import Any
@@ -212,49 +209,8 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
 }
 
 # ============================================================================
-# Flow-Specific Tool Sets
-# ============================================================================
-
-# Translation flow: Text retrieval + dictionary lookup
-TRANSLATION_TOOL_NAMES = [
-    "get_text",
-    "search_in_dictionaries",
-]
-
-# Discovery flow: Full toolset
-DISCOVERY_TOOL_NAMES = list(ALL_TOOLS.keys())
-
-# Deep engagement flow: Full toolset
-DEEP_ENGAGEMENT_TOOL_NAMES = list(ALL_TOOLS.keys())
-
-# ============================================================================
 # Helper Functions
 # ============================================================================
-
-
-def get_tools_for_flow(flow: str) -> list[dict[str, Any]]:
-    """
-    Get the tool schemas for a specific flow.
-
-    Args:
-        flow: Flow type (TRANSLATION, DISCOVERY, DEEP_ENGAGEMENT)
-
-    Returns:
-        List of tool schemas for that flow
-    """
-    flow_upper = flow.upper()
-
-    if flow_upper == "TRANSLATION":
-        tool_names = TRANSLATION_TOOL_NAMES
-    elif flow_upper == "DISCOVERY":
-        tool_names = DISCOVERY_TOOL_NAMES
-    elif flow_upper == "DEEP_ENGAGEMENT":
-        tool_names = DEEP_ENGAGEMENT_TOOL_NAMES
-    else:
-        # Default to deep engagement
-        tool_names = DEEP_ENGAGEMENT_TOOL_NAMES
-
-    return [ALL_TOOLS[name] for name in tool_names if name in ALL_TOOLS]
 
 
 def get_tools_by_names(names: list[str]) -> list[dict[str, Any]]:

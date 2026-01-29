@@ -1,5 +1,5 @@
 """
-V2 chat API views with routed Claude agent integration.
+V2 chat API views with Claude agent integration.
 """
 
 import asyncio
@@ -19,12 +19,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage, ALL_TOOLS
-from .prompts import get_prompt_service
-from .router import Flow, RouteResult, RouterService, SessionAction, get_router_service
-from .router.router_service import PromptBundle, SafetyResult
+from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage
 from .summarization import get_summary_service
-from ..models import ChatMessage, ChatSession, ConversationSummary, RouteDecision
+from ..models import ChatMessage, ChatSession, ConversationSummary
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from ..user_token_service import (
     UserTokenError,
@@ -41,31 +38,6 @@ def build_session_info(session) -> dict:
     return {
         "turnCount": turn_count,
     }
-
-
-def _resolve_summary_flow(summary: ConversationSummary | None) -> Flow:
-    """Resolve a flow from stored summary, falling back to DEEP_ENGAGEMENT."""
-    if summary and summary.flow:
-        try:
-            return Flow(summary.flow)
-        except ValueError:
-            pass
-    return Flow.DEEP_ENGAGEMENT
-
-
-def _build_v2_route_result(flow: Flow, core_prompt_id: str) -> RouteResult:
-    """Build a minimal RouteResult for v2 streaming without routing."""
-    return RouteResult(
-        decision_id=RouteDecision.generate_decision_id(),
-        flow=flow,
-        confidence=1.0,
-        reason_codes=[],
-        prompt_bundle=PromptBundle(core_prompt_id=core_prompt_id),
-        tools=sorted(ALL_TOOLS.keys()),
-        session_action=SessionAction.CONTINUE,
-        safety=SafetyResult(allowed=True),
-        router_latency_ms=0,
-    )
 
 
 def _apply_page_context_to_user_message(message: str, page_url: str) -> str:
@@ -95,7 +67,6 @@ def _create_traced_executor() -> concurrent.futures.Executor:
 
 # Global services (initialized lazily)
 _agent_service: ClaudeAgentService | None = None
-_router_service: RouterService | None = None
 _bt_logger = None
 
 
@@ -125,19 +96,8 @@ def get_agent_service() -> ClaudeAgentService:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
-        _agent_service = ClaudeAgentService(
-            api_key=api_key,
-            prompt_service=get_prompt_service(),
-        )
+        _agent_service = ClaudeAgentService(api_key=api_key)
     return _agent_service
-
-
-def get_router() -> RouterService:
-    """Get or create the router service singleton."""
-    global _router_service
-    if _router_service is None:
-        _router_service = get_router_service()
-    return _router_service
 
 
 @api_view(["POST"])
@@ -204,9 +164,6 @@ def chat_stream_v2(request):
     if not core_prompt_slug:
         core_prompt_slug = settings.CORE_PROMPT_SLUG
 
-    # Create a minimal route result (no routing in v2)
-    route_result = _build_v2_route_result(_resolve_summary_flow(summary), core_prompt_slug)
-
     # Save user message
     user_message = ChatMessage.objects.create(
         message_id=data["messageId"],
@@ -218,22 +175,13 @@ def chat_stream_v2(request):
         client_timestamp=data["timestamp"],
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
-        flow=route_result.flow.value,
+        flow="",
     )
 
     def generate_sse():
         """Generator that yields SSE events."""
         progress_queue = queue.Queue()
         result_holder = {"response": None, "error": None}
-
-        routing_event = {
-            "type": "routing",
-            "flow": route_result.flow.value,
-            "decisionId": route_result.decision_id,
-            "confidence": route_result.confidence,
-            "reasonCodes": [],
-        }
-        yield f"event: routing\ndata: {json.dumps(routing_event)}\n\n"
 
         def on_progress(update: AgentProgressUpdate):
             progress_queue.put(update)
@@ -247,13 +195,14 @@ def chat_stream_v2(request):
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,
-                        route_result=route_result,
+                        core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
                         session_id=data["sessionId"],
                         user_id=data["userId"],
                         turn_id=turn_id,
                         summary_text=summary_text,
                         summary_metadata=summary_metadata,
+                        client_version=context.get("clientVersion", ""),
                     )
                 )
             except Exception as e:
@@ -275,7 +224,6 @@ def chat_stream_v2(request):
                 event_data = {
                     "type": update.type,
                     "text": update.text,
-                    "flow": update.flow,
                 }
 
                 if update.tool_name:
@@ -314,7 +262,7 @@ def chat_stream_v2(request):
                 content="I'm sorry, I encountered an error processing your request.",
                 status=ChatMessage.Status.FAILED,
                 latency_ms=latency_ms,
-                flow=route_result.flow.value,
+                flow="",
             )
 
             user_message.response_message = error_msg
@@ -342,10 +290,8 @@ def chat_stream_v2(request):
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
             model_name="claude-sonnet-4-5-20250929",
-            flow=route_result.flow.value,
-            status=ChatMessage.Status.REFUSED
-            if agent_response.was_refused
-            else ChatMessage.Status.SUCCESS,
+            flow="",
+            status=ChatMessage.Status.SUCCESS,
         )
 
         user_message.response_message = response_message
@@ -358,13 +304,12 @@ def chat_stream_v2(request):
             session=session,
             new_user_message=data["text"],
             new_assistant_response=agent_response.content,
-            flow=route_result.flow.value,
         )
 
         # Update session
         session.message_count = ChatMessage.objects.filter(session_id=data["sessionId"]).count()
         session.turn_count = (session.turn_count or 0) + 1
-        session.current_flow = route_result.flow.value
+        session.current_flow = ""
         session.conversation_summary = new_summary.to_prompt_text()
         session.summary_updated_at = timezone.now()
         session.total_input_tokens = (session.total_input_tokens or 0) + agent_response.input_tokens
@@ -388,7 +333,7 @@ def chat_stream_v2(request):
 
         logger.info(
             f"📤 [v2 stream] response={response_message.message_id[:20]}... "
-            f"flow={route_result.flow.value} latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
+            f"latency={latency_ms}ms tools={len(agent_response.tool_calls)}"
         )
 
         # Reload session to get updated turn_count
@@ -400,11 +345,7 @@ def chat_stream_v2(request):
             "timestamp": response_message.server_timestamp.isoformat(),
             "markdown": agent_response.content,
             "traceId": agent_response.trace_id,
-            "routing": {
-                "flow": route_result.flow.value,
-                "decisionId": route_result.decision_id,
-                "wasRefused": agent_response.was_refused,
-            },
+            "toolCalls": agent_response.tool_calls,
             "session": build_session_info(session),
             "stats": {
                 "llmCalls": agent_response.llm_calls,
@@ -430,8 +371,6 @@ def prompt_defaults(request):
     return Response(
         {
             "corePromptSlug": settings.CORE_PROMPT_SLUG,
-            "routerPromptSlug": settings.ROUTER_PROMPT_SLUG,
-            "guardrailsPromptSlug": settings.GUARDRAILS_PROMPT_SLUG,
         }
     )
 

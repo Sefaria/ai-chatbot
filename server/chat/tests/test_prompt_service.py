@@ -6,11 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from django.conf import settings
 
-from chat.V2.prompts.prompt_service import (
-    PromptBundle,
-    PromptService,
-    get_prompt_service,
-)
+from chat.V2.prompts.prompt_service import CorePrompt, PromptService, get_prompt_service
 
 
 @pytest.fixture
@@ -23,28 +19,14 @@ def service_short_ttl() -> PromptService:
     return PromptService(api_key=None, cache_ttl_seconds=1)
 
 
-class TestPromptBundle:
-    """Test PromptBundle dataclass."""
+class TestCorePrompt:
+    """Test CorePrompt dataclass."""
 
-    def test_create_bundle(self) -> None:
-        bundle = PromptBundle(
-            core_prompt="You are a helpful assistant",
-            flow_prompt="Focus on halachic questions",
-            core_prompt_id="core-123",
-            core_prompt_version="v1",
-            flow_prompt_id="halachic-456",
-            flow_prompt_version="v2",
-        )
-        assert bundle.core_prompt == "You are a helpful assistant"
-        assert bundle.flow_prompt == "Focus on halachic questions"
-
-    def test_system_prompt_property(self) -> None:
-        bundle = PromptBundle(core_prompt="Core instructions here", flow_prompt="Flow-specific")
-        assert bundle.system_prompt == "Core instructions here\n\nFlow-specific"
-
-    def test_system_prompt_empty_flow(self) -> None:
-        bundle = PromptBundle(core_prompt="Core only", flow_prompt="")
-        assert "Core only" in bundle.system_prompt
+    def test_create_core_prompt(self) -> None:
+        prompt = CorePrompt(text="System prompt", prompt_id="core-1", version="v1")
+        assert prompt.text == "System prompt"
+        assert prompt.prompt_id == "core-1"
+        assert prompt.version == "v1"
 
 
 class TestPromptServiceInit:
@@ -59,12 +41,6 @@ class TestPromptServiceInit:
     def test_init_with_api_key(self) -> None:
         svc = PromptService(api_key="test_key")
         assert svc.api_key == "test_key"
-
-    def test_init_loads_defaults(self) -> None:
-        svc = PromptService(api_key=None)
-        assert all(
-            key in svc._defaults for key in ["core", "translation", "discovery", "deep_engagement"]
-        )
 
     def test_init_custom_project_name(self) -> None:
         svc = PromptService(api_key=None, project_name="custom-project")
@@ -83,47 +59,37 @@ class TestPromptServiceInit:
 class TestFallbackToDefaults:
     """Test fallback to local default prompts."""
 
-    @pytest.mark.parametrize("flow", ["TRANSLATION", "DISCOVERY", "DEEP_ENGAGEMENT"])
-    def test_get_prompt_bundle(self, service: PromptService, flow: str) -> None:
-        bundle = service.get_prompt_bundle(flow)
-        assert bundle.core_prompt is not None
-        assert bundle.flow_prompt is not None
-        assert bundle.flow_prompt_version == "local"
-
-    def test_get_default_prompt(self, service: PromptService) -> None:
-        core = service.get_default_prompt("core")
-        assert core is not None
-        assert len(core) > 0
-
-    def test_get_default_prompt_unknown_key(self, service: PromptService) -> None:
-        prompt = service.get_default_prompt("unknown")
-        core = service.get_default_prompt("core")
-        assert prompt == core
+    def test_get_core_prompt(self, service: PromptService) -> None:
+        prompt = service.get_core_prompt()
+        assert isinstance(prompt, CorePrompt)
+        assert prompt.text is not None
+        assert prompt.version == "local"
 
 
 class TestCaching:
     """Test prompt caching behavior."""
 
     def test_cache_stores_prompt(self, service_short_ttl: PromptService) -> None:
-        service_short_ttl._cache["test_prompt:v1"] = {
+        service_short_ttl._cache["core:v1"] = {
             "prompt": "Test prompt",
             "version": "v1",
             "timestamp": time.time(),
         }
-        assert "test_prompt:v1" in service_short_ttl._cache
+        assert "core:v1" in service_short_ttl._cache
 
     def test_cache_hit(self, service_short_ttl: PromptService) -> None:
-        bundle1 = service_short_ttl.get_prompt_bundle("TRANSLATION")
-        bundle2 = service_short_ttl.get_prompt_bundle("TRANSLATION")
-        assert bundle1.core_prompt == bundle2.core_prompt
+        prompt1 = service_short_ttl.get_core_prompt()
+        prompt2 = service_short_ttl.get_core_prompt()
+        assert prompt1.text == prompt2.text
 
     def test_cache_expiry(self, service_short_ttl: PromptService) -> None:
-        service_short_ttl._get_prompt("test_id", "v1", "core")
+        service_short_ttl._get_prompt("test_id", "v1")
         with service_short_ttl._cache_lock:
             for key in service_short_ttl._cache:
                 service_short_ttl._cache[key]["timestamp"] = time.time() - 10
-        result, version = service_short_ttl._get_prompt("test_id", "v1", "core")
+        text, version = service_short_ttl._get_prompt("test_id", "v1")
         assert version == "local"
+        assert text
 
     def test_invalidate_cache_all(self, service_short_ttl: PromptService) -> None:
         service_short_ttl._cache["prompt_a:v1"] = {
@@ -201,42 +167,14 @@ class TestPromptExtraction:
         mock_prompt.build.return_value = {
             "messages": [{"role": "system", "content": "System prompt here"}]
         }
-        assert service._extract_prompt_text(mock_prompt) == "System prompt here"
-
-    def test_extract_from_build_content_list(self, service: PromptService) -> None:
-        mock_prompt = MagicMock()
-        mock_prompt.build.return_value = {
-            "messages": [{"role": "system", "content": [{"text": "Part 1"}, {"text": " Part 2"}]}]
-        }
-        assert service._extract_prompt_text(mock_prompt) == "Part 1 Part 2"
-
-    def test_extract_from_build_completion_format(self, service: PromptService) -> None:
-        mock_prompt = MagicMock()
-        mock_prompt.build.return_value = {"prompt": "Completion format prompt"}
-        assert service._extract_prompt_text(mock_prompt) == "Completion format prompt"
-
-    def test_extract_from_direct_attribute(self, service: PromptService) -> None:
-        mock_prompt = MagicMock()
-        mock_prompt.build.return_value = {}
-        mock_prompt.prompt = "Direct prompt"
-        del mock_prompt.prompt_data
-        assert service._extract_prompt_text(mock_prompt) == "Direct prompt"
-
-    def test_extract_returns_none_on_failure(self, service: PromptService) -> None:
-        mock_prompt = MagicMock()
-        mock_prompt.build.return_value = {}
-        del mock_prompt.prompt_data
-        del mock_prompt.prompt
-        del mock_prompt.content
-        del mock_prompt.text
-        del mock_prompt.system
-        assert service._extract_prompt_text(mock_prompt) is None
+        text = service._extract_prompt_text(mock_prompt)
+        assert text == "System prompt here"
 
 
 class TestGetPromptService:
-    """Test get_prompt_service singleton function."""
+    """Test get_prompt_service singleton."""
 
-    def test_returns_service_instance(self) -> None:
+    def test_returns_prompt_service(self) -> None:
         import chat.V2.prompts.prompt_service as ps
 
         ps._default_service = None
@@ -252,23 +190,10 @@ class TestGetPromptService:
         assert service1 is service2
 
 
-class TestPromptBundleVersionTracking:
-    """Test version tracking in prompt bundles."""
+class TestCorePromptVersionTracking:
+    """Test version tracking in core prompts."""
 
-    def test_bundle_includes_version_info(self, service: PromptService) -> None:
-        bundle = service.get_prompt_bundle("TRANSLATION")
-        assert bundle.core_prompt_id == settings.CORE_PROMPT_SLUG
-        assert bundle.core_prompt_version is not None
-        assert bundle.flow_prompt_id is not None
-        assert bundle.flow_prompt_version is not None
-
-    def test_bundle_custom_prompt_ids(self, service: PromptService) -> None:
-        bundle = service.get_prompt_bundle(
-            "TRANSLATION", core_prompt_id="custom_core", flow_prompt_id="custom_flow"
-        )
-        assert bundle.core_prompt_id == "custom_core"
-        assert bundle.flow_prompt_id == "custom_flow"
-
-    def test_bundle_local_version(self, service: PromptService) -> None:
-        bundle = service.get_prompt_bundle("DEEP_ENGAGEMENT")
-        assert bundle.flow_prompt_version == "local"
+    def test_prompt_includes_version_info(self, service: PromptService) -> None:
+        prompt = service.get_core_prompt()
+        assert prompt.prompt_id == settings.CORE_PROMPT_SLUG
+        assert prompt.version

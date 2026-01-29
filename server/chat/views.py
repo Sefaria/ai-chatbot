@@ -49,7 +49,7 @@ def extract_page_type(url: str | None) -> str:
 @api_view(["GET"])
 def history(request):
     """
-    Get conversation history with routing metadata.
+    Get conversation history with session metadata.
 
     GET /api/history?userId=...&sessionId=...&before=...&limit=...
     """
