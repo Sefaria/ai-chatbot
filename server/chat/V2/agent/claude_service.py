@@ -167,6 +167,19 @@ class ClaudeAgentService:
         except Exception as exc:
             logger.warning(f"Failed to setup Braintrust Claude Agent SDK: {exc}")
 
+    def _ensure_braintrust_context(self) -> bool:
+        if not braintrust or not self._braintrust_api_key:
+            return False
+        try:
+            braintrust.init_logger(
+                project=self._braintrust_project,
+                api_key=self._braintrust_api_key,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(f"Failed to initialize Braintrust logger: {exc}")
+            return False
+
     async def send_message(
         self,
         messages: list[ConversationMessage],
@@ -187,6 +200,12 @@ class ClaudeAgentService:
             AgentResponse with content and metadata
         """
         self._setup_braintrust_tracing()
+        braintrust_ready = self._ensure_braintrust_context()
+
+        last_user_message = next(
+            (message.content for message in reversed(messages) if message.role == "user"),
+            "",
+        )
 
         async def run() -> AgentResponse:
             return await self._send_message_inner(
@@ -194,11 +213,27 @@ class ClaudeAgentService:
                 core_prompt_id=core_prompt_id,
                 on_progress=on_progress,
                 summary_text=summary_text,
+                last_user_message=last_user_message,
             )
 
-        if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
-            traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
-            return await traced_run()
+        if braintrust_ready and self._braintrust_enabled and hasattr(braintrust, "start_span"):
+            try:
+                braintrust.context.get_context_manager().unset_current_span()
+            except Exception:
+                pass
+            with braintrust.start_span(
+                name="chat-agent",
+                span_attributes={"type": "llm"},
+                input={"message": last_user_message},
+            ) as span:
+                result = await run()
+                span.log(
+                    output={
+                        "content": result.content,
+                        "tool_calls": result.tool_calls,
+                    }
+                )
+                return result
 
         return await run()
 
@@ -209,6 +244,7 @@ class ClaudeAgentService:
         core_prompt_id: str | None,
         on_progress: Callable[[AgentProgressUpdate], None] | None,
         summary_text: str | None,
+        last_user_message: str,
     ) -> AgentResponse:
         start_time = time.time()
 
@@ -220,10 +256,6 @@ class ClaudeAgentService:
             except Exception as exc:
                 logger.warning(f"Progress callback error: {exc}")
 
-        last_user_message = next(
-            (message.content for message in reversed(messages) if message.role == "user"),
-            "",
-        )
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
         system_prompt = core_prompt.text
         summary_included = False
@@ -260,7 +292,7 @@ class ClaudeAgentService:
                 }
                 if summary_text:
                     metadata["conversation_summary"] = summary_text
-                span.log(input={"message": last_user_message}, metadata=metadata)
+                span.log(metadata=metadata)
 
         prompt_text = self._format_conversation(messages)
         if not system_prompt_in_options:
