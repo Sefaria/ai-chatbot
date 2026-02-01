@@ -8,13 +8,13 @@ Successfully implemented AI-powered guardrails and routing system to replace det
 
 ### 1. Core AI Components
 
-#### **Braintrust Prompt Client** ([braintrust_client.py](server/chat/router/braintrust_client.py))
+#### **Braintrust Prompt Client** ([braintrust_client.py](server/chat/V2/router/braintrust_client.py))
 - Fetches prompts from Braintrust for remote updates
 - Provides hardcoded fallback prompts when Braintrust is unavailable
 - Caches prompts for performance
 - Supports versioning (dev, staging, stable)
 
-#### **AI Guardrail Checker** ([ai_guardrails.py](server/chat/router/ai_guardrails.py))
+#### **AI Guardrail Checker** ([ai_guardrails.py](server/chat/V2/router/ai_guardrails.py))
 - Uses Claude to detect:
   - Prompt injection attempts
   - Harassment and hate speech
@@ -25,7 +25,7 @@ Successfully implemented AI-powered guardrails and routing system to replace det
 - Falls back to rule-based checking on failure
 - Uses Claude 3.5 Haiku by default for speed/cost
 
-#### **AI Flow Router** ([ai_router.py](server/chat/router/ai_router.py))
+#### **AI Flow Router** ([ai_router.py](server/chat/V2/router/ai_router.py))
 - Classifies user intent into flows:
   - HALACHIC: Practical Jewish law questions
   - SEARCH: Text/source finding requests
@@ -36,18 +36,18 @@ Successfully implemented AI-powered guardrails and routing system to replace det
 
 ### 2. Updated Existing Components
 
-#### **Guardrails Module** ([guardrails.py](server/chat/router/guardrails.py))
+#### **Guardrails Module** ([guardrails.py](server/chat/V2/router/guardrails.py))
 - Updated `get_guardrail_checker()` to support AI mode
 - Preserved existing rule-based checker as fallback
 - Maintains backward compatibility
 
-#### **Router Service** ([router_service.py](server/chat/router/router_service.py))
+#### **Router Service** ([router_service.py](server/chat/V2/router/router_service.py))
 - Integrated AI classification with automatic fallback
 - Added configuration options for AI vs rule-based
 - Maintained all existing interfaces
 - Updated `get_router_service()` to read environment configuration
 
-#### **Module Exports** ([__init__.py](server/chat/router/__init__.py))
+#### **Module Exports** ([__init__.py](server/chat/V2/router/__init__.py))
 - Added new AI components to exports
 - Graceful handling of missing AI dependencies
 - Backward compatible exports
@@ -64,7 +64,7 @@ Successfully implemented AI-powered guardrails and routing system to replace det
 - Documented AI configuration options
 - Environment variable explanations
 
-#### **Comprehensive Documentation** ([README.md](server/chat/router/README.md))
+#### **Comprehensive Documentation** ([README.md](server/chat/V2/router/README.md))
 - Architecture overview
 - Configuration guide
 - Usage examples
@@ -72,7 +72,7 @@ Successfully implemented AI-powered guardrails and routing system to replace det
 - Troubleshooting guide
 - Best practices
 
-#### **Test Suite** ([test_ai_system.py](server/chat/router/test_ai_system.py))
+#### **Test Suite** ([test_ai_system.py](server/chat/V2/router/test_ai_system.py))
 - Tests for all components
 - Integration tests
 - Handles missing API keys gracefully
@@ -208,7 +208,7 @@ python manage.py shell
 >>> run_tests()
 
 # Or pipe script
-python manage.py shell < server/chat/router/test_ai_system.py
+python manage.py shell < server/chat/V2/router/test_ai_system.py
 ```
 
 ### Quick Manual Test
@@ -317,17 +317,17 @@ router = get_router_service(
 ## Files Created/Modified
 
 ### New Files
-- `server/chat/router/braintrust_client.py` - Braintrust integration
-- `server/chat/router/ai_guardrails.py` - AI guardrail checker
-- `server/chat/router/ai_router.py` - AI flow router
-- `server/chat/router/test_ai_system.py` - Test suite
-- `server/chat/router/README.md` - Comprehensive documentation
+- `server/chat/V2/router/braintrust_client.py` - Braintrust integration
+- `server/chat/V2/router/ai_guardrails.py` - AI guardrail checker
+- `server/chat/V2/router/ai_router.py` - AI flow router
+- `server/chat/V2/router/test_ai_system.py` - Test suite
+- `server/chat/V2/router/README.md` - Comprehensive documentation
 - `IMPLEMENTATION_SUMMARY.md` - This file
 
 ### Modified Files
-- `server/chat/router/guardrails.py` - Added AI support
-- `server/chat/router/router_service.py` - Integrated AI classification
-- `server/chat/router/__init__.py` - Updated exports
+- `server/chat/V2/router/guardrails.py` - Added AI support
+- `server/chat/V2/router/router_service.py` - Integrated AI classification
+- `server/chat/V2/router/__init__.py` - Updated exports
 - `server/chatbot_server/settings.py` - Added configuration docs
 - `server/.env.example` - Added AI configuration options
 
@@ -398,7 +398,7 @@ router = get_router_service(
 ## Support
 
 For issues or questions:
-1. Check [README.md](server/chat/router/README.md) for detailed docs
+1. Check [README.md](server/chat/V2/router/README.md) for detailed docs
 2. Run test suite to identify issues
 3. Review logs for error messages
 4. Check environment configuration

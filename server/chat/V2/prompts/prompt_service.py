@@ -1,7 +1,7 @@
 """
 Prompt service with Braintrust integration.
 
-Fetches prompts from Braintrust with fallback to local defaults.
+Fetches the core system prompt from Braintrust with a local fallback.
 Supports versioning and caching.
 """
 
@@ -13,34 +13,27 @@ from threading import Lock
 from typing import Any
 
 from django.conf import settings
+
 logger = logging.getLogger("chat.prompts")
 
 
 @dataclass
-class PromptBundle:
-    """Bundle of prompts for a turn."""
+class CorePrompt:
+    """Core prompt text with versioning metadata."""
 
-    core_prompt: str
-    flow_prompt: str
-    core_prompt_id: str = ""
-    core_prompt_version: str = ""
-    flow_prompt_id: str = ""
-    flow_prompt_version: str = ""
-
-    @property
-    def system_prompt(self) -> str:
-        """Combined system prompt."""
-        return f"{self.core_prompt}\n\n{self.flow_prompt}"
+    text: str
+    prompt_id: str
+    version: str
 
 
 class PromptService:
     """
-    Service for fetching and caching prompts from Braintrust.
+    Service for fetching and caching the core prompt from Braintrust.
 
     Features:
     - Braintrust prompt registry integration
     - In-memory caching with TTL
-    - Fallback to local defaults
+    - Fallback to local default
     - Version tracking for reproducibility
     """
 
@@ -48,7 +41,7 @@ class PromptService:
         self,
         api_key: str | None = None,
         project_name: str | None = None,
-        cache_ttl_seconds: int = 300,  # 5 minutes
+        cache_ttl_seconds: int = 300,
     ):
         """
         Initialize the prompt service.
@@ -66,122 +59,60 @@ class PromptService:
         self._cache_lock = Lock()
         self._braintrust_client = None
 
-        # Load local defaults
-        from .default_prompts import (
-            CORE_PROMPT,
-            GENERAL_PROMPT,
-            HALACHIC_PROMPT,
-            SEARCH_PROMPT,
-        )
+        from .default_prompts import CORE_PROMPT
 
-        self._defaults = {
-            "core": CORE_PROMPT,
-            "halachic": HALACHIC_PROMPT,
-            "general": GENERAL_PROMPT,
-            "search": SEARCH_PROMPT,
-        }
+        self._default_core_prompt = CORE_PROMPT
 
         self._init_braintrust()
 
-    def _init_braintrust(self):
+    def _init_braintrust(self) -> None:
         """Initialize Braintrust client if configured."""
         if not self.api_key:
-            logger.info("Braintrust API key not configured, using local prompts only")
+            logger.info("Braintrust API key not configured, using local core prompt only")
             return
 
         try:
             import braintrust
 
             self._braintrust_client = braintrust
-
-            # Also initialize the router's Braintrust client for core prompt
-            from ..router import get_braintrust_client
-
-            self._router_braintrust_client = get_braintrust_client()
-
             logger.info(f"Braintrust client initialized for project: {self.project_name}")
         except ImportError:
-            logger.warning("Braintrust package not installed, using local prompts only")
-            self._router_braintrust_client = None
-        except Exception as e:
-            logger.warning(f"Failed to initialize Braintrust: {e}")
-            self._router_braintrust_client = None
+            logger.warning("Braintrust package not installed, using local core prompt only")
+        except Exception as exc:
+            logger.warning(f"Failed to initialize Braintrust: {exc}")
 
-    def get_prompt_bundle(
+    def get_core_prompt(
         self,
-        flow: str,
-        core_prompt_id: str | None = None,
-        flow_prompt_id: str | None = None,
+        prompt_id: str | None = None,
         version: str = "stable",
-    ) -> PromptBundle:
+    ) -> CorePrompt:
         """
-        Get a complete prompt bundle for a flow.
+        Get the core system prompt.
 
         Args:
-            flow: Flow type (HALACHIC, GENERAL, SEARCH)
-            core_prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
-            flow_prompt_id: Braintrust ID for flow prompt (default: derived from flow)
+            prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             version: Prompt version to fetch
 
         Returns:
-            PromptBundle with core and flow prompts
+            CorePrompt with text and metadata
         """
-        flow_lower = flow.lower()
-        core_prompt_id = core_prompt_id or settings.CORE_PROMPT_SLUG
-        flow_prompt_id = flow_prompt_id or f"bt_prompt_{flow_lower}"
+        prompt_id = prompt_id or settings.CORE_PROMPT_SLUG
+        prompt_text, actual_version = self._get_prompt(prompt_id, version)
+        return CorePrompt(text=prompt_text, prompt_id=prompt_id, version=actual_version)
 
-        # Fetch core prompt using the router's Braintrust client for the default core slug
-        if (
-            core_prompt_id == settings.CORE_PROMPT_SLUG
-            and hasattr(self, "_router_braintrust_client")
-            and self._router_braintrust_client
-        ):
-            try:
-                core_prompt = self._router_braintrust_client.get_core_prompt(version)
-                core_version = version
-                logger.debug(f"Fetched core prompt via router client: {len(core_prompt)} chars")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to fetch core prompt via router client: {e}, falling back to legacy method"
-                )
-                core_prompt, core_version = self._get_prompt(core_prompt_id, version, "core")
-        else:
-            # Fetch using legacy method
-            logger.debug(f"Using legacy method for core prompt: {core_prompt_id}")
-            core_prompt, core_version = self._get_prompt(core_prompt_id, version, "core")
-
-        # Fetch flow prompt
-        flow_prompt, flow_version = self._get_prompt(flow_prompt_id, version, flow_lower)
-
-        return PromptBundle(
-            core_prompt=core_prompt,
-            flow_prompt=flow_prompt,
-            core_prompt_id=core_prompt_id,
-            core_prompt_version=core_version,
-            flow_prompt_id=flow_prompt_id,
-            flow_prompt_version=flow_version,
-        )
-
-    def _get_prompt(
-        self,
-        prompt_id: str,
-        version: str,
-        fallback_key: str,
-    ) -> tuple[str, str]:
+    def _get_prompt(self, prompt_id: str, version: str) -> tuple[str, str]:
         """
-        Get a single prompt by ID with caching.
+        Get a prompt by ID with caching.
 
         Returns (prompt_text, version_used)
         """
         cache_key = f"{prompt_id}:{version}"
 
-        # Check cache
         with self._cache_lock:
             cached = self._cache.get(cache_key)
             if cached and time.time() - cached["timestamp"] < self.cache_ttl:
                 return cached["prompt"], cached["version"]
 
-        # Try Braintrust
         if self._braintrust_client:
             try:
                 prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
@@ -193,25 +124,18 @@ class PromptService:
                             "timestamp": time.time(),
                         }
                     return prompt_text, actual_version
-            except Exception as e:
-                logger.warning(f"Failed to fetch prompt {prompt_id} from Braintrust: {e}")
+            except Exception as exc:
+                logger.warning(f"Failed to fetch prompt {prompt_id} from Braintrust: {exc}")
 
-        # Fallback to local defaults
-        fallback_prompt = self._defaults.get(fallback_key, self._defaults["core"])
-        return fallback_prompt, "local"
+        return self._default_core_prompt, "local"
 
-    def _fetch_from_braintrust(
-        self,
-        prompt_id: str,
-        version: str,
-    ) -> tuple[str | None, str]:
+    def _fetch_from_braintrust(self, prompt_id: str, version: str) -> tuple[str | None, str]:
         """
         Fetch a prompt from Braintrust.
 
         Returns (prompt_text, version) or (None, "") if not found.
         """
         try:
-            # Use Braintrust's prompt API
             prompt = self._braintrust_client.load_prompt(
                 project=self.project_name,
                 slug=prompt_id,
@@ -221,20 +145,17 @@ class PromptService:
             if prompt is None:
                 return None, ""
 
-            # Get the actual version
             actual_version = getattr(prompt, "version", version) or version
-
-            # Extract prompt text from the Braintrust Prompt object
             prompt_text = self._extract_prompt_text(prompt)
 
             if prompt_text:
-                logger.info(f"Loaded prompt from Braintrust: {prompt_id}, version={actual_version}")
+                logger.info(f"Loaded core prompt from Braintrust: {prompt_id}, version={actual_version}")
                 return prompt_text, str(actual_version)
 
             return None, ""
 
-        except Exception as e:
-            logger.warning(f"Braintrust prompt fetch error for {prompt_id}: {e}")
+        except Exception as exc:
+            logger.warning(f"Braintrust prompt fetch error for {prompt_id}: {exc}")
             return None, ""
 
     def _extract_prompt_text(self, prompt) -> str | None:
@@ -248,43 +169,36 @@ class PromptService:
         Returns the system prompt text or None if extraction fails.
         """
         try:
-            # Method 1: Use build() which returns formatted messages
             if hasattr(prompt, "build"):
                 built = prompt.build()
                 if isinstance(built, dict):
                     messages = built.get("messages", [])
                     if messages:
-                        # Look for system message first
                         for msg in messages:
                             if isinstance(msg, dict) and msg.get("role") == "system":
                                 content = msg.get("content", "")
                                 if isinstance(content, str):
                                     return content
-                                elif isinstance(content, list):
-                                    # Content can be array of text blocks
+                                if isinstance(content, list):
                                     return "".join(
                                         block.get("text", "")
                                         if isinstance(block, dict)
                                         else str(block)
                                         for block in content
                                     )
-                        # No system message, try first message content
                         first_msg = messages[0] if messages else None
                         if first_msg and isinstance(first_msg, dict):
                             content = first_msg.get("content", "")
                             if isinstance(content, str):
                                 return content
 
-                    # Completion format: might have 'prompt' key
                     if "prompt" in built:
                         return built["prompt"]
 
-            # Method 2: Access prompt_data directly
             if hasattr(prompt, "prompt_data"):
                 prompt_data = prompt.prompt_data
                 if hasattr(prompt_data, "prompt"):
                     block = prompt_data.prompt
-                    # Handle PromptChatBlock with messages
                     if hasattr(block, "messages"):
                         messages = block.messages
                         if messages:
@@ -293,21 +207,18 @@ class PromptService:
                                     content = getattr(msg, "content", None)
                                     if isinstance(content, str):
                                         return content
-                                    elif isinstance(content, list):
+                                    if isinstance(content, list):
                                         return "".join(
                                             getattr(part, "text", str(part)) for part in content
                                         )
-                            # Return first message content if no system
                             first = messages[0]
                             if hasattr(first, "content"):
                                 content = first.content
                                 if isinstance(content, str):
                                     return content
-                    # Handle PromptCompletionBlock
                     elif hasattr(block, "content"):
                         return block.content
 
-            # Method 3: Try direct attributes
             for attr in ["prompt", "content", "text", "system"]:
                 if hasattr(prompt, attr):
                     val = getattr(prompt, attr)
@@ -317,11 +228,11 @@ class PromptService:
             logger.warning(f"Could not extract text from prompt object: {type(prompt)}")
             return None
 
-        except Exception as e:
-            logger.warning(f"Error extracting prompt text: {e}")
+        except Exception as exc:
+            logger.warning(f"Error extracting prompt text: {exc}")
             return None
 
-    def invalidate_cache(self, prompt_id: str | None = None):
+    def invalidate_cache(self, prompt_id: str | None = None) -> None:
         """
         Invalidate cached prompts.
 
@@ -330,22 +241,15 @@ class PromptService:
         """
         with self._cache_lock:
             if prompt_id:
-                # Invalidate all versions of this prompt
                 keys_to_remove = [k for k in self._cache if k.startswith(f"{prompt_id}:")]
                 for key in keys_to_remove:
                     del self._cache[key]
             else:
-                # Clear all
                 self._cache.clear()
 
         logger.info(f"Prompt cache invalidated: {prompt_id or 'all'}")
 
-    def get_default_prompt(self, key: str) -> str:
-        """Get a local default prompt by key."""
-        return self._defaults.get(key, self._defaults["core"])
 
-
-# Default prompt service instance
 _default_service = None
 
 

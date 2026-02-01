@@ -1,37 +1,37 @@
 # LC Chatbot
 
-A beautiful, embeddable chat widget built as a Web Component with Svelte, backed by a Django REST API with a **routed Claude AI agent**.
+A beautiful, embeddable chat widget built as a Web Component with Svelte, backed by a Django REST API with a **Claude Agent SDK runtime**.
 
 ## Architecture Overview
 
-The chatbot implements a **multi-flow routing architecture**:
+The chatbot implements a **core-prompt agent architecture**:
 
 ```
-User Message → Router → Flow Selection → Claude Agent → Response
-                 ↓              ↓              ↓
-           Guardrails    Prompt+Tools    Tool Calling
+User Message → Core Prompt (Braintrust) → Claude Agent SDK → Tool Calling → Response
 ```
-
-**Flows:**
-- **HALACHIC** - Practical Jewish law questions (higher guardrails, source-focused)
-- **SEARCH** - Finding and comparing sources (full search toolset)
-- **GENERAL** - Learning, discussion, conceptual questions (minimal tools)
-- **REFUSE** - Guardrail-blocked requests
 
 **Observability:**
-- **LangSmith** - End-to-end tracing with spans for router, agent, and tools
-- **Braintrust** - Prompt management, structured logging, and evaluations
+- **Braintrust** - Prompt management and Agent SDK tracing
+
+## Versioned Agents
+
+Agent logic is organized by version under `server/chat/`. The current implementation lives in `server/chat/V2/`.
+
+To add a new version (e.g. V3):
+1. Copy `server/chat/V2` to `server/chat/V3`.
+2. Update your agent logic inside `server/chat/V3`.
+3. Add URLs in `server/chat/urls.py` pointing to the new views.
+4. Update `server/chat/views.py` health/version reporting (and prompt reloads if needed).
+5. In the widget settings, set **Bot version** to `v3` to route requests to the new endpoints.
 
 ## Features
 
-- 🔀 **Flow-Based Routing** - Automatic classification to appropriate handling mode
-- 🛡️ **Guardrails** - Prompt injection detection, content policy enforcement
-- 🤖 **Claude AI Agent** - Powered by Claude with Sefaria tool calling
-- 📊 **Braintrust Integration** - Prompt versioning, evals, and structured logging
-- 🔍 **LangSmith Tracing** - Full observability with nested spans
+- 🤖 **Claude Agent SDK** - Claude with Sefaria tool calling
+- 📊 **Braintrust Integration** - Core prompt management and tracing
 - 💬 **Markdown Rendering** - Rich responses with headings, code blocks, links
 - 📐 **Resizable Panel** - Drag to resize, dimensions persist
 - 📜 **Infinite Scroll History** - Load older messages with date markers
+- 🧩 **Versioned Agents** - Run multiple bot versions in parallel
 - 🎨 **Themeable** - CSS custom properties
 - 💾 **Local Persistence** - Session and UI state saved to localStorage
 - ⚡ **Lightweight** - Single JS bundle
@@ -45,10 +45,6 @@ Create a `.env` file in the `server/` directory:
 ```bash
 # Required: Anthropic API key
 ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# Optional: LangSmith tracing (https://smith.langchain.com)
-LANGSMITH_API_KEY=lsv2_your-key-here
-LANGSMITH_PROJECT=sefaria-chatbot
 
 # Optional: Braintrust prompts & evals (https://braintrust.dev)
 BRAINTRUST_API_KEY=bt-your-key-here
@@ -111,11 +107,13 @@ Visit `http://localhost:5173` to see the widget.
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
 
+Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
+
 ## API Reference
 
-### POST /api/chat
+### POST /api/v2/chat/stream
 
-Send a message and receive a routed response.
+Send a message and receive a streamed response with Server-Sent Events.
 
 **Request:**
 ```json
@@ -139,24 +137,27 @@ Send a message and receive a routed response.
   "sessionId": "sess_...",
   "timestamp": "2026-01-05T08:12:36.000Z",
   "markdown": "According to Jewish law...",
-  "routing": {
-    "flow": "HALACHIC",
-    "decisionId": "dec_...",
-    "confidence": 0.85,
-    "wasRefused": false
+  "toolCalls": [],
+  "stats": {
+    "llmCalls": 1,
+    "toolCalls": 0,
+    "latencyMs": 1200
   }
 }
 ```
 
-### POST /api/chat/stream
-
-Same as `/api/chat` but with Server-Sent Events for real-time progress:
-
 **Events:**
-- `routing` - Flow decision with reason codes
 - `progress` - Tool execution updates
 - `message` - Final response
 - `error` - Error details
+
+### POST /api/v2/chat/feedback
+
+Send user feedback tied to a response trace.
+
+### GET /api/v2/prompts/defaults
+
+Fetch default prompt slugs for client settings.
 
 ### GET /api/history
 
@@ -170,58 +171,8 @@ Health check with service status.
 
 Invalidate prompt cache (reloads from Braintrust on next request).
 
-## Routing System
-
-The router classifies user intent using:
-
-1. **Keyword patterns** - Hebrew/English terms for halacha, search, learning
-2. **Guardrail checks** - Prompt injection, harassment, high-risk content
-3. **Flow stickiness** - Maintains flow unless intent clearly shifts
-
-### Reason Codes
-
-Routing decisions include explainable reason codes:
-
-```python
-ROUTE_HALACHIC_KEYWORDS     # Detected halachic terms
-ROUTE_SEARCH_INTENT         # User wants to find sources
-ROUTE_GENERAL_LEARNING      # Conceptual/learning question
-ROUTE_FLOW_STICKINESS       # Continuing previous flow
-GUARDRAIL_PROMPT_INJECTION  # Blocked injection attempt
-GUARDRAIL_HIGH_RISK_PSAK    # High-risk halachic question
-```
-
-## Tool Sets by Flow
-
-| Flow | Tools |
-|------|-------|
-| HALACHIC | get_text, text_search, semantic_search, topic_details, links, search_in_book, clarify_name |
-| SEARCH | All search tools + dictionaries, manuscripts, catalogue info |
-| GENERAL | get_text, text_search, semantic_search, topic_details, calendar |
-
 ## Observability
-
-### LangSmith Tracing
-
-Configure LangSmith for full observability:
-
-```bash
-export LANGSMITH_API_KEY=lsv2_...
-export LANGSMITH_PROJECT=sefaria-chatbot
-```
-
-**Trace structure:**
-```
-chat_turn (chain)
-├── router (chain)
-├── prompt_fetch (retriever)
-├── claude_completion_1 (llm)
-├── tool_get_text (tool)
-├── claude_completion_2 (llm)
-└── summary_update (chain)
-```
-
-### Braintrust Logging
+### Braintrust Tracing
 
 Configure Braintrust for structured logging and evals:
 
@@ -230,12 +181,7 @@ export BRAINTRUST_API_KEY=bt-...
 export BRAINTRUST_PROJECT=sefaria-chatbot
 ```
 
-**Logged data:**
-- User message, summary, flow
-- Prompt IDs and versions
-- Tools available/used
-- Response, metrics (latency, tokens, cost)
-- Environment, app version tags
+Braintrust auto-traces Claude Agent SDK calls, tool executions, and prompt usage.
 
 ## Project Structure
 
@@ -244,11 +190,6 @@ server/
 ├── chat/
 │   ├── views.py              # Orchestrator pattern
 │   ├── models.py             # Session, Message, RouteDecision, etc.
-│   │
-│   ├── router/               # Flow classification
-│   │   ├── router_service.py # Main router
-│   │   ├── guardrails.py     # Safety checks
-│   │   └── reason_codes.py   # Explainable codes
 │   │
 │   ├── prompts/              # Braintrust integration
 │   │   ├── prompt_service.py # Fetch/cache prompts
@@ -260,9 +201,6 @@ server/
 │   │   ├── tool_executor.py  # Execute tools
 │   │   └── sefaria_client.py # Sefaria API
 │   │
-│   ├── tracing/              # LangSmith integration
-│   │   └── langsmith_tracer.py
-│   │
 │   └── summarization/        # Conversation context
 │       └── summary_service.py
 ```
@@ -271,19 +209,18 @@ server/
 
 | Model | Purpose |
 |-------|---------|
-| `ChatSession` | Session state, flow, summary |
-| `ChatMessage` | Messages with routing context |
-| `RouteDecision` | Audit trail for routing |
+| `ChatSession` | Session state and summary |
+| `ChatMessage` | Messages with tool metadata |
+| `RouteDecision` | Legacy routing audit trail (unused in V2) |
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `LANGSMITH_API_KEY` | No | LangSmith tracing |
-| `LANGSMITH_PROJECT` | No | LangSmith project name |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
+| `CORE_PROMPT_SLUG` | No | Braintrust core prompt slug |
 | `ENVIRONMENT` | No | dev/staging/prod |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |

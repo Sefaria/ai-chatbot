@@ -171,22 +171,19 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
 # Prompt slug defaults (Braintrust)
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
-ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "flow-router")
-GUARDRAILS_PROMPT_SLUG = os.environ.get("GUARDRAILS_PROMPT_SLUG", "guardrail-checker")
+
+# ============================================================================
+# Chat User Token Configuration
+# ============================================================================
+# Token secret used to decrypt incoming userId values for chat requests.
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
 
 # ============================================================================
 # Anthropic API Configuration
 # ============================================================================
 # Set ANTHROPIC_API_KEY environment variable
 #
-# AI Router & Guardrails Configuration:
-# - ROUTER_USE_AI=true/false (default: true) - Enable AI-based flow routing
-# - GUARDRAILS_USE_AI=true/false (default: true) - Enable AI-based guardrails
-# - ROUTER_MODEL=claude-3-5-haiku-20241022 (default) - Model for routing
-# - GUARDRAIL_MODEL=claude-3-5-haiku-20241022 (default) - Model for guardrails
-#
-# Note: Uses Claude 3.5 Haiku by default for speed and cost-effectiveness.
-# Falls back to rule-based classification if AI fails or is disabled.
+# Note: Uses Claude Sonnet by default for the main agent.
 
 # ============================================================================
 # Sefaria API Configuration (optional)
@@ -231,16 +228,6 @@ LOGGING = {
         "chat.agent": {
             "handlers": ["chat_console"],
             "level": "INFO",
-            "propagate": False,
-        },
-        "chat.router": {
-            "handlers": ["chat_console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "chat.router.guardrails": {
-            "handlers": ["chat_console"],
-            "level": "WARNING",
             "propagate": False,
         },
         "chat.prompts": {

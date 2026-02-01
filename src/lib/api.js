@@ -40,8 +40,6 @@ import { generateMessageId } from './session.js';
 /**
  * @typedef {Object} PromptSlugs
  * @property {string} [corePromptSlug]
- * @property {string} [routerPromptSlug]
- * @property {string} [guardrailsPromptSlug]
  */
 
 /**

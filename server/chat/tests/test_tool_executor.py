@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from chat.agent.tool_executor import (
+from chat.V2.agent.tool_executor import (
     SefariaToolExecutor,
     ToolResult,
     describe_tool_call,

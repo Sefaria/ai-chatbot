@@ -1,9 +1,8 @@
 """
-Conversation summary service for router context.
+Conversation summary service for agent context.
 
 Creates and maintains rolling summaries of conversations to:
-- Provide efficient context to the router
-- Enable flow stickiness decisions
+- Provide efficient context to the agent
 - Track conversation state without full history
 """
 
@@ -14,7 +13,7 @@ from typing import Any
 import anthropic
 from django.utils import timezone
 
-from ..models import ChatSession, ConversationSummary
+from ...models import ChatSession, ConversationSummary
 
 logger = logging.getLogger("chat.summarization")
 
@@ -23,24 +22,18 @@ logger = logging.getLogger("chat.summarization")
 SUMMARY_PROMPT = """You are a summarization assistant for a Jewish learning chatbot. Given the conversation history, create a concise summary that captures:
 
 1. Current Topic: What is the main subject being discussed?
-2. User Intent: What is the user trying to accomplish? (learning, searching for sources, asking halachic questions, etc.)
-3. Flow: Is this primarily HALACHIC (practical law questions), SEARCH (finding sources), or GENERAL (learning/discussion)?
-4. Key References: What texts, people, or topics have been mentioned?
-5. Constraints: Any user-expressed preferences or limitations?
-6. Safety Concerns: Any content that might require guardrails?
-
+2. User Intent: What is the user trying to accomplish?
+3. Key References: What texts, people, or topics have been mentioned?
+4. Constraints: Any user-expressed preferences or limitations?
 Output a JSON object with this structure:
 {
   "text": "Brief 1-2 sentence summary of the conversation",
   "current_topic": "Main topic being discussed",
-  "user_intent": "learning|searching|halacha|discussion|other",
-  "flow": "HALACHIC|SEARCH|GENERAL",
+  "user_intent": "Short description of the user's intent",
   "texts_referenced": ["Genesis 1:1", "Berakhot 2a"],
   "topics_discussed": ["shabbat", "creation"],
   "people_mentioned": ["Rashi", "Maimonides"],
-  "halachic_domain": "shabbat|kashrut|prayer|other or empty",
-  "constraints": ["user prefers Hebrew", "looking for Sephardic opinions"],
-  "safety_flags": ["prompt_injection|high_risk_psak or empty"]
+  "constraints": ["user prefers Hebrew", "looking for Sephardic opinions"]
 }
 
 Keep the summary focused and under 500 characters total."""
@@ -84,7 +77,6 @@ class SummaryService:
         session: ChatSession,
         new_user_message: str,
         new_assistant_response: str,
-        flow: str = "",
     ) -> ConversationSummary:
         """
         Update the conversation summary with new messages.
@@ -93,8 +85,6 @@ class SummaryService:
             session: Chat session to update/create summary for
             new_user_message: Latest user message
             new_assistant_response: Latest assistant response
-            flow: Current flow label (optional)
-
         Returns:
             Updated ConversationSummary
         """
@@ -106,7 +96,6 @@ class SummaryService:
                 current_summary,
                 new_user_message,
                 new_assistant_response,
-                flow,
             )
 
         return self._simple_summarize(
@@ -114,7 +103,6 @@ class SummaryService:
             current_summary,
             new_user_message,
             new_assistant_response,
-            flow,
         )
 
     def _llm_summarize(
@@ -123,7 +111,6 @@ class SummaryService:
         current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
-        flow: str,
     ) -> ConversationSummary:
         """Use Claude to generate a structured summary."""
         try:
@@ -167,7 +154,6 @@ class SummaryService:
                     session=session,
                     current_summary=current_summary,
                     data=data,
-                    flow=flow,
                 )
 
             except json.JSONDecodeError:
@@ -177,7 +163,6 @@ class SummaryService:
                     current_summary,
                     new_user_message,
                     new_assistant_response,
-                    flow,
                 )
 
         except Exception as e:
@@ -187,7 +172,6 @@ class SummaryService:
                 current_summary,
                 new_user_message,
                 new_assistant_response,
-                flow,
             )
 
     def _simple_summarize(
@@ -196,14 +180,12 @@ class SummaryService:
         current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
-        flow: str,
     ) -> ConversationSummary:
         """Simple rule-based summarization (fast fallback)."""
         summary = current_summary or ConversationSummary(session=session)
         summary.text = f"User asked: {new_user_message[:100]}..."
         summary.current_topic = self._extract_topic(new_user_message)
         summary.user_intent = self._infer_intent(new_user_message)
-        summary.flow = flow or summary.flow
         summary.turn_count = (summary.turn_count or 0) + 1
         summary.last_updated = timezone.now()
 
@@ -221,7 +203,6 @@ class SummaryService:
         session: ChatSession,
         current_summary: ConversationSummary | None,
         data: dict[str, Any],
-        flow: str,
     ) -> ConversationSummary:
         """Apply structured summary data to the model and persist."""
 
@@ -232,7 +213,6 @@ class SummaryService:
         summary.text = data.get("text", summary.text)
         summary.current_topic = data.get("current_topic", "")
         summary.user_intent = data.get("user_intent", "")
-        summary.flow = flow or data.get("flow", summary.flow)
         summary.texts_referenced = _safe_list(data.get("texts_referenced", []))
         summary.topics_discussed = _safe_list(data.get("topics_discussed", []))
         summary.people_mentioned = _safe_list(data.get("people_mentioned", []))
@@ -262,18 +242,17 @@ class SummaryService:
         """Infer user intent from message patterns."""
         message_lower = message.lower()
 
+        if any(word in message_lower for word in ["translate", "translation", "render", "in english"]):
+            return "translation request"
         if any(word in message_lower for word in ["find", "search", "where", "source"]):
-            return "searching"
-        elif any(
-            word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]
-        ):
-            return "halacha"
-        elif any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
-            return "learning"
-        elif any(word in message_lower for word in ["compare", "difference", "opinions"]):
-            return "discussion"
-        else:
-            return "other"
+            return "source lookup"
+        if any(word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]):
+            return "halachic guidance"
+        if any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
+            return "explanation"
+        if any(word in message_lower for word in ["compare", "difference", "opinions"]):
+            return "comparison"
+        return "other"
 
 
 # Default service instance

@@ -40,5 +40,6 @@ export const STORAGE_KEYS = {
   DRAFT: 'draft',
   UI: 'ui',
   MESSAGES: 'messages',
-  PROMPT_SLUGS: 'prompt_slugs'
+  PROMPT_SLUGS: 'prompt_slugs',
+  BOT_VERSION: 'bot_version'
 };

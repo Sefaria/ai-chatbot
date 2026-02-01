@@ -1,5 +1,5 @@
 """
-Claude Agent with Sefaria tool calling and routed flows.
+Claude Agent with Sefaria tool calling.
 
 Exports:
 - ClaudeAgentService: Main agent runtime
@@ -17,33 +17,18 @@ from .claude_service import (
 )
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
-from .tool_schemas import (
-    ALL_TOOLS,
-    GENERAL_TOOL_NAMES,
-    HALACHIC_TOOL_NAMES,
-    SEARCH_TOOL_NAMES,
-    SEFARIA_TOOL_SCHEMAS,
-    get_tools_by_names,
-    get_tools_for_flow,
-)
+from .tool_schemas import ALL_TOOLS, SEFARIA_TOOL_SCHEMAS, get_all_tools, get_tools_by_names
 
 __all__ = [
-    # Agent service
     "ClaudeAgentService",
     "get_agent_service",
-    # Data types
     "ConversationMessage",
     "AgentResponse",
     "AgentProgressUpdate",
-    # Tool schemas
     "SEFARIA_TOOL_SCHEMAS",
     "ALL_TOOLS",
-    "get_tools_for_flow",
+    "get_all_tools",
     "get_tools_by_names",
-    "HALACHIC_TOOL_NAMES",
-    "SEARCH_TOOL_NAMES",
-    "GENERAL_TOOL_NAMES",
-    # Sefaria client
     "SefariaClient",
     "SefariaToolExecutor",
 ]

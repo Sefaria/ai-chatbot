@@ -8,7 +8,7 @@ Added support for a "core" system prompt (slug: `core-8fbc`) that is loaded from
 
 ### 1. Core Prompt Loading in Braintrust Client
 
-**File**: [braintrust_client.py](server/chat/router/braintrust_client.py)
+**File**: [braintrust_client.py](server/chat/V2/router/braintrust_client.py)
 
 Added `get_core_prompt()` method:
 ```python
@@ -26,7 +26,7 @@ core_prompt = client.get_core_prompt(version="stable")  # Loads from slug "core-
 
 ### 2. Integration with Prompt Service
 
-**File**: [prompt_service.py](server/chat/prompts/prompt_service.py)
+**File**: [prompt_service.py](server/chat/V2/prompts/prompt_service.py)
 
 Updated `get_prompt_bundle()` to use the new core prompt:
 - Changed default `core_prompt_id` from `"bt_prompt_core"` to `"core-8fbc"`
@@ -165,20 +165,20 @@ If `BRAINTRUST_API_KEY` is not set or Braintrust is unavailable:
 ## File Changes
 
 ### New Functionality
-- [braintrust_client.py](server/chat/router/braintrust_client.py)
+- [braintrust_client.py](server/chat/V2/router/braintrust_client.py)
   - Added `get_core_prompt()` method
   - Added `_get_fallback_core_prompt()` helper
 
 ### Modified Files
-- [prompt_service.py](server/chat/prompts/prompt_service.py)
+- [prompt_service.py](server/chat/V2/prompts/prompt_service.py)
   - Updated `get_prompt_bundle()` to use `core-8fbc`
   - Added router Braintrust client integration
   - Changed default core_prompt_id parameter
 
-- [test_ai_system.py](server/chat/router/test_ai_system.py)
+- [test_ai_system.py](server/chat/V2/router/test_ai_system.py)
   - Added core prompt loading test
 
-- [README.md](server/chat/router/README.md)
+- [README.md](server/chat/V2/router/README.md)
   - Documented core prompt feature
   - Updated Braintrust setup instructions
 
@@ -296,6 +296,6 @@ If system keeps using fallback:
 
 ## Related Documentation
 
-- [Main Router & Guardrails README](server/chat/router/README.md)
+- [Main Router & Guardrails README](server/chat/V2/router/README.md)
 - [Implementation Summary](IMPLEMENTATION_SUMMARY.md)
-- [Prompt Service Documentation](server/chat/prompts/README.md)
+- [Prompt Service Documentation](server/chat/V2/prompts/README.md)
