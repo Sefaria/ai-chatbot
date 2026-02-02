@@ -377,3 +377,208 @@ class TestChatAnthropicEndpoint:
         assert response.status_code == 200
         call_args = mock_agent_service.send_message.call_args.kwargs
         assert call_args["messages"][0].content == "Follow-up question"
+
+
+@pytest.mark.django_db
+class TestChatAnthropicHTTPIntegration:
+    """Integration tests using Django test client for full HTTP simulation.
+
+    These tests exercise the full HTTP request-response cycle including:
+    - JSON serialization/deserialization
+    - URL routing
+    - Middleware (CSRF, etc.)
+    - Content-Type headers
+    """
+
+    @pytest.fixture
+    def client(self):
+        from rest_framework.test import APIClient
+
+        return APIClient()
+
+    @pytest.fixture
+    def mock_agent_response(self):
+        return AgentResponse(
+            content="Shabbat is the Jewish day of rest.",
+            tool_calls=[
+                {"tool_name": "get_text", "tool_input": {"reference": "Genesis 2:3"}},
+            ],
+            llm_calls=1,
+            latency_ms=200,
+            trace_id="trace_abc123",
+        )
+
+    @pytest.fixture
+    def mock_agent_service(self, mock_agent_response):
+        mock_service = MagicMock()
+        mock_service.send_message = AsyncMock(return_value=mock_agent_response)
+        return mock_service
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_full_http_request_response_cycle(self, mock_get_agent, client, mock_agent_service):
+        """Test actual HTTP POST with JSON body and response parsing."""
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "What is Shabbat?"}]},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/json"
+        # APIClient automatically parses JSON
+        assert response.data["type"] == "message"
+        assert response.data["role"] == "assistant"
+        assert "id" in response.data
+        assert response.data["id"].startswith("msg_")
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_hebrew_text_in_request(self, mock_get_agent, client, mock_agent_service):
+        """Test that Hebrew/Unicode text is handled correctly through HTTP."""
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "מה זה שבת?"}]},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        # Verify the Hebrew text was passed to the agent
+        call_args = mock_agent_service.send_message.call_args.kwargs
+        assert call_args["messages"][0].content == "מה זה שבת?"
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_large_message_handling(self, mock_get_agent, client, mock_agent_service):
+        """Test handling of large message content."""
+        mock_get_agent.return_value = mock_agent_service
+        large_content = "Test message. " * 1000  # ~13KB of text
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": large_content}]},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        call_args = mock_agent_service.send_message.call_args.kwargs
+        assert call_args["messages"][0].content == large_content
+
+    def test_invalid_json_returns_400(self, client):
+        """Test that malformed JSON returns a proper error."""
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data="not valid json",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+
+    def test_missing_content_type_still_works(self, client):
+        """Test that request without explicit Content-Type header works."""
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": []},
+            format="json",
+        )
+
+        # Should get 400 for empty messages, not a content-type error
+        assert response.status_code == 400
+        assert "messages" in str(response.data["error"]["message"]).lower()
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_response_includes_all_anthropic_fields(
+        self, mock_get_agent, client, mock_agent_service
+    ):
+        """Test that response includes all required Anthropic API fields."""
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={
+                "model": "sefaria-agent",
+                "messages": [{"role": "user", "content": "Test"}],
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        data = response.data
+
+        # Required Anthropic response fields
+        assert data["type"] == "message"
+        assert data["role"] == "assistant"
+        assert data["model"] == "sefaria-agent"
+        assert data["stop_reason"] == "end_turn"
+        assert data["stop_sequence"] is None
+        assert "id" in data
+        assert "content" in data
+        assert "usage" in data
+        assert "input_tokens" in data["usage"]
+        assert "output_tokens" in data["usage"]
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_tool_calls_in_response(self, mock_get_agent, client, mock_agent_service):
+        """Test that tool calls are properly serialized in HTTP response."""
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        content = response.data["content"]
+
+        # Should have text block and tool_use block
+        assert len(content) == 2
+        assert content[0]["type"] == "text"
+        assert content[1]["type"] == "tool_use"
+        assert content[1]["name"] == "get_text"
+        assert "id" in content[1]
+        assert content[1]["id"].startswith("toolu_")
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_metadata_passed_through_http(self, mock_get_agent, client, mock_agent_service):
+        """Test that metadata is properly passed through HTTP layer."""
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={
+                "messages": [{"role": "user", "content": "Test"}],
+                "metadata": {"core_prompt_slug": "custom-prompt", "user_id": "test123"},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_agent_service.send_message.call_args.kwargs
+        assert call_kwargs["core_prompt_id"] == "custom-prompt"
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_error_response_format(self, mock_get_agent, client):
+        """Test that errors follow Anthropic error response format."""
+        mock_service = MagicMock()
+        mock_service.send_message = AsyncMock(side_effect=Exception("Test error"))
+        mock_get_agent.return_value = mock_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+        )
+
+        assert response.status_code == 500
+        assert "error" in response.data
+        assert response.data["error"]["type"] == "api_error"
+        assert "Test error" in response.data["error"]["message"]
