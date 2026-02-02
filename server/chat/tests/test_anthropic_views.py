@@ -309,7 +309,7 @@ class TestChatAnthropicEndpoint:
 
         assert response.status_code == 500
         assert response.data["error"]["type"] == "api_error"
-        assert "Agent exploded" in response.data["error"]["message"]
+        assert response.data["error"]["message"] == "Internal server error"
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt")
     @patch("chat.V2.anthropic_views.get_agent_service")
@@ -581,4 +581,4 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 500
         assert "error" in response.data
         assert response.data["error"]["type"] == "api_error"
-        assert "Test error" in response.data["error"]["message"]
+        assert response.data["error"]["message"] == "Internal server error"

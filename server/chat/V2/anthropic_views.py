@@ -149,10 +149,10 @@ def chat_anthropic_v2(request):
                 summary_text="",
             )
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Agent error in Anthropic endpoint")
         return Response(
-            {"error": {"type": "api_error", "message": str(e)}},
+            {"error": {"type": "api_error", "message": "Internal server error"}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
