@@ -78,6 +78,18 @@ class AgentResponse:
     trace_id: str | None = None
 
 
+def extract_refs(tool_calls: list) -> list:
+    """Extract unique Sefaria refs from tool calls for Braintrust logging."""
+    seen = set()
+    refs = []
+    for tc in tool_calls:
+        ref = tc.get("tool_input", {}).get("reference")
+        if ref and ref not in seen:
+            seen.add(ref)
+            refs.append(ref)
+    return refs
+
+
 def truncate(text: str, max_len: int) -> str:
     """Truncate text to max length."""
     if len(text) <= max_len:
