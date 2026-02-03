@@ -211,7 +211,7 @@ class TestChatAnthropicEndpoint:
 
         assert response.status_code == 400
         assert response.data["error"]["type"] == "invalid_request_error"
-        assert "messages is required" in response.data["error"]["message"]
+        assert "messages" in response.data["error"]["message"]
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_empty_messages_returns_400(self, factory, user_token):

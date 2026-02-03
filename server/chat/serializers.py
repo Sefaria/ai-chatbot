@@ -44,6 +44,15 @@ class FeedbackRequestSerializer(serializers.Serializer):
     messageId = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
 
+class AnthropicRequestSerializer(serializers.Serializer):
+    """Anthropic Messages API request format."""
+
+    model = serializers.CharField(max_length=100, required=False)
+    max_tokens = serializers.IntegerField(required=False)
+    messages = serializers.ListField(child=serializers.DictField(), min_length=1)
+    metadata = serializers.DictField(required=False)
+
+
 class ChatResponseSerializer(serializers.Serializer):
     """Response to client after processing message."""
 

@@ -30,6 +30,7 @@ from ..auth import (
     authenticate_request,
 )
 from ..models import ChatMessage
+from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, get_agent_service
 from .logging import get_turn_logging_service
 from .services import create_or_get_session, load_session_summary, save_user_message
@@ -169,7 +170,15 @@ def chat_anthropic_v2(request):
     """
     start_time = time.time()
 
-    # Authenticate via X-User-Id header
+    serializer = AnthropicRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            to_anthropic_error("invalid_request_error", str(serializer.errors)),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    data = serializer.validated_data
+
+    # Authenticate via X-Api-Key header
     try:
         actor = authenticate_request(request)
     except (AuthenticationRequired, InvalidUserToken, UserTokenExpired) as exc:
@@ -178,23 +187,16 @@ def chat_anthropic_v2(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    messages = request.data.get("messages", [])
-    if not messages:
-        return Response(
-            to_anthropic_error("invalid_request_error", "messages is required"),
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    user_message_text = extract_user_message(messages)
+    user_message_text = extract_user_message(data["messages"])
     if not user_message_text:
         return Response(
             to_anthropic_error("invalid_request_error", "No user message found"),
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    metadata = request.data.get("metadata", {})
+    metadata = data.get("metadata") or {}
     core_prompt_slug = metadata.get("core_prompt_slug", "") or settings.CORE_PROMPT_SLUG
-    model = request.data.get("model", "claude-sonnet-4-5-20250929")
+    model = data.get("model") or "claude-sonnet-4-5-20250929"
 
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
