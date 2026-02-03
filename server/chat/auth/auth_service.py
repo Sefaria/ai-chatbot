@@ -91,5 +91,4 @@ def _authenticate_user_token(encrypted_token: str) -> Actor:
     except UserTokenError as exc:
         raise InvalidUserToken(str(exc)) from exc
 
-    logger.debug(f"User token auth success: user_id={user_id}")
     return Actor(user_id=user_id)

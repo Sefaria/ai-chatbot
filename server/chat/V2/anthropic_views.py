@@ -48,6 +48,8 @@ def extract_user_message(messages: list[dict]) -> str:
     Handles both simple string content and content blocks format:
     - {"role": "user", "content": "Hello"}
     - {"role": "user", "content": [{"type": "text", "text": "Hello"}]}
+
+    Returns empty string if no valid user message found.
     """
     for msg in reversed(messages):
         if msg.get("role") != "user":
@@ -58,14 +60,14 @@ def extract_user_message(messages: list[dict]) -> str:
             return content
 
         if isinstance(content, list):
-            text_parts = [
-                block.get("text", "")
-                if isinstance(block, dict) and block.get("type") == "text"
-                else block
-                if isinstance(block, str)
-                else ""
-                for block in content
-            ]
+            text_parts = []
+            for block in content:
+                if isinstance(block, str):
+                    text_parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text")
+                    if isinstance(text, str):
+                        text_parts.append(text)
             return "".join(text_parts)
 
     return ""
@@ -195,8 +197,8 @@ def chat_anthropic_v2(request):
         )
 
     metadata = data.get("metadata") or {}
-    core_prompt_slug = metadata.get("core_prompt_slug", "") or settings.CORE_PROMPT_SLUG
-    model = data.get("model") or "claude-sonnet-4-5-20250929"
+    core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
+    model = data.get("model") or getattr(settings, "DEFAULT_MODEL", "claude-sonnet-4-5-20250929")
 
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")

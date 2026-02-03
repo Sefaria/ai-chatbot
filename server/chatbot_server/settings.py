@@ -172,6 +172,9 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 # Prompt slug defaults (Braintrust)
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
 
+# Default model for Anthropic-compatible endpoint
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "claude-sonnet-4-5-20250929")
+
 # ============================================================================
 # Chat User Token Configuration
 # ============================================================================

@@ -526,17 +526,23 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-# Singleton agent service
+# Singleton agent service (thread-safe lazy initialization)
+
+import threading
 
 _agent_service: ClaudeAgentService | None = None
+_agent_service_lock = threading.Lock()
 
 
 def get_agent_service() -> ClaudeAgentService:
-    """Get or create the singleton agent service instance."""
+    """Get or create the singleton agent service instance (thread-safe)."""
     global _agent_service
     if _agent_service is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
-        _agent_service = ClaudeAgentService(api_key=api_key)
+        with _agent_service_lock:
+            # Double-check after acquiring lock
+            if _agent_service is None:
+                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+                _agent_service = ClaudeAgentService(api_key=api_key)
     return _agent_service
