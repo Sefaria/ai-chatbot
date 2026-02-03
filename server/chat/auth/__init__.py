@@ -1,8 +1,8 @@
 """
-Authentication module for dual auth support.
+Authentication module for user token authentication.
 
 Exports:
-- Actor: Dataclass representing authenticated identity
+- Actor: Dataclass representing authenticated user identity
 - authenticate_request: Main auth function
 - Exception classes for auth failures
 """
@@ -11,7 +11,6 @@ from .actor import Actor
 from .auth_service import (
     AuthenticationError,
     AuthenticationRequired,
-    InvalidAPIKey,
     InvalidUserToken,
     UserTokenExpired,
     authenticate_request,
@@ -22,7 +21,6 @@ __all__ = [
     "authenticate_request",
     "AuthenticationError",
     "AuthenticationRequired",
-    "InvalidAPIKey",
     "InvalidUserToken",
     "UserTokenExpired",
 ]

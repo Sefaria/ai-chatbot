@@ -57,7 +57,6 @@ class TurnLoggingService:
             message_id=ChatMessage.generate_message_id(),
             session_id=user_message.session_id,
             user_id=user_message.user_id,
-            service_id=user_message.service_id,
             turn_id=user_message.turn_id,
             role=ChatMessage.Role.ASSISTANT,
             content=agent_response.content,

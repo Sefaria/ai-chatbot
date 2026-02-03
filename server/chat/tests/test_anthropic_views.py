@@ -6,7 +6,7 @@ import pytest
 from django.test import override_settings
 from rest_framework.test import APIClient, APIRequestFactory
 
-from chat.models import APIKey
+from chat.tests.test_streaming_integration import create_test_token
 from chat.V2.agent import AgentResponse
 from chat.V2.anthropic_views import (
     BRAINTRUST_ORIGIN,
@@ -14,9 +14,6 @@ from chat.V2.anthropic_views import (
     extract_user_message,
     to_anthropic_response,
 )
-
-# Test API key value (the raw key before hashing)
-TEST_API_KEY = "sk_live_test_key_for_anthropic_tests"
 
 
 class TestExtractUserMessage:
@@ -175,20 +172,13 @@ class TestChatAnthropicEndpoint:
         return APIRequestFactory()
 
     @pytest.fixture
-    def api_key(self):
-        """Create a test API key for authentication."""
-        key_hash = APIKey.hash_key(TEST_API_KEY)
-        return APIKey.objects.create(
-            key_hash=key_hash,
-            service_id="test-service",
-            name="Test API Key",
-            is_active=True,
-        )
+    def secret(self):
+        return "test-secret-key"
 
     @pytest.fixture
-    def auth_headers(self, api_key):
-        """Return headers dict with Authorization."""
-        return {"HTTP_AUTHORIZATION": f"Bearer {TEST_API_KEY}"}
+    def user_token(self, secret):
+        """Create a valid user token for authentication."""
+        return create_test_token("test-user", secret)
 
     @pytest.fixture
     def mock_agent_response(self):
@@ -209,12 +199,12 @@ class TestChatAnthropicEndpoint:
         mock_service.send_message = AsyncMock(return_value=mock_agent_response)
         return mock_service
 
-    def test_missing_messages_returns_400(self, factory, auth_headers):
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    def test_missing_messages_returns_400(self, factory, user_token):
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={},
+            data={"userId": user_token},
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -222,32 +212,32 @@ class TestChatAnthropicEndpoint:
         assert response.data["error"]["type"] == "invalid_request_error"
         assert "messages is required" in response.data["error"]["message"]
 
-    def test_empty_messages_returns_400(self, factory, auth_headers):
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    def test_empty_messages_returns_400(self, factory, user_token):
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": []},
+            data={"messages": [], "userId": user_token},
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
         assert response.status_code == 400
 
-    def test_no_user_message_returns_400(self, factory, auth_headers):
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    def test_no_user_message_returns_400(self, factory, user_token):
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "assistant", "content": "Hello"}]},
+            data={"messages": [{"role": "assistant", "content": "Hello"}], "userId": user_token},
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
         assert response.status_code == 400
         assert "No user message found" in response.data["error"]["message"]
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_successful_request(self, mock_get_agent, factory, mock_agent_service, auth_headers):
+    def test_successful_request(self, mock_get_agent, factory, mock_agent_service, user_token):
         mock_get_agent.return_value = mock_agent_service
 
         request = factory.post(
@@ -256,9 +246,9 @@ class TestChatAnthropicEndpoint:
                 "model": "sefaria-agent",
                 "max_tokens": 1024,
                 "messages": [{"role": "user", "content": "What is Shabbat?"}],
+                "userId": user_token,
             },
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -271,10 +261,12 @@ class TestChatAnthropicEndpoint:
         # Check origin metadata
         assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
 
-    @override_settings(CORE_PROMPT_SLUG="default-prompt")
+    @override_settings(
+        CORE_PROMPT_SLUG="default-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key"
+    )
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_uses_custom_prompt_slug_from_metadata(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         mock_get_agent.return_value = mock_agent_service
 
@@ -283,9 +275,9 @@ class TestChatAnthropicEndpoint:
             data={
                 "messages": [{"role": "user", "content": "Test"}],
                 "metadata": {"core_prompt_slug": "custom-prompt"},
+                "userId": user_token,
             },
             format="json",
-            **auth_headers,
         )
         chat_anthropic_v2(request)
 
@@ -293,36 +285,36 @@ class TestChatAnthropicEndpoint:
         call_kwargs = mock_agent_service.send_message.call_args.kwargs
         assert call_kwargs["core_prompt_id"] == "custom-prompt"
 
-    @override_settings(CORE_PROMPT_SLUG="default-prompt")
+    @override_settings(
+        CORE_PROMPT_SLUG="default-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key"
+    )
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_uses_default_prompt_slug_when_not_provided(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         mock_get_agent.return_value = mock_agent_service
 
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={"messages": [{"role": "user", "content": "Test"}], "userId": user_token},
             format="json",
-            **auth_headers,
         )
         chat_anthropic_v2(request)
 
         call_kwargs = mock_agent_service.send_message.call_args.kwargs
         assert call_kwargs["core_prompt_id"] == "default-prompt"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_agent_called_without_progress_callback(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         mock_get_agent.return_value = mock_agent_service
 
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={"messages": [{"role": "user", "content": "Test"}], "userId": user_token},
             format="json",
-            **auth_headers,
         )
         chat_anthropic_v2(request)
 
@@ -331,18 +323,17 @@ class TestChatAnthropicEndpoint:
         # Stateless mode (no X-Session-ID) means no summary
         assert call_kwargs["summary_text"] == ""
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_agent_error_returns_500(self, mock_get_agent, factory, auth_headers):
+    def test_agent_error_returns_500(self, mock_get_agent, factory, user_token):
         mock_service = MagicMock()
         mock_service.send_message = AsyncMock(side_effect=Exception("Agent exploded"))
         mock_get_agent.return_value = mock_service
 
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={"messages": [{"role": "user", "content": "Test"}], "userId": user_token},
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -352,11 +343,9 @@ class TestChatAnthropicEndpoint:
         # Error response should also have metadata
         assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_uses_model_from_request(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
-    ):
+    def test_uses_model_from_request(self, mock_get_agent, factory, mock_agent_service, user_token):
         mock_get_agent.return_value = mock_agent_service
 
         request = factory.post(
@@ -364,18 +353,18 @@ class TestChatAnthropicEndpoint:
             data={
                 "model": "custom-model-name",
                 "messages": [{"role": "user", "content": "Test"}],
+                "userId": user_token,
             },
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
         assert response.data["model"] == "custom-model-name"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_content_blocks_format_input(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         mock_get_agent.return_value = mock_agent_service
 
@@ -389,10 +378,10 @@ class TestChatAnthropicEndpoint:
                             {"type": "text", "text": "What is Shabbat?"},
                         ],
                     }
-                ]
+                ],
+                "userId": user_token,
             },
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -401,10 +390,10 @@ class TestChatAnthropicEndpoint:
         call_args = mock_agent_service.send_message.call_args.kwargs
         assert call_args["messages"][0].content == "What is Shabbat?"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_multi_turn_conversation_uses_last_user_message(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         mock_get_agent.return_value = mock_agent_service
 
@@ -415,10 +404,10 @@ class TestChatAnthropicEndpoint:
                     {"role": "user", "content": "First question"},
                     {"role": "assistant", "content": "First answer"},
                     {"role": "user", "content": "Follow-up question"},
-                ]
+                ],
+                "userId": user_token,
             },
             format="json",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -426,20 +415,19 @@ class TestChatAnthropicEndpoint:
         call_args = mock_agent_service.send_message.call_args.kwargs
         assert call_args["messages"][0].content == "Follow-up question"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_x_session_id_header_enables_multi_turn(
-        self, mock_get_agent, factory, mock_agent_service, auth_headers
+        self, mock_get_agent, factory, mock_agent_service, user_token
     ):
         """Test that X-Session-ID header creates a consistent session for multi-turn."""
         mock_get_agent.return_value = mock_agent_service
 
         request = factory.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={"messages": [{"role": "user", "content": "Test"}], "userId": user_token},
             format="json",
             HTTP_X_SESSION_ID="my-multi-turn-session",
-            **auth_headers,
         )
         response = chat_anthropic_v2(request)
 
@@ -448,41 +436,26 @@ class TestChatAnthropicEndpoint:
         from chat.models import ChatSession
 
         session = ChatSession.objects.get(session_id="my-multi-turn-session")
-        assert session.service_id == "test-service"
+        assert session.user_id == "test-user"
         assert session.current_flow == BRAINTRUST_ORIGIN
 
 
 @pytest.mark.django_db
 class TestChatAnthropicHTTPIntegration:
-    """Integration tests using Django test client for full HTTP simulation.
-
-    These tests exercise the full HTTP request-response cycle including:
-    - JSON serialization/deserialization
-    - URL routing
-    - Middleware (CSRF, etc.)
-    - Content-Type headers
-    """
+    """Integration tests using Django test client for full HTTP simulation."""
 
     @pytest.fixture
     def client(self):
         return APIClient()
 
     @pytest.fixture
-    def api_key(self):
-        """Create a test API key for authentication."""
-        key_hash = APIKey.hash_key(TEST_API_KEY)
-        return APIKey.objects.create(
-            key_hash=key_hash,
-            service_id="test-service",
-            name="Test API Key",
-            is_active=True,
-        )
+    def secret(self):
+        return "test-secret-key"
 
     @pytest.fixture
-    def auth_client(self, client, api_key):
-        """Return client with API key authentication header."""
-        client.credentials(HTTP_AUTHORIZATION=f"Bearer {TEST_API_KEY}")
-        return client
+    def user_token(self, secret):
+        """Create a valid user token for authentication."""
+        return create_test_token("test-user", secret)
 
     @pytest.fixture
     def mock_agent_response(self):
@@ -502,17 +475,20 @@ class TestChatAnthropicHTTPIntegration:
         mock_service.send_message = AsyncMock(return_value=mock_agent_response)
         return mock_service
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_full_http_request_response_cycle(
-        self, mock_get_agent, auth_client, mock_agent_service
+        self, mock_get_agent, client, mock_agent_service, user_token
     ):
         """Test actual HTTP POST with JSON body and response parsing."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "What is Shabbat?"}]},
+            data={
+                "messages": [{"role": "user", "content": "What is Shabbat?"}],
+                "userId": user_token,
+            },
             format="json",
         )
 
@@ -524,15 +500,18 @@ class TestChatAnthropicHTTPIntegration:
         assert "id" in response.data
         assert response.data["id"].startswith("msg_")
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_hebrew_text_in_request(self, mock_get_agent, auth_client, mock_agent_service):
+    def test_hebrew_text_in_request(self, mock_get_agent, client, mock_agent_service, user_token):
         """Test that Hebrew/Unicode text is handled correctly through HTTP."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "מה זה שבת?"}]},
+            data={
+                "messages": [{"role": "user", "content": "מה זה שבת?"}],
+                "userId": user_token,
+            },
             format="json",
         )
 
@@ -541,16 +520,19 @@ class TestChatAnthropicHTTPIntegration:
         call_args = mock_agent_service.send_message.call_args.kwargs
         assert call_args["messages"][0].content == "מה זה שבת?"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_large_message_handling(self, mock_get_agent, auth_client, mock_agent_service):
+    def test_large_message_handling(self, mock_get_agent, client, mock_agent_service, user_token):
         """Test handling of large message content."""
         mock_get_agent.return_value = mock_agent_service
         large_content = "Test message. " * 1000  # ~13KB of text
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": large_content}]},
+            data={
+                "messages": [{"role": "user", "content": large_content}],
+                "userId": user_token,
+            },
             format="json",
         )
 
@@ -568,11 +550,12 @@ class TestChatAnthropicHTTPIntegration:
 
         assert response.status_code == 400
 
-    def test_missing_content_type_still_works(self, auth_client):
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    def test_missing_content_type_still_works(self, client, user_token):
         """Test that request without explicit Content-Type header works."""
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": []},
+            data={"messages": [], "userId": user_token},
             format="json",
         )
 
@@ -580,19 +563,20 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 400
         assert "messages" in str(response.data["error"]["message"]).lower()
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
     def test_response_includes_all_anthropic_fields(
-        self, mock_get_agent, auth_client, mock_agent_service
+        self, mock_get_agent, client, mock_agent_service, user_token
     ):
         """Test that response includes all required Anthropic API fields."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
             data={
                 "model": "sefaria-agent",
                 "messages": [{"role": "user", "content": "Test"}],
+                "userId": user_token,
             },
             format="json",
         )
@@ -615,15 +599,18 @@ class TestChatAnthropicHTTPIntegration:
         assert "metadata" in data
         assert data["metadata"]["origin"] == BRAINTRUST_ORIGIN
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_tool_calls_in_response(self, mock_get_agent, auth_client, mock_agent_service):
+    def test_tool_calls_in_response(self, mock_get_agent, client, mock_agent_service, user_token):
         """Test that tool calls are properly serialized in HTTP response."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={
+                "messages": [{"role": "user", "content": "Test"}],
+                "userId": user_token,
+            },
             format="json",
         )
 
@@ -638,17 +625,20 @@ class TestChatAnthropicHTTPIntegration:
         assert "id" in content[1]
         assert content[1]["id"].startswith("toolu_")
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_metadata_passed_through_http(self, mock_get_agent, auth_client, mock_agent_service):
+    def test_metadata_passed_through_http(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
         """Test that metadata is properly passed through HTTP layer."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
             data={
                 "messages": [{"role": "user", "content": "Test"}],
                 "metadata": {"core_prompt_slug": "custom-prompt", "user_id": "test123"},
+                "userId": user_token,
             },
             format="json",
         )
@@ -657,17 +647,20 @@ class TestChatAnthropicHTTPIntegration:
         call_kwargs = mock_agent_service.send_message.call_args.kwargs
         assert call_kwargs["core_prompt_id"] == "custom-prompt"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_error_response_format(self, mock_get_agent, auth_client):
+    def test_error_response_format(self, mock_get_agent, client, user_token):
         """Test that errors follow Anthropic error response format."""
         mock_service = MagicMock()
         mock_service.send_message = AsyncMock(side_effect=Exception("Test error"))
         mock_get_agent.return_value = mock_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "Test"}]},
+            data={
+                "messages": [{"role": "user", "content": "Test"}],
+                "userId": user_token,
+            },
             format="json",
         )
 
@@ -676,24 +669,29 @@ class TestChatAnthropicHTTPIntegration:
         assert response.data["error"]["type"] == "api_error"
         assert response.data["error"]["message"] == "Internal server error"
 
-    @override_settings(CORE_PROMPT_SLUG="test-prompt")
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
-    def test_messages_logged_to_database(self, mock_get_agent, auth_client, mock_agent_service):
+    def test_messages_logged_to_database(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
         """Test that user and assistant messages are logged to the database."""
         mock_get_agent.return_value = mock_agent_service
 
-        response = auth_client.post(
+        response = client.post(
             "/api/v2/chat/anthropic",
-            data={"messages": [{"role": "user", "content": "What is Shabbat?"}]},
+            data={
+                "messages": [{"role": "user", "content": "What is Shabbat?"}],
+                "userId": user_token,
+            },
             format="json",
         )
 
         assert response.status_code == 200
 
-        # Verify messages were saved - filter by service_id since we're using API key auth
+        # Verify messages were saved - filter by user_id since we're using user token auth
         from chat.models import ChatMessage
 
-        messages = ChatMessage.objects.filter(service_id="test-service")
+        messages = ChatMessage.objects.filter(user_id="test-user")
         assert messages.count() == 2  # User + Assistant
         user_msg = messages.filter(role="user").first()
         assert user_msg.content == "What is Shabbat?"

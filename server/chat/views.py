@@ -10,7 +10,6 @@ from rest_framework.response import Response
 
 from .auth import (
     AuthenticationRequired,
-    InvalidAPIKey,
     InvalidUserToken,
     UserTokenExpired,
     authenticate_request,
@@ -58,12 +57,7 @@ def history(request):
     """
     Get conversation history with session metadata.
 
-    Supports dual authentication:
-    - API key: Authorization: Bearer <key> (filter by service_id)
-    - User token: userId query param (filter by user_id)
-
-    GET /api/history?sessionId=...&before=...&limit=...
-    GET /api/history?userId=...&sessionId=...&before=...&limit=...  (legacy)
+    GET /api/history?sessionId=...&userId=...&before=...&limit=...
     """
     session_id = request.query_params.get("sessionId")
     before = request.query_params.get("before")
@@ -72,9 +66,8 @@ def history(request):
     if not session_id:
         return Response({"error": "sessionId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Authenticate - try API key first, then user token from query param
+    # Authenticate via user token from query param
     try:
-        # Build body_data from query params for user token auth
         body_data = {}
         if request.query_params.get("userId"):
             body_data["userId"] = request.query_params.get("userId")
@@ -84,20 +77,12 @@ def history(request):
         return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
     except (InvalidUserToken, AuthenticationRequired):
         return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
-    except InvalidAPIKey:
-        return Response({"error": "invalid_api_key"}, status=status.HTTP_401_UNAUTHORIZED)
 
-    # Build query based on actor type
-    if actor.is_service:
-        queryset = ChatMessage.objects.filter(
-            service_id=actor.service_id,
-            session_id=session_id,
-        )
-    else:
-        queryset = ChatMessage.objects.filter(
-            user_id=actor.user_id,
-            session_id=session_id,
-        )
+    # Build query filtered by user
+    queryset = ChatMessage.objects.filter(
+        user_id=actor.user_id,
+        session_id=session_id,
+    )
 
     if before:
         try:
@@ -119,25 +104,14 @@ def history(request):
     # Get session info - verify ownership
     try:
         session = ChatSession.objects.get(session_id=session_id)
-        # Verify session belongs to this actor
-        if actor.is_service:
-            if session.service_id != actor.service_id:
-                session_info = None
-            else:
-                session_info = {
-                    "turnCount": session.turn_count or 0,
-                    "totalTokens": (session.total_input_tokens or 0)
-                    + (session.total_output_tokens or 0),
-                }
+        if session.user_id != actor.user_id:
+            session_info = None
         else:
-            if session.user_id != actor.user_id:
-                session_info = None
-            else:
-                session_info = {
-                    "turnCount": session.turn_count or 0,
-                    "totalTokens": (session.total_input_tokens or 0)
-                    + (session.total_output_tokens or 0),
-                }
+            session_info = {
+                "turnCount": session.turn_count or 0,
+                "totalTokens": (session.total_input_tokens or 0)
+                + (session.total_output_tokens or 0),
+            }
     except ChatSession.DoesNotExist:
         session_info = None
 

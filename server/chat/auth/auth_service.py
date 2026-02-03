@@ -1,17 +1,11 @@
 """
-Authentication service for dual auth support (user tokens + API keys).
-
-Routes authentication based on request format:
-- Authorization: Bearer <key> -> API key auth
-- Body userId field -> User token auth
+Authentication service for user token authentication.
 """
 
 import logging
 
 from django.conf import settings
-from django.utils import timezone
 
-from ..models import APIKey
 from ..user_token_service import (
     UserTokenError,
     UserTokenExpiredError,
@@ -37,13 +31,6 @@ class AuthenticationRequired(AuthenticationError):
         super().__init__("Authentication required", "auth_required")
 
 
-class InvalidAPIKey(AuthenticationError):
-    """Raised when an API key is invalid, expired, or inactive."""
-
-    def __init__(self, reason: str = "invalid"):
-        super().__init__(f"Invalid API key: {reason}", "invalid_api_key")
-
-
 class InvalidUserToken(AuthenticationError):
     """Raised when a user token is invalid."""
 
@@ -62,57 +49,22 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     """
     Authenticate a request and return an Actor.
 
-    Authentication is attempted in order:
-    1. Authorization header with Bearer token (API key)
-    2. userId field in body_data (user token)
-
     Args:
         request: Django request object
         body_data: Optional dict containing userId field for user token auth
 
     Returns:
-        Actor with either user_id or service_id set
+        Actor with user_id set
 
     Raises:
         AuthenticationRequired: No credentials provided
-        InvalidAPIKey: API key is invalid/expired/inactive
         InvalidUserToken: User token is invalid
         UserTokenExpired: User token is expired
     """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        api_key = auth_header[7:]
-        return _authenticate_api_key(api_key)
-
     if body_data and body_data.get("userId"):
         return _authenticate_user_token(body_data["userId"])
 
     raise AuthenticationRequired()
-
-
-def _authenticate_api_key(raw_key: str) -> Actor:
-    """Validate an API key and return an Actor with service_id."""
-    if not raw_key:
-        raise InvalidAPIKey("empty key")
-
-    key_hash = APIKey.hash_key(raw_key)
-
-    try:
-        api_key = APIKey.objects.get(key_hash=key_hash)
-    except APIKey.DoesNotExist as exc:
-        raise InvalidAPIKey("not found") from exc
-
-    if not api_key.is_active:
-        raise InvalidAPIKey("inactive")
-
-    if api_key.expires_at and timezone.now() > api_key.expires_at:
-        raise InvalidAPIKey("expired")
-
-    api_key.last_used_at = timezone.now()
-    api_key.save(update_fields=["last_used_at"])
-
-    logger.debug(f"API key auth success: service_id={api_key.service_id}")
-    return Actor(service_id=api_key.service_id)
 
 
 def _authenticate_user_token(encrypted_token: str) -> Actor:

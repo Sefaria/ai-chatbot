@@ -2,64 +2,16 @@
 Chat models for message persistence and metadata.
 """
 
-import hashlib
-import secrets
 import uuid
 
 from django.db import models
 
 
-class APIKey(models.Model):
-    """
-    Stores hashed API keys for service authentication.
-
-    Raw keys are shown once at creation and never stored.
-    Only the SHA-256 hash is persisted for verification.
-    """
-
-    key_hash = models.CharField(max_length=64, unique=True, db_index=True)
-    service_id = models.CharField(max_length=100, unique=True, db_index=True)
-    name = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_used_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        verbose_name = "API Key"
-        verbose_name_plural = "API Keys"
-
-    def __str__(self):
-        return f"{self.name} ({self.service_id})"
-
-    @classmethod
-    def hash_key(cls, raw_key: str) -> str:
-        """Hash a raw API key using SHA-256."""
-        return hashlib.sha256(raw_key.encode()).hexdigest()
-
-    @classmethod
-    def generate_key(cls) -> tuple[str, str]:
-        """
-        Generate a new API key.
-
-        Returns:
-            tuple: (raw_key, key_hash) - raw_key is shown once, key_hash is stored
-        """
-        raw_key = f"sk_live_{secrets.token_urlsafe(32)}"
-        return raw_key, cls.hash_key(raw_key)
-
-
 class ChatSession(models.Model):
-    """
-    Tracks chat sessions with summaries and metadata.
-
-    Sessions are owned by either a user (user_id) or a service (service_id).
-    At least one must be set.
-    """
+    """Tracks chat sessions with summaries and metadata."""
 
     session_id = models.CharField(max_length=100, unique=True, db_index=True)
-    user_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
-    service_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    user_id = models.CharField(max_length=100, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
@@ -92,16 +44,9 @@ class ChatSession(models.Model):
 
     class Meta:
         ordering = ["-last_activity"]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(user_id__isnull=False) | models.Q(service_id__isnull=False),
-                name="chatsession_has_owner",
-            ),
-        ]
 
     def __str__(self):
-        owner = self.user_id or f"service:{self.service_id}"
-        return f"Session {self.session_id} ({owner})"
+        return f"Session {self.session_id} ({self.user_id})"
 
 
 class ConversationSummary(models.Model):
@@ -258,12 +203,7 @@ class RouteDecision(models.Model):
 
 
 class ChatMessage(models.Model):
-    """
-    Stores all chat messages for analytics and debugging.
-
-    Messages are associated with either a user (user_id) or a service (service_id).
-    At least one must be set.
-    """
+    """Stores all chat messages for analytics and debugging."""
 
     class Role(models.TextChoices):
         USER = "user", "User"
@@ -277,8 +217,7 @@ class ChatMessage(models.Model):
     # Identifiers
     message_id = models.CharField(max_length=100, unique=True, db_index=True)
     session_id = models.CharField(max_length=100, db_index=True)
-    user_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
-    service_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    user_id = models.CharField(max_length=100, db_index=True)
     turn_id = models.CharField(max_length=100, db_index=True, blank=True, default="")
 
     # Link to route decision for this turn
@@ -326,14 +265,7 @@ class ChatMessage(models.Model):
         indexes = [
             models.Index(fields=["session_id", "server_timestamp"]),
             models.Index(fields=["user_id", "server_timestamp"]),
-            models.Index(fields=["service_id", "server_timestamp"]),
             models.Index(fields=["turn_id"]),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(user_id__isnull=False) | models.Q(service_id__isnull=False),
-                name="chatmessage_has_owner",
-            ),
         ]
 
     def __str__(self):

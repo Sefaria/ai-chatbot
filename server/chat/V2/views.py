@@ -19,7 +19,6 @@ from rest_framework.response import Response
 
 from ..auth import (
     AuthenticationRequired,
-    InvalidAPIKey,
     InvalidUserToken,
     UserTokenExpired,
     authenticate_request,
@@ -110,9 +109,6 @@ def chat_stream_v2(request):
     except (InvalidUserToken, AuthenticationRequired) as exc:
         logger.warning(f"invalid userId token: {exc}")
         return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
-    except InvalidAPIKey as exc:
-        logger.warning(f"invalid API key: {exc}")
-        return Response({"error": "invalid_api_key"}, status=status.HTTP_401_UNAUTHORIZED)
 
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")

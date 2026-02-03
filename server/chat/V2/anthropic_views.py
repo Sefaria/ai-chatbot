@@ -19,7 +19,6 @@ from rest_framework.response import Response
 
 from ..auth import (
     AuthenticationRequired,
-    InvalidAPIKey,
     InvalidUserToken,
     UserTokenExpired,
     authenticate_request,
@@ -136,9 +135,7 @@ def chat_anthropic_v2(request):
 
     POST /api/v2/chat/anthropic
 
-    Supports dual authentication:
-    - API key: Authorization: Bearer <key>
-    - User token: userId in request body
+    Authentication via userId in request body.
 
     Supports multi-turn via X-Session-ID header:
     - If provided: uses that session, loads/updates conversation summary
@@ -168,10 +165,10 @@ def chat_anthropic_v2(request):
     """
     start_time = time.time()
 
-    # Authenticate request (API key or user token)
+    # Authenticate request via user token
     try:
         actor = authenticate_request(request, request.data)
-    except (AuthenticationRequired, InvalidUserToken, InvalidAPIKey, UserTokenExpired) as exc:
+    except (AuthenticationRequired, InvalidUserToken, UserTokenExpired) as exc:
         return Response(
             to_anthropic_error("authentication_error", str(exc)),
             status=status.HTTP_401_UNAUTHORIZED,
