@@ -21,8 +21,8 @@ from typing import Any
 
 try:
     import braintrust
-    from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
     from braintrust import current_span
+    from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 except Exception:  # pragma: no cover - optional dependency
     braintrust = None
     setup_claude_agent_sdk = None
@@ -526,8 +526,17 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-# Convenience function
+# Singleton agent service
+
+_agent_service: ClaudeAgentService | None = None
+
 
 def get_agent_service() -> ClaudeAgentService:
-    """Get a singleton agent service instance."""
-    return ClaudeAgentService()
+    """Get or create the singleton agent service instance."""
+    global _agent_service
+    if _agent_service is None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+        _agent_service = ClaudeAgentService(api_key=api_key)
+    return _agent_service

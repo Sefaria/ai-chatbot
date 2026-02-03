@@ -3,11 +3,13 @@ Anthropic-compatible chat endpoint for Braintrust integration.
 
 This endpoint accepts the Anthropic Messages API format and returns
 responses in the same format, enabling use in Braintrust playground
-and evaluations.
+and evaluations. Includes full logging and metrics parity with the
+streaming endpoint.
 """
 
 import asyncio
 import logging
+import time
 import uuid
 
 from django.conf import settings
@@ -15,10 +17,22 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .agent import AgentResponse, ConversationMessage
-from .views import get_agent_service
+from ..auth import (
+    AuthenticationRequired,
+    InvalidAPIKey,
+    InvalidUserToken,
+    UserTokenExpired,
+    authenticate_request,
+)
+from ..models import ChatMessage
+from .agent import AgentResponse, ConversationMessage, get_agent_service
+from .logging import get_turn_logging_service
+from .services import create_or_get_session, load_session_summary, save_user_message
 
 logger = logging.getLogger("chat")
+
+# Origin identifier for Braintrust requests (used in metadata)
+BRAINTRUST_ORIGIN = "braintrust"
 
 
 def extract_user_message(messages: list[dict]) -> str:
@@ -51,7 +65,9 @@ def extract_user_message(messages: list[dict]) -> str:
     return ""
 
 
-def to_anthropic_response(agent_response: AgentResponse, model: str) -> dict:
+def to_anthropic_response(
+    agent_response: AgentResponse, model: str, message_id: str, stats: dict
+) -> dict:
     """
     Transform our AgentResponse to Anthropic Messages API format.
 
@@ -80,7 +96,7 @@ def to_anthropic_response(agent_response: AgentResponse, model: str) -> dict:
         )
 
     return {
-        "id": f"msg_{uuid.uuid4().hex[:24]}",
+        "id": message_id,
         "type": "message",
         "role": "assistant",
         "content": content_blocks,
@@ -88,8 +104,27 @@ def to_anthropic_response(agent_response: AgentResponse, model: str) -> dict:
         "stop_reason": "end_turn",
         "stop_sequence": None,
         "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
+            "input_tokens": stats.get("inputTokens", 0),
+            "output_tokens": stats.get("outputTokens", 0),
+        },
+        "metadata": {
+            "trace_id": agent_response.trace_id,
+            "origin": BRAINTRUST_ORIGIN,
+            "stats": stats,
+        },
+    }
+
+
+def to_anthropic_error(error_type: str, message: str, latency_ms: int = 0) -> dict:
+    """Format an error response in Anthropic API style."""
+    return {
+        "error": {
+            "type": error_type,
+            "message": message,
+        },
+        "metadata": {
+            "origin": BRAINTRUST_ORIGIN,
+            "latency_ms": latency_ms,
         },
     }
 
@@ -101,11 +136,22 @@ def chat_anthropic_v2(request):
 
     POST /api/v2/chat/anthropic
 
+    Supports dual authentication:
+    - API key: Authorization: Bearer <key>
+    - User token: userId in request body
+
+    Supports multi-turn via X-Session-ID header:
+    - If provided: uses that session, loads/updates conversation summary
+    - If not provided: generates ephemeral session (stateless mode)
+
     Request (Anthropic Messages format):
         {
             "model": "sefaria-agent",
             "max_tokens": 1024,
-            "messages": [{"role": "user", "content": "What is Shabbat?"}]
+            "messages": [{"role": "user", "content": "What is Shabbat?"}],
+            "metadata": {
+                "core_prompt_slug": "optional-prompt-slug"
+            }
         }
 
     Response (Anthropic Messages format):
@@ -116,44 +162,118 @@ def chat_anthropic_v2(request):
             "content": [{"type": "text", "text": "..."}],
             "model": "...",
             "stop_reason": "end_turn",
-            "usage": {...}
+            "usage": {...},
+            "metadata": {"trace_id": "...", "origin": "braintrust", "stats": {...}}
         }
     """
+    start_time = time.time()
+
+    # Authenticate request (API key or user token)
+    try:
+        actor = authenticate_request(request, request.data)
+    except (AuthenticationRequired, InvalidUserToken, InvalidAPIKey, UserTokenExpired) as exc:
+        return Response(
+            to_anthropic_error("authentication_error", str(exc)),
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
     messages = request.data.get("messages", [])
     if not messages:
         return Response(
-            {"error": {"type": "invalid_request_error", "message": "messages is required"}},
+            to_anthropic_error("invalid_request_error", "messages is required"),
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    user_message = extract_user_message(messages)
-    if not user_message:
+    user_message_text = extract_user_message(messages)
+    if not user_message_text:
         return Response(
-            {"error": {"type": "invalid_request_error", "message": "No user message found"}},
+            to_anthropic_error("invalid_request_error", "No user message found"),
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    core_prompt_slug = (
-        request.data.get("metadata", {}).get("core_prompt_slug", "") or settings.CORE_PROMPT_SLUG
-    )
+    metadata = request.data.get("metadata", {})
+    core_prompt_slug = metadata.get("core_prompt_slug", "") or settings.CORE_PROMPT_SLUG
     model = request.data.get("model", "claude-sonnet-4-5-20250929")
+
+    # Session handling: X-Session-ID header for multi-turn, or ephemeral
+    session_id = request.headers.get("X-Session-ID")
+    if session_id:
+        # Multi-turn mode: use provided session, load summary
+        session, _ = create_or_get_session(session_id, actor, current_flow=BRAINTRUST_ORIGIN)
+        summary_text = load_session_summary(session)
+    else:
+        # Stateless mode: ephemeral session, no summary
+        session_id = f"ephemeral_{uuid.uuid4().hex[:16]}"
+        session, _ = create_or_get_session(
+            session_id, actor, validate_ownership=False, current_flow=BRAINTRUST_ORIGIN
+        )
+        summary_text = ""
+
+    turn_id = ChatMessage.generate_turn_id()
+    user_message_id = ChatMessage.generate_message_id()
+
+    # Save user message to DB
+    db_user_message = save_user_message(
+        session=session,
+        actor=actor,
+        message_id=user_message_id,
+        turn_id=turn_id,
+        content=user_message_text,
+        flow=BRAINTRUST_ORIGIN,
+    )
 
     try:
         agent = get_agent_service()
-        conversation = [ConversationMessage(role="user", content=user_message)]
+        conversation = [ConversationMessage(role="user", content=user_message_text)]
         agent_response = asyncio.run(
             agent.send_message(
                 messages=conversation,
                 core_prompt_id=core_prompt_slug,
                 on_progress=None,
-                summary_text="",
+                summary_text=summary_text,
             )
         )
     except Exception:
+        latency_ms = int((time.time() - start_time) * 1000)
         logger.exception("Agent error in Anthropic endpoint")
+
+        # Log error message
+        logging_service = get_turn_logging_service()
+        error_msg = logging_service.record_error_message(
+            session_id=session_id,
+            actor=actor,
+            turn_id=turn_id,
+            latency_ms=latency_ms,
+            error_text="Internal server error",
+        )
+        db_user_message.response_message = error_msg
+        db_user_message.save(update_fields=["response_message"])
+
         return Response(
-            {"error": {"type": "api_error", "message": "Internal server error"}},
+            to_anthropic_error("api_error", "Internal server error", latency_ms),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-    return Response(to_anthropic_response(agent_response, model))
+    latency_ms = int((time.time() - start_time) * 1000)
+
+    # Log successful response
+    logging_service = get_turn_logging_service()
+    logging_result = logging_service.finalize_success(
+        session=session,
+        user_message=db_user_message,
+        agent_response=agent_response,
+        latency_ms=latency_ms,
+        model_name=model,
+        summary_text=summary_text,
+    )
+
+    response_message = logging_result.response_message
+
+    return Response(
+        to_anthropic_response(
+            agent_response=agent_response,
+            model=model,
+            message_id=response_message.message_id,
+            stats=logging_result.stats,
+        )
+    )
