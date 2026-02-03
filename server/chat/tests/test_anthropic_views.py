@@ -205,7 +205,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -219,7 +219,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": []},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -231,7 +231,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "assistant", "content": "Hello"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -251,7 +251,7 @@ class TestChatAnthropicEndpoint:
                 "messages": [{"role": "user", "content": "What is Shabbat?"}],
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -280,7 +280,7 @@ class TestChatAnthropicEndpoint:
                 "metadata": {"core_prompt_slug": "custom-prompt"},
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         chat_anthropic_v2(request)
 
@@ -301,7 +301,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         chat_anthropic_v2(request)
 
@@ -319,7 +319,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         chat_anthropic_v2(request)
 
@@ -339,7 +339,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -361,7 +361,7 @@ class TestChatAnthropicEndpoint:
                 "messages": [{"role": "user", "content": "Test"}],
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -387,7 +387,7 @@ class TestChatAnthropicEndpoint:
                 ],
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -413,7 +413,7 @@ class TestChatAnthropicEndpoint:
                 ],
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
         response = chat_anthropic_v2(request)
 
@@ -433,7 +433,7 @@ class TestChatAnthropicEndpoint:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
             HTTP_X_SESSION_ID="my-multi-turn-session",
         )
         response = chat_anthropic_v2(request)
@@ -494,7 +494,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "What is Shabbat?"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -515,7 +515,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "מה זה שבת?"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -534,7 +534,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": large_content}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -548,7 +548,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data="not valid json",
             content_type="application/json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 400
@@ -560,7 +560,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": []},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         # Should get 400 for empty messages, not a content-type error
@@ -582,7 +582,7 @@ class TestChatAnthropicHTTPIntegration:
                 "messages": [{"role": "user", "content": "Test"}],
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -613,7 +613,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -642,7 +642,7 @@ class TestChatAnthropicHTTPIntegration:
                 "metadata": {"core_prompt_slug": "custom-prompt"},
             },
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200
@@ -661,7 +661,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "Test"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 500
@@ -681,7 +681,7 @@ class TestChatAnthropicHTTPIntegration:
             "/api/v2/chat/anthropic",
             data={"messages": [{"role": "user", "content": "What is Shabbat?"}]},
             format="json",
-            HTTP_X_USER_ID=user_token,
+            HTTP_X_API_KEY=user_token,
         )
 
         assert response.status_code == 200

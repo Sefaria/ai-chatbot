@@ -39,9 +39,9 @@ class TestUserTokenAuthentication:
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_valid_user_token_in_header_returns_user_actor(self, factory, secret):
-        """Test that valid user token in X-User-Id header returns actor with user_id."""
+        """Test that valid user token in X-Api-Key header returns actor with user_id."""
         token = create_test_token("user_12345", secret)
-        request = factory.post("/test", HTTP_X_USER_ID=token)
+        request = factory.post("/test", HTTP_X_API_KEY=token)
 
         actor = authenticate_request(request)
 
@@ -49,10 +49,10 @@ class TestUserTokenAuthentication:
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_header_takes_precedence_over_body(self, factory, secret):
-        """Test that X-User-Id header takes precedence over body userId."""
+        """Test that X-Api-Key header takes precedence over body userId."""
         header_token = create_test_token("header_user", secret)
         body_token = create_test_token("body_user", secret)
-        request = factory.post("/test", HTTP_X_USER_ID=header_token)
+        request = factory.post("/test", HTTP_X_API_KEY=header_token)
 
         actor = authenticate_request(request, {"userId": body_token})
 

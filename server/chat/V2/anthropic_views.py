@@ -136,7 +136,7 @@ def chat_anthropic_v2(request):
     POST /api/v2/chat/anthropic
 
     Headers:
-        X-User-Id: <encrypted_user_token> (required)
+        X-Api-Key: <encrypted_user_token> (required)
         X-Session-ID: <session_id> (optional, for multi-turn)
 
     Request (Anthropic Messages format):

@@ -8,12 +8,6 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .auth import (
-    AuthenticationRequired,
-    InvalidUserToken,
-    UserTokenExpired,
-    authenticate_request,
-)
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
 from .V2 import views as v2_views
@@ -57,30 +51,20 @@ def history(request):
     """
     Get conversation history with session metadata.
 
-    GET /api/history?sessionId=...&userId=...&before=...&limit=...
+    GET /api/history?userId=...&sessionId=...&before=...&limit=...
     """
+    user_id = request.query_params.get("userId")
     session_id = request.query_params.get("sessionId")
     before = request.query_params.get("before")
     limit = min(int(request.query_params.get("limit", 20)), 100)
 
-    if not session_id:
-        return Response({"error": "sessionId is required"}, status=status.HTTP_400_BAD_REQUEST)
+    if not user_id or not session_id:
+        return Response(
+            {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
+        )
 
-    # Authenticate via user token from query param
-    try:
-        body_data = {}
-        if request.query_params.get("userId"):
-            body_data["userId"] = request.query_params.get("userId")
-
-        actor = authenticate_request(request, body_data)
-    except UserTokenExpired:
-        return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
-    except (InvalidUserToken, AuthenticationRequired):
-        return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
-
-    # Build query filtered by user
     queryset = ChatMessage.objects.filter(
-        user_id=actor.user_id,
+        user_id=user_id,
         session_id=session_id,
     )
 
@@ -101,17 +85,13 @@ def history(request):
 
     serializer = HistoryMessageSerializer(messages, many=True)
 
-    # Get session info - verify ownership
+    # Get session info
     try:
         session = ChatSession.objects.get(session_id=session_id)
-        if session.user_id != actor.user_id:
-            session_info = None
-        else:
-            session_info = {
-                "turnCount": session.turn_count or 0,
-                "totalTokens": (session.total_input_tokens or 0)
-                + (session.total_output_tokens or 0),
-            }
+        session_info = {
+            "turnCount": session.turn_count or 0,
+            "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
+        }
     except ChatSession.DoesNotExist:
         session_info = None
 

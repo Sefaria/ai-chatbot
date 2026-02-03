@@ -50,7 +50,7 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     Authenticate a request and return an Actor.
 
     Authentication is attempted in order:
-    1. X-User-Id header (for Anthropic-compatible endpoints)
+    1. X-Api-Key header (for Anthropic-compatible endpoints)
     2. userId field in body_data (for streaming endpoint)
 
     Args:
@@ -65,10 +65,10 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
         InvalidUserToken: User token is invalid
         UserTokenExpired: User token is expired
     """
-    # Check X-User-Id header first (for Anthropic-compatible endpoints)
-    user_id_header = request.headers.get("X-User-Id")
-    if user_id_header:
-        return _authenticate_user_token(user_id_header)
+    # Check X-Api-Key header first (for Anthropic-compatible endpoints)
+    api_key_header = request.headers.get("X-Api-Key")
+    if api_key_header:
+        return _authenticate_user_token(api_key_header)
 
     # Fall back to userId in body (for streaming endpoint)
     if body_data and body_data.get("userId"):
