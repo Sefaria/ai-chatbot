@@ -49,6 +49,10 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     """
     Authenticate a request and return an Actor.
 
+    Authentication is attempted in order:
+    1. X-User-Id header (for Anthropic-compatible endpoints)
+    2. userId field in body_data (for streaming endpoint)
+
     Args:
         request: Django request object
         body_data: Optional dict containing userId field for user token auth
@@ -61,6 +65,12 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
         InvalidUserToken: User token is invalid
         UserTokenExpired: User token is expired
     """
+    # Check X-User-Id header first (for Anthropic-compatible endpoints)
+    user_id_header = request.headers.get("X-User-Id")
+    if user_id_header:
+        return _authenticate_user_token(user_id_header)
+
+    # Fall back to userId in body (for streaming endpoint)
     if body_data and body_data.get("userId"):
         return _authenticate_user_token(body_data["userId"])
 

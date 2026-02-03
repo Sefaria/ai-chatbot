@@ -135,11 +135,9 @@ def chat_anthropic_v2(request):
 
     POST /api/v2/chat/anthropic
 
-    Authentication via userId in request body.
-
-    Supports multi-turn via X-Session-ID header:
-    - If provided: uses that session, loads/updates conversation summary
-    - If not provided: generates ephemeral session (stateless mode)
+    Headers:
+        X-User-Id: <encrypted_user_token> (required)
+        X-Session-ID: <session_id> (optional, for multi-turn)
 
     Request (Anthropic Messages format):
         {
@@ -165,9 +163,9 @@ def chat_anthropic_v2(request):
     """
     start_time = time.time()
 
-    # Authenticate request via user token
+    # Authenticate via X-User-Id header
     try:
-        actor = authenticate_request(request, request.data)
+        actor = authenticate_request(request)
     except (AuthenticationRequired, InvalidUserToken, UserTokenExpired) as exc:
         return Response(
             to_anthropic_error("authentication_error", str(exc)),
