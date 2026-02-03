@@ -5,6 +5,14 @@ This endpoint accepts the Anthropic Messages API format and returns
 responses in the same format, enabling use in Braintrust playground
 and evaluations. Includes full logging and metrics parity with the
 streaming endpoint.
+
+Deviations from Anthropic Messages API standard:
+- Authentication: Uses X-Api-Key header with encrypted user token (not an actual API key).
+  Configure Braintrust with the user token as the "API key".
+- Response `metadata` field: We add trace_id, origin, and stats. Extra fields are ignored
+  by standard clients.
+- Response `id` format: Uses our message_id format (msg_ + 16 hex chars) rather than
+  Anthropic's format (msg_ + 24 alphanumeric). Both use msg_ prefix, so this is compatible.
 """
 
 import asyncio
