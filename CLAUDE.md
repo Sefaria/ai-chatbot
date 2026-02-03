@@ -10,7 +10,6 @@ Embeddable AI chatbot for Jewish text learning. Claude + Sefaria API.
 - Keep code simple and clean. Prefer conciseness over robustness.
 - Test before committing. Run `pytest` (backend) and verify frontend changes.
 - When adding features, add tests. Fix flaky tests and improve test infrastructure when encountered.
-- Plans should use clear prose paragraphs, not code examples. Describe the approach and reasoning in plain language.
 
 ## Quick Start
 
