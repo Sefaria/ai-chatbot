@@ -48,6 +48,12 @@ def create_or_get_session(
     Raises:
         SessionOwnershipError: If validate_ownership is True and session belongs to different actor
     """
+    # Check ownership BEFORE updating to prevent overwriting another user's session
+    if validate_ownership:
+        existing = ChatSession.objects.filter(session_id=session_id).first()
+        if existing:
+            validate_session_ownership(existing, actor)
+
     defaults = {
         **actor.to_db_fields(),
         "last_activity": timezone.now(),
@@ -58,9 +64,6 @@ def create_or_get_session(
         session_id=session_id,
         defaults=defaults,
     )
-
-    if not created and validate_ownership:
-        validate_session_ownership(session, actor)
 
     return session, created
 
