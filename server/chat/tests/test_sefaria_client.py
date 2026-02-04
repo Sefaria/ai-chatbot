@@ -283,3 +283,62 @@ class TestEnglishSemanticSearch:
             result = await client.english_semantic_search("test query")
 
         assert result == expected_results
+
+
+class TestTextSearch:
+    """Test text_search empty result handling."""
+
+    @pytest.mark.asyncio
+    async def test_returns_helpful_message_when_no_results(self, client):
+        """When search returns no results, should return a helpful message."""
+
+        # Create mock that returns empty hits
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"hits": {"hits": [], "total": {"value": 0}}}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.text_search("nonexistent query xyz123")
+
+        # Should return a dict with no_results indicator and suggestion
+        assert isinstance(result, dict)
+        assert result.get("no_results") is True
+        assert "suggestion" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_results_when_found(self, client):
+        """When search finds results, should return the results list."""
+
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "hits": {
+                        "hits": [
+                            {
+                                "_source": {"ref": "Genesis 1:1", "categories": ["Torah"]},
+                                "highlight": {"exact": ["In the beginning"]},
+                            }
+                        ],
+                        "total": {"value": 1},
+                    }
+                }
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.text_search("beginning")
+
+        # Should return a list of results
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["ref"] == "Genesis 1:1"

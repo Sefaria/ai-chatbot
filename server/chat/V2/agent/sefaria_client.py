@@ -88,7 +88,7 @@ class SefariaClient:
 
     async def text_search(
         self, query: str, filters: list[str] | None = None, size: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Search across the Jewish library."""
         data = await self._search(query, filters, size)
         results = self._format_search_results(data, filters)
@@ -99,9 +99,16 @@ class SefariaClient:
         # Fallback: try without filters
         if filters:
             fallback_data = await self._search(query, None, size)
-            return self._format_search_results(fallback_data, None, filters)
+            fallback_results = self._format_search_results(fallback_data, None, filters)
+            if fallback_results:
+                return fallback_results
 
-        return []
+        # Return helpful message when no results found
+        return {
+            "no_results": True,
+            "query": query,
+            "suggestion": "No texts found matching this query. Consider using different keywords or trying a broader search term. If searching in Hebrew, try the exact phrase from the source text.",
+        }
 
     async def get_current_calendar(self) -> dict[str, Any]:
         """Get current Jewish calendar information."""
