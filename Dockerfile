@@ -8,6 +8,10 @@ RUN npm run build
 
 FROM python:3.11-alpine3.23 AS server
 
+# Install Node.js for Claude Code CLI (required by claude-agent-sdk)
+RUN apk add --no-cache nodejs npm \
+    && npm install -g @anthropic-ai/claude-code
+
 # set user as non-root with a known UID for Kubernetes
 RUN adduser -D -u 1001 appuser \
     && mkdir -p /tmp \
