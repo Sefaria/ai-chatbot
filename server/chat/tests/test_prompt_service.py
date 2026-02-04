@@ -59,7 +59,10 @@ class TestPromptServiceInit:
 class TestFallbackToDefaults:
     """Test fallback to local default prompts."""
 
-    def test_get_core_prompt(self, service: PromptService) -> None:
+    def test_get_core_prompt_falls_back_to_local(self) -> None:
+        """When Braintrust is unavailable, should return local default prompt."""
+        service = PromptService(api_key=None)
+        service._braintrust_client = None  # Ensure no Braintrust access
         prompt = service.get_core_prompt()
         assert isinstance(prompt, CorePrompt)
         assert prompt.text is not None

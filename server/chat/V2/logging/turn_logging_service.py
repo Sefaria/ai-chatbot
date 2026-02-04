@@ -7,6 +7,7 @@ from typing import Any
 
 from django.utils import timezone
 
+from ...auth import Actor
 from ...models import ChatMessage, ChatSession
 from ..agent import AgentResponse
 
@@ -26,7 +27,7 @@ class TurnLoggingService:
         self,
         *,
         session_id: str,
-        user_id: str,
+        actor: Actor,
         turn_id: str,
         latency_ms: int,
         error_text: str,
@@ -34,12 +35,12 @@ class TurnLoggingService:
         return ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
             session_id=session_id,
-            user_id=user_id,
             turn_id=turn_id,
             role=ChatMessage.Role.ASSISTANT,
             content=error_text,
             status=ChatMessage.Status.FAILED,
             latency_ms=latency_ms,
+            **actor.to_db_fields(),
         )
 
     def finalize_success(
@@ -71,7 +72,9 @@ class TurnLoggingService:
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=["response_message", "latency_ms"])
 
-        session.message_count = ChatMessage.objects.filter(session_id=user_message.session_id).count()
+        session.message_count = ChatMessage.objects.filter(
+            session_id=user_message.session_id
+        ).count()
         session.turn_count = (session.turn_count or 0) + 1
         session.conversation_summary = summary_text
         session.summary_updated_at = timezone.now()

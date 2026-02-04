@@ -13,21 +13,27 @@ import time
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .agent import AgentProgressUpdate, ClaudeAgentService, ConversationMessage
-from .logging import get_turn_logging_service
-from .summarization import get_summary_service
-from ..models import ChatMessage, ChatSession, ConversationSummary
-from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
-from ..user_token_service import (
-    UserTokenError,
-    UserTokenExpiredError,
-    decrypt_chatbot_user_token,
+from ..auth import (
+    AuthenticationRequired,
+    InvalidUserToken,
+    UserTokenExpired,
+    authenticate_request,
 )
+from ..models import ChatMessage
+from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
+from .agent import AgentProgressUpdate, ConversationMessage, get_agent_service
+from .logging import get_turn_logging_service
+from .services import (
+    apply_page_context_to_message,
+    create_or_get_session,
+    load_session_summary,
+    save_user_message,
+)
+from .summarization import get_summary_service
 
 logger = logging.getLogger("chat")
 
@@ -38,17 +44,6 @@ def build_session_info(session) -> dict:
     return {
         "turnCount": turn_count,
     }
-
-
-def _apply_page_context_to_user_message(message: str, page_url: str) -> str:
-    """Append page URL context to the user message for the agent prompt."""
-    if not page_url:
-        return message
-    return (
-        f"{message}\n\n"
-        f"User is currently on the Sefaria url: {page_url}. "
-        "If the context is relevant, use that information in your response"
-    )
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
@@ -66,7 +61,6 @@ def _create_traced_executor() -> concurrent.futures.Executor:
 
 
 # Global services (initialized lazily)
-_agent_service: ClaudeAgentService | None = None
 _bt_logger = None
 
 
@@ -89,17 +83,6 @@ def get_braintrust_logger():
         return None
 
 
-def get_agent_service() -> ClaudeAgentService:
-    """Get or create the agent service singleton."""
-    global _agent_service
-    if _agent_service is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
-        _agent_service = ClaudeAgentService(api_key=api_key)
-    return _agent_service
-
-
 @api_view(["POST"])
 def chat_stream_v2(request):
     """
@@ -117,53 +100,38 @@ def chat_stream_v2(request):
         )
 
     data = serializer.validated_data
-    secret = settings.CHATBOT_USER_TOKEN_SECRET
-    if not secret:
-        logger.error("❌ [v2 stream] CHATBOT_USER_TOKEN_SECRET is not configured")
-        return Response(
-            {"error": "userId_decryption_unavailable"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
 
     try:
-        decrypted_user_id = decrypt_chatbot_user_token(data["userId"], secret)
-    except UserTokenExpiredError:
-        logger.warning("❌ [v2 stream] expired userId token")
+        actor = authenticate_request(request, data)
+    except UserTokenExpired:
+        logger.warning("expired userId token")
         return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
-    except UserTokenError as exc:
-        logger.warning(f"❌ [v2 stream] invalid userId token: {exc}")
+    except (InvalidUserToken, AuthenticationRequired) as exc:
+        logger.warning(f"invalid userId token: {exc}")
         return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
 
-    data["userId"] = decrypted_user_id
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
     turn_id = ChatMessage.generate_turn_id()
 
-    # Update or create session
-    session, _ = ChatSession.objects.update_or_create(
-        session_id=data["sessionId"],
-        defaults={
-            "user_id": data["userId"],
-            "last_activity": timezone.now(),
-        },
-    )
+    # Create or get session with ownership validation
+    session, _ = create_or_get_session(data["sessionId"], actor)
 
     # Load summary for this session (if any)
-    summary = ConversationSummary.objects.filter(session=session).first()
-    summary_text = summary.to_prompt_text() if summary else ""
+    summary_text = load_session_summary(session)
+
     # Only core prompt slug is used for v2 streaming.
     core_prompt_slug = (prompt_slugs.get("corePromptSlug") or "").strip()
     if not core_prompt_slug:
         core_prompt_slug = settings.CORE_PROMPT_SLUG
 
     # Save user message
-    user_message = ChatMessage.objects.create(
+    user_message = save_user_message(
+        session=session,
+        actor=actor,
         message_id=data["messageId"],
-        session_id=data["sessionId"],
-        user_id=data["userId"],
         turn_id=turn_id,
-        role=ChatMessage.Role.USER,
         content=data["text"],
         client_timestamp=data["timestamp"],
         locale=context.get("locale", ""),
@@ -180,7 +148,7 @@ def chat_stream_v2(request):
 
         def run_agent():
             try:
-                user_content = _apply_page_context_to_user_message(data["text"], page_url)
+                user_content = apply_page_context_to_message(data["text"], page_url)
                 conversation = [ConversationMessage(role="user", content=user_content)]
                 agent = get_agent_service()
                 result_holder["response"] = asyncio.run(
@@ -237,12 +205,12 @@ def chat_stream_v2(request):
         latency_ms = int((time.time() - start_time) * 1000)
 
         if result_holder["error"]:
-            logger.error(f"❌ [v2 stream] Agent error: {result_holder['error']}")
+            logger.error(f"Agent error: {result_holder['error']}")
 
             logging_service = get_turn_logging_service()
             error_msg = logging_service.record_error_message(
                 session_id=data["sessionId"],
-                user_id=data["userId"],
+                actor=actor,
                 turn_id=turn_id,
                 latency_ms=latency_ms,
                 error_text="I'm sorry, I encountered an error processing your request.",
@@ -355,6 +323,8 @@ def chat_feedback_v2(request):
             raise AttributeError("Braintrust logger does not support feedback logging")
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
-        return Response({"error": "feedback_log_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(
+            {"error": "feedback_log_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
     return Response({"success": True})

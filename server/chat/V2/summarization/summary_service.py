@@ -242,11 +242,15 @@ class SummaryService:
         """Infer user intent from message patterns."""
         message_lower = message.lower()
 
-        if any(word in message_lower for word in ["translate", "translation", "render", "in english"]):
+        if any(
+            word in message_lower for word in ["translate", "translation", "render", "in english"]
+        ):
             return "translation request"
         if any(word in message_lower for word in ["find", "search", "where", "source"]):
             return "source lookup"
-        if any(word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]):
+        if any(
+            word in message_lower for word in ["permitted", "allowed", "halacha", "mutar", "assur"]
+        ):
             return "halachic guidance"
         if any(word in message_lower for word in ["explain", "what is", "teach", "understand"]):
             return "explanation"

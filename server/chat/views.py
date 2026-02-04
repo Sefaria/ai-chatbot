@@ -10,8 +10,8 @@ from rest_framework.response import Response
 
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
-from .V2.prompts import get_prompt_service
 from .V2 import views as v2_views
+from .V2.prompts import get_prompt_service
 
 logger = logging.getLogger("chat")
 

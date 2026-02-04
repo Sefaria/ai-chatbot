@@ -149,7 +149,9 @@ class PromptService:
             prompt_text = self._extract_prompt_text(prompt)
 
             if prompt_text:
-                logger.info(f"Loaded core prompt from Braintrust: {prompt_id}, version={actual_version}")
+                logger.info(
+                    f"Loaded core prompt from Braintrust: {prompt_id}, version={actual_version}"
+                )
                 return prompt_text, str(actual_version)
 
             return None, ""

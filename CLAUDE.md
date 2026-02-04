@@ -9,6 +9,7 @@ Embeddable AI chatbot for Jewish text learning. Claude + Sefaria API.
 - Small, atomic commits. Commit after each logical change.
 - Keep code simple and clean. Prefer conciseness over robustness.
 - Test before committing. Run `pytest` (backend) and verify frontend changes.
+- When adding features, add tests. Fix flaky tests and improve test infrastructure when encountered.
 
 ## Quick Start
 

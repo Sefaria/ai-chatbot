@@ -21,8 +21,8 @@ from typing import Any
 
 try:
     import braintrust
-    from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
     from braintrust import current_span
+    from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 except Exception:  # pragma: no cover - optional dependency
     braintrust = None
     setup_claude_agent_sdk = None
@@ -528,6 +528,7 @@ class ClaudeAgentService:
 
 # Convenience function
 
+
 def get_agent_service() -> ClaudeAgentService:
-    """Get a singleton agent service instance."""
+    """Get a new agent service instance."""
     return ClaudeAgentService()

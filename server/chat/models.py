@@ -8,9 +8,7 @@ from django.db import models
 
 
 class ChatSession(models.Model):
-    """
-    Tracks chat sessions with summaries and metadata.
-    """
+    """Tracks chat sessions with summaries and metadata."""
 
     session_id = models.CharField(max_length=100, unique=True, db_index=True)
     user_id = models.CharField(max_length=100, db_index=True)
@@ -48,7 +46,7 @@ class ChatSession(models.Model):
         ordering = ["-last_activity"]
 
     def __str__(self):
-        return f"Session {self.session_id} (user: {self.user_id})"
+        return f"Session {self.session_id} ({self.user_id})"
 
 
 class ConversationSummary(models.Model):
@@ -58,9 +56,7 @@ class ConversationSummary(models.Model):
     Updated by an AI summarizer and used as compact context for future turns.
     """
 
-    session = models.OneToOneField(
-        ChatSession, on_delete=models.CASCADE, related_name="summary"
-    )
+    session = models.OneToOneField(ChatSession, on_delete=models.CASCADE, related_name="summary")
 
     text = models.TextField(blank=True, default="")
     current_topic = models.CharField(max_length=255, blank=True, default="")
@@ -207,9 +203,7 @@ class RouteDecision(models.Model):
 
 
 class ChatMessage(models.Model):
-    """
-    Stores all chat messages for analytics and debugging.
-    """
+    """Stores all chat messages for analytics and debugging."""
 
     class Role(models.TextChoices):
         USER = "user", "User"
