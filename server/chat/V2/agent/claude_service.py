@@ -443,6 +443,8 @@ class ClaudeAgentService:
             "allowed_tools": allowed_tools,
         }
 
+        debug_enabled = os.environ.get("CLAUDE_SDK_DEBUG", 1)
+
         if self._supports_option("max_tokens"):
             options_kwargs["max_tokens"] = self.max_tokens
         if self._supports_option("temperature"):
@@ -459,6 +461,13 @@ class ClaudeAgentService:
                 env["BRAINTRUST_PROJECT"] = self._braintrust_project
             if env:
                 options_kwargs["env"] = env
+        if debug_enabled:
+            if self._supports_option("extra_args"):
+                options_kwargs["extra_args"] = {"debug-to-stderr": None}
+            if self._supports_option("stderr"):
+                options_kwargs["stderr"] = lambda line: logger.warning(
+                    "Claude CLI: %s", line
+                )
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
