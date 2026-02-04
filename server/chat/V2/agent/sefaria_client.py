@@ -81,7 +81,7 @@ class SefariaClient:
         elif version_language == "english":
             params["version"] = "english"
         elif version_language == "both":
-            params["version"] = "english|source"
+            params["version"] = ["english", "source"]
 
         data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
         return self._optimize_text_response(data)
@@ -286,13 +286,15 @@ class SefariaClient:
         response.raise_for_status()
         return response.json()
 
-    async def _get_json(self, endpoint: str, params: dict[str, str] | None = None) -> Any:
+    async def _get_json(
+        self, endpoint: str, params: dict[str, str | list[str]] | None = None
+    ) -> Any:
         """Make a GET request and return JSON."""
         url = f"{self.base_url}/{endpoint}"
         if params:
             filtered_params = {k: v for k, v in params.items() if v}
             if filtered_params:
-                url = f"{url}?{urlencode(filtered_params)}"
+                url = f"{url}?{urlencode(filtered_params, doseq=True)}"
 
         client = await self._get_client()
         response = await client.get(url)
