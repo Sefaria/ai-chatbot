@@ -112,7 +112,7 @@ class SefariaClient:
         self, query: str, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Perform semantic search on English text embeddings."""
-        payload = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if filters:
             payload["filters"] = filters
 
@@ -123,9 +123,18 @@ class SefariaClient:
 
         url = f"{self.ai_base_url}/api/knn-search"
         client = await self._get_client()
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
+
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {
+                    "error": "Semantic search is currently unavailable.",
+                    "suggestion": "Use text_search instead for keyword-based search.",
+                }
+            raise
 
     async def get_links_between_texts(
         self, reference: str, with_text: str = "0"
