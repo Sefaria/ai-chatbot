@@ -608,7 +608,7 @@
                   <img src="{staticBaseUrl}/static/icons/info.svg" alt="" width="16" height="16" />
                   Get help
                 </a>
-                <a class="menu-item" href="https://www.sefaria.org/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticBaseUrl}/static/icons/toggle-right.svg" alt="" width="16" height="16" />
                   Opt-out
                 </a>
