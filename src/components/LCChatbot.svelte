@@ -46,9 +46,15 @@
 
   let isClearing = $state(false);
 
+  // Menu state
+  let showMenu = $state(false);
+
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+
+  // Derive static base URL by removing '/api' suffix from apiBaseUrl
+  let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -508,6 +514,26 @@
       }
     }));
   }
+
+  function toggleMenu() {
+    showMenu = !showMenu;
+  }
+
+  function closeMenu() {
+    showMenu = false;
+  }
+
+  function handleMenuClick(e) {
+    // Close menu when clicking outside
+    if (showMenu && !e.target.closest('.menu-container')) {
+      closeMenu();
+    }
+  }
+
+  function handleRestartConvo() {
+    closeMenu();
+    handleNewChat();
+  }
 </script>
 
 <div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
@@ -546,8 +572,9 @@
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header">
+      <header class="lc-chatbot-header" role="banner" onclick={handleMenuClick}>
         <div class="header-left">
           <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -558,13 +585,36 @@
           <h2>Library Assistant</h2>
         </div>
         <div class="header-actions">
-          <button class="new-chat-btn" onclick={handleNewChat} disabled={isSending} aria-label="Start a new chat">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 12h18"></path>
-              <path d="M12 3v18"></path>
-            </svg>
-            <span>New chat</span>
+          <button aria-label="Panel" class="panel-btn">
+            <img src="{staticBaseUrl}/static/icons/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
+          <div class="menu-container">
+            <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
+              <img src="{staticBaseUrl}/static/icons/ellipsis-vertical.svg" alt="" width="18" height="18" />
+            </button>
+            {#if showMenu}
+              <div class="menu-dropdown" role="menu">
+                <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                  <img src="{staticBaseUrl}/static/icons/rotate-ccw.svg" alt="" width="16" height="16" />
+                  Restart conversation
+                </button>
+                <a class="menu-item" href="https://www.sefaria.org" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  Give feedback
+                </a>
+                <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                  <img src="{staticBaseUrl}/static/icons/info.svg" alt="" width="16" height="16" />
+                  Get help
+                </a>
+                <a class="menu-item" href="https://www.sefaria.org/settings/account" role="menuitem" onclick={closeMenu}>
+                  <img src="{staticBaseUrl}/static/icons/toggle-right.svg" alt="" width="16" height="16" />
+                  Opt-out
+                </a>
+              </div>
+            {/if}
+          </div>
           <button class="close-btn" onclick={closePanel} aria-label="Close chat">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -938,7 +988,12 @@
     gap: 8px;
   }
 
-  .new-chat-btn {
+  .menu-container {
+    position: relative;
+  }
+
+  .menu-btn,
+  .panel-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -954,14 +1009,55 @@
     transition: all 0.15s ease;
   }
 
-  .new-chat-btn:hover:not(:disabled) {
+  .menu-btn:hover,
+  .panel-btn:hover {
     background: var(--lc-bg-secondary);
     color: var(--lc-text);
   }
 
-  .new-chat-btn:disabled {
-    opacity: 0.6;
+  .menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 200px;
+    background: var(--lc-bg);
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    box-shadow: var(--lc-shadow);
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    color: var(--lc-text);
+    font-size: 13px;
+    font-family: var(--lc-font);
+    text-decoration: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease;
+  }
+
+  .menu-item:hover:not(:disabled) {
+    background: var(--lc-bg-tertiary);
+  }
+
+  .menu-item:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .menu-item svg {
+    flex-shrink: 0;
+    color: var(--lc-text-secondary);
   }
 
   .close-btn {
