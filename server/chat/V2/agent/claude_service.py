@@ -200,19 +200,15 @@ class ClaudeAgentService:
         """
         self._setup_braintrust_tracing()
 
-        async def run() -> AgentResponse:
-            return await self._send_message_inner(
-                messages=messages,
-                core_prompt_id=core_prompt_id,
-                on_progress=on_progress,
-                summary_text=summary_text,
-            )
-
-        if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
-            traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
-            return await traced_run()
-
-        return await run()
+        # Note: We do NOT wrap with braintrust.traced() here because
+        # setup_claude_agent_sdk() already patches the Claude SDK for
+        # automatic tracing. Adding traced() would cause duplicate logging.
+        return await self._send_message_inner(
+            messages=messages,
+            core_prompt_id=core_prompt_id,
+            on_progress=on_progress,
+            summary_text=summary_text,
+        )
 
     async def _send_message_inner(
         self,
@@ -465,9 +461,7 @@ class ClaudeAgentService:
             if self._supports_option("extra_args"):
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
             if self._supports_option("stderr"):
-                options_kwargs["stderr"] = lambda line: logger.warning(
-                    "Claude CLI: %s", line
-                )
+                options_kwargs["stderr"] = lambda line: logger.warning("Claude CLI: %s", line)
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
