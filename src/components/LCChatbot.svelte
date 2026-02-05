@@ -46,6 +46,22 @@
 
   let isClearing = $state(false);
 
+  // Feedback modal state
+  let showFeedbackModal = $state(false);
+  let feedbackModalMessageId = $state(null);
+  let feedbackComment = $state('');
+  let feedbackType = $state(null); // 'like' or 'dislike'
+  let feedbackIssue = $state(''); // For dislikes: selected issue category
+
+  // Feedback issue options for dislikes
+  const FEEDBACK_ISSUES = [
+    { value: 'inaccurate', label: 'Inaccurate' },
+    { value: 'too_authoritative', label: 'Too Authoritative' },
+    { value: 'disrespectful', label: 'Disrespectful' },
+    { value: 'too_slow', label: 'Too Slow' },
+    { value: 'other', label: 'Other' }
+  ];
+
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
@@ -386,8 +402,16 @@
     const target = messages.find(m => m.messageId === messageId);
     if (!target?.traceId || !apiBaseUrl) return;
 
+    // Show the feedback modal for both likes and dislikes
+    feedbackModalMessageId = messageId;
+    feedbackComment = '';
+    feedbackIssue = '';
+    feedbackType = score > 0 ? 'like' : 'dislike';
+    showFeedbackModal = true;
+
+    // Update UI immediately to show selection
     messages = messages.map(m =>
-      m.messageId === messageId ? { ...m, feedback: score > 0 ? 'like' : 'dislike' } : m
+      m.messageId === messageId ? { ...m, feedback: feedbackType } : m
     );
 
     try {
@@ -401,6 +425,24 @@
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
     }
+  }
+
+  function closeFeedbackModal() {
+    showFeedbackModal = false;
+    feedbackModalMessageId = null;
+    feedbackComment = '';
+    feedbackType = null;
+    feedbackIssue = '';
+  }
+
+  async function submitFeedbackWithComment() {
+    // Currently does nothing - placeholder for future implementation
+    closeFeedbackModal();
+  }
+
+  function skipFeedbackComment() {
+    // Currently does nothing - placeholder for future implementation
+    closeFeedbackModal();
   }
 
   function handleScroll(e) {
@@ -777,6 +819,47 @@
         </button>
       </footer>
       {/if}
+    </div>
+  {/if}
+
+  <!-- Feedback Modal -->
+  {#if showFeedbackModal}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
+        <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
+        <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
+        {#if feedbackType === 'dislike'}
+          <select
+            class="feedback-modal-select"
+            bind:value={feedbackIssue}
+          >
+            <option value="" disabled>Select Issue</option>
+            {#each FEEDBACK_ISSUES as issue}
+              <option value={issue.value}>{issue.label}</option>
+            {/each}
+          </select>
+        {/if}
+        <input
+          type="text"
+          class="feedback-modal-input"
+          bind:value={feedbackComment}
+          placeholder={feedbackType === 'dislike' ? 'More details' : "Anything you'd like to add?"}
+        />
+        <div class="feedback-modal-actions">
+          <button
+            class="feedback-modal-btn submit"
+            onclick={submitFeedbackWithComment}
+            disabled={feedbackType === 'dislike' && !feedbackIssue}
+          >
+            Submit
+          </button>
+          <button class="feedback-modal-btn skip" onclick={skipFeedbackComment}>
+            Skip
+          </button>
+        </div>
+      </div>
     </div>
   {/if}
 </div>
@@ -1523,6 +1606,155 @@
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;
+  }
+
+  /* Feedback Modal */
+  .feedback-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    animation: fadeIn 0.15s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .feedback-modal {
+    background: var(--lc-bg);
+    border-radius: var(--lc-radius);
+    padding: 24px;
+    width: 320px;
+    max-width: 90vw;
+    box-shadow: var(--lc-shadow);
+    animation: slideUp 0.2s ease;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .feedback-modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--lc-text);
+    margin: 0 0 8px 0;
+  }
+
+  .feedback-modal-subtitle {
+    font-size: 14px;
+    font-style: italic;
+    color: var(--lc-text-secondary);
+    margin: 0 0 16px 0;
+  }
+
+  .feedback-modal-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+    outline: none;
+    transition: border-color 0.15s ease;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .feedback-modal-select:focus {
+    border-color: var(--lc-primary);
+  }
+
+  .feedback-modal-select option[value=""][disabled] {
+    color: var(--lc-text-muted);
+  }
+
+  .feedback-modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+    outline: none;
+    transition: border-color 0.15s ease;
+    box-sizing: border-box;
+  }
+
+  .feedback-modal-input:focus {
+    border-color: var(--lc-primary);
+  }
+
+  .feedback-modal-input::placeholder {
+    color: var(--lc-text-muted);
+  }
+
+  .feedback-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .feedback-modal-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .feedback-modal-btn.submit {
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+  }
+
+  .feedback-modal-btn.submit:hover:not(:disabled) {
+    background: var(--lc-primary-hover);
+  }
+
+  .feedback-modal-btn.submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .feedback-modal-btn.skip {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    border: 1px solid var(--lc-border);
+  }
+
+  .feedback-modal-btn.skip:hover {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
   }
 
 </style>
