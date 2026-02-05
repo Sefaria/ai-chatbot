@@ -302,19 +302,7 @@ def chat_feedback_v2(request):
     }
     score = data["score"]
     dislike_reason = (data.get("dislikeReason") or "").strip()
-    comment_text = (data.get("comment") or "").strip()
-    # Combine feedback type/reason and comment for visibility in Braintrust UI
-    if score > 0:
-        # Liked
-        comment = f"[Liked] {comment_text}" if comment_text else "[Liked]"
-    elif dislike_reason and comment_text:
-        comment = f"[{dislike_reason}] {comment_text}"
-    elif dislike_reason:
-        comment = f"[{dislike_reason}]"
-    elif comment_text:
-        comment = f"[Disliked] {comment_text}"
-    else:
-        comment = "[Disliked]"
+    comment = (data.get("comment") or "").strip()
     scores = {"user_rating": data["score"]}
     tags = [dislike_reason] if dislike_reason else []
 
