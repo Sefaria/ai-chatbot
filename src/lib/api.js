@@ -163,7 +163,7 @@ export async function sendMessageStream(
     payload.promptSlugs = promptSlugs;
   }
   
-  const response = await fetch(`${apiBaseUrl}/v2/chat/stream`, {
+  const response = await fetch(`${apiBaseUrl}/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

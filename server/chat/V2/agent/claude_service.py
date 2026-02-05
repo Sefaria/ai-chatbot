@@ -13,7 +13,6 @@ import inspect
 import json
 import logging
 import os
-import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,7 +27,11 @@ except Exception:  # pragma: no cover - optional dependency
     setup_claude_agent_sdk = None
     current_span = None
 
-_BRAINTRUST_SETUP_STATE = threading.local()
+# Global flag to ensure setup_claude_agent_sdk is only called once per process.
+# IMPORTANT: This must be a global (not thread-local) because setup_claude_agent_sdk
+# patches the SDK classes globally. Using thread-local would cause the SDK to be
+# wrapped multiple times (once per thread), creating deeply nested spans.
+_BRAINTRUST_SETUP_DONE = False
 
 try:
     from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
@@ -168,14 +171,15 @@ class ClaudeAgentService:
             logger.warning("Braintrust Claude Agent SDK wrapper not available")
             return
 
-        if getattr(_BRAINTRUST_SETUP_STATE, "done", False):
+        global _BRAINTRUST_SETUP_DONE
+        if _BRAINTRUST_SETUP_DONE:
             self._braintrust_enabled = True
             return
 
         try:
             setup_claude_agent_sdk(project=bt_project, api_key=bt_api_key)
             self._braintrust_enabled = True
-            _BRAINTRUST_SETUP_STATE.done = True
+            _BRAINTRUST_SETUP_DONE = True
         except Exception as exc:
             logger.warning(f"Failed to setup Braintrust Claude Agent SDK: {exc}")
 
@@ -443,6 +447,8 @@ class ClaudeAgentService:
             "allowed_tools": allowed_tools,
         }
 
+        debug_enabled = os.environ.get("CLAUDE_SDK_DEBUG", 1)
+
         if self._supports_option("max_tokens"):
             options_kwargs["max_tokens"] = self.max_tokens
         if self._supports_option("temperature"):
@@ -459,6 +465,11 @@ class ClaudeAgentService:
                 env["BRAINTRUST_PROJECT"] = self._braintrust_project
             if env:
                 options_kwargs["env"] = env
+        if debug_enabled:
+            if self._supports_option("extra_args"):
+                options_kwargs["extra_args"] = {"debug-to-stderr": None}
+            if self._supports_option("stderr"):
+                options_kwargs["stderr"] = lambda line: logger.warning("Claude CLI: %s", line)
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):

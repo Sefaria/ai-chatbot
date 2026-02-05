@@ -81,14 +81,14 @@ class SefariaClient:
         elif version_language == "english":
             params["version"] = "english"
         elif version_language == "both":
-            params["version"] = "english|source"
+            params["version"] = ["english", "source"]
 
         data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
         return self._optimize_text_response(data)
 
     async def text_search(
         self, query: str, filters: list[str] | None = None, size: int = 10
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Search across the Jewish library."""
         data = await self._search(query, filters, size)
         results = self._format_search_results(data, filters)
@@ -99,9 +99,16 @@ class SefariaClient:
         # Fallback: try without filters
         if filters:
             fallback_data = await self._search(query, None, size)
-            return self._format_search_results(fallback_data, None, filters)
+            fallback_results = self._format_search_results(fallback_data, None, filters)
+            if fallback_results:
+                return fallback_results
 
-        return []
+        # Return helpful message when no results found
+        return {
+            "no_results": True,
+            "query": query,
+            "suggestion": "No texts found matching this query. Consider using different keywords or trying a broader search term. If searching in Hebrew, try the exact phrase from the source text.",
+        }
 
     async def get_current_calendar(self) -> dict[str, Any]:
         """Get current Jewish calendar information."""
@@ -112,7 +119,7 @@ class SefariaClient:
         self, query: str, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Perform semantic search on English text embeddings."""
-        payload = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if filters:
             payload["filters"] = filters
 
@@ -123,9 +130,18 @@ class SefariaClient:
 
         url = f"{self.ai_base_url}/api/knn-search"
         client = await self._get_client()
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
+
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {
+                    "error": "Semantic search is currently unavailable.",
+                    "suggestion": "Use text_search instead for keyword-based search.",
+                }
+            raise
 
     async def get_links_between_texts(
         self, reference: str, with_text: str = "0"
@@ -286,13 +302,15 @@ class SefariaClient:
         response.raise_for_status()
         return response.json()
 
-    async def _get_json(self, endpoint: str, params: dict[str, str] | None = None) -> Any:
+    async def _get_json(
+        self, endpoint: str, params: dict[str, str | list[str]] | None = None
+    ) -> Any:
         """Make a GET request and return JSON."""
         url = f"{self.base_url}/{endpoint}"
         if params:
             filtered_params = {k: v for k, v in params.items() if v}
             if filtered_params:
-                url = f"{url}?{urlencode(filtered_params)}"
+                url = f"{url}?{urlencode(filtered_params, doseq=True)}"
 
         client = await self._get_client()
         response = await client.get(url)
