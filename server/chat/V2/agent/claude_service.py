@@ -204,15 +204,19 @@ class ClaudeAgentService:
         """
         self._setup_braintrust_tracing()
 
-        # Note: We do NOT wrap with braintrust.traced() here because
-        # setup_claude_agent_sdk() already patches the Claude SDK for
-        # automatic tracing. Adding traced() would cause duplicate logging.
-        return await self._send_message_inner(
-            messages=messages,
-            core_prompt_id=core_prompt_id,
-            on_progress=on_progress,
-            summary_text=summary_text,
-        )
+        async def run() -> AgentResponse:
+            return await self._send_message_inner(
+                messages=messages,
+                core_prompt_id=core_prompt_id,
+                on_progress=on_progress,
+                summary_text=summary_text,
+            )
+
+        if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
+            traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
+            return await traced_run()
+
+        return await run()
 
     async def _send_message_inner(
         self,
