@@ -423,7 +423,7 @@
     dislikeReason = '';
   }
 
-  async function submitFeedbackWithComment() {
+  async function submitFeedback(includeDetails = true) {
     const target = messages.find(m => m.messageId === feedbackModalMessageId);
     if (!target?.traceId) {
       closeFeedbackModal();
@@ -439,16 +439,12 @@
         userId,
         sessionId,
         messageId: feedbackModalMessageId,
-        comment: feedbackComment,
-        dislikeReason
+        comment: includeDetails ? feedbackComment : '',
+        dislikeReason: includeDetails ? dislikeReason : ''
       });
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
     }
-    closeFeedbackModal();
-  }
-
-  function skipFeedbackComment() {
     closeFeedbackModal();
   }
 
@@ -855,12 +851,12 @@
             <div class="feedback-modal-actions">
               <button
                 class="feedback-modal-btn submit"
-                onclick={submitFeedbackWithComment}
+                onclick={() => submitFeedback(true)}
                 disabled={feedbackType === 'dislike' && !dislikeReason}
               >
                 Submit
               </button>
-              <button class="feedback-modal-btn skip" onclick={skipFeedbackComment}>
+              <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
                 Skip
               </button>
             </div>
