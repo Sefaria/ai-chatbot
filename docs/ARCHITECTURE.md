@@ -105,6 +105,39 @@ RouteDecision (legacy)
 | `/api/health` | GET | Health check |
 | `/api/admin/reload-prompts` | POST | Invalidate prompt cache |
 
+### POST /api/v2/chat/stream
+
+**Request:**
+```json
+{
+  "userId": "abc123",
+  "sessionId": "sess_...",
+  "messageId": "msg_...",
+  "timestamp": "2026-01-05T08:12:34.000Z",
+  "text": "Is it permitted to cook on Shabbat?",
+  "context": {
+    "pageUrl": "https://example.com",
+    "locale": "en"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "messageId": "msg_reply_...",
+  "sessionId": "sess_...",
+  "timestamp": "2026-01-05T08:12:36.000Z",
+  "markdown": "According to Jewish law...",
+  "toolCalls": [],
+  "stats": {
+    "llmCalls": 1,
+    "toolCalls": 0,
+    "latencyMs": 1200
+  }
+}
+```
+
 **SSE Events:**
 - `progress` - Tool execution updates
 - `message` - Final response
