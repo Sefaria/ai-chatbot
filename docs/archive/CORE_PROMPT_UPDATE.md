@@ -296,6 +296,6 @@ If system keeps using fallback:
 
 ## Related Documentation
 
-- [Main Router & Guardrails README](server/chat/V2/router/README.md)
-- [Implementation Summary](IMPLEMENTATION_SUMMARY.md)
-- [Prompt Service Documentation](server/chat/V2/prompts/README.md)
+- [Main Router & Guardrails README](../../server/chat/V2/router/README.md)
+- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) (in this archive)
+- [Prompt Service Documentation](../../server/chat/V2/prompts/README.md)

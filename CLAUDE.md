@@ -1,66 +1,68 @@
 # LC Chatbot
 
 Embeddable AI chatbot for Jewish text learning. Claude + Sefaria API.
+Ships to millions of users via Sefaria.org.
 
 ## Standards
 
-**Production-ready code only.** This ships to millions of users.
+**Production-ready code only.**
 
-- Small, atomic commits. Commit after each logical change.
-- Keep code simple and clean. Prefer conciseness over robustness.
-- Test before committing. Run `pytest` (backend) and verify frontend changes.
-- When adding features, add tests. Fix flaky tests and improve test infrastructure when encountered.
+- Small, atomic commits after each logical change
+- Keep code simple and clean - prefer conciseness over robustness
+- Test before committing (pytest for backend, verify frontend)
+- Add tests when adding features
 
-## Quick Start
+## Testing Patterns
+
+- Backend: `pytest` (SQLite by default, fast)
+- Frontend: Verify changes manually, build succeeds with `npm run build`
+- Run tests before committing
+
+## Documentation Structure
+
+This project uses a tree of CLAUDE.md files:
+
+- `CLAUDE.md` (this file) - Project overview and standards
+- `src/CLAUDE.md` - Frontend context (Svelte, Vite)
+- `server/CLAUDE.md` - Backend context (Django, Claude API)
+- `docs/ARCHITECTURE.md` - System design, API reference
+- `docs/TESTING.md` - Test commands and CI details
+- `docs/archive/` - Historical implementation docs
+
+When working on implementation history or planning:
+- Check `docs/archive/` for past decisions
+- Store new plans in `docs/plans/`
+- Move completed or obsolete plans to `docs/archive/`
+
+## Quick Reference
 
 ```bash
-./setup.sh   # Install deps, create venv, run migrations
-./start.sh   # Start backend + frontend
+./setup.sh               # Install deps, create venv, run migrations
+./start.sh               # Start backend + frontend
+pytest                   # Backend tests
+npm run dev              # Frontend dev server
+npm run build            # Build bundle
 ```
 
-## Commands
-
-```bash
-pytest                                    # Backend tests (SQLite, fast)
-python manage.py runserver 0.0.0.0:8001  # Backend server
-npm run dev                               # Frontend dev server
-npm run build                             # Build bundle
-```
-
-**Note:** If tests fail with `ModuleNotFoundError: No module named 'sefaria'`, prefix with:
+**Note:** If tests fail with `ModuleNotFoundError: No module named 'sefaria'`:
 `DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest`
-
-See [TESTING.md](TESTING.md) for PostgreSQL testing and CI details.
 
 ## Architecture
 
 ```
-Svelte Web Component → Django REST → Router → Claude Agent → Sefaria API
+Svelte Web Component → Django REST → Claude Agent SDK → Sefaria API
 ```
 
-**Flows:** HALACHIC | SEARCH | GENERAL | REFUSE
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
+See `docs/ARCHITECTURE.md` for detailed system design.
 
 ## Stack
 
 - **Frontend:** Svelte 5, Vite, Web Components
 - **Backend:** Django 4.2, DRF, PostgreSQL
-- **AI:** Claude (Anthropic), Braintrust (prompts), LangSmith (tracing)
-
-## Structure
-
-```
-src/components/LCChatbot.svelte  # Main widget
-src/lib/                         # API, session, markdown
-
-server/chat/views.py             # API endpoints
-server/chat/V2/router/           # Intent classification
-server/chat/V2/agent/            # Claude + tools
-```
+- **AI:** Claude (Anthropic), Braintrust (prompts)
 
 ## Env
 
 Required: `ANTHROPIC_API_KEY`
 
-Optional: `BRAINTRUST_API_KEY`, `LANGSMITH_API_KEY`, `DB_*`
+Optional: `BRAINTRUST_API_KEY`, `DB_*`
