@@ -413,18 +413,6 @@
     messages = messages.map(m =>
       m.messageId === messageId ? { ...m, feedback: feedbackType } : m
     );
-
-    try {
-      await sendFeedback(apiBaseUrl, {
-        traceId: target.traceId,
-        score,
-        userId,
-        sessionId,
-        messageId
-      });
-    } catch (e) {
-      console.warn('[lc-chatbot] Feedback failed:', e);
-    }
   }
 
   function closeFeedbackModal() {
@@ -436,12 +424,31 @@
   }
 
   async function submitFeedbackWithComment() {
-    // Currently does nothing - placeholder for future implementation
+    const target = messages.find(m => m.messageId === feedbackModalMessageId);
+    if (!target?.traceId) {
+      closeFeedbackModal();
+      return;
+    }
+
+    const score = feedbackType === 'like' ? 1 : 0;
+
+    try {
+      await sendFeedback(apiBaseUrl, {
+        traceId: target.traceId,
+        score,
+        userId,
+        sessionId,
+        messageId: feedbackModalMessageId,
+        comment: feedbackComment,
+        issue: feedbackIssue
+      });
+    } catch (e) {
+      console.warn('[lc-chatbot] Feedback failed:', e);
+    }
     closeFeedbackModal();
   }
 
   function skipFeedbackComment() {
-    // Currently does nothing - placeholder for future implementation
     closeFeedbackModal();
   }
 
@@ -819,47 +826,47 @@
         </button>
       </footer>
       {/if}
-    </div>
-  {/if}
 
-  <!-- Feedback Modal -->
-  {#if showFeedbackModal}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
-        <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
-        <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
-        {#if feedbackType === 'dislike'}
-          <select
-            class="feedback-modal-select"
-            bind:value={feedbackIssue}
-          >
-            <option value="" disabled>Select Issue</option>
-            {#each FEEDBACK_ISSUES as issue}
-              <option value={issue.value}>{issue.label}</option>
-            {/each}
-          </select>
-        {/if}
-        <input
-          type="text"
-          class="feedback-modal-input"
-          bind:value={feedbackComment}
-          placeholder={feedbackType === 'dislike' ? 'More details' : "Anything you'd like to add?"}
-        />
-        <div class="feedback-modal-actions">
-          <button
-            class="feedback-modal-btn submit"
-            onclick={submitFeedbackWithComment}
-            disabled={feedbackType === 'dislike' && !feedbackIssue}
-          >
-            Submit
-          </button>
-          <button class="feedback-modal-btn skip" onclick={skipFeedbackComment}>
-            Skip
-          </button>
+      <!-- Feedback Modal -->
+      {#if showFeedbackModal}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
+            <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
+            <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
+            {#if feedbackType === 'dislike'}
+              <select
+                class="feedback-modal-select"
+                bind:value={feedbackIssue}
+              >
+                <option value="" disabled>Select Issue</option>
+                {#each FEEDBACK_ISSUES as issue}
+                  <option value={issue.value}>{issue.label}</option>
+                {/each}
+              </select>
+            {/if}
+            <input
+              type="text"
+              class="feedback-modal-input"
+              bind:value={feedbackComment}
+              placeholder={feedbackType === 'dislike' ? 'More details' : "Anything you'd like to add?"}
+            />
+            <div class="feedback-modal-actions">
+              <button
+                class="feedback-modal-btn submit"
+                onclick={submitFeedbackWithComment}
+                disabled={feedbackType === 'dislike' && !feedbackIssue}
+              >
+                Submit
+              </button>
+              <button class="feedback-modal-btn skip" onclick={skipFeedbackComment}>
+                Skip
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -1610,17 +1617,18 @@
 
   /* Feedback Modal */
   .feedback-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10001;
     animation: fadeIn 0.15s ease;
+    border-radius: calc(var(--lc-radius) - 4px);
   }
 
   @keyframes fadeIn {
@@ -1633,7 +1641,7 @@
     border-radius: var(--lc-radius);
     padding: 24px;
     width: 320px;
-    max-width: 90vw;
+    max-width: calc(100% - 32px);
     box-shadow: var(--lc-shadow);
     animation: slideUp 0.2s ease;
   }
