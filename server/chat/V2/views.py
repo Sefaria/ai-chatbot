@@ -300,7 +300,17 @@ def chat_feedback_v2(request):
         "message_id": data.get("messageId", ""),
         "issue": data.get("issue", ""),
     }
-    comment = (data.get("comment") or "").strip() or None
+    issue = (data.get("issue") or "").strip()
+    comment_text = (data.get("comment") or "").strip()
+    # Combine issue and comment for visibility in Braintrust UI
+    if issue and comment_text:
+        comment = f"[{issue}] {comment_text}"
+    elif issue:
+        comment = f"[{issue}]"
+    elif comment_text:
+        comment = comment_text
+    else:
+        comment = None
     scores = {"user_rating": data["score"]}
 
     try:
