@@ -32,6 +32,7 @@ This project uses a tree of CLAUDE.md files:
 When working on implementation history or planning:
 - Check `docs/archive/` for past decisions
 - Store new plans in `docs/plans/`
+- Move completed or obsolete plans to `docs/archive/`
 
 ## Quick Reference
 
