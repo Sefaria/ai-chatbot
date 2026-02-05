@@ -316,6 +316,7 @@ def chat_feedback_v2(request):
     else:
         comment = "[Disliked]"
     scores = {"user_rating": data["score"]}
+    tags = [dislike_reason] if dislike_reason else []
 
     try:
         if hasattr(bt_logger, "log_feedback"):
@@ -324,6 +325,7 @@ def chat_feedback_v2(request):
                 scores=scores,
                 comment=comment,
                 metadata=metadata,
+                tags=tags,
             )
         elif hasattr(bt_logger, "logFeedback"):
             bt_logger.logFeedback(
@@ -332,6 +334,7 @@ def chat_feedback_v2(request):
                     "scores": scores,
                     "comment": comment,
                     "metadata": metadata,
+                    "tags": tags,
                 }
             )
         else:
