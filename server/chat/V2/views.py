@@ -298,19 +298,23 @@ def chat_feedback_v2(request):
         "user_id": data.get("userId", ""),
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
-        "issue": data.get("issue", ""),
+        "dislike_reason": data.get("dislikeReason", ""),
     }
-    issue = (data.get("issue") or "").strip()
+    score = data["score"]
+    dislike_reason = (data.get("dislikeReason") or "").strip()
     comment_text = (data.get("comment") or "").strip()
-    # Combine issue and comment for visibility in Braintrust UI
-    if issue and comment_text:
-        comment = f"[{issue}] {comment_text}"
-    elif issue:
-        comment = f"[{issue}]"
+    # Combine feedback type/reason and comment for visibility in Braintrust UI
+    if score > 0:
+        # Liked
+        comment = f"[Liked] {comment_text}" if comment_text else "[Liked]"
+    elif dislike_reason and comment_text:
+        comment = f"[{dislike_reason}] {comment_text}"
+    elif dislike_reason:
+        comment = f"[{dislike_reason}]"
     elif comment_text:
-        comment = comment_text
+        comment = f"[Disliked] {comment_text}"
     else:
-        comment = None
+        comment = "[Disliked]"
     scores = {"user_rating": data["score"]}
 
     try:

@@ -51,10 +51,10 @@
   let feedbackModalMessageId = $state(null);
   let feedbackComment = $state('');
   let feedbackType = $state(null); // 'like' or 'dislike'
-  let feedbackIssue = $state(''); // For dislikes: selected issue category
+  let dislikeReason = $state(''); // For dislikes: selected reason category
 
   // Feedback issue options for dislikes
-  const FEEDBACK_ISSUES = [
+  const DISLIKE_REASONS = [
     { value: 'inaccurate', label: 'Inaccurate' },
     { value: 'too_authoritative', label: 'Too Authoritative' },
     { value: 'disrespectful', label: 'Disrespectful' },
@@ -405,7 +405,7 @@
     // Show the feedback modal for both likes and dislikes
     feedbackModalMessageId = messageId;
     feedbackComment = '';
-    feedbackIssue = '';
+    dislikeReason = '';
     feedbackType = score > 0 ? 'like' : 'dislike';
     showFeedbackModal = true;
 
@@ -420,7 +420,7 @@
     feedbackModalMessageId = null;
     feedbackComment = '';
     feedbackType = null;
-    feedbackIssue = '';
+    dislikeReason = '';
   }
 
   async function submitFeedbackWithComment() {
@@ -440,7 +440,7 @@
         sessionId,
         messageId: feedbackModalMessageId,
         comment: feedbackComment,
-        issue: feedbackIssue
+        dislikeReason
       });
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
@@ -838,10 +838,10 @@
             {#if feedbackType === 'dislike'}
               <select
                 class="feedback-modal-select"
-                bind:value={feedbackIssue}
+                bind:value={dislikeReason}
               >
                 <option value="" disabled>Select Issue</option>
-                {#each FEEDBACK_ISSUES as issue}
+                {#each DISLIKE_REASONS as issue}
                   <option value={issue.value}>{issue.label}</option>
                 {/each}
               </select>
@@ -856,7 +856,7 @@
               <button
                 class="feedback-modal-btn submit"
                 onclick={submitFeedbackWithComment}
-                disabled={feedbackType === 'dislike' && !feedbackIssue}
+                disabled={feedbackType === 'dislike' && !dislikeReason}
               >
                 Submit
               </button>
