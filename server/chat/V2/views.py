@@ -298,6 +298,7 @@ def chat_feedback_v2(request):
         "user_id": data.get("userId", ""),
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
+        "issue": data.get("issue", ""),
     }
     comment = (data.get("comment") or "").strip() or None
     scores = {"user_rating": data["score"]}
