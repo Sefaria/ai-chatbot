@@ -82,12 +82,13 @@ class TestBraintrustTracingNotDuplicated:
 
 
 class TestSetupBraintrustOnlyOnce:
-    """Verify setup_claude_agent_sdk is only called once per process/thread."""
+    """Verify setup_claude_agent_sdk is only called once per process."""
 
-    def test_setup_only_called_once_per_thread(self) -> None:
+    def test_setup_only_called_once_globally(self) -> None:
         """
-        setup_claude_agent_sdk should only be called once per thread,
-        not on every ClaudeAgentService instantiation or send_message call.
+        setup_claude_agent_sdk should only be called once globally (not per thread),
+        because it patches SDK classes globally. Multiple calls would wrap the SDK
+        multiple times, causing deeply nested spans in Braintrust.
         """
         mock_setup = MagicMock(return_value=True)
 
@@ -98,8 +99,8 @@ class TestSetupBraintrustOnlyOnce:
             ):
                 from chat.V2.agent import claude_service
 
-                # Reset the thread-local state
-                claude_service._BRAINTRUST_SETUP_STATE.done = False
+                # Reset the global state
+                claude_service._BRAINTRUST_SETUP_DONE = False
 
                 # Create a service - should call setup once
                 with patch.object(claude_service, "ClaudeAgentOptions", MagicMock()):
