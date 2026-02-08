@@ -138,7 +138,19 @@ def chat_stream_v2(request):
     )
 
     def generate_sse():
-        """Generator that yields SSE events."""
+        """Generator that yields SSE events for a single chat turn.
+
+        Runs the agent on a background thread (since the Agent SDK is async)
+        and bridges progress updates to the main thread via a queue. The main
+        thread consumes the queue and yields SSE events to the client.
+
+        Lifecycle:
+          1. Start agent on background thread
+          2. Stream progress events as they arrive
+          3. Wait for agent to finish
+          4. On error  → log, persist error message, yield error event
+          5. On success → update summary, persist messages, yield final event
+        """
         progress_queue = queue.Queue()
         result_holder = {"response": None, "error": None}
 
@@ -146,11 +158,13 @@ def chat_stream_v2(request):
             progress_queue.put(update)
 
         def run_agent():
+            """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 msg_context = MessageContext(
                     summary_text=summary_text,
                     page_url=page_url or None,
+                    session_id=data["sessionId"],
                 )
                 agent = get_agent_service()
                 result_holder["response"] = asyncio.run(
@@ -164,19 +178,24 @@ def chat_stream_v2(request):
             except Exception as e:
                 result_holder["error"] = str(e)
             finally:
+                # Sentinel: signals the main thread that the agent is done
                 progress_queue.put(None)
 
+        # Preserve contextvars (e.g. Braintrust trace context) into the thread
         ctx = contextvars.copy_context()
         executor = _create_traced_executor()
         future = executor.submit(ctx.run, run_agent)
 
+        # --- Stream progress events to the client ---
         while True:
             try:
                 update = progress_queue.get(timeout=60)
 
+                # None sentinel means the agent thread finished
                 if update is None:
                     break
 
+                # Build the SSE payload, including optional tool-call fields
                 event_data = {
                     "type": update.type,
                     "text": update.text,
@@ -196,8 +215,11 @@ def chat_stream_v2(request):
                 yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
 
             except queue.Empty:
+                # No update in 60s — send a keepalive to prevent
+                # proxies/load-balancers from closing the connection
                 yield ": keepalive\n\n"
 
+        # --- Agent finished — clean up the thread ---
         try:
             future.result(timeout=5)
         except Exception:
@@ -206,6 +228,7 @@ def chat_stream_v2(request):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
+        # --- Error path: persist an error message and notify client ---
         if result_holder["error"]:
             logger.error(f"Agent error: {result_holder['error']}")
 
@@ -224,9 +247,8 @@ def chat_stream_v2(request):
             yield f"event: error\ndata: {json.dumps({'error': result_holder['error']})}\n\n"
             return
 
+        # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
-
-        # Update summary
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
             session=session,
@@ -245,7 +267,6 @@ def chat_stream_v2(request):
 
         response_message = logging_result.response_message
 
-        # Reload session to get updated turn_count
         session.refresh_from_db()
 
         final_data = {
