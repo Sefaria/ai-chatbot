@@ -294,17 +294,16 @@ def chat_feedback_v2(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
+    dislike_reason = (data.get("dislikeReason") or "").strip()
     metadata = {
         "user_id": data.get("userId", ""),
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
-        "dislike_reason": data.get("dislikeReason", ""),
+        "dislike_reason": dislike_reason or None,
     }
     score = data["score"]
-    dislike_reason = (data.get("dislikeReason") or "").strip()
     comment = (data.get("comment") or "").strip()
     scores = {"user_rating": data["score"]}
-    tags = [dislike_reason] if dislike_reason else []
 
     try:
         if hasattr(bt_logger, "log_feedback"):
@@ -313,7 +312,6 @@ def chat_feedback_v2(request):
                 scores=scores,
                 comment=comment,
                 metadata=metadata,
-                tags=tags,
             )
         elif hasattr(bt_logger, "logFeedback"):
             bt_logger.logFeedback(
@@ -322,7 +320,6 @@ def chat_feedback_v2(request):
                     "scores": scores,
                     "comment": comment,
                     "metadata": metadata,
-                    "tags": tags,
                 }
             )
         else:
