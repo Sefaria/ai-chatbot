@@ -294,51 +294,32 @@ def chat_feedback_v2(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    dislike_reason = (data.get("dislikeReason") or "").strip()
+    feedback_reason = (data.get("dislikeReason") or "").strip()
     metadata = {
         "user_id": data.get("userId", ""),
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
-        "dislike_reason": dislike_reason or None,
     }
     score = data["score"]
     comment = (data.get("comment") or "").strip()
-    scores = {"user_rating": data["score"]}
 
+    # Update trace metadata so feedback appears in the same metadata blob in the UI
+    # (that blob is span metadata set at message-creation time)
+    # This allows us to easily view feedback metadata in the UI.
     try:
-        if hasattr(bt_logger, "log_feedback"):
-            bt_logger.log_feedback(
-                id=data["traceId"],
-                scores=scores,
-                comment=comment,
-                metadata=metadata,
-            )
-        elif hasattr(bt_logger, "logFeedback"):
-            bt_logger.logFeedback(
-                {
-                    "id": data["traceId"],
-                    "scores": scores,
-                    "comment": comment,
-                    "metadata": metadata,
-                }
-            )
-        else:
-            raise AttributeError("Braintrust logger does not support feedback logging")
-            
-        # Update trace metadata so dislike_reason appears in the same metadata blob in the UI
-        # (that blob is span metadata set at message-creation time)
-        # This allows us to easily view dislike_reason in the UI.
-        if dislike_reason:
-            try:
-                bt_logger.update_span(
-                    id=data["traceId"], metadata={"dislike_reason": dislike_reason}
-                )
-            except Exception as _e:
-                logger.debug("Could not update span metadata with dislike_reason: %s", _e)
-    except Exception as e:
-        logger.error(f"❌ Failed to log feedback: {e}")
+        bt_logger.update_span(
+            id=data["traceId"], metadata={"Feedback Reason": feedback_reason}
+        )
+        bt_logger.update_span(
+            id=data["traceId"], metadata={"Feedback Comment": comment}
+        )
+        bt_logger.update_span(
+            id=data["traceId"], metadata={"Feedback Score": score}
+        )
+    except Exception as _e:
+        logger.debug("Could not update span metadata with feedback metadata: %s", _e)
         return Response(
-            {"error": "feedback_log_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {"error": "feedback_metadata_update_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
     return Response({"success": True})
