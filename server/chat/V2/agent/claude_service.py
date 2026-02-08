@@ -42,6 +42,7 @@ except Exception:  # pragma: no cover - optional dependency
     tool = None
 
 from ..prompts import PromptService, get_prompt_service
+from ..prompts.prompt_fragments import build_system_prompt
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
@@ -68,6 +69,14 @@ class ConversationMessage:
 
     role: str  # 'user' or 'assistant'
     content: str
+
+
+@dataclass
+class MessageContext:
+    """Contextual information for a message, separate from the conversation itself."""
+
+    summary_text: str | None = None
+    page_url: str | None = None
 
 
 @dataclass
@@ -188,7 +197,7 @@ class ClaudeAgentService:
         messages: list[ConversationMessage],
         core_prompt_id: str | None = None,
         on_progress: Callable[[AgentProgressUpdate], None] | None = None,
-        summary_text: str | None = None,
+        context: MessageContext | None = None,
     ) -> AgentResponse:
         """
         Send a message to the agent using the core prompt and full toolset.
@@ -197,19 +206,20 @@ class ClaudeAgentService:
             messages: Conversation history
             core_prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             on_progress: Optional callback for progress updates
-            summary_text: Optional summary text to include in the system prompt
+            context: Optional message context (page URL, summary, etc.)
 
         Returns:
             AgentResponse with content and metadata
         """
         self._setup_braintrust_tracing()
+        context = context or MessageContext()
 
         async def run() -> AgentResponse:
             return await self._send_message_inner(
                 messages=messages,
                 core_prompt_id=core_prompt_id,
                 on_progress=on_progress,
-                summary_text=summary_text,
+                context=context,
             )
 
         if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
@@ -224,7 +234,7 @@ class ClaudeAgentService:
         messages: list[ConversationMessage],
         core_prompt_id: str | None,
         on_progress: Callable[[AgentProgressUpdate], None] | None,
-        summary_text: str | None,
+        context: MessageContext,
     ) -> AgentResponse:
         start_time = time.time()
 
@@ -241,11 +251,11 @@ class ClaudeAgentService:
             "",
         )
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
-        system_prompt = core_prompt.text
-        summary_included = False
-        if summary_text:
-            system_prompt = f"{system_prompt}\n\nConversation summary:\n{summary_text}"
-            summary_included = True
+        system_prompt, summary_included = build_system_prompt(
+            core_prompt.text,
+            summary_text=context.summary_text,
+            page_url=context.page_url,
+        )
 
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_all_tools()
@@ -274,9 +284,12 @@ class ClaudeAgentService:
                     "core_prompt_in_options": system_prompt_in_options,
                     "summary_included": summary_included,
                 }
-                if summary_text:
-                    metadata["conversation_summary"] = summary_text
-                span.log(input={"message": last_user_message}, metadata=metadata)
+                if context.summary_text:
+                    metadata["conversation_summary"] = context.summary_text
+                span_input = {"message": last_user_message}
+                if context.page_url:
+                    span_input["page_url"] = context.page_url
+                span.log(input=span_input, metadata=metadata)
 
         prompt_text = self._format_conversation(messages)
         if not system_prompt_in_options:

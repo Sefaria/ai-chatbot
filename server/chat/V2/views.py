@@ -25,10 +25,9 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
-from .agent import AgentProgressUpdate, ConversationMessage, get_agent_service
+from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .services import (
-    apply_page_context_to_message,
     create_or_get_session,
     load_session_summary,
     save_user_message,
@@ -148,15 +147,18 @@ def chat_stream_v2(request):
 
         def run_agent():
             try:
-                user_content = apply_page_context_to_message(data["text"], page_url)
-                conversation = [ConversationMessage(role="user", content=user_content)]
+                conversation = [ConversationMessage(role="user", content=data["text"])]
+                msg_context = MessageContext(
+                    summary_text=summary_text,
+                    page_url=page_url or None,
+                )
                 agent = get_agent_service()
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
-                        summary_text=summary_text,
+                        context=msg_context,
                     )
                 )
             except Exception as e:

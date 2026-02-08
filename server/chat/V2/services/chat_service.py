@@ -37,24 +37,3 @@ def save_user_message(
         **actor.to_db_fields(),
         **extra_fields,
     )
-
-
-def apply_page_context_to_message(message: str, page_url: str) -> str:
-    """
-    Append page URL context to a user message for the agent prompt.
-
-    Args:
-        message: The original user message
-        page_url: The URL of the page the user is viewing
-
-    Returns:
-        Message with page context appended, or original message if no URL
-    """
-    if not page_url:
-        return message
-
-    return (
-        f"{message}\n\n"
-        f"User is currently on the Sefaria url: {page_url}. "
-        "If the context is relevant, use that information in your response"
-    )

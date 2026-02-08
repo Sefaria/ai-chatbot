@@ -31,7 +31,7 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
-from .agent import AgentResponse, ConversationMessage, get_agent_service
+from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .services import create_or_get_session, load_session_summary, save_user_message
 
@@ -230,12 +230,13 @@ def chat_anthropic_v2(request):
     try:
         agent = get_agent_service()
         conversation = [ConversationMessage(role="user", content=user_message_text)]
+        msg_context = MessageContext(summary_text=summary_text or None)
         agent_response = asyncio.run(
             agent.send_message(
                 messages=conversation,
                 core_prompt_id=core_prompt_slug,
                 on_progress=None,
-                summary_text=summary_text,
+                context=msg_context,
             )
         )
     except Exception:
