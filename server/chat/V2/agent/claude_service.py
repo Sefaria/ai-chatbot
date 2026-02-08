@@ -289,11 +289,11 @@ class ClaudeAgentService:
                 }
                 if context.session_id:
                     metadata["session_id"] = context.session_id
-                if context.summary_text:
-                    metadata["conversation_summary"] = context.summary_text
                 span_input = {"message": last_user_message}
                 if context.page_url:
                     span_input["page_url"] = context.page_url
+                if context.summary_text:
+                    span_input["summary"] = context.summary_text
                 span.log(input=span_input, metadata=metadata)
 
         prompt_text = self._format_conversation(messages)

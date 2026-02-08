@@ -227,10 +227,11 @@ def chat_anthropic_v2(request):
         flow=BRAINTRUST_ORIGIN,
     )
 
+    msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
+
     try:
         agent = get_agent_service()
         conversation = [ConversationMessage(role="user", content=user_message_text)]
-        msg_context = MessageContext(summary_text=summary_text or None)
         agent_response = asyncio.run(
             agent.send_message(
                 messages=conversation,

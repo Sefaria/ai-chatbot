@@ -137,6 +137,12 @@ def chat_stream_v2(request):
         client_version=context.get("clientVersion", ""),
     )
 
+    msg_context = MessageContext(
+        summary_text=summary_text,
+        page_url=page_url or None,
+        session_id=data["sessionId"],
+    )
+
     def generate_sse():
         """Generator that yields SSE events for a single chat turn.
 
@@ -161,11 +167,6 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                msg_context = MessageContext(
-                    summary_text=summary_text,
-                    page_url=page_url or None,
-                    session_id=data["sessionId"],
-                )
                 agent = get_agent_service()
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
