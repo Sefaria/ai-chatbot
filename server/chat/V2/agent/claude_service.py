@@ -338,11 +338,12 @@ class ClaudeAgentService:
             span = current_span()
             trace_id = getattr(span, "id", None)
 
+        # Metrics are logged explicitly; output is captured automatically by
+        # @traced from the AgentResponse return value (confirmed via trace analysis).
         if current_span is not None:
             span = current_span()
             if span is not None:
                 span.log(
-                    output=output,
                     metrics={
                         "latency_ms": latency_ms,
                         "tool_count": len(tool_calls_list),
