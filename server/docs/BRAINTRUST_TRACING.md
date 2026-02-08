@@ -58,57 +58,51 @@ Creates a top-level span named `"chat-agent"` with type `"llm"`.
 
 ### What's Currently Logged
 
-**In the span (lines 268-279):**
+**Explicit logging (in `_send_message_inner`):**
 
-```python
-span.log(
-    input={"message": last_user_message},
-    metadata={
-        "core_prompt_id": core_prompt.prompt_id,
-        "core_prompt_version": core_prompt.version,
-        "core_prompt_in_options": system_prompt_in_options,
-        "summary_included": summary_included,
-        "conversation_summary": summary_text,  # if provided
-    }
-)
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `input.message` | input | Last user message |
+| `input.page_url` | input | Page URL if provided |
+| `input.summary` | input | Conversation summary if provided |
+| `metadata.core_prompt_id` | metadata | Braintrust prompt slug |
+| `metadata.core_prompt_version` | metadata | Prompt version number |
+| `metadata.core_prompt_in_options` | metadata | Whether prompt was in SDK options |
+| `metadata.summary_included` | metadata | Whether conversation summary was included |
+| `metadata.model` | metadata | Claude model used |
+| `metadata.session_id` | metadata | Session ID (when provided) |
+| `metrics.latency_ms` | metrics | Response latency in milliseconds |
+| `metrics.tool_count` | metrics | Number of tool invocations |
 
-**What's logged:**
-| Field | Description |
-|-------|-------------|
-| `input.message` | Last user message |
-| `metadata.core_prompt_id` | Braintrust prompt slug |
-| `metadata.core_prompt_version` | Prompt version number |
-| `metadata.core_prompt_in_options` | Whether prompt was in SDK options |
-| `metadata.summary_included` | Whether conversation summary was included |
-| `metadata.conversation_summary` | Full summary text (when provided) |
+**Auto-captured by `@traced` decorator:**
 
-### What's NOT Currently Logged to Braintrust
+The `@traced` wrapper captures the `AgentResponse` return value as span output. This includes `content`, `tool_calls`, `llm_calls`, `latency_ms`, `model`, and `trace_id`. Do not also set `output` explicitly — it will be overwritten.
 
-These are tracked in the database but not sent to Braintrust spans:
+**On error:** Error status and message are logged to the span before re-raising.
 
-| Data | Location | Notes |
-|------|----------|-------|
-| `latency_ms` | `ChatMessage.latency_ms` | Response latency |
-| `llm_calls` | `ChatMessage.llm_calls` | Number of LLM API calls |
-| `tool_calls_count` | `ChatMessage.tool_calls_count` | Number of tool invocations |
-| `tool_calls_data` | `ChatMessage.tool_calls_data` | Detailed tool execution records |
-| Token counts | `ChatMessage.input_tokens`, etc. | Input/output/cache tokens |
-| `model_name` | `ChatMessage.model_name` | Claude model used |
-| `status` | `ChatMessage.status` | SUCCESS/FAILED/REFUSED |
+### What's NOT Logged to Braintrust
+
+| Data | Where it lives | Notes |
+|------|----------------|-------|
+| `llm_calls` | `AgentResponse` (always None) | Can't count SDK-internal LLM calls |
+| Token counts | Nowhere | Not captured yet (Phase 3) |
+| Prompt cache/fetch | Python logs (`chat.prompts`) | Deliberately not traced — keep spans simple |
 
 ### Span Hierarchy
 
-Current structure when Braintrust is enabled:
+Confirmed structure from real trace analysis (trace_6614a94e):
 
 ```
-chat-agent (top-level @traced span)
-├── input: {message: "user question"}
-├── metadata: {core_prompt_id, version, summary_included, ...}
-└── [SDK-managed spans for tool calls and LLM calls]
+chat-agent (root, our @traced span — type: llm)
+└── Claude Agent (SDK task span — type: task)
+    └── [intermediate span]
+        ├── anthropic.messages.create ×N (LLM calls)
+        ├── text_search ×N
+        ├── get_text ×N
+        └── english_semantic_search ×N
 ```
 
-Child spans for tools and LLM calls are managed internally by `setup_claude_agent_sdk()`.
+SDK tool spans log input, output (`{content, is_error}`), and start/end timestamps. SDK LLM spans log full message arrays and responses. We don't create our own child spans — the SDK's are adequate.
 
 ## V2 API Endpoints
 

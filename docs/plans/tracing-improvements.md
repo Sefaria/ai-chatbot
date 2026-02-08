@@ -74,13 +74,17 @@ This is the lowest-effort, highest-impact work. All changes happen in `_send_mes
 
 ### Phase 2: Improve span structure
 
-The trace analysis shows the SDK already creates decent tool and LLM child spans. The original plan to create our own tool spans would duplicate what the SDK provides. Revised scope:
+The trace analysis shows the SDK already creates decent tool and LLM child spans. The original plan to create our own tool spans would duplicate what the SDK provides. Revised scope based on "keep it simple" principle:
 
-1. **Log prompt loading as a note** — record cache hit/miss and fetch latency in span metadata rather than a separate span (low effort, useful for debugging slow starts).
+**Decided against tracing to Braintrust:**
+- Prompt cache hit/miss — not worth a span or metadata field. Added Python logging instead (`logger.debug` for cache hits, `logger.info` for fetches with latency).
+- View-layer span — auth, DB writes, and response formatting are fast (~ms). The interesting work is all inside the agent. Not worth the added complexity.
+- Our own tool child spans — SDK already creates these with input, output, and timestamps. Duplicating would add noise.
 
-2. **Evaluate whether view-layer span is worthwhile** — the view layer handles auth, DB writes, and response formatting. These are fast operations (~ms). Moving the top-level span there would add coverage but the interesting work is all in the agent. Log as a note: not worth the complexity for now.
+**Logged via Python logging instead:**
+- Prompt loading: cache hit/miss, fetch latency, fallback to local (in `prompt_service.py`)
 
-3. **Focus on what the SDK doesn't give us** — the SDK spans are adequate for tool/LLM visibility. The real gaps are token tracking (Phase 3) and prompt metadata, not span structure.
+**Remaining:** SDK spans are adequate for tool/LLM visibility. The real gap is token tracking (Phase 3).
 
 ### Phase 3: Token tracking
 
@@ -93,9 +97,10 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Introduce `MessageContext` and `prompt_fragments.py` (Phase 1 prerequisite)
 - [x] Add session_id to `MessageContext`
 - [x] Log output, metrics, and errors to span
-- [x] Fix llm_calls (was hardcoded to 1, now None)
+- [x] Fix llm_calls (was hardcoded to 1, now None — can't count SDK-internal calls)
 - [x] Remove redundant output logging (overwritten by @traced)
 - [x] Analyze real trace, document findings
-- [ ] Agree on Phase 2 scope (revised — SDK spans are adequate, less work needed)
-- [ ] Add prompt loading metadata (cache hit/miss, fetch latency)
+- [x] Phase 2 scope agreed: SDK spans are adequate, keep it simple
+- [x] Add Python logging for prompt loading (cache/fetch/latency/fallback)
 - [ ] Phase 3: Token tracking
+- [ ] Future: extract real llm_calls count from SDK (requires SDK investigation)

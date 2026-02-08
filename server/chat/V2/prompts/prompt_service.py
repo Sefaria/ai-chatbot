@@ -111,11 +111,14 @@ class PromptService:
         with self._cache_lock:
             cached = self._cache.get(cache_key)
             if cached and time.time() - cached["timestamp"] < self.cache_ttl:
+                logger.debug("Prompt cache hit: %s (version=%s)", prompt_id, cached["version"])
                 return cached["prompt"], cached["version"]
 
         if self._braintrust_client:
             try:
+                fetch_start = time.time()
                 prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
+                fetch_ms = int((time.time() - fetch_start) * 1000)
                 if prompt_text:
                     with self._cache_lock:
                         self._cache[cache_key] = {
@@ -123,10 +126,18 @@ class PromptService:
                             "version": actual_version,
                             "timestamp": time.time(),
                         }
+                    logger.info(
+                        "Prompt fetched from Braintrust: %s (version=%s, %dms)",
+                        prompt_id,
+                        actual_version,
+                        fetch_ms,
+                    )
                     return prompt_text, actual_version
+                logger.warning("Prompt fetch returned empty: %s (%dms)", prompt_id, fetch_ms)
             except Exception as exc:
                 logger.warning(f"Failed to fetch prompt {prompt_id} from Braintrust: {exc}")
 
+        logger.info("Using local fallback prompt for: %s", prompt_id)
         return self._default_core_prompt, "local"
 
     def _fetch_from_braintrust(self, prompt_id: str, version: str) -> tuple[str | None, str]:
@@ -149,9 +160,6 @@ class PromptService:
             prompt_text = self._extract_prompt_text(prompt)
 
             if prompt_text:
-                logger.info(
-                    f"Loaded core prompt from Braintrust: {prompt_id}, version={actual_version}"
-                )
                 return prompt_text, str(actual_version)
 
             return None, ""
