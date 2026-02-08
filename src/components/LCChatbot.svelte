@@ -702,7 +702,6 @@
                 {/if}
               </div>
               <div class="message-meta">
-                <span class="message-time">{formatTime(item.timestamp)}</span>
                 {#if item.status === 'sending'}
                   <span class="message-status sending">Sending...</span>
                 {:else if item.status === 'failed'}
@@ -1141,6 +1140,8 @@
     color: var(--lc-assistant-text);
     border-bottom-left-radius: 4px;
     border: 1px solid var(--lc-border);
+    line-height: 17px;
+    font-size: 14px;
   }
 
   .message.failed .message-content {
@@ -1229,11 +1230,6 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
-  }
-
-  .message-time {
-    font-size: 11px;
-    color: var(--lc-text-muted);
   }
 
   .message-status {
