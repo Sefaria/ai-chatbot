@@ -300,7 +300,6 @@ def chat_feedback_v2(request):
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
     }
-    score = data["score"]
     comment = (data.get("comment") or "").strip()
 
     # Update trace metadata so feedback appears in the same metadata blob in the UI

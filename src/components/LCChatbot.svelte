@@ -406,7 +406,7 @@
     feedbackModalMessageId = messageId;
     feedbackComment = '';
     dislikeReason = '';
-    feedbackType = score > 0 ? 'like' : 'dislike';
+    feedbackType = score > 0 ? 'up' : 'down';
     showFeedbackModal = true;
 
     // Update UI immediately to show selection
@@ -429,8 +429,6 @@
       closeFeedbackModal();
       return;
     }
-
-    const score = feedbackType === 'like' ? 1 : 0;
 
     try {
       await sendFeedback(apiBaseUrl, {

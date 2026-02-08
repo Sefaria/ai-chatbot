@@ -273,7 +273,9 @@ class ClaudeAgentService:
                     "core_prompt_version": core_prompt.version,
                     "core_prompt_in_options": system_prompt_in_options,
                     "summary_included": summary_included,
-                    "dislike_reason": None,
+                    "feedback_reason": None,
+                    "feedback_comment": None,
+                    "feedback": None,
                 }
                 if summary_text:
                     metadata["conversation_summary"] = summary_text
