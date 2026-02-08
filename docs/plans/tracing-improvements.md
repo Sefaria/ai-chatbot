@@ -6,7 +6,9 @@ Goal: Improve Braintrust span logging in the v2 API so traces are useful for deb
 
 The v2 API uses Braintrust for tracing. A single top-level span wraps each agent execution. The SDK (`setup_claude_agent_sdk`) also auto-creates child spans for LLM calls and tool executions, but these are opaque to us.
 
-Reference: `server/docs/BRAINTRUST_TRACING.md` has the full Braintrust API surface and current implementation details.
+References:
+- `server/docs/BRAINTRUST_TRACING.md` — Braintrust API surface and current implementation details
+- `docs/plans/trace_6614a94e.json` — Real trace export for reference (DELETE BEFORE PR)
 
 ## Agent Flow
 
@@ -30,18 +32,35 @@ The single `chat-agent` span logs:
 - **input**: `{message: last_user_message}`, plus `page_url` when the streaming endpoint provides one
 - **metadata**: `core_prompt_id`, `core_prompt_version`, `core_prompt_in_options`, `summary_included`, and optionally `conversation_summary`
 
-It does **not** log output, metrics, session_id, model, status, or errors.
+Phase 1 added output, metrics (latency_ms, tool_count), metadata (session_id, model), error tracking, and summary to the span.
 
-SDK auto-creates child spans for LLM calls and tool executions, but we have no control over what they contain.
+## Trace Analysis (from trace_6614a94e)
 
-## Problems
+Real trace of a 52s query with 9 tool calls. Actual span hierarchy:
 
-1. **No output on span** — we can't see the agent's response in Braintrust
-2. **No metrics on span** — latency, tool count not in Braintrust (only in DB)
-3. **llm_calls hardcoded to 1** — `AgentResponse.llm_calls` is always 1 regardless of actual SDK behavior
-4. **No session context** — can't correlate traces across a conversation
-5. **No error tracking** — failures aren't captured in the span
-6. **SDK spans are opaque** — we rely on `setup_claude_agent_sdk` for child spans with no visibility into what's logged
+```
+chat-agent (root, our @traced span — type: llm)
+└── Claude Agent (SDK task span — type: task)
+    └── [intermediate span]
+        ├── anthropic.messages.create ×13 (LLM calls)
+        ├── text_search ×3
+        ├── get_text ×5
+        └── english_semantic_search ×1
+```
+
+Key findings:
+- SDK tool spans already log tool input/output in `{content, is_error}` format with start/end timestamps. Less opaque than assumed.
+- SDK LLM spans log the full message array (growing each turn) and assistant response.
+- All 22 child spans are flat siblings under one intermediate parent — no meaningful nesting.
+- `@traced` auto-captures the `AgentResponse` return value as span output, overwriting any explicit `span.log(output=...)`. Metrics merge correctly.
+- `llm_calls` was hardcoded to 1 despite 13 actual LLM calls (now fixed to None).
+
+## Remaining Problems
+
+1. ~~llm_calls hardcoded to 1~~ → Now `None` (can't count SDK-internal calls)
+2. **SDK spans are adequate but not controllable** — tool spans have input/output but we can't add custom fields
+3. **No token tracking** — not in any span
+4. **Prompt loading not traced** — can't see cache hit vs Braintrust fetch latency
 
 ## Proposed Changes
 
@@ -55,11 +74,13 @@ This is the lowest-effort, highest-impact work. All changes happen in `_send_mes
 
 ### Phase 2: Improve span structure
 
-Create explicit child spans for tool executions inside the tool handler, so each tool call gets its own span with input, output, latency, and error status. This gives us control instead of relying on SDK auto-spans.
+The trace analysis shows the SDK already creates decent tool and LLM child spans. The original plan to create our own tool spans would duplicate what the SDK provides. Revised scope:
 
-Consider adding a span for prompt loading to track cache hits vs Braintrust fetches.
+1. **Log prompt loading as a note** — record cache hit/miss and fetch latency in span metadata rather than a separate span (low effort, useful for debugging slow starts).
 
-Consider moving the top-level span from the agent to the view layer so the trace covers the full request lifecycle (auth, DB writes, etc.), not just the agent execution.
+2. **Evaluate whether view-layer span is worthwhile** — the view layer handles auth, DB writes, and response formatting. These are fast operations (~ms). Moving the top-level span there would add coverage but the interesting work is all in the agent. Log as a note: not worth the complexity for now.
+
+3. **Focus on what the SDK doesn't give us** — the SDK spans are adequate for tool/LLM visibility. The real gaps are token tracking (Phase 3) and prompt metadata, not span structure.
 
 ### Phase 3: Token tracking
 
@@ -72,5 +93,9 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Introduce `MessageContext` and `prompt_fragments.py` (Phase 1 prerequisite)
 - [x] Add session_id to `MessageContext`
 - [x] Log output, metrics, and errors to span
-- [ ] Agree on Phase 2 scope
-- [ ] Implement Phase 2
+- [x] Fix llm_calls (was hardcoded to 1, now None)
+- [x] Remove redundant output logging (overwritten by @traced)
+- [x] Analyze real trace, document findings
+- [ ] Agree on Phase 2 scope (revised — SDK spans are adequate, less work needed)
+- [ ] Add prompt loading metadata (cache hit/miss, fetch latency)
+- [ ] Phase 3: Token tracking
