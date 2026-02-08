@@ -77,6 +77,7 @@ class MessageContext:
 
     summary_text: str | None = None
     page_url: str | None = None
+    session_id: str | None = None
 
 
 @dataclass
@@ -87,6 +88,7 @@ class AgentResponse:
     tool_calls: list[dict[str, Any]]
     llm_calls: int
     latency_ms: int
+    model: str | None = None
     trace_id: str | None = None
 
 
@@ -283,7 +285,10 @@ class ClaudeAgentService:
                     "core_prompt_version": core_prompt.version,
                     "core_prompt_in_options": system_prompt_in_options,
                     "summary_included": summary_included,
+                    "model": self.model,
                 }
+                if context.session_id:
+                    metadata["session_id"] = context.session_id
                 if context.summary_text:
                     metadata["conversation_summary"] = context.summary_text
                 span_input = {"message": last_user_message}
@@ -297,15 +302,29 @@ class ClaudeAgentService:
 
         emit(AgentProgressUpdate(type="status", text="Thinking..."))
 
-        final_text = ""
-        trace_id = None
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(prompt_text)
-            async for message in client.receive_response():
-                chunk = self._extract_text_from_message(message)
-                if chunk:
-                    final_text += chunk
-            trace_id = getattr(client, "trace_id", None) or getattr(client, "last_trace_id", None)
+        try:
+            final_text = ""
+            trace_id = None
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(prompt_text)
+                async for message in client.receive_response():
+                    chunk = self._extract_text_from_message(message)
+                    if chunk:
+                        final_text += chunk
+                trace_id = getattr(client, "trace_id", None) or getattr(
+                    client, "last_trace_id", None
+                )
+        except Exception as exc:
+            if current_span is not None:
+                span = current_span()
+                if span is not None:
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    span.log(
+                        output=str(exc),
+                        metrics={"latency_ms": latency_ms},
+                        metadata={"status": "error", "error": str(exc)},
+                    )
+            raise
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
@@ -319,11 +338,23 @@ class ClaudeAgentService:
             span = current_span()
             trace_id = getattr(span, "id", None)
 
+        if current_span is not None:
+            span = current_span()
+            if span is not None:
+                span.log(
+                    output=output,
+                    metrics={
+                        "latency_ms": latency_ms,
+                        "tool_count": len(tool_calls_list),
+                    },
+                )
+
         return AgentResponse(
             content=output,
             tool_calls=tool_calls_list,
             llm_calls=1,
             latency_ms=latency_ms,
+            model=self.model,
             trace_id=trace_id,
         )
 

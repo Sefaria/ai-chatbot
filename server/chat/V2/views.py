@@ -244,7 +244,7 @@ def chat_stream_v2(request):
             user_message.response_message = error_msg
             user_message.save(update_fields=["response_message"])
 
-            yield f"event: error\ndata: {json.dumps({'error': result_holder['error']})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'error': 'An internal error occurred.'})}\n\n"
             return
 
         # --- Success path: update summary, persist turn, yield final event ---
@@ -261,7 +261,7 @@ def chat_stream_v2(request):
             user_message=user_message,
             agent_response=agent_response,
             latency_ms=latency_ms,
-            model_name="claude-sonnet-4-5-20250929",
+            model_name=agent_response.model or "unknown",
             summary_text=new_summary.to_prompt_text(),
         )
 
