@@ -324,6 +324,17 @@ def chat_feedback_v2(request):
             )
         else:
             raise AttributeError("Braintrust logger does not support feedback logging")
+            
+        # Update trace metadata so dislike_reason appears in the same metadata blob in the UI
+        # (that blob is span metadata set at message-creation time)
+        # This allows us to easily view dislike_reason in the UI.
+        if dislike_reason:
+            try:
+                bt_logger.update_span(
+                    id=data["traceId"], metadata={"dislike_reason": dislike_reason}
+                )
+            except Exception as _e:
+                logger.debug("Could not update span metadata with dislike_reason: %s", _e)
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
         return Response(
