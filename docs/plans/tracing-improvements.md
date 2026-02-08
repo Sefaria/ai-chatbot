@@ -51,7 +51,7 @@ This is the lowest-effort, highest-impact work. All changes happen in `_send_mes
 
 **Completed:** Introduced `MessageContext` to carry view-layer context (page URL, summary, session ID) into the agent service. Page context and summary text are now composed into the system prompt via `build_system_prompt()` in `prompt_fragments.py`, and the raw message and page URL are logged as separate fields on the span input. Both endpoints pass a `MessageContext` instead of individual kwargs.
 
-**Remaining:** After the agent finishes (where `AgentResponse` is built), log output and metrics to the current Braintrust span: the response text, tool calls list, latency, and tool count. Also add `session_id` and `model` to metadata. On exceptions, log error status and message to the span before re-raising.
+**Completed:** After the agent finishes, the span now logs output (response text), metrics (latency_ms, tool_count), and metadata (session_id, model). Summary text is logged as span input alongside message and page_url. On exceptions, error status and message are logged to the span before re-raising. Phase 1 is complete.
 
 ### Phase 2: Improve span structure
 
@@ -70,7 +70,7 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Document current state (`server/docs/BRAINTRUST_TRACING.md`)
 - [x] Map agent flow
 - [x] Introduce `MessageContext` and `prompt_fragments.py` (Phase 1 prerequisite)
-- [ ] Add session_id to `MessageContext`
-- [ ] Log output, metrics, and errors to span
+- [x] Add session_id to `MessageContext`
+- [x] Log output, metrics, and errors to span
 - [ ] Agree on Phase 2 scope
 - [ ] Implement Phase 2
