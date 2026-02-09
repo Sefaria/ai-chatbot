@@ -1,10 +1,17 @@
 """
-Anthropic-compatible chat endpoint for Braintrust integration.
+Anthropic-compatible chat endpoint — used by Braintrust playground & evaluations.
 
-This endpoint accepts the Anthropic Messages API format and returns
-responses in the same format, enabling use in Braintrust playground
-and evaluations. Includes full logging and metrics parity with the
-streaming endpoint.
+This is a synchronous (non-streaming) endpoint that speaks the Anthropic Messages
+API format, so Braintrust can treat our agent like a standard Claude model.
+
+Request flow:
+    POST /api/v2/chat/anthropic
+    → authenticate via X-Api-Key header (encrypted user token)
+    → create/resume session (X-Session-ID for multi-turn, otherwise ephemeral)
+    → save user message to DB
+    → run agent (ClaudeAgentService.send_message)
+    → log response to DB
+    → return Anthropic Messages API format response
 
 Deviations from Anthropic Messages API standard:
 - Response `metadata` field: We add trace_id, origin, and stats. Extra fields are ignored

@@ -1,8 +1,16 @@
 """
-Prompt service with Braintrust integration.
+Prompt service — fetches the core system prompt from Braintrust.
 
-Fetches the core system prompt from Braintrust with a local fallback.
-Supports versioning and caching.
+The core prompt (the large system-level instruction that tells Claude how to
+behave as a Sefaria learning assistant) lives in Braintrust's prompt registry,
+not in this codebase. This service fetches it by slug + version, caches it
+in-memory with a TTL, and returns a CorePrompt dataclass.
+
+Flow:
+    ClaudeAgentService.__init__ → get_prompt_service() → PromptService
+    ClaudeAgentService._send_message_inner → prompt_service.get_core_prompt()
+        → cache hit? return cached
+        → cache miss? fetch from Braintrust API → cache → return
 """
 
 import logging
@@ -168,14 +176,18 @@ class PromptService:
         return None, ""
 
     def _extract_prompt_text(self, prompt) -> str | None:
-        """
-        Extract prompt text from a Braintrust Prompt object.
+        """Extract prompt text from a Braintrust Prompt object.
 
-        Braintrust prompts can be:
-        - Chat prompts: have messages array with system/user messages
-        - Completion prompts: have a single prompt string
+        Braintrust prompts can be structured in several ways depending on the
+        SDK version and how the prompt was created in the UI:
 
-        Returns the system prompt text or None if extraction fails.
+        Path 1: prompt.build() → dict with "messages" (chat format)
+            → look for role="system" message → return its content
+        Path 2: prompt.build() → dict with "prompt" key (completion format)
+        Path 3: prompt.prompt_data.prompt.messages (older SDK object model)
+        Path 4: direct attributes (prompt.prompt, .content, .text, .system)
+
+        We try each path in order and return the first successful extraction.
         """
         try:
             if hasattr(prompt, "build"):

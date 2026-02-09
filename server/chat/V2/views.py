@@ -1,5 +1,20 @@
 """
-V2 chat API views with Claude agent integration.
+V2 streaming chat endpoint — the primary API used by the Svelte frontend.
+
+Request flow:
+    POST /api/v2/chat/stream
+    → authenticate via userId token
+    → create/resume session, load conversation summary
+    → save user message to DB
+    → return SSE StreamingHttpResponse that:
+        1. Runs the agent on a background thread
+        2. Streams progress events (tool_start, tool_end, status) in real-time
+        3. On success: updates summary, persists response, yields final "message" event
+        4. On error: persists error message, yields "error" event
+
+Also includes:
+    GET  /api/v2/prompts/defaults — returns default Braintrust prompt slugs
+    POST /api/v2/chat/feedback    — logs user feedback to Braintrust
 """
 
 import asyncio
@@ -46,7 +61,13 @@ def build_session_info(session) -> dict:
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
-    """Create a ThreadPoolExecutor that preserves Braintrust context when available."""
+    """Create a ThreadPoolExecutor that preserves Braintrust span context.
+
+    Braintrust's TracedThreadPoolExecutor copies the current trace span
+    into the worker thread, so LLM calls on the background thread appear
+    as children of the request-level span. Falls back to a plain executor
+    if Braintrust isn't installed.
+    """
     try:
         import braintrust
 
