@@ -431,6 +431,7 @@
     }
 
     try {
+      const score = feedbackType === 'up' ? 1 : 0;
       await sendFeedback(apiBaseUrl, {
         traceId: target.traceId,
         score,

@@ -300,26 +300,50 @@ def chat_feedback_v2(request):
         "session_id": data.get("sessionId", ""),
         "message_id": data.get("messageId", ""),
     }
+    score = data["score"]
     comment = (data.get("comment") or "").strip()
-    score = data.get("score", "")
+    scores = {"user_rating": 1 if score == 'up' else 0}
 
-    # Update trace metadata so feedback appears in the same metadata blob in the UI
-    # (that blob is span metadata set at message-creation time)
-    # This allows us to easily view feedback metadata in the UI.
     try:
-        bt_logger.update_span(
-            id=data["traceId"], metadata={"Feedback Reason": feedback_reason}
-        )
-        bt_logger.update_span(
-            id=data["traceId"], metadata={"Feedback Comment": comment}
-        )
-        bt_logger.update_span(
-            id=data["traceId"], metadata={"Feedback": score}
-        )
-    except Exception as _e:
-        logger.debug("Could not update span metadata with feedback metadata: %s", _e)
+        # Log feedback in Braintrust's feedback system
+        if hasattr(bt_logger, "log_feedback"):
+            bt_logger.log_feedback(
+                id=data["traceId"],
+                scores=scores,
+                comment=comment,
+                metadata=metadata,
+            )
+        elif hasattr(bt_logger, "logFeedback"):
+            bt_logger.logFeedback(
+                {
+                    "id": data["traceId"],
+                    "scores": scores,
+                    "comment": comment,
+                    "metadata": metadata,
+                }
+            )
+        else:
+            raise AttributeError("Braintrust logger does not support feedback logging")
+
+        # Update trace metadata so feedback appears in the same metadata blob in the UI
+        # (that blob is span metadata set at message-creation time)
+        # This allows us to easily view feedback metadata in the UI.
+        try:
+            bt_logger.update_span(
+                id=data["traceId"], metadata={"feedback": score}
+            )
+            bt_logger.update_span(
+                id=data["traceId"], metadata={"feedback_comment": comment}
+            )
+            bt_logger.update_span(
+                id=data["traceId"], metadata={"feedback_reason": feedback_reason}
+            )
+        except Exception as _e:
+            logger.debug("Could not update span metadata with feedback metadata: %s", _e)
+    except Exception as e:
+        logger.error(f"❌ Failed to log feedback: {e}")
         return Response(
-            {"error": "feedback_metadata_update_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {"error": "feedback_log_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
     return Response({"success": True})
