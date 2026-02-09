@@ -19,7 +19,6 @@ server/
 │       │   └── sefaria_client.py    # Sefaria API client
 │       ├── prompts/
 │       │   ├── prompt_service.py    # Braintrust prompt loading
-│       │   ├── default_prompts.py   # Local fallbacks
 │       │   └── prompt_fragments.py  # LLM-facing text fragments (context sections)
 │       └── summarization/
 │           └── summary_service.py   # Conversation summarization
