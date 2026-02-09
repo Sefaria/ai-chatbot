@@ -2,6 +2,8 @@
 
 Braintrust evaluations for the LC Chatbot.
 
+This code uses the Braintrust SDK to trigger "experiment" evaluation runs against the Sefaria AI bot. It can be configured to run against specific scroers (defined in Braintrust) or all scorers, specific datasets, and against local or prod. 
+
 ## Setup
 
 1. Ensure `BRAINTRUST_API_KEY` is set (already in `server/.env`)
