@@ -94,6 +94,7 @@ echo -e "${BLUE}Running migrations...${NC}"
 (
     cd server
     source venv/bin/activate
+    export DJANGO_SETTINGS_MODULE=chatbot_server.settings
     python manage.py migrate
 ) > "$LOG_DIR/migrate.log" 2>&1
 echo -e "${GREEN}✓${NC} Migrations complete"

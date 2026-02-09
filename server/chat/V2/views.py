@@ -80,6 +80,16 @@ def _create_traced_executor() -> concurrent.futures.Executor:
     return concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
 
+def _flush_braintrust():
+    """Flush pending Braintrust spans so they're sent before the request ends."""
+    try:
+        import braintrust
+
+        braintrust.flush()
+    except Exception:
+        pass
+
+
 # Global services (initialized lazily)
 _bt_logger = None
 
@@ -200,6 +210,7 @@ def chat_stream_v2(request):
             except Exception as e:
                 result_holder["error"] = str(e)
             finally:
+                _flush_braintrust()
                 # Sentinel: signals the main thread that the agent is done
                 progress_queue.put(None)
 

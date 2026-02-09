@@ -48,6 +48,16 @@ logger = logging.getLogger("chat")
 BRAINTRUST_ORIGIN = "braintrust"
 
 
+def _flush_braintrust():
+    """Flush pending Braintrust spans so they're sent before the request ends."""
+    try:
+        import braintrust
+
+        braintrust.flush()
+    except Exception:
+        pass
+
+
 def extract_user_message(messages: list[dict]) -> str:
     """
     Extract the last user message from Anthropic-format messages array.
@@ -251,6 +261,8 @@ def chat_anthropic_v2(request):
         latency_ms = int((time.time() - start_time) * 1000)
         logger.exception("Agent error in Anthropic endpoint")
 
+        _flush_braintrust()
+
         # Log error message
         logging_service = get_turn_logging_service()
         error_msg = logging_service.record_error_message(
@@ -267,6 +279,8 @@ def chat_anthropic_v2(request):
             to_anthropic_error("api_error", "Internal server error", latency_ms),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+    _flush_braintrust()
 
     latency_ms = int((time.time() - start_time) * 1000)
 
