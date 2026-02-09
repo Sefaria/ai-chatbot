@@ -308,7 +308,7 @@ def chat_feedback_v2(request):
         # Log feedback in Braintrust's feedback system
         bt_logger.log_feedback(
             id=data["traceId"],
-            comment="", # for some reason, this must be passed in
+            scores=scores, # `log_feedback` requires either scores, expected, tags or comment to be passed in
             metadata=metadata,
         )
         # Update trace metadata so feedback appears in the same metadata blob in the UI
