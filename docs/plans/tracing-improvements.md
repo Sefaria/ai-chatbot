@@ -112,10 +112,12 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 
 7. **Count LLM calls**: Import `AssistantMessage` from `claude_agent_sdk.types`. In the same `receive_response()` loop, increment a counter on each `AssistantMessage` (each one represents one LLM call, confirmed by how the Braintrust wrapper creates one LLM span per `AssistantMessage`). Set `llm_calls` on `AgentResponse` and log as a span metric. This replaces the previous `None` value.
 
+8. **Cost tracking**: `ResultMessage.total_cost_usd` is calculated server-side by the Anthropic API (not from local pricing tables), making it the authoritative cost figure. Braintrust's `estimated_cost` is only in the UI — not returned in the fetch API. So we persist `cost_usd` to `ChatMessage`, aggregate `total_cost_usd` on `ChatSession`, include `costUsd` in `build_stats`, and log `cost_usd` as a span metric for Braintrust queryability.
+
 **What we're NOT doing:**
 - Not querying Braintrust API for child span metrics — the `ResultMessage` gives us the aggregate for the entire turn.
 - Not changing the Braintrust wrapper — it already handles LLM child spans correctly.
-- Not adding a migration — the DB token fields already exist on `ChatMessage` and `ChatSession`, just never populated.
+- Not manually logging `estimated_cost` — Braintrust auto-aggregates this from child LLM spans in the UI. Our `cost_usd` metric uses a distinct name to avoid double-counting.
 
 ## Status
 
@@ -137,5 +139,8 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 - [x] Phase 3: Include tokens in `build_stats` / API response
 - [x] Phase 3: Add tests
 - [x] Extract real llm_calls count from SDK (count `AssistantMessage` instances)
+- [x] Persist `cost_usd` to DB (`ChatMessage` + `ChatSession.total_cost_usd`)
+- [x] Log `cost_usd` to Braintrust span metrics
+- [x] Include `costUsd` in `build_stats` / API response
 - [ ] Add integration test for `ResultMessage` capture — deferred (no official SDK mock/test utilities; would require custom `MockTransport` or heavy `AsyncMock` patching)
 - [ ] Update PR description with final changes before merge

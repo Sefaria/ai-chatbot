@@ -70,6 +70,7 @@ class TurnLoggingService:
             output_tokens=agent_response.output_tokens,
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
+            cost_usd=agent_response.cost_usd,
         )
 
         user_message.response_message = response_message
@@ -91,6 +92,8 @@ class TurnLoggingService:
             session.total_output_tokens = (
                 session.total_output_tokens or 0
             ) + agent_response.output_tokens
+        if agent_response.cost_usd:
+            session.total_cost_usd = (session.total_cost_usd or 0.0) + agent_response.cost_usd
         session.save(
             update_fields=[
                 "message_count",
@@ -101,6 +104,7 @@ class TurnLoggingService:
                 "total_tool_calls",
                 "total_input_tokens",
                 "total_output_tokens",
+                "total_cost_usd",
             ]
         )
 
@@ -118,6 +122,8 @@ class TurnLoggingService:
             stats["inputTokens"] = agent_response.input_tokens
         if agent_response.output_tokens is not None:
             stats["outputTokens"] = agent_response.output_tokens
+        if agent_response.cost_usd is not None:
+            stats["costUsd"] = agent_response.cost_usd
         return stats
 
 

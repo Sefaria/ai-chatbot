@@ -36,6 +36,7 @@ class ChatSession(models.Model):
     # Aggregate token usage for the session
     total_input_tokens = models.IntegerField(default=0)
     total_output_tokens = models.IntegerField(default=0)
+    total_cost_usd = models.FloatField(default=0.0)
     total_tool_calls = models.IntegerField(default=0)
 
     # Session metadata
@@ -259,6 +260,7 @@ class ChatMessage(models.Model):
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_tokens = models.IntegerField(null=True, blank=True)
     cache_read_tokens = models.IntegerField(null=True, blank=True)
+    cost_usd = models.FloatField(null=True, blank=True)
 
     class Meta:
         ordering = ["server_timestamp"]

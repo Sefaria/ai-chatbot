@@ -47,16 +47,19 @@ class TestBuildStatsTokens:
             latency_ms=100,
             input_tokens=500,
             output_tokens=200,
+            cost_usd=0.05,
         )
         stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
         assert stats["inputTokens"] == 500
         assert stats["outputTokens"] == 200
+        assert stats["costUsd"] == 0.05
 
     def test_omits_tokens_when_none(self):
         resp = AgentResponse(content="hi", tool_calls=[], latency_ms=100)
         stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
         assert "inputTokens" not in stats
         assert "outputTokens" not in stats
+        assert "costUsd" not in stats
 
 
 # -- DB persistence ------------------------------------------------------------
@@ -91,6 +94,7 @@ class TestFinalizeSuccessTokens:
             output_tokens=300,
             cache_creation_tokens=2000,
             cache_read_tokens=5000,
+            cost_usd=0.05,
         )
         svc = TurnLoggingService()
         result = svc.finalize_success(
@@ -106,6 +110,7 @@ class TestFinalizeSuccessTokens:
         assert msg.output_tokens == 300
         assert msg.cache_creation_tokens == 2000
         assert msg.cache_read_tokens == 5000
+        assert msg.cost_usd == 0.05
 
     def test_session_aggregates_updated(self, session, user_message):
         resp = AgentResponse(
@@ -114,6 +119,7 @@ class TestFinalizeSuccessTokens:
             latency_ms=100,
             input_tokens=800,
             output_tokens=200,
+            cost_usd=0.03,
         )
         svc = TurnLoggingService()
         svc.finalize_success(
@@ -127,6 +133,7 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 800
         assert session.total_output_tokens == 200
+        assert session.total_cost_usd == 0.03
 
     def test_none_tokens_leave_session_unchanged(self, session, user_message):
         resp = AgentResponse(
@@ -146,9 +153,10 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 0
         assert session.total_output_tokens == 0
+        assert session.total_cost_usd == 0.0
 
     def test_session_aggregates_accumulate(self, session):
-        """Two turns should accumulate token counts."""
+        """Two turns should accumulate token counts and cost."""
         svc = TurnLoggingService()
         for i in range(2):
             user_msg = ChatMessage.objects.create(
@@ -165,6 +173,7 @@ class TestFinalizeSuccessTokens:
                 latency_ms=100,
                 input_tokens=500,
                 output_tokens=100,
+                cost_usd=0.02,
             )
             svc.finalize_success(
                 session=session,
@@ -177,3 +186,4 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 1000
         assert session.total_output_tokens == 200
+        assert abs(session.total_cost_usd - 0.04) < 1e-9

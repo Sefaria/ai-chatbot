@@ -452,6 +452,8 @@ class ClaudeAgentService:
                     metrics["prompt_cached_tokens"] = cache_read_tokens
                 if cache_creation_tokens is not None:
                     metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
+                if result_cost_usd is not None:
+                    metrics["cost_usd"] = result_cost_usd
                 span.log(metrics=metrics)
 
         return AgentResponse(
