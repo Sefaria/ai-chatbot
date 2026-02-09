@@ -84,8 +84,6 @@ The `@traced` wrapper captures the `AgentResponse` return value as span output. 
 
 | Data | Where it lives | Notes |
 |------|----------------|-------|
-| `llm_calls` | `AgentResponse` (always None) | Can't count SDK-internal LLM calls |
-| Token counts | Nowhere | Not captured yet (Phase 3) |
 | Prompt cache/fetch | Python logs (`chat.prompts`) | Deliberately not traced — keep spans simple |
 
 ### Span Hierarchy

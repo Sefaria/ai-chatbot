@@ -29,8 +29,9 @@ from dataclasses import dataclass
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Optional dependencies — Braintrust (tracing) and Claude Agent SDK
-# Both are soft dependencies: the service degrades gracefully without them.
+# External dependencies — Braintrust (tracing, optional) and Claude Agent SDK
+# Braintrust is optional: tracing is skipped when the API key is absent.
+# Claude Agent SDK is required: the service will fail to import without it.
 # ---------------------------------------------------------------------------
 
 try:
