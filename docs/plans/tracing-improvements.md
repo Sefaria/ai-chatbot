@@ -110,6 +110,8 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 
 6. **Tests**: Mock `ResultMessage` with usage data, verify propagation to `AgentResponse`, span metrics, and DB record.
 
+7. **Count LLM calls**: Import `AssistantMessage` from `claude_agent_sdk.types`. In the same `receive_response()` loop, increment a counter on each `AssistantMessage` (each one represents one LLM call, confirmed by how the Braintrust wrapper creates one LLM span per `AssistantMessage`). Set `llm_calls` on `AgentResponse` and log as a span metric. This replaces the previous `None` value.
+
 **What we're NOT doing:**
 - Not querying Braintrust API for child span metrics — the `ResultMessage` gives us the aggregate for the entire turn.
 - Not changing the Braintrust wrapper — it already handles LLM child spans correctly.
