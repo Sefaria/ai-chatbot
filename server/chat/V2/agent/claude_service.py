@@ -114,7 +114,7 @@ class AgentResponse:
     output_tokens: int | None = None
     cache_creation_tokens: int | None = None
     cache_read_tokens: int | None = None
-    cost_usd: float | None = None
+    total_cost_usd: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +365,7 @@ class ClaudeAgentService:
             trace_id = None
             llm_call_count = 0
             result_usage: dict[str, Any] | None = None
-            result_cost_usd: float | None = None
+            total_cost_usd: float | None = None
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt_text)
                 # The SDK may call tools internally (triggering our MCP handlers)
@@ -375,7 +375,7 @@ class ClaudeAgentService:
                         llm_call_count += 1
                     if isinstance(message, ResultMessage):
                         result_usage = message.usage
-                        result_cost_usd = message.total_cost_usd
+                        total_cost_usd = message.total_cost_usd
                     else:
                         chunk = self._extract_text_from_message(message)
                         if chunk:
@@ -445,8 +445,8 @@ class ClaudeAgentService:
                     metrics["prompt_cached_tokens"] = cache_read_tokens
                 if cache_creation_tokens is not None:
                     metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
-                if result_cost_usd is not None:
-                    metrics["cost_usd"] = result_cost_usd
+                if total_cost_usd is not None:
+                    metrics["total_cost_usd"] = total_cost_usd
                 span.log(metrics=metrics)
 
         return AgentResponse(
@@ -460,7 +460,7 @@ class ClaudeAgentService:
             output_tokens=output_tokens,
             cache_creation_tokens=cache_creation_tokens,
             cache_read_tokens=cache_read_tokens,
-            cost_usd=result_cost_usd,
+            total_cost_usd=total_cost_usd,
         )
 
     # -------------------------------------------------------------------

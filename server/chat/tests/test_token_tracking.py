@@ -16,7 +16,7 @@ class TestAgentResponseTokenFields:
         assert resp.output_tokens is None
         assert resp.cache_creation_tokens is None
         assert resp.cache_read_tokens is None
-        assert resp.cost_usd is None
+        assert resp.total_cost_usd is None
 
     def test_accepts_token_values(self):
         resp = AgentResponse(
@@ -27,13 +27,13 @@ class TestAgentResponseTokenFields:
             output_tokens=200,
             cache_creation_tokens=1000,
             cache_read_tokens=3000,
-            cost_usd=0.05,
+            total_cost_usd=0.05,
         )
         assert resp.input_tokens == 500
         assert resp.output_tokens == 200
         assert resp.cache_creation_tokens == 1000
         assert resp.cache_read_tokens == 3000
-        assert resp.cost_usd == 0.05
+        assert resp.total_cost_usd == 0.05
 
 
 # -- build_stats ---------------------------------------------------------------
@@ -47,19 +47,19 @@ class TestBuildStatsTokens:
             latency_ms=100,
             input_tokens=500,
             output_tokens=200,
-            cost_usd=0.05,
+            total_cost_usd=0.05,
         )
         stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
         assert stats["inputTokens"] == 500
         assert stats["outputTokens"] == 200
-        assert stats["costUsd"] == 0.05
+        assert stats["totalCostUsd"] == 0.05
 
     def test_omits_tokens_when_none(self):
         resp = AgentResponse(content="hi", tool_calls=[], latency_ms=100)
         stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
         assert "inputTokens" not in stats
         assert "outputTokens" not in stats
-        assert "costUsd" not in stats
+        assert "totalCostUsd" not in stats
 
 
 # -- DB persistence ------------------------------------------------------------
@@ -94,7 +94,7 @@ class TestFinalizeSuccessTokens:
             output_tokens=300,
             cache_creation_tokens=2000,
             cache_read_tokens=5000,
-            cost_usd=0.05,
+            total_cost_usd=0.05,
         )
         svc = TurnLoggingService()
         result = svc.finalize_success(
@@ -110,7 +110,7 @@ class TestFinalizeSuccessTokens:
         assert msg.output_tokens == 300
         assert msg.cache_creation_tokens == 2000
         assert msg.cache_read_tokens == 5000
-        assert msg.cost_usd == 0.05
+        assert msg.total_cost_usd == 0.05
 
     def test_session_aggregates_updated(self, session, user_message):
         resp = AgentResponse(
@@ -119,7 +119,7 @@ class TestFinalizeSuccessTokens:
             latency_ms=100,
             input_tokens=800,
             output_tokens=200,
-            cost_usd=0.03,
+            total_cost_usd=0.03,
         )
         svc = TurnLoggingService()
         svc.finalize_success(
@@ -171,7 +171,7 @@ class TestFinalizeSuccessTokens:
                 latency_ms=100,
                 input_tokens=500,
                 output_tokens=100,
-                cost_usd=0.02,
+                total_cost_usd=0.02,
             )
             svc.finalize_success(
                 session=session,

@@ -259,7 +259,7 @@ class ChatMessage(models.Model):
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_tokens = models.IntegerField(null=True, blank=True)
     cache_read_tokens = models.IntegerField(null=True, blank=True)
-    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
 
     class Meta:
         ordering = ["server_timestamp"]

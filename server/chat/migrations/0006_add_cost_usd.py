@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="chatmessage",
-            name="cost_usd",
+            name="total_cost_usd",
             field=models.DecimalField(max_digits=10, decimal_places=6, blank=True, null=True),
         ),
     ]

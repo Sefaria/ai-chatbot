@@ -70,7 +70,7 @@ class TurnLoggingService:
             output_tokens=agent_response.output_tokens,
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
-            cost_usd=agent_response.cost_usd,
+            total_cost_usd=agent_response.total_cost_usd,
         )
 
         user_message.response_message = response_message
@@ -119,8 +119,8 @@ class TurnLoggingService:
             stats["inputTokens"] = agent_response.input_tokens
         if agent_response.output_tokens is not None:
             stats["outputTokens"] = agent_response.output_tokens
-        if agent_response.cost_usd is not None:
-            stats["costUsd"] = agent_response.cost_usd
+        if agent_response.total_cost_usd is not None:
+            stats["totalCostUsd"] = agent_response.total_cost_usd
         return stats
 
 
