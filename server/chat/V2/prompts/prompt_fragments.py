@@ -29,6 +29,9 @@ def build_system_prompt(
 
     Returns (system_prompt, summary_included).
     """
+    if not core_prompt or not core_prompt.strip():
+        raise ValueError("core_prompt cannot be empty")
+
     parts = [core_prompt]
     summary_included = False
 

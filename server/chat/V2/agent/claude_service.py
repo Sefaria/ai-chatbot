@@ -48,16 +48,8 @@ except Exception:  # pragma: no cover - optional dependency
 # wrapped multiple times (once per thread), creating deeply nested spans.
 _BRAINTRUST_SETUP_DONE = False
 
-try:
-    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
-    from claude_agent_sdk.types import AssistantMessage, ResultMessage
-except Exception:  # pragma: no cover - optional dependency
-    ClaudeAgentOptions = None
-    ClaudeSDKClient = None
-    create_sdk_mcp_server = None
-    tool = None
-    AssistantMessage = None
-    ResultMessage = None
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
+from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
 from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import build_system_prompt
@@ -378,9 +370,9 @@ class ClaudeAgentService:
                 # The SDK may call tools internally (triggering our MCP handlers)
                 # and then stream the final text response here.
                 async for message in client.receive_response():
-                    if AssistantMessage is not None and isinstance(message, AssistantMessage):
+                    if isinstance(message, AssistantMessage):
                         llm_call_count += 1
-                    if ResultMessage is not None and isinstance(message, ResultMessage):
+                    if isinstance(message, ResultMessage):
                         result_usage = message.usage
                         result_cost_usd = message.total_cost_usd
                     else:
