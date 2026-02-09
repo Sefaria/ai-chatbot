@@ -104,3 +104,4 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Add Python logging for prompt loading (cache/fetch/latency/fallback)
 - [ ] Phase 3: Token tracking
 - [ ] Future: extract real llm_calls count from SDK (requires SDK investigation)
+- [ ] Update PR description with final changes before merge
