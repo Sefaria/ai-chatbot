@@ -86,10 +86,10 @@ class AgentResponse:
 
     content: str
     tool_calls: list[dict[str, Any]]
-    llm_calls: int | None
     latency_ms: int
     model: str | None = None
     trace_id: str | None = None
+    llm_calls: int | None = None
 
 
 def extract_refs(tool_calls: list) -> list:
@@ -353,7 +353,6 @@ class ClaudeAgentService:
         return AgentResponse(
             content=output,
             tool_calls=tool_calls_list,
-            llm_calls=None,
             latency_ms=latency_ms,
             model=self.model,
             trace_id=trace_id,

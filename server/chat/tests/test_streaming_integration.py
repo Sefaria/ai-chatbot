@@ -70,7 +70,6 @@ class TestStreamingEndpointAuthentication:
             return_value=AgentResponse(
                 content="Hello! How can I help?",
                 tool_calls=[],
-                llm_calls=None,
                 latency_ms=100,
                 trace_id="trace_123",
             )
@@ -205,7 +204,6 @@ class TestStreamingEndpointSessionManagement:
             return_value=AgentResponse(
                 content="Hello! How can I help?",
                 tool_calls=[],
-                llm_calls=None,
                 latency_ms=100,
                 trace_id="trace_123",
             )
@@ -285,7 +283,6 @@ class TestStreamingEndpointMessagePersistence:
             return_value=AgentResponse(
                 content="This is the assistant response.",
                 tool_calls=[{"tool_name": "get_text", "tool_input": {"reference": "Genesis 1:1"}}],
-                llm_calls=None,
                 latency_ms=150,
                 trace_id="trace_persist",
             )
@@ -400,7 +397,6 @@ class TestStreamingEndpointSSEFormat:
             return_value=AgentResponse(
                 content="SSE test response",
                 tool_calls=[],
-                llm_calls=None,
                 latency_ms=50,
                 trace_id="trace_sse",
             )

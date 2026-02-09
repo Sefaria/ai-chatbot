@@ -86,7 +86,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="This is the response",
             tool_calls=[],
-            llm_calls=None,
             latency_ms=100,
             trace_id="trace_123",
         )
@@ -112,7 +111,6 @@ class TestToAnthropicResponse:
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 1:1"}},
                 {"tool_name": "text_search", "tool_input": {"query": "shabbat"}},
             ],
-            llm_calls=None,
             latency_ms=500,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -130,7 +128,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="",
             tool_calls=[],
-            llm_calls=None,
             latency_ms=50,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -141,7 +138,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="Response",
             tool_calls=[{}],  # Empty tool call
-            llm_calls=None,
             latency_ms=100,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -153,7 +149,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="Test",
             tool_calls=[],
-            llm_calls=None,
             latency_ms=100,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -187,7 +182,6 @@ class TestChatAnthropicEndpoint:
             tool_calls=[
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 2:3"}},
             ],
-            llm_calls=None,
             latency_ms=200,
             trace_id="trace_abc123",
         )
@@ -471,7 +465,6 @@ class TestChatAnthropicHTTPIntegration:
             tool_calls=[
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 2:3"}},
             ],
-            llm_calls=None,
             latency_ms=200,
             trace_id="trace_abc123",
         )
