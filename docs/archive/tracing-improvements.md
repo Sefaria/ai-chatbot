@@ -119,7 +119,9 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 - Not changing the Braintrust wrapper — it already handles LLM child spans correctly.
 - Not manually logging `estimated_cost` — Braintrust auto-aggregates this from child LLM spans in the UI. Our `cost_usd` metric uses a distinct name to avoid double-counting.
 
-## Status
+## Status — COMPLETE (archived 2026-02-09)
+
+All phases implemented and verified against live Braintrust traces.
 
 - [x] Document current state (`server/docs/BRAINTRUST_TRACING.md`)
 - [x] Map agent flow
@@ -142,5 +144,6 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 - [x] Persist `cost_usd` to DB (`ChatMessage` + `ChatSession.total_cost_usd`)
 - [x] Log `cost_usd` to Braintrust span metrics
 - [x] Include `costUsd` in `build_stats` / API response
-- [ ] Add integration test for `ResultMessage` capture — deferred (no official SDK mock/test utilities; would require custom `MockTransport` or heavy `AsyncMock` patching)
-- [ ] Update PR description with final changes before merge
+- [~] Integration test for `ResultMessage` capture — deferred (no official SDK mock/test utilities)
+
+Deferred items are documented, not blocking.
