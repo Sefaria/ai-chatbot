@@ -37,7 +37,7 @@ class FeedbackRequestSerializer(serializers.Serializer):
     """User feedback payload for Braintrust logging."""
 
     traceId = serializers.CharField(max_length=200)
-    score = serializers.FloatField(min_value=0.0, max_value=1.0)
+    score = serializers.CharField(max_length=5)  # 'up' or 'down'
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     feedbackReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
     userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
