@@ -2,16 +2,20 @@
 Braintrust Evaluation Script for LC Chatbot
 ============================================
 
-Runs evaluations against the local chatbot API using Braintrust datasets and scorers.
+Runs evaluations against the chatbot API using Braintrust datasets and scorers.
 
 Prerequisites:
 - Set BRAINTRUST_API_KEY environment variable
-- Backend server running: python manage.py runserver 0.0.0.0:8001
+- Set CHATBOT_USER_TOKEN environment variable (encrypted auth token)
+- Backend server running (for local evals): python manage.py runserver 0.0.0.0:8001
 - Create custom scorers in Braintrust UI
 - Create a dataset in Braintrust UI
 
+Authentication:
+- Token must be provided via CHATBOT_USER_TOKEN env var
+
 Usage:
-    python evals/run_eval.py
+    python evals/run_eval.py --all-scorers
     python evals/run_eval.py --dataset "My Dataset" --experiment "Test Run"
 """
 
@@ -19,45 +23,25 @@ import os
 import sys
 import asyncio
 import argparse
-import hashlib
-import base64
-import json
 import httpx
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from pathlib import Path
 
-from braintrust import Eval, init_dataset, invoke
+from braintrust import EvalAsync, init_dataset, invoke
+from dotenv import load_dotenv
 
-# Cryptography for token generation
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-
-# =============================================================================
-# Configuration
-# =============================================================================
+# Load environment variables from server/.env
+env_path = Path(__file__).parent.parent / "server" / ".env"
+load_dotenv(env_path)
 
 BRAINTRUST_PROJECT = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-DEFAULT_DATASET = "Human Review Good Answers"
+DEFAULT_DATASET = "Benchmark"
 
 # API Configuration
 API_BASE_URL = os.environ.get("CHATBOT_API_URL", "http://localhost:8001")
-# Token secret must match the server's CHATBOT_USER_TOKEN_SECRET (default: "secret")
-TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
-
-
-def create_auth_token(user_id: str = "eval-user", secret: str = TOKEN_SECRET) -> str:
-    """Create a valid encrypted auth token for API requests."""
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-
-    payload = {"id": user_id, "expiration": expires_at.isoformat()}
-    payload_bytes = json.dumps(payload).encode("utf-8")
-
-    key = hashlib.sha256(secret.encode("utf-8")).digest()
-    aesgcm = AESGCM(key)
-    nonce = b"\x00" * 12
-    encrypted = aesgcm.encrypt(nonce, payload_bytes, None)
-
-    token_bytes = nonce + encrypted
-    return base64.urlsafe_b64encode(token_bytes).decode("ascii").rstrip("=")
+PROD_API_URL = "https://chat-dev.sefaria.org"
+# Auth token must be provided externally (encrypted token, not plain user ID)
+USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 
 
 # =============================================================================
@@ -70,8 +54,13 @@ class ChatbotClient:
 
     def __init__(self, base_url: str = API_BASE_URL, api_key: str = None):
         self.base_url = base_url.rstrip("/")
-        # Generate a valid auth token if none provided
-        self.api_key = api_key if api_key else create_auth_token()
+        # Auth token must be provided via api_key param or CHATBOT_USER_TOKEN env var
+        self.api_key = api_key or USER_TOKEN
+        if not self.api_key:
+            raise ValueError(
+                "CHATBOT_USER_TOKEN env var must be set. "
+                "Contact the engineering team to obtain a valid token."
+            )
         self.client = httpx.AsyncClient(timeout=120.0)
 
     async def chat(self, message: str, session_id: str = None) -> dict:
@@ -115,17 +104,6 @@ class ChatbotClient:
         """Extract tool calls from response."""
         content = response.get("content", [])
         return [block for block in content if block.get("type") == "tool_use"]
-
-
-# Global client instance
-_client: ChatbotClient = None
-
-
-def get_client() -> ChatbotClient:
-    global _client
-    if _client is None:
-        _client = ChatbotClient()
-    return _client
 
 
 # =============================================================================
@@ -218,6 +196,11 @@ def get_all_project_scorers() -> list:
         # Filter to only scorer-type functions (exclude prompts, tools, etc.)
         scorer_functions = [f for f in functions if f.get("function_type") == "scorer"]
 
+        # Filter out test scorers (those starting with TEST_)
+        scorer_functions = [
+            f for f in scorer_functions if not f.get("slug", "").startswith("TEST_")
+        ]
+
         scorers = []
         print(
             f"Found {len(scorer_functions)} scorers in Braintrust (out of {len(functions)} total functions):"
@@ -245,6 +228,7 @@ def get_all_project_scorers() -> list:
 
 
 async def run_evaluation(
+    client: ChatbotClient,
     dataset_name: str = DEFAULT_DATASET,
     experiment_name: str = None,
     scorers: list = None,
@@ -254,7 +238,9 @@ async def run_evaluation(
     Run evaluation using Braintrust.
 
     Args:
-        dataset_name: Name of the dataset in Braintrust
+        client: ChatbotClient instance to use for API calls
+        dataset_name: Name of the dataset in Braintrust. Dataset rows should have
+            one of these fields: 'prompt', 'input', or 'query'
         experiment_name: Name for this experiment run
         scorers: List of scorer functions (uses defaults if None)
         max_concurrency: Max concurrent evaluations
@@ -264,21 +250,21 @@ async def run_evaluation(
         print("Set it with: export BRAINTRUST_API_KEY='your-api-key'")
         sys.exit(1)
 
-    client = get_client()
-
     # Default experiment name
     if experiment_name is None:
         experiment_name = (
-            f"LC Chatbot Eval - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            f"Automated Benchmark Eval - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         )
 
     async def task(input_data):
         """Task function that runs the chatbot."""
         # Handle different input formats
         if isinstance(input_data, dict):
-            prompt = input_data.get(
-                "prompt",
-                input_data.get("input", input_data.get("query", str(input_data))),
+            prompt = (
+                input_data.get("prompt")
+                or input_data.get("input")
+                or input_data.get("query")
+                or str(input_data)
             )
         else:
             prompt = str(input_data)
@@ -295,18 +281,18 @@ async def run_evaluation(
     print(f"Starting Evaluation: {experiment_name}")
     print(f"Project: {BRAINTRUST_PROJECT}")
     print(f"Dataset: {dataset_name}")
-    print(f"API: {API_BASE_URL}")
+    print(f"API: {client.base_url}")
     print("=" * 70 + "\n")
 
     try:
-        result = await Eval(
+        result = await EvalAsync(
             BRAINTRUST_PROJECT,
             data=init_dataset(BRAINTRUST_PROJECT, name=dataset_name),
             task=task,
             scores=scorers,
             experiment_name=experiment_name,
             metadata={
-                "api_url": API_BASE_URL,
+                "api_url": client.base_url,
                 "timestamp": datetime.now().isoformat(),
             },
             max_concurrency=max_concurrency,
@@ -357,6 +343,11 @@ def main():
         "--api-url", default=None, help=f"Chatbot API URL (default: {API_BASE_URL})"
     )
     parser.add_argument(
+        "--prod",
+        action="store_true",
+        help=f"Use production API ({PROD_API_URL})",
+    )
+    parser.add_argument(
         "--scorers",
         "-s",
         default=None,
@@ -370,10 +361,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Update client with custom URL if provided
-    if args.api_url:
-        global _client
-        _client = ChatbotClient(base_url=args.api_url)
+    # Create client with appropriate URL
+    if args.prod:
+        client = ChatbotClient(base_url=PROD_API_URL)
+    elif args.api_url:
+        client = ChatbotClient(base_url=args.api_url)
+    else:
+        client = ChatbotClient()
 
     # Build scorers list from CLI argument
     scorers = None
@@ -385,6 +379,7 @@ def main():
 
     asyncio.run(
         run_evaluation(
+            client=client,
             dataset_name=args.dataset,
             experiment_name=args.experiment,
             scorers=scorers,

@@ -187,9 +187,13 @@
     </div>
   </div>
 
-  <!-- The chatbot custom element -->
-  <lc-chatbot 
-    user-id="demo-user-1234"
+  <!--
+    user-id must be an encrypted token, not a plain user ID.
+    Set your token in .env.local: VITE_DEV_USER_TOKEN=your-token
+    Generate tokens: python -c "from chat.user_token_service import create_chatbot_user_token; print(create_chatbot_user_token('user-id', 'secret', hours_valid=8760))"
+  -->
+  <lc-chatbot
+    id="chatbot"
     api-base-url="/api"
     default-open="false"
     placement="right"
@@ -197,6 +201,16 @@
 
   <!-- Load the chatbot bundle -->
   <script type="module" src="/src/main.js"></script>
+
+  <!-- Inject dev token from environment -->
+  <script type="module">
+    const token = import.meta.env.VITE_DEV_USER_TOKEN;
+    if (token) {
+      document.getElementById('chatbot').setAttribute('user-id', token);
+    } else {
+      console.warn('No VITE_DEV_USER_TOKEN set in .env.local - chatbot auth will fail');
+    }
+  </script>
 
   <!-- Event listeners for demo -->
   <script>

@@ -5,54 +5,81 @@ Braintrust evaluations for the LC Chatbot.
 ## Setup
 
 1. Ensure `BRAINTRUST_API_KEY` is set (already in `server/.env`)
-2. Start the backend server: `./start.sh` or `python manage.py runserver 0.0.0.0:8001`
-3. Create a dataset in Braintrust UI
+2. Set `CHATBOT_USER_TOKEN` - encrypted auth token (contact engineering team to obtain)
+3. Start the backend server: `./start.sh` or `python manage.py runserver 0.0.0.0:8001`
+4. Create a dataset in Braintrust UI
 
 ## Running Evaluations
 
 ```bash
-# Basic run (uses default dataset)
-python evals/run_eval.py
+# Run with specific scorers (local server)
+python evals/run_eval.py --scorers "politics-7365,non-psak-e2b5"
+
+# Run with all scorers from Braintrust UI (excludes TEST_ prefixed scorers)
+python evals/run_eval.py --all-scorers
+
+# Run against production API
+python evals/run_eval.py --prod --scorers "politics-7365"
 
 # Specify dataset and experiment name
-python evals/run_eval.py --dataset "My Dataset" --experiment "Test Run"
+python evals/run_eval.py --dataset "My Dataset" --experiment "Test Run" --scorers "politics-7365"
 
 # Full options
 python evals/run_eval.py \
-  --dataset "My Dataset" \
+  --dataset "Benchmark" \
   --experiment "v1.2 Release Test" \
   --concurrency 5 \
-  --api-url http://localhost:8001
+  --all-scorers
 ```
+
+## CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--dataset, -d` | Braintrust dataset name (default: "Benchmark") |
+| `--experiment, -e` | Experiment name (default: auto-generated with timestamp) |
+| `--concurrency, -c` | Max concurrent evaluations (default: 3) |
+| `--api-url` | Custom API URL |
+| `--prod` | Use production API (https://chat-dev.sefaria.org) |
+| `--scorers, -s` | Comma-separated list of Braintrust scorer slugs |
+| `--all-scorers` | Use all scorers defined in Braintrust UI (excludes TEST_ prefixed) |
 
 ## Configuration
 
 Environment variables:
 - `BRAINTRUST_API_KEY` - Required
+- `CHATBOT_USER_TOKEN` - Required, encrypted auth token (contact engineering team)
 - `BRAINTRUST_PROJECT` - Project name (default: "On Site Agent")
 - `CHATBOT_API_URL` - API base URL (default: http://localhost:8001)
-- `CHATBOT_API_KEY` - API key for auth (default: test-key)
 
-## Adding Custom Scorers
+## Scorers
 
-### Built-in Scorers
+All scorers are defined in Braintrust UI. Use `--all-scorers` to fetch and run all available scorers (excluding those prefixed with `TEST_`), or specify individual slugs with `--scorers`.
 
-The script includes basic scorers that work without Braintrust UI setup:
-- `has_response` - Checks for non-empty response
-- `response_length` - Normalized length score
-- `contains_citation` - Checks for Sefaria citations
+To see available scorers:
+```bash
+python -c "
+import os
+os.chdir('server')
+from dotenv import load_dotenv
+load_dotenv()
+import sys
+sys.path.insert(0, '..')
+from evals.run_eval import get_all_project_scorers
+get_all_project_scorers()
+"
+```
 
-### Braintrust UI Scorers
-
-To use custom scorers defined in Braintrust UI:
+### Using Scorers Programmatically
 
 ```python
+import asyncio
 from evals.run_eval import create_scorer, run_evaluation
 
 scorers = [
-    create_scorer("accuracy-scorer", "Measures factual accuracy"),
-    create_scorer("relevance-scorer", "Measures relevance to query"),
-    create_scorer("citation-quality", "Evaluates citation quality"),
+    create_scorer("politics-7365"),
+    create_scorer("non-psak-e2b5"),
+    create_scorer("link-are-valid-06b8"),
 ]
 
 asyncio.run(run_evaluation(scorers=scorers))
