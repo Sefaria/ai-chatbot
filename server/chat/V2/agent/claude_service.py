@@ -421,11 +421,22 @@ class ClaudeAgentService:
             cache_creation_tokens = result_usage.get("cache_creation_input_tokens")
             cache_read_tokens = result_usage.get("cache_read_input_tokens")
 
-        # Metrics are logged explicitly; output is captured automatically by
-        # @traced from the AgentResponse return value (confirmed via trace analysis).
+        # Log output, metrics, and metadata to the Braintrust span.
+        # We set output explicitly to override the @traced auto-capture of
+        # the full AgentResponse (which includes token counts, model, etc.).
         if current_span is not None:
             span = current_span()
             if span is not None:
+                refs = extract_refs(tool_calls_list)
+                span_output: dict[str, Any] = {
+                    "content": output,
+                    "ref_count": len(refs),
+                    "tool_count": len(tool_calls_list),
+                }
+                span_metadata: dict[str, Any] = {
+                    "refs": refs,
+                    "tool_calls": tool_calls_list,
+                }
                 metrics: dict[str, Any] = {
                     "latency_ms": latency_ms,
                     "tool_count": len(tool_calls_list),
@@ -447,7 +458,7 @@ class ClaudeAgentService:
                     metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
                 if total_cost_usd is not None:
                     metrics["total_cost_usd"] = total_cost_usd
-                span.log(metrics=metrics)
+                span.log(output=span_output, metrics=metrics, metadata=span_metadata)
 
         return AgentResponse(
             content=output,
