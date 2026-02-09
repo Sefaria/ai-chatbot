@@ -306,25 +306,11 @@ def chat_feedback_v2(request):
 
     try:
         # Log feedback in Braintrust's feedback system
-        if hasattr(bt_logger, "log_feedback"):
-            bt_logger.log_feedback(
-                id=data["traceId"],
-                scores=scores,
-                comment=comment,
-                metadata=metadata,
-            )
-        elif hasattr(bt_logger, "logFeedback"):
-            bt_logger.logFeedback(
-                {
-                    "id": data["traceId"],
-                    "scores": scores,
-                    "comment": comment,
-                    "metadata": metadata,
-                }
-            )
-        else:
-            raise AttributeError("Braintrust logger does not support feedback logging")
-
+        bt_logger.log_feedback(
+            id=data["traceId"],
+            comment="", # for some reason, this must be passed in
+            metadata=metadata,
+        )
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
