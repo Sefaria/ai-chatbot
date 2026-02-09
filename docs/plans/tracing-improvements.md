@@ -137,4 +137,5 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 - [x] Phase 3: Include tokens in `build_stats` / API response
 - [x] Phase 3: Add tests
 - [x] Extract real llm_calls count from SDK (count `AssistantMessage` instances)
+- [ ] Add integration test for `ResultMessage` capture — deferred (no official SDK mock/test utilities; would require custom `MockTransport` or heavy `AsyncMock` patching)
 - [ ] Update PR description with final changes before merge
