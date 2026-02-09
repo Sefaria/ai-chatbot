@@ -301,6 +301,7 @@ def chat_feedback_v2(request):
         "message_id": data.get("messageId", ""),
     }
     comment = (data.get("comment") or "").strip()
+    score = data.get("score", "")
 
     # Update trace metadata so feedback appears in the same metadata blob in the UI
     # (that blob is span metadata set at message-creation time)
@@ -313,7 +314,7 @@ def chat_feedback_v2(request):
             id=data["traceId"], metadata={"Feedback Comment": comment}
         )
         bt_logger.update_span(
-            id=data["traceId"], metadata={"Feedback Score": score}
+            id=data["traceId"], metadata={"Feedback": score}
         )
     except Exception as _e:
         logger.debug("Could not update span metadata with feedback metadata: %s", _e)

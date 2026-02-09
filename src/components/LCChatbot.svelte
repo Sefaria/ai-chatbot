@@ -50,7 +50,7 @@
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
   let feedbackComment = $state('');
-  let feedbackType = $state(null); // 'like' or 'dislike'
+  let feedbackType = $state(null); // 'up' or 'down'
   let dislikeReason = $state(''); // For dislikes: selected reason category
 
   // Feedback issue options for dislikes
@@ -711,7 +711,7 @@
                   <div class="feedback-buttons">
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'like'}
+                      class:active={item.feedback === 'up'}
                       onclick={() => handleFeedback(item.messageId, 1)}
                       aria-label="Like response"
                     >
@@ -719,7 +719,7 @@
                     </button>
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'dislike'}
+                      class:active={item.feedback === 'down'}
                       onclick={() => handleFeedback(item.messageId, 0)}
                       aria-label="Dislike response"
                     >
@@ -828,7 +828,7 @@
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
             <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
             <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
-            {#if feedbackType === 'dislike'}
+            {#if feedbackType === 'down'}
               <select
                 class="feedback-modal-select"
                 bind:value={dislikeReason}
@@ -843,13 +843,13 @@
               type="text"
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === 'dislike' ? 'More details' : "Anything you'd like to add?"}
+              placeholder={feedbackType === 'down' ? 'More details' : "Anything you'd like to add?"}
             />
             <div class="feedback-modal-actions">
               <button
                 class="feedback-modal-btn submit"
                 onclick={() => submitFeedback(true)}
-                disabled={feedbackType === 'dislike' && !dislikeReason}
+                disabled={feedbackType === 'down' && !dislikeReason}
               >
                 Submit
               </button>
