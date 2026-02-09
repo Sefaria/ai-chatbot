@@ -12,43 +12,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="chatmessage",
             name="cost_usd",
-            field=models.FloatField(blank=True, null=True),
-        ),
-        migrations.AddField(
-            model_name="chatsession",
-            name="total_cost_usd",
-            field=models.FloatField(default=0.0),
-        ),
-        migrations.AlterField(
-            model_name="chatsession",
-            name="conversation_summary",
-            field=models.TextField(
-                blank=True,
-                default="",
-                help_text="Rolling summary of conversation for agent context",
-            ),
-        ),
-        migrations.AlterField(
-            model_name="chatsession",
-            name="current_flow",
-            field=models.CharField(
-                blank=True,
-                default="",
-                help_text="Current conversation label (optional)",
-                max_length=20,
-            ),
-        ),
-        migrations.AlterField(
-            model_name="routedecision",
-            name="flow",
-            field=models.CharField(
-                choices=[
-                    ("TRANSLATION", "Translation"),
-                    ("DISCOVERY", "Discovery"),
-                    ("DEEP_ENGAGEMENT", "Deep Engagement"),
-                    ("REFUSE", "Refuse/Guardrail"),
-                ],
-                max_length=20,
-            ),
+            field=models.DecimalField(max_digits=10, decimal_places=6, blank=True, null=True),
         ),
     ]

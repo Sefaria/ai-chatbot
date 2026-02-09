@@ -133,7 +133,6 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 800
         assert session.total_output_tokens == 200
-        assert session.total_cost_usd == 0.03
 
     def test_none_tokens_leave_session_unchanged(self, session, user_message):
         resp = AgentResponse(
@@ -153,7 +152,6 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 0
         assert session.total_output_tokens == 0
-        assert session.total_cost_usd == 0.0
 
     def test_session_aggregates_accumulate(self, session):
         """Two turns should accumulate token counts and cost."""
@@ -186,4 +184,3 @@ class TestFinalizeSuccessTokens:
         session.refresh_from_db()
         assert session.total_input_tokens == 1000
         assert session.total_output_tokens == 200
-        assert abs(session.total_cost_usd - 0.04) < 1e-9

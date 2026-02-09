@@ -92,8 +92,6 @@ class TurnLoggingService:
             session.total_output_tokens = (
                 session.total_output_tokens or 0
             ) + agent_response.output_tokens
-        if agent_response.cost_usd:
-            session.total_cost_usd = (session.total_cost_usd or 0.0) + agent_response.cost_usd
         session.save(
             update_fields=[
                 "message_count",
@@ -104,7 +102,6 @@ class TurnLoggingService:
                 "total_tool_calls",
                 "total_input_tokens",
                 "total_output_tokens",
-                "total_cost_usd",
             ]
         )
 

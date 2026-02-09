@@ -8,7 +8,6 @@ The v2 API uses Braintrust for tracing. A single top-level span wraps each agent
 
 References:
 - `server/docs/BRAINTRUST_TRACING.md` — Braintrust API surface and current implementation details
-- `docs/plans/trace_6614a94e.json` — Real trace export for reference (DELETE BEFORE PR)
 
 ## Agent Flow
 
