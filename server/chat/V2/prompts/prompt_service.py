@@ -59,10 +59,6 @@ class PromptService:
         self._cache_lock = Lock()
         self._braintrust_client = None
 
-        from .default_prompts import CORE_PROMPT
-
-        self._default_core_prompt = CORE_PROMPT
-
         self._init_braintrust()
 
     def _init_braintrust(self) -> None:
@@ -114,59 +110,62 @@ class PromptService:
                 logger.debug("Prompt cache hit: %s (version=%s)", prompt_id, cached["version"])
                 return cached["prompt"], cached["version"]
 
-        if self._braintrust_client:
-            try:
-                fetch_start = time.time()
-                prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
-                fetch_ms = int((time.time() - fetch_start) * 1000)
-                if prompt_text:
-                    with self._cache_lock:
-                        self._cache[cache_key] = {
-                            "prompt": prompt_text,
-                            "version": actual_version,
-                            "timestamp": time.time(),
-                        }
-                    logger.info(
-                        "Prompt fetched from Braintrust: %s (version=%s, %dms)",
-                        prompt_id,
-                        actual_version,
-                        fetch_ms,
-                    )
-                    return prompt_text, actual_version
-                logger.warning("Prompt fetch returned empty: %s (%dms)", prompt_id, fetch_ms)
-            except Exception as exc:
-                logger.warning(f"Failed to fetch prompt {prompt_id} from Braintrust: {exc}")
+        if not self._braintrust_client:
+            raise RuntimeError(
+                f"Cannot load prompt '{prompt_id}': Braintrust not configured (no API key)"
+            )
 
-        logger.info("Using local fallback prompt for: %s", prompt_id)
-        return self._default_core_prompt, "local"
+        try:
+            fetch_start = time.time()
+            prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
+            fetch_ms = int((time.time() - fetch_start) * 1000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to fetch prompt '{prompt_id}' from Braintrust: {exc}"
+            ) from exc
+
+        if not prompt_text:
+            raise RuntimeError(
+                f"Prompt '{prompt_id}' returned empty from Braintrust ({fetch_ms}ms)"
+            )
+
+        with self._cache_lock:
+            self._cache[cache_key] = {
+                "prompt": prompt_text,
+                "version": actual_version,
+                "timestamp": time.time(),
+            }
+        logger.info(
+            "Prompt fetched from Braintrust: %s (version=%s, %dms)",
+            prompt_id,
+            actual_version,
+            fetch_ms,
+        )
+        return prompt_text, actual_version
 
     def _fetch_from_braintrust(self, prompt_id: str, version: str) -> tuple[str | None, str]:
         """
         Fetch a prompt from Braintrust.
 
         Returns (prompt_text, version) or (None, "") if not found.
+        Raises on network/API errors (caller handles).
         """
-        try:
-            prompt = self._braintrust_client.load_prompt(
-                project=self.project_name,
-                slug=prompt_id,
-                version=version if version != "stable" else None,
-            )
+        prompt = self._braintrust_client.load_prompt(
+            project=self.project_name,
+            slug=prompt_id,
+            version=version if version != "stable" else None,
+        )
 
-            if prompt is None:
-                return None, ""
-
-            actual_version = getattr(prompt, "version", version) or version
-            prompt_text = self._extract_prompt_text(prompt)
-
-            if prompt_text:
-                return prompt_text, str(actual_version)
-
+        if prompt is None:
             return None, ""
 
-        except Exception as exc:
-            logger.warning(f"Braintrust prompt fetch error for {prompt_id}: {exc}")
-            return None, ""
+        actual_version = getattr(prompt, "version", version) or version
+        prompt_text = self._extract_prompt_text(prompt)
+
+        if prompt_text:
+            return prompt_text, str(actual_version)
+
+        return None, ""
 
     def _extract_prompt_text(self, prompt) -> str | None:
         """

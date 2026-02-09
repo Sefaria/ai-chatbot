@@ -82,7 +82,7 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 - Our own tool child spans — SDK already creates these with input, output, and timestamps. Duplicating would add noise.
 
 **Logged via Python logging instead:**
-- Prompt loading: cache hit/miss, fetch latency, fallback to local (in `prompt_service.py`)
+- Prompt loading: cache hit/miss, fetch latency (in `prompt_service.py`)
 
 **Remaining:** SDK spans are adequate for tool/LLM visibility. The real gap is token tracking (Phase 3).
 
@@ -101,7 +101,8 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Remove redundant output logging (overwritten by @traced)
 - [x] Analyze real trace, document findings
 - [x] Phase 2 scope agreed: SDK spans are adequate, keep it simple
-- [x] Add Python logging for prompt loading (cache/fetch/latency/fallback)
+- [x] Add Python logging for prompt loading (cache/fetch/latency)
+- [x] Remove local prompt fallback (cache or fetch only, errors surface)
 - [ ] Phase 3: Token tracking
 - [ ] Future: extract real llm_calls count from SDK (requires SDK investigation)
 - [ ] Update PR description with final changes before merge

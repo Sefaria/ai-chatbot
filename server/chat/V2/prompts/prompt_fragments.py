@@ -4,9 +4,9 @@ Reusable text fragments that are composed into LLM prompts.
 All text that gets injected into messages sent to Claude lives here,
 so prompt content is easy to find, review, and update in one place.
 
-Note: The core system prompt lives in default_prompts.py (local fallback)
-and Braintrust (production). The summary generation prompt lives in
-summarization/summary_service.py since it targets a different model.
+Note: The core system prompt lives in Braintrust (fetched by prompt_service.py).
+The summary generation prompt lives in summarization/summary_service.py
+since it targets a different model.
 """
 
 SECTION_SEPARATOR = "\n\n"
