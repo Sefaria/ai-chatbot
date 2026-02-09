@@ -295,11 +295,6 @@ def chat_feedback_v2(request):
         )
 
     feedback_reason = (data.get("feedbackReason") or "").strip()
-    metadata = {
-        "user_id": data.get("userId", ""),
-        "session_id": data.get("sessionId", ""),
-        "message_id": data.get("messageId", ""),
-    }
     score = data["score"]
     comment = (data.get("comment") or "").strip()
     scores = {"user_rating": 1 if score == 'up' else 0}
@@ -309,15 +304,20 @@ def chat_feedback_v2(request):
         bt_logger.log_feedback(
             id=data["traceId"],
             scores=scores, # `log_feedback` requires either scores, expected, tags or comment to be passed in
-            metadata=metadata,
         )
 
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, "feedback_comment": comment}
+        metadata = {"feedback": score,
+                    "feedback_reason": feedback_reason,
+                    "feedback_comment": comment,
+                    "user_id": data.get("userId", ""),
+                    "session_id": data.get("sessionId", ""),
+                    "message_id": data.get("messageId", ""),
+                    }
         try:
-            bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
+            bt_logger.update_span(id=data["traceId"], metadata=metadata)
         except Exception as _e:
             logger.debug("Could not update span metadata with feedback metadata: %s", _e)
     except Exception as e:
