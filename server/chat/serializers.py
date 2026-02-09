@@ -39,7 +39,6 @@ class FeedbackRequestSerializer(serializers.Serializer):
     traceId = serializers.CharField(max_length=200)
     score = serializers.FloatField(min_value=0.0, max_value=1.0)
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
-    dislikeReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
     userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100, required=False, allow_blank=True)
     messageId = serializers.CharField(max_length=100, required=False, allow_blank=True)
