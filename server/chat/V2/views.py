@@ -302,7 +302,7 @@ def chat_feedback_v2(request):
     }
     score = data["score"]
     comment = (data.get("comment") or "").strip()
-    scores = {"user_rating": 1 if score == 'up' else 0}
+    scores = {"user_rating": score}
 
     try:
         # Log feedback in Braintrust's feedback system
