@@ -59,8 +59,8 @@ Key findings:
 
 1. ~~llm_calls hardcoded to 1~~ → Now `None` (can't count SDK-internal calls)
 2. **SDK spans are adequate but not controllable** — tool spans have input/output but we can't add custom fields
-3. **No token tracking** — not in any span
-4. **Prompt loading not traced** — can't see cache hit vs Braintrust fetch latency
+3. **No token tracking on root span or DB** — Braintrust wrapper handles LLM child spans (cost estimation works), but our `chat-agent` span has no token metrics, DB fields are empty, and Anthropic API returns 0
+4. ~~Prompt loading not traced~~ → Added Python logging (cache/fetch/latency)
 
 ## Proposed Changes
 
@@ -88,7 +88,32 @@ The trace analysis shows the SDK already creates decent tool and LLM child spans
 
 ### Phase 3: Token tracking
 
-Extract token counts from the SDK response. Currently not captured anywhere. This requires investigation into what the Claude Agent SDK exposes after `query()` completes.
+**Goal:** Extract token usage from the SDK and propagate it to the Braintrust span, DB, and API response.
+
+**Current state:** The Braintrust wrapper already handles token tracking on the LLM child spans — each `anthropic.messages.create` span gets model metadata and token metrics, and Braintrust aggregates these upward in the UI for cost estimation (confirmed working: screenshot shows $0.141 estimated cost). However, our root `chat-agent` span has no token metrics of its own (only `start`/`end`), the DB token fields are never populated, and the Anthropic-compatible API returns `usage: {input_tokens: 0, output_tokens: 0}`.
+
+**How it works:** The SDK's `receive_response()` yields messages ending with a `ResultMessage` (from `claude_agent_sdk.types`). This has `usage: dict[str, Any] | None` containing standard Anthropic fields (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`) and `total_cost_usd: float | None`. The Braintrust wrapper intercepts this and logs normalized metrics (`prompt_tokens`, `completion_tokens`, `tokens`, `prompt_cached_tokens`, `prompt_cache_creation_tokens`) to the last LLM child span via `llm_tracker.log_usage()`. We currently ignore the `ResultMessage` entirely — `_extract_text_from_message` returns empty string for it.
+
+**Approach:** Capture the `ResultMessage` as it flows through the existing message loop in `_send_message_inner`. Extract the usage dict and cost, add them to `AgentResponse`, and let the existing plumbing carry them to the span, DB, and API response.
+
+**Changes:**
+
+1. **Capture `ResultMessage`** in `_send_message_inner` (`claude_service.py`): In the `async for message in client.receive_response()` loop, check `isinstance(message, ResultMessage)`. Store its `usage` dict and `total_cost_usd`. Import `ResultMessage` from `claude_agent_sdk.types`.
+
+2. **Add token fields to `AgentResponse`** (`claude_service.py`): Add `input_tokens: int | None = None`, `output_tokens: int | None = None`, `cache_creation_tokens: int | None = None`, `cache_read_tokens: int | None = None`, `cost_usd: float | None = None`. Populate from the captured `ResultMessage`.
+
+3. **Log tokens to the Braintrust span** (`claude_service.py`): In the existing `span.log(metrics={...})` call, add the token fields using Braintrust's standard metric names: `prompt_tokens`, `completion_tokens`, `tokens`, `prompt_cached_tokens`, `prompt_cache_creation_tokens`. This makes the root span queryable by tokens, not just relying on UI aggregation. Convention per Braintrust docs: `prompt_tokens` should include both cached and cache creation tokens.
+
+4. **Persist to DB** (`turn_logging_service.py`): In `finalize_success`, pass token fields from `AgentResponse` to `ChatMessage.objects.create()`. Update session aggregates (`total_input_tokens`, `total_output_tokens`), add them to `save(update_fields=...)`.
+
+5. **Include in stats/API response** (`turn_logging_service.py`): Add `inputTokens` and `outputTokens` to `build_stats()`. The Anthropic-compatible endpoint already reads these from stats — it will start returning real values instead of 0.
+
+6. **Tests**: Mock `ResultMessage` with usage data, verify propagation to `AgentResponse`, span metrics, and DB record.
+
+**What we're NOT doing:**
+- Not querying Braintrust API for child span metrics — the `ResultMessage` gives us the aggregate for the entire turn.
+- Not changing the Braintrust wrapper — it already handles LLM child spans correctly.
+- Not adding a migration — the DB token fields already exist on `ChatMessage` and `ChatSession`, just never populated.
 
 ## Status
 
@@ -103,6 +128,11 @@ Extract token counts from the SDK response. Currently not captured anywhere. Thi
 - [x] Phase 2 scope agreed: SDK spans are adequate, keep it simple
 - [x] Add Python logging for prompt loading (cache/fetch/latency)
 - [x] Remove local prompt fallback (cache or fetch only, errors surface)
-- [ ] Phase 3: Token tracking
-- [ ] Future: extract real llm_calls count from SDK (requires SDK investigation)
+- [x] Phase 3: Capture `ResultMessage` in message loop
+- [x] Phase 3: Add token fields to `AgentResponse`
+- [x] Phase 3: Log token metrics to Braintrust span
+- [x] Phase 3: Persist tokens to DB (`ChatMessage` + `ChatSession` aggregates)
+- [x] Phase 3: Include tokens in `build_stats` / API response
+- [x] Phase 3: Add tests
+- [x] Extract real llm_calls count from SDK (count `AssistantMessage` instances)
 - [ ] Update PR description with final changes before merge

@@ -66,6 +66,10 @@ class TurnLoggingService:
             tool_calls_data=agent_response.tool_calls,
             model_name=model_name,
             status=ChatMessage.Status.SUCCESS,
+            input_tokens=agent_response.input_tokens,
+            output_tokens=agent_response.output_tokens,
+            cache_creation_tokens=agent_response.cache_creation_tokens,
+            cache_read_tokens=agent_response.cache_read_tokens,
         )
 
         user_message.response_message = response_message
@@ -79,6 +83,14 @@ class TurnLoggingService:
         session.conversation_summary = summary_text
         session.summary_updated_at = timezone.now()
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
+        if agent_response.input_tokens:
+            session.total_input_tokens = (
+                session.total_input_tokens or 0
+            ) + agent_response.input_tokens
+        if agent_response.output_tokens:
+            session.total_output_tokens = (
+                session.total_output_tokens or 0
+            ) + agent_response.output_tokens
         session.save(
             update_fields=[
                 "message_count",
@@ -87,6 +99,8 @@ class TurnLoggingService:
                 "conversation_summary",
                 "summary_updated_at",
                 "total_tool_calls",
+                "total_input_tokens",
+                "total_output_tokens",
             ]
         )
 
@@ -95,11 +109,16 @@ class TurnLoggingService:
 
     @staticmethod
     def build_stats(*, agent_response: AgentResponse, latency_ms: int) -> dict[str, Any]:
-        return {
+        stats: dict[str, Any] = {
             "llmCalls": agent_response.llm_calls,
             "toolCalls": len(agent_response.tool_calls),
             "latencyMs": latency_ms,
         }
+        if agent_response.input_tokens is not None:
+            stats["inputTokens"] = agent_response.input_tokens
+        if agent_response.output_tokens is not None:
+            stats["outputTokens"] = agent_response.output_tokens
+        return stats
 
 
 _logging_service: TurnLoggingService | None = None
