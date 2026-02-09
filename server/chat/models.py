@@ -37,6 +37,7 @@ class ChatSession(models.Model):
     total_input_tokens = models.IntegerField(default=0)
     total_output_tokens = models.IntegerField(default=0)
     total_tool_calls = models.IntegerField(default=0)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0, null=True)
 
     # Session metadata
     user_locale = models.CharField(max_length=10, blank=True, default="")

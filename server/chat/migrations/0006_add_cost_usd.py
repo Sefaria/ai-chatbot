@@ -14,4 +14,9 @@ class Migration(migrations.Migration):
             name="total_cost_usd",
             field=models.DecimalField(max_digits=10, decimal_places=6, blank=True, null=True),
         ),
+        migrations.AddField(
+            model_name="chatsession",
+            name="total_cost_usd",
+            field=models.DecimalField(max_digits=10, decimal_places=6, default=0, null=True),
+        ),
     ]

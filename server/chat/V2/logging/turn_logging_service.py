@@ -92,6 +92,12 @@ class TurnLoggingService:
             session.total_output_tokens = (
                 session.total_output_tokens or 0
             ) + agent_response.output_tokens
+        if agent_response.total_cost_usd is not None:
+            from decimal import Decimal
+
+            session.total_cost_usd = (session.total_cost_usd or Decimal(0)) + Decimal(
+                str(agent_response.total_cost_usd)
+            )
         session.save(
             update_fields=[
                 "message_count",
@@ -102,6 +108,7 @@ class TurnLoggingService:
                 "total_tool_calls",
                 "total_input_tokens",
                 "total_output_tokens",
+                "total_cost_usd",
             ]
         )
 
