@@ -51,7 +51,7 @@
   let feedbackModalMessageId = $state(null);
   let feedbackComment = $state('');
   let feedbackType = $state(null); // 'up' or 'down'
-  let dislikeReason = $state(''); // For dislikes: selected reason category
+  let feedbackReason = $state(''); // For dislikes: selected reason category
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
@@ -405,7 +405,7 @@
     // Show the feedback modal for both likes and dislikes
     feedbackModalMessageId = messageId;
     feedbackComment = '';
-    dislikeReason = '';
+    feedbackReason = '';
     feedbackType = score > 0 ? 'up' : 'down';
     showFeedbackModal = true;
 
@@ -420,7 +420,7 @@
     feedbackModalMessageId = null;
     feedbackComment = '';
     feedbackType = null;
-    dislikeReason = '';
+    feedbackReason = '';
   }
 
   async function submitFeedback(includeDetails = true) {
@@ -439,7 +439,7 @@
         sessionId,
         messageId: feedbackModalMessageId,
         comment: includeDetails ? feedbackComment : '',
-        dislikeReason: includeDetails ? dislikeReason : ''
+        feedbackReason: includeDetails ? feedbackReason : ''
       });
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
@@ -832,7 +832,7 @@
             {#if feedbackType === 'down'}
               <select
                 class="feedback-modal-select"
-                bind:value={dislikeReason}
+                bind:value={feedbackReason}
               >
                 <option value="" disabled>Select Issue</option>
                 {#each DISLIKE_REASONS as issue}
@@ -850,7 +850,7 @@
               <button
                 class="feedback-modal-btn submit"
                 onclick={() => submitFeedback(true)}
-                disabled={feedbackType === 'down' && !dislikeReason}
+                disabled={feedbackType === 'down' && !feedbackReason}
               >
                 Submit
               </button>

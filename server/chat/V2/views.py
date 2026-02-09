@@ -294,7 +294,7 @@ def chat_feedback_v2(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    feedback_reason = (data.get("dislikeReason") or "").strip()
+    feedback_reason = (data.get("feedbackReason") or "").strip()
     metadata = {
         "user_id": data.get("userId", ""),
         "session_id": data.get("sessionId", ""),
