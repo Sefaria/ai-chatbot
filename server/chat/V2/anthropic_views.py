@@ -39,6 +39,7 @@ from ..auth import (
 from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
+from .checks import run_pre_flight_checks
 from .logging import get_turn_logging_service
 from .services import create_or_get_session, load_session_summary, save_user_message
 
@@ -230,6 +231,17 @@ def chat_anthropic_v2(request):
             session_id, actor, validate_ownership=False, current_flow=BRAINTRUST_ORIGIN
         )
         summary_text = ""
+
+    # Pre-flight checks (guardrail, multi-turn limit)
+    preflight = run_pre_flight_checks(user_message_text, session)
+    if not preflight.passed:
+        return Response(
+            to_anthropic_error(
+                "invalid_request_error",
+                preflight.rejection_message,
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     turn_id = ChatMessage.generate_turn_id()
     user_message_id = ChatMessage.generate_message_id()
