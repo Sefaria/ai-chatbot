@@ -1,10 +1,17 @@
 """
-Anthropic-compatible chat endpoint for Braintrust integration.
+Anthropic-compatible chat endpoint — used by Braintrust playground & evaluations.
 
-This endpoint accepts the Anthropic Messages API format and returns
-responses in the same format, enabling use in Braintrust playground
-and evaluations. Includes full logging and metrics parity with the
-streaming endpoint.
+This is a synchronous (non-streaming) endpoint that speaks the Anthropic Messages
+API format, so Braintrust can treat our agent like a standard Claude model.
+
+Request flow:
+    POST /api/v2/chat/anthropic
+    → authenticate via X-Api-Key header (encrypted user token)
+    → create/resume session (X-Session-ID for multi-turn, otherwise ephemeral)
+    → save user message to DB
+    → run agent (ClaudeAgentService.send_message)
+    → log response to DB
+    → return Anthropic Messages API format response
 
 Deviations from Anthropic Messages API standard:
 - Response `metadata` field: We add trace_id, origin, and stats. Extra fields are ignored
@@ -31,7 +38,7 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
-from .agent import AgentResponse, ConversationMessage, get_agent_service
+from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .services import create_or_get_session, load_session_summary, save_user_message
 
@@ -39,6 +46,16 @@ logger = logging.getLogger("chat")
 
 # Origin identifier for Braintrust requests (used in metadata)
 BRAINTRUST_ORIGIN = "braintrust"
+
+
+def _flush_braintrust():
+    """Flush pending Braintrust spans so they're sent before the request ends."""
+    try:
+        import braintrust
+
+        braintrust.flush()
+    except Exception:
+        pass
 
 
 def extract_user_message(messages: list[dict]) -> str:
@@ -227,6 +244,8 @@ def chat_anthropic_v2(request):
         flow=BRAINTRUST_ORIGIN,
     )
 
+    msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
+
     try:
         agent = get_agent_service()
         conversation = [ConversationMessage(role="user", content=user_message_text)]
@@ -235,12 +254,14 @@ def chat_anthropic_v2(request):
                 messages=conversation,
                 core_prompt_id=core_prompt_slug,
                 on_progress=None,
-                summary_text=summary_text,
+                context=msg_context,
             )
         )
     except Exception:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.exception("Agent error in Anthropic endpoint")
+
+        _flush_braintrust()
 
         # Log error message
         logging_service = get_turn_logging_service()
@@ -258,6 +279,8 @@ def chat_anthropic_v2(request):
             to_anthropic_error("api_error", "Internal server error", latency_ms),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+    _flush_braintrust()
 
     latency_ms = int((time.time() - start_time) * 1000)
 

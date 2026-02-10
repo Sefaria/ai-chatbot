@@ -33,6 +33,8 @@ When working on implementation history or planning:
 - Check `docs/archive/` for past decisions
 - Store new plans in `docs/plans/`
 - Move completed or obsolete plans to `docs/archive/`
+- Update the relevant plan doc as part of each commit (mark completed items, note decisions made)
+- Plans should stay in sync with the code — if you change the approach, update the plan
 
 ## Quick Reference
 

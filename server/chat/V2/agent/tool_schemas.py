@@ -1,7 +1,16 @@
 """
-Tool schemas for Claude agent - Sefaria API tools.
+Tool schemas — JSON Schema definitions for every Sefaria tool the agent can call.
 
-Includes individual tool definitions and helper functions to retrieve tools.
+Each TOOL_* constant is a dict with {name, description, input_schema} matching
+the format expected by create_sdk_mcp_server(). The schemas are also used by
+SefariaToolExecutor._dispatch to validate/extract parameters.
+
+Adding a new tool:
+1. Define a TOOL_* constant here
+2. Add it to ALL_TOOLS
+3. Add a matching handler in SefariaToolExecutor._dispatch
+4. Add a matching method in SefariaClient
+5. Add a description in describe_tool_call (tool_executor.py)
 """
 
 from typing import Any
