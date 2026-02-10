@@ -1008,7 +1008,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 4px;
     border: 0px;
     background: transparent;
     color: var(--lc-text-secondary);
