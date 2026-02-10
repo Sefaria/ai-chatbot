@@ -759,6 +759,7 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          maxlength="500"
           placeholder="Type a message..."
           rows="1"
           disabled={isSending}
