@@ -7,13 +7,12 @@ within scope. Fails closed: any error → message blocked.
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 
-import anthropic
 from django.conf import settings
 
-from ..prompts import get_prompt_service
+from ..base_llm_service import BaseLLMService
+from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
 
 logger = logging.getLogger("chat.guardrail")
 
@@ -26,7 +25,7 @@ class GuardrailResult:
     reason: str = ""
 
 
-class GuardrailService:
+class GuardrailService(BaseLLMService):
     """Classifies user messages as allowed or blocked using an LLM filter.
 
     Uses a Braintrust-managed prompt (guardrail-checker) as the system prompt,
@@ -35,9 +34,7 @@ class GuardrailService:
     """
 
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.client = anthropic.Anthropic(api_key=self.api_key) if self.api_key else None
-        self.prompt_service = get_prompt_service()
+        super().__init__(api_key=api_key)
 
     def check_message(self, user_message: str) -> GuardrailResult:
         """Check whether a user message is allowed.
@@ -48,15 +45,17 @@ class GuardrailService:
         # Fail closed: every early return blocks the message. This ensures
         # that infrastructure failures (missing client, Braintrust outage,
         # LLM errors) don't accidentally let unfiltered messages through.
-        if not self.client:
+        try:
+            self._ensure_client()
+        except ValueError:
             logger.error("Guardrail: no Anthropic client configured")
-            return GuardrailResult(allowed=False, reason="Guardrail service unavailable")
+            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 
         try:
             system_prompt = self._load_prompt()
         except Exception as exc:
             logger.error(f"Guardrail: failed to load prompt: {exc}")
-            return GuardrailResult(allowed=False, reason="Guardrail service unavailable")
+            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 
         try:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
@@ -71,7 +70,7 @@ class GuardrailService:
             return self._parse_response(response)
         except Exception as exc:
             logger.error(f"Guardrail: LLM call failed: {exc}")
-            return GuardrailResult(allowed=False, reason="Guardrail service unavailable")
+            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 
     def _load_prompt(self) -> str:
         """Fetch the guardrail prompt from Braintrust via PromptService."""
@@ -108,14 +107,14 @@ class GuardrailService:
             allowed = data.get("allowed")
             if not isinstance(allowed, bool):
                 logger.warning(f"Guardrail: 'allowed' not a bool: {text[:200]}")
-                return GuardrailResult(allowed=False, reason="Malformed guardrail response")
+                return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
             return GuardrailResult(
                 allowed=allowed,
                 reason=data.get("reason", ""),
             )
         except (json.JSONDecodeError, IndexError, KeyError) as exc:
             logger.warning(f"Guardrail: failed to parse response: {exc}")
-            return GuardrailResult(allowed=False, reason="Malformed guardrail response")
+            return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
 
 
 # Singleton — shared across requests within a process. The Anthropic client

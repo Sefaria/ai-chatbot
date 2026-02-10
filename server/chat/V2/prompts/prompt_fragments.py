@@ -26,6 +26,11 @@ GUARDRAIL_REJECTION_MESSAGE = (
     "Could you rephrase your question to be about a Jewish text or topic?"
 )
 
+# Internal reasons logged when the guardrail can't run or returns bad data.
+# Not user-facing — used in GuardrailResult.reason for debugging / tracing.
+GUARDRAIL_UNAVAILABLE_REASON = "Guardrail service unavailable"
+GUARDRAIL_MALFORMED_REASON = "Malformed guardrail response"
+
 # ---------------------------------------------------------------------------
 # Prompt fragments (injected into LLM system prompts)
 # ---------------------------------------------------------------------------

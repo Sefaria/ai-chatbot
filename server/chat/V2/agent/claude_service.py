@@ -13,7 +13,7 @@ Flow overview (see also docs/ARCHITECTURE.md):
 
 Key integration points:
 - Claude Agent SDK: manages the LLM ↔ tool-call loop
-- Braintrust: optional tracing/observability (wraps SDK via monkey-patch)
+- Braintrust: tracing/observability (wraps SDK via monkey-patch)
 - MCP server: tools are exposed to the SDK as an in-process MCP server
 """
 
@@ -29,32 +29,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# External dependencies — Braintrust (tracing, optional) and Claude Agent SDK
-# Braintrust is optional: tracing is skipped when the API key is absent.
-# Claude Agent SDK is required: the service will fail to import without it.
-# ---------------------------------------------------------------------------
-
-try:
-    import braintrust
-    from braintrust import current_span
-    from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
-except Exception:  # pragma: no cover - optional dependency
-    braintrust = None
-    setup_claude_agent_sdk = None
-    current_span = None
-
-# Global flag to ensure setup_claude_agent_sdk is only called once per process.
-# IMPORTANT: This must be a global (not thread-local) because setup_claude_agent_sdk
-# patches the SDK classes globally. Using thread-local would cause the SDK to be
-# wrapped multiple times (once per thread), creating deeply nested spans.
-_BRAINTRUST_SETUP_DONE = False
-
+import braintrust
+from braintrust import current_span
+from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
+from ..base_llm_service import BaseLLMService
 from ..guardrail import get_guardrail_service
-from ..prompts import PromptService, get_prompt_service
+from ..prompts import PromptService
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     GUARDRAIL_REJECTION_MESSAGE,
@@ -65,6 +48,12 @@ from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
 
 logger = logging.getLogger("chat.agent")
+
+# Global flag to ensure setup_claude_agent_sdk is only called once per process.
+# IMPORTANT: This must be a global (not thread-local) because setup_claude_agent_sdk
+# patches the SDK classes globally. Using thread-local would cause the SDK to be
+# wrapped multiple times (once per thread), creating deeply nested spans.
+_BRAINTRUST_SETUP_DONE = False
 
 # ---------------------------------------------------------------------------
 # Data classes — these are the public API types passed between layers
@@ -152,7 +141,7 @@ def truncate(text: str, max_len: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-class ClaudeAgentService:
+class ClaudeAgentService(BaseLLMService):
     """Orchestrates a single chat turn: prompt → SDK → tool calls → response.
 
     One instance is created per request by `get_agent_service()`. It holds
@@ -179,9 +168,8 @@ class ClaudeAgentService:
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required")
+        super().__init__(api_key=api_key, prompt_service=prompt_service)
+        self._ensure_client()
         # The SDK reads the key from the environment, so ensure it's set.
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = self.api_key
@@ -192,10 +180,10 @@ class ClaudeAgentService:
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.prompt_service = prompt_service or get_prompt_service()
-        self._braintrust_api_key: str | None = None
-        self._braintrust_project: str | None = None
-        self._braintrust_enabled = False
+        self._braintrust_api_key = os.environ.get("BRAINTRUST_API_KEY")
+        if not self._braintrust_api_key:
+            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
+        self._braintrust_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 
         # Sefaria HTTP client is shared between the executor and this service
         # so we get connection reuse across tool calls within a single turn.
@@ -212,30 +200,13 @@ class ClaudeAgentService:
         """One-time setup: monkey-patches the Claude Agent SDK to emit Braintrust spans.
 
         Uses a global flag (_BRAINTRUST_SETUP_DONE) because the patch is process-wide.
-        Called from __init__ and again from send_message (in case env changed).
         """
-        bt_api_key = os.environ.get("BRAINTRUST_API_KEY")
-        bt_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-        self._braintrust_api_key = bt_api_key
-        self._braintrust_project = bt_project
-        self._braintrust_enabled = False
-        if not bt_api_key:
-            return
-        if setup_claude_agent_sdk is None:
-            logger.warning("Braintrust Claude Agent SDK wrapper not available")
-            return
-
         global _BRAINTRUST_SETUP_DONE
         if _BRAINTRUST_SETUP_DONE:
-            self._braintrust_enabled = True
             return
 
-        try:
-            setup_claude_agent_sdk(project=bt_project, api_key=bt_api_key)
-            self._braintrust_enabled = True
-            _BRAINTRUST_SETUP_DONE = True
-        except Exception as exc:
-            logger.warning(f"Failed to setup Braintrust Claude Agent SDK: {exc}")
+        setup_claude_agent_sdk(project=self._braintrust_project, api_key=self._braintrust_api_key)
+        _BRAINTRUST_SETUP_DONE = True
 
     # -------------------------------------------------------------------
     # Public API
@@ -250,13 +221,13 @@ class ClaudeAgentService:
     ) -> AgentResponse:
         """Entry point for a single chat turn.
 
-        If Braintrust is configured, the entire turn is wrapped in a traced
-        span named "chat-agent" so that LLM calls and tool calls appear as
-        children in the Braintrust dashboard.
+        The entire turn is wrapped in a Braintrust traced span named
+        "chat-agent" so that LLM calls and tool calls appear as children
+        in the Braintrust dashboard.
         """
-        self._setup_braintrust_tracing()
         context = context or MessageContext()
 
+        @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
             return await self._send_message_inner(
                 messages=messages,
@@ -264,11 +235,6 @@ class ClaudeAgentService:
                 on_progress=on_progress,
                 context=context,
             )
-
-        # Wrap in a Braintrust span when tracing is active
-        if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
-            traced_run = braintrust.traced(name="chat-agent", type="task")(run)
-            return await traced_run()
 
         return await run()
 
@@ -292,12 +258,12 @@ class ClaudeAgentService:
         2. Wrap each Sefaria tool as an SDK-compatible MCP tool
         3. Configure and launch the ClaudeSDKClient
         4. Stream text chunks from the SDK, accumulating the final response
-        5. Log metrics to Braintrust span (if active)
+        5. Log metrics to Braintrust span
         """
         start_time = time.time()
 
         # Grab the Braintrust span once — all logging below uses this reference.
-        bt_span = current_span() if current_span is not None else None
+        bt_span = current_span()
 
         def emit(update: AgentProgressUpdate) -> None:
             """Safe wrapper — swallows callback errors so they don't kill the turn."""
@@ -314,17 +280,16 @@ class ClaudeAgentService:
             "",
         )
 
-        guardrail_span = bt_span.start_span(name="guardrail") if bt_span else None
+        guardrail_span = bt_span.start_span(name="guardrail")
         guardrail_result = await asyncio.to_thread(
             get_guardrail_service().check_message, last_user_message
         )
-        if guardrail_span is not None:
-            guardrail_span.log(
-                input={"message": last_user_message},
-                output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
-                metadata={"guardrail_blocked": not guardrail_result.allowed},
-            )
-            guardrail_span.end()
+        guardrail_span.log(
+            input={"message": last_user_message},
+            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+            metadata={"guardrail_blocked": not guardrail_result.allowed},
+        )
+        guardrail_span.end()
 
         if not guardrail_result.allowed:
             logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
@@ -333,7 +298,7 @@ class ClaudeAgentService:
                 content=GUARDRAIL_REJECTION_MESSAGE,
                 tool_calls=[],
                 latency_ms=latency_ms,
-                trace_id=getattr(bt_span, "id", None),
+                trace_id=bt_span.id,
             )
 
         # --- Step 1: Assemble the system prompt -------------------------
@@ -368,22 +333,21 @@ class ClaudeAgentService:
         )
 
         # Log span inputs/metadata for Braintrust observability
-        if bt_span is not None:
-            metadata = {
-                "core_prompt_id": core_prompt.prompt_id,
-                "core_prompt_version": core_prompt.version,
-                "core_prompt_in_options": system_prompt_in_options,
-                "summary_included": summary_included,
-                "model": self.model,
-            }
-            if context.session_id:
-                metadata["session_id"] = context.session_id
-            span_input = {"message": last_user_message}
-            if context.page_url:
-                span_input["page_url"] = context.page_url
-            if context.summary_text:
-                span_input["summary"] = context.summary_text
-            bt_span.log(input=span_input, metadata=metadata)
+        metadata = {
+            "core_prompt_id": core_prompt.prompt_id,
+            "core_prompt_version": core_prompt.version,
+            "core_prompt_in_options": system_prompt_in_options,
+            "summary_included": summary_included,
+            "model": self.model,
+        }
+        if context.session_id:
+            metadata["session_id"] = context.session_id
+        span_input = {"message": last_user_message}
+        if context.page_url:
+            span_input["page_url"] = context.page_url
+        if context.summary_text:
+            span_input["summary"] = context.summary_text
+        bt_span.log(input=span_input, metadata=metadata)
 
         # If the SDK version doesn't support system_prompt in options,
         # prepend it to the conversation text as a fallback.
@@ -419,13 +383,12 @@ class ClaudeAgentService:
                 )
         except Exception as exc:
             # Record the error in the Braintrust span before re-raising
-            if bt_span is not None:
-                latency_ms = int((time.time() - start_time) * 1000)
-                bt_span.log(
-                    output=str(exc),
-                    metrics={"latency_ms": latency_ms},
-                    metadata={"status": "error", "error": str(exc)},
-                )
+            latency_ms = int((time.time() - start_time) * 1000)
+            bt_span.log(
+                output=str(exc),
+                metrics={"latency_ms": latency_ms},
+                metadata={"status": "error", "error": str(exc)},
+            )
             raise
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
@@ -439,7 +402,7 @@ class ClaudeAgentService:
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
         if not trace_id:
-            trace_id = getattr(bt_span, "id", None)
+            trace_id = bt_span.id
 
         # Extract token counts from ResultMessage.usage (standard Anthropic format)
         input_tokens = None
@@ -453,39 +416,36 @@ class ClaudeAgentService:
             cache_read_tokens = result_usage.get("cache_read_input_tokens")
 
         # Log output, metrics, and metadata to the Braintrust span.
-        if bt_span is not None:
-            refs = extract_refs(tool_calls_list)
-            span_output: dict[str, Any] = {
-                "content": output,
-                "ref_count": len(refs),
-                "tool_count": len(tool_calls_list),
-            }
-            span_metadata: dict[str, Any] = {
-                "refs": refs,
-                "tool_calls": tool_calls_list,
-            }
-            metrics: dict[str, Any] = {
-                "latency_ms": latency_ms,
-                "tool_count": len(tool_calls_list),
-            }
-            if llm_call_count:
-                metrics["llm_calls"] = llm_call_count
-            # Token metrics using Braintrust standard names.
-            # Convention: prompt_tokens includes cache tokens.
-            if input_tokens is not None:
-                prompt_tokens = (
-                    input_tokens + (cache_read_tokens or 0) + (cache_creation_tokens or 0)
-                )
-                metrics["prompt_tokens"] = prompt_tokens
-                metrics["completion_tokens"] = output_tokens or 0
-                metrics["tokens"] = prompt_tokens + (output_tokens or 0)
-            if cache_read_tokens is not None:
-                metrics["prompt_cached_tokens"] = cache_read_tokens
-            if cache_creation_tokens is not None:
-                metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
-            if total_cost_usd is not None:
-                metrics["total_cost_usd"] = total_cost_usd
-            bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
+        refs = extract_refs(tool_calls_list)
+        span_output: dict[str, Any] = {
+            "content": output,
+            "ref_count": len(refs),
+            "tool_count": len(tool_calls_list),
+        }
+        span_metadata: dict[str, Any] = {
+            "refs": refs,
+            "tool_calls": tool_calls_list,
+        }
+        metrics: dict[str, Any] = {
+            "latency_ms": latency_ms,
+            "tool_count": len(tool_calls_list),
+        }
+        if llm_call_count:
+            metrics["llm_calls"] = llm_call_count
+        # Token metrics using Braintrust standard names.
+        # Convention: prompt_tokens includes cache tokens.
+        if input_tokens is not None:
+            prompt_tokens = input_tokens + (cache_read_tokens or 0) + (cache_creation_tokens or 0)
+            metrics["prompt_tokens"] = prompt_tokens
+            metrics["completion_tokens"] = output_tokens or 0
+            metrics["tokens"] = prompt_tokens + (output_tokens or 0)
+        if cache_read_tokens is not None:
+            metrics["prompt_cached_tokens"] = cache_read_tokens
+        if cache_creation_tokens is not None:
+            metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
+        if total_cost_usd is not None:
+            metrics["total_cost_usd"] = total_cost_usd
+        bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
 
         return AgentResponse(
             content=output,
@@ -682,15 +642,12 @@ class ClaudeAgentService:
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
             # Pass API keys into the SDK subprocess environment
-            env = {}
-            if self.api_key:
-                env["ANTHROPIC_API_KEY"] = self.api_key
-            if self._braintrust_api_key:
-                env["BRAINTRUST_API_KEY"] = self._braintrust_api_key
-            if self._braintrust_project:
-                env["BRAINTRUST_PROJECT"] = self._braintrust_project
-            if env:
-                options_kwargs["env"] = env
+            env = {
+                "ANTHROPIC_API_KEY": self.api_key,
+                "BRAINTRUST_API_KEY": self._braintrust_api_key,
+                "BRAINTRUST_PROJECT": self._braintrust_project,
+            }
+            options_kwargs["env"] = env
         if debug_enabled:
             if self._supports_option("extra_args"):
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
