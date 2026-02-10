@@ -2,13 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from chat.V2.checks import run_pre_flight_checks
 from chat.V2.guardrail.guardrail_service import GuardrailResult
 
 
-@pytest.mark.django_db
 class TestPreFlightChecks:
     """Test run_pre_flight_checks with mocked guardrail."""
 
@@ -37,18 +34,3 @@ class TestPreFlightChecks:
         assert result.rejection_type == "guardrail"
         assert result.rejection_reason == "Off-topic"
         assert result.rejection_message  # non-empty
-
-    def test_multi_turn_blocked(self):
-        result = run_pre_flight_checks("Follow-up question", self._make_session(turn_count=1))
-        assert result.passed is False
-        assert result.rejection_type == "multi_turn"
-
-    def test_multi_turn_allowed_on_first_turn(self):
-        result = run_pre_flight_checks("First question", self._make_session(turn_count=0))
-        assert result.passed is True
-
-    def test_multi_turn_checked_before_guardrail(self):
-        """Multi-turn check runs first, so guardrail is never called for multi-turn."""
-        result = run_pre_flight_checks("Anything", self._make_session(turn_count=2))
-        assert result.passed is False
-        assert result.rejection_type == "multi_turn"

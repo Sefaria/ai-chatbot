@@ -94,6 +94,7 @@ class ConversationMessage:
 class MessageContext:
     """Sideband context injected into the system prompt (not part of the messages array)."""
 
+    summary_text: str | None = None  # rolling conversation summary
     page_url: str | None = None  # Sefaria page the user is viewing
     session_id: str | None = None  # used for Braintrust span metadata
 
@@ -304,8 +305,9 @@ class ClaudeAgentService:
             "",
         )
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
-        system_prompt = build_system_prompt(
+        system_prompt, summary_included = build_system_prompt(
             core_prompt.text,
+            summary_text=context.summary_text,
             page_url=context.page_url,
         )
 
@@ -338,6 +340,7 @@ class ClaudeAgentService:
                 "core_prompt_id": core_prompt.prompt_id,
                 "core_prompt_version": core_prompt.version,
                 "core_prompt_in_options": system_prompt_in_options,
+                "summary_included": summary_included,
                 "model": self.model,
             }
             if context.session_id:
@@ -345,6 +348,8 @@ class ClaudeAgentService:
             span_input = {"message": last_user_message}
             if context.page_url:
                 span_input["page_url"] = context.page_url
+            if context.summary_text:
+                span_input["summary"] = context.summary_text
             bt_span.log(input=span_input, metadata=metadata)
 
         # If the SDK version doesn't support system_prompt in options,

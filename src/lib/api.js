@@ -232,7 +232,6 @@ export async function sendMessageStream(
                 callbacks.onMessage(finalMessage);
               }
             } else if (currentEvent === 'guardrail' && data.blocked) {
-              // Guardrail rejection — construct a synthetic response
               finalMessage = {
                 messageId: `guardrail_${Date.now()}`,
                 sessionId: data.sessionId || '',
