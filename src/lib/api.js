@@ -231,6 +231,19 @@ export async function sendMessageStream(
               if (callbacks.onMessage) {
                 callbacks.onMessage(finalMessage);
               }
+            } else if (currentEvent === 'guardrail' && data.blocked) {
+              // Guardrail rejection — construct a synthetic response
+              finalMessage = {
+                messageId: `guardrail_${Date.now()}`,
+                sessionId: data.sessionId || '',
+                timestamp: new Date().toISOString(),
+                markdown: data.message,
+                guardrail: true,
+                guardrailType: data.type || 'guardrail'
+              };
+              if (callbacks.onMessage) {
+                callbacks.onMessage(finalMessage);
+              }
             } else if (currentEvent === 'error' && callbacks.onError) {
               callbacks.onError(data.error);
             }
