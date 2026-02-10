@@ -8,12 +8,10 @@ from .chat_service import (
 from .session_service import (
     SessionOwnershipError,
     create_or_get_session,
-    load_session_summary,
 )
 
 __all__ = [
     "create_or_get_session",
-    "load_session_summary",
     "save_user_message",
     "SessionOwnershipError",
 ]

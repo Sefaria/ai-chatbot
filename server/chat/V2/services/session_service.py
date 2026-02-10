@@ -5,7 +5,7 @@ Session management service for chat operations.
 from django.utils import timezone
 
 from ...auth import Actor
-from ...models import ChatSession, ConversationSummary
+from ...models import ChatSession
 
 
 class SessionOwnershipError(Exception):
@@ -66,17 +66,3 @@ def create_or_get_session(
     )
 
     return session, created
-
-
-def load_session_summary(session: ChatSession) -> str:
-    """
-    Load the conversation summary for a session, if any.
-
-    Args:
-        session: The session to load summary for
-
-    Returns:
-        Summary text for prompting, or empty string if no summary exists
-    """
-    summary = ConversationSummary.objects.filter(session=session).first()
-    return summary.to_prompt_text() if summary else ""

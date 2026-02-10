@@ -1,17 +1,6 @@
 """
-Conversation summarization service for agent context.
+Conversation summarization — module preserved for DB model access.
 
-Provides rolling summaries that capture:
-- Current topic and user intent
-- Entities mentioned (texts, topics, people)
-- Constraints and preferences
+The SummaryService has been removed from the request path.
+ConversationSummary model is kept for data preservation.
 """
-
-from ...models import ConversationSummary
-from .summary_service import SummaryService, get_summary_service
-
-__all__ = [
-    "SummaryService",
-    "ConversationSummary",
-    "get_summary_service",
-]

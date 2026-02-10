@@ -45,10 +45,8 @@ from .checks import run_pre_flight_checks
 from .logging import get_turn_logging_service
 from .services import (
     create_or_get_session,
-    load_session_summary,
     save_user_message,
 )
-from .summarization import get_summary_service
 
 logger = logging.getLogger("chat")
 
@@ -161,9 +159,6 @@ def chat_stream_v2(request):
         resp["X-Accel-Buffering"] = "no"
         return resp
 
-    # Load summary for this session (if any)
-    summary_text = load_session_summary(session)
-
     # Only core prompt slug is used for v2 streaming.
     core_prompt_slug = (prompt_slugs.get("corePromptSlug") or "").strip()
     if not core_prompt_slug:
@@ -182,7 +177,6 @@ def chat_stream_v2(request):
     )
 
     msg_context = MessageContext(
-        summary_text=summary_text,
         page_url=page_url or None,
         session_id=data["sessionId"],
     )
@@ -293,14 +287,8 @@ def chat_stream_v2(request):
             yield f"event: error\ndata: {json.dumps({'error': 'An internal error occurred.'})}\n\n"
             return
 
-        # --- Success path: update summary, persist turn, yield final event ---
+        # --- Success path: persist turn, yield final event ---
         agent_response = result_holder["response"]
-        summary_service = get_summary_service()
-        new_summary = summary_service.update_summary(
-            session=session,
-            new_user_message=data["text"],
-            new_assistant_response=agent_response.content,
-        )
         logging_service = get_turn_logging_service()
         logging_result = logging_service.finalize_success(
             session=session,
@@ -308,7 +296,7 @@ def chat_stream_v2(request):
             agent_response=agent_response,
             latency_ms=latency_ms,
             model_name=agent_response.model or "unknown",
-            summary_text=new_summary.to_prompt_text(),
+            summary_text="",
         )
 
         response_message = logging_result.response_message

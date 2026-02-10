@@ -41,7 +41,7 @@ from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .checks import run_pre_flight_checks
 from .logging import get_turn_logging_service
-from .services import create_or_get_session, load_session_summary, save_user_message
+from .services import create_or_get_session, save_user_message
 
 logger = logging.getLogger("chat")
 
@@ -221,16 +221,13 @@ def chat_anthropic_v2(request):
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
     if session_id:
-        # Multi-turn mode: use provided session, load summary
         session, _ = create_or_get_session(session_id, actor, current_flow=BRAINTRUST_ORIGIN)
-        summary_text = load_session_summary(session)
     else:
-        # Stateless mode: ephemeral session, no summary
+        # Stateless mode: ephemeral session
         session_id = f"ephemeral_{uuid.uuid4().hex[:16]}"
         session, _ = create_or_get_session(
             session_id, actor, validate_ownership=False, current_flow=BRAINTRUST_ORIGIN
         )
-        summary_text = ""
 
     # Pre-flight checks (guardrail, multi-turn limit)
     preflight = run_pre_flight_checks(user_message_text, session)
@@ -256,7 +253,7 @@ def chat_anthropic_v2(request):
         flow=BRAINTRUST_ORIGIN,
     )
 
-    msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
+    msg_context = MessageContext(session_id=session_id)
 
     try:
         agent = get_agent_service()
@@ -304,7 +301,7 @@ def chat_anthropic_v2(request):
         agent_response=agent_response,
         latency_ms=latency_ms,
         model_name=model,
-        summary_text=summary_text,
+        summary_text="",
     )
 
     response_message = logging_result.response_message
