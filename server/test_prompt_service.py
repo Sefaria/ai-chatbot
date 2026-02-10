@@ -4,6 +4,8 @@
 import os
 import sys
 
+import pytest
+
 # Add the current directory to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -16,6 +18,7 @@ django.setup()
 from chat.V2.prompts import get_prompt_service
 
 
+@pytest.mark.skipif(not os.environ.get("BRAINTRUST_API_KEY"), reason="requires BRAINTRUST_API_KEY")
 def test_prompt_service():
     """Test that prompt service loads core prompt with tool instructions."""
     print("=== Testing Prompt Service Integration ===\n")

@@ -209,6 +209,7 @@ def chat_stream_v2(request):
                     )
                 )
             except Exception as e:
+                logger.exception("Agent error in streaming endpoint")
                 result_holder["error"] = str(e)
             finally:
                 _flush_braintrust()
