@@ -280,6 +280,17 @@ class ClaudeAgentService(BaseLLMService):
             "",
         )
 
+        # Log input early so the chat-agent span has context even if the guardrail blocks.
+        span_input: dict[str, Any] = {"message": last_user_message}
+        if context.page_url:
+            span_input["page_url"] = context.page_url
+        if context.summary_text:
+            span_input["summary"] = context.summary_text
+        span_metadata: dict[str, Any] = {"model": self.model}
+        if context.session_id:
+            span_metadata["session_id"] = context.session_id
+        bt_span.log(input=span_input, metadata=span_metadata)
+
         guardrail_span = bt_span.start_span(name="guardrail")
         guardrail_result = await asyncio.to_thread(
             get_guardrail_service().check_message, last_user_message
@@ -294,6 +305,10 @@ class ClaudeAgentService(BaseLLMService):
         if not guardrail_result.allowed:
             logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
             latency_ms = int((time.time() - start_time) * 1000)
+            bt_span.log(
+                output={"content": GUARDRAIL_REJECTION_MESSAGE, "guardrail_blocked": True},
+                metrics={"latency_ms": latency_ms},
+            )
             return AgentResponse(
                 content=GUARDRAIL_REJECTION_MESSAGE,
                 tool_calls=[],
@@ -332,22 +347,15 @@ class ClaudeAgentService(BaseLLMService):
             allowed_tools=allowed_tools,
         )
 
-        # Log span inputs/metadata for Braintrust observability
-        metadata = {
-            "core_prompt_id": core_prompt.prompt_id,
-            "core_prompt_version": core_prompt.version,
-            "core_prompt_in_options": system_prompt_in_options,
-            "summary_included": summary_included,
-            "model": self.model,
-        }
-        if context.session_id:
-            metadata["session_id"] = context.session_id
-        span_input = {"message": last_user_message}
-        if context.page_url:
-            span_input["page_url"] = context.page_url
-        if context.summary_text:
-            span_input["summary"] = context.summary_text
-        bt_span.log(input=span_input, metadata=metadata)
+        # Log prompt-specific metadata (input already logged before guardrail).
+        bt_span.log(
+            metadata={
+                "core_prompt_id": core_prompt.prompt_id,
+                "core_prompt_version": core_prompt.version,
+                "core_prompt_in_options": system_prompt_in_options,
+                "summary_included": summary_included,
+            }
+        )
 
         # If the SDK version doesn't support system_prompt in options,
         # prepend it to the conversation text as a fallback.

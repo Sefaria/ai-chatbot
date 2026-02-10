@@ -80,19 +80,25 @@ def _flush_braintrust():
     braintrust.flush()
 
 
-# Global services (initialized lazily)
+# Initialize Braintrust logger eagerly so @braintrust.traced spans are real
+# (without init_logger, braintrust.traced creates silent NOOP spans).
 _bt_logger = None
 
 
 def get_braintrust_logger():
-    """Get or create a Braintrust logger for feedback."""
+    """Get or create a Braintrust logger for feedback and tracing."""
     import braintrust
 
     global _bt_logger
-    api_key = os.environ.get("BRAINTRUST_API_KEY")
-    project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-    _bt_logger = braintrust.init_logger(project=project, api_key=api_key)
+    if _bt_logger is None:
+        api_key = os.environ.get("BRAINTRUST_API_KEY")
+        project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
+        _bt_logger = braintrust.init_logger(project=project, api_key=api_key)
     return _bt_logger
+
+
+# Eagerly initialize so traced spans work from the first request.
+get_braintrust_logger()
 
 
 @api_view(["POST"])
