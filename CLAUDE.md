@@ -65,6 +65,6 @@ See `docs/ARCHITECTURE.md` for detailed system design.
 
 ## Env
 
-Required: `ANTHROPIC_API_KEY`
+Required: `ANTHROPIC_API_KEY`, `BRAINTRUST_API_KEY`
 
-Optional: `BRAINTRUST_API_KEY`, `DB_*`
+Optional: `DB_*`

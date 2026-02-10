@@ -51,12 +51,9 @@ BRAINTRUST_ORIGIN = "braintrust"
 
 def _flush_braintrust():
     """Flush pending Braintrust spans so they're sent before the request ends."""
-    try:
-        import braintrust
+    import braintrust
 
-        braintrust.flush()
-    except Exception:
-        pass
+    braintrust.flush()
 
 
 def extract_user_message(messages: list[dict]) -> str:

@@ -57,6 +57,6 @@ pytest                                    # Run tests
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `BRAINTRUST_API_KEY` | No | Prompt management |
+| `BRAINTRUST_API_KEY` | Yes | Prompt management & tracing |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
