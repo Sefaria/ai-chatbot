@@ -45,6 +45,7 @@
   let settingsError = $state('');
 
   let isClearing = $state(false);
+  let conversationComplete = $state(false);
 
   // Refs
   let messageListRef = $state(null);
@@ -95,6 +96,11 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    // If restored messages contain an assistant response, conversation is complete
+    if (savedMessages.some(m => m.role === 'assistant')) {
+      conversationComplete = true;
+    }
   });
 
   // Save draft on input change
@@ -149,6 +155,7 @@
     hasMoreHistory = false;
     currentProgress = null;
     toolHistory = [];
+    conversationComplete = false;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
@@ -343,7 +350,7 @@
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
       scrollToBottom();
-
+      conversationComplete = true;
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -754,27 +761,34 @@
       </div>
 
       <!-- Input Footer -->
-      <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          placeholder="Type a message..."
-          rows="1"
-          disabled={isSending}
-        ></textarea>
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-      </footer>
+      {#if conversationComplete}
+        <footer class="lc-chatbot-input conversation-complete-footer">
+          <p class="conversation-complete-text">Multi-turn conversations are temporarily disabled.</p>
+          <button class="new-conversation-btn" onclick={handleNewChat}>Start a new conversation</button>
+        </footer>
+      {:else}
+        <footer class="lc-chatbot-input">
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            placeholder="Type a message..."
+            rows="1"
+            disabled={isSending}
+          ></textarea>
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || isSending}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </footer>
+      {/if}
       {/if}
     </div>
   {/if}
@@ -1519,6 +1533,37 @@
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;
+  }
+
+  /* Conversation complete footer */
+  .conversation-complete-footer {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .conversation-complete-text {
+    font-size: 13px;
+    color: var(--lc-text-secondary);
+    text-align: center;
+  }
+
+  .new-conversation-btn {
+    padding: 8px 16px;
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .new-conversation-btn:hover {
+    background: var(--lc-primary-hover);
   }
 
 </style>
