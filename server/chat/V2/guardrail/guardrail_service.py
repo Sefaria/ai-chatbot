@@ -9,6 +9,8 @@ import json
 import logging
 from dataclasses import dataclass
 
+import braintrust
+from braintrust import current_span
 from django.conf import settings
 
 from ..base_llm_service import BaseLLMService
@@ -36,15 +38,24 @@ class GuardrailService(BaseLLMService):
     def __init__(self, api_key: str | None = None):
         super().__init__(api_key=api_key)
 
+    @braintrust.traced(name="guardrail")
     def check_message(self, user_message: str) -> GuardrailResult:
         """Check whether a user message is allowed.
 
         Returns GuardrailResult(allowed=True/False, reason=...).
         On any failure, returns allowed=False (fail closed).
+        Wrapped in a Braintrust traced span for observability.
         """
-        # Fail closed: every early return blocks the message. This ensures
-        # that infrastructure failures (missing client, Braintrust outage,
-        # LLM errors) don't accidentally let unfiltered messages through.
+        result = self._classify(user_message)
+        current_span().log(
+            input={"message": user_message},
+            output={"allowed": result.allowed, "reason": result.reason},
+            metadata={"guardrail_blocked": not result.allowed},
+        )
+        return result
+
+    def _classify(self, user_message: str) -> GuardrailResult:
+        """Run the guardrail LLM classification. Fails closed on any error."""
         try:
             self._ensure_client()
         except ValueError:
