@@ -259,7 +259,7 @@ class ClaudeAgentService:
 
         # Wrap in a Braintrust span when tracing is active
         if braintrust and self._braintrust_enabled and hasattr(braintrust, "traced"):
-            traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
+            traced_run = braintrust.traced(name="chat-agent", type="task")(run)
             return await traced_run()
 
         return await run()
@@ -286,6 +286,9 @@ class ClaudeAgentService:
         5. Log metrics to Braintrust span (if active)
         """
         start_time = time.time()
+
+        # Grab the Braintrust span once — all logging below uses this reference.
+        bt_span = current_span() if current_span is not None else None
 
         def emit(update: AgentProgressUpdate) -> None:
             """Safe wrapper — swallows callback errors so they don't kill the turn."""
@@ -332,24 +335,22 @@ class ClaudeAgentService:
         )
 
         # Log span inputs/metadata for Braintrust observability
-        if current_span is not None:
-            span = current_span()
-            if span is not None:
-                metadata = {
-                    "core_prompt_id": core_prompt.prompt_id,
-                    "core_prompt_version": core_prompt.version,
-                    "core_prompt_in_options": system_prompt_in_options,
-                    "summary_included": summary_included,
-                    "model": self.model,
-                }
-                if context.session_id:
-                    metadata["session_id"] = context.session_id
-                span_input = {"message": last_user_message}
-                if context.page_url:
-                    span_input["page_url"] = context.page_url
-                if context.summary_text:
-                    span_input["summary"] = context.summary_text
-                span.log(input=span_input, metadata=metadata)
+        if bt_span is not None:
+            metadata = {
+                "core_prompt_id": core_prompt.prompt_id,
+                "core_prompt_version": core_prompt.version,
+                "core_prompt_in_options": system_prompt_in_options,
+                "summary_included": summary_included,
+                "model": self.model,
+            }
+            if context.session_id:
+                metadata["session_id"] = context.session_id
+            span_input = {"message": last_user_message}
+            if context.page_url:
+                span_input["page_url"] = context.page_url
+            if context.summary_text:
+                span_input["summary"] = context.summary_text
+            bt_span.log(input=span_input, metadata=metadata)
 
         # If the SDK version doesn't support system_prompt in options,
         # prepend it to the conversation text as a fallback.
@@ -385,15 +386,13 @@ class ClaudeAgentService:
                 )
         except Exception as exc:
             # Record the error in the Braintrust span before re-raising
-            if current_span is not None:
-                span = current_span()
-                if span is not None:
-                    latency_ms = int((time.time() - start_time) * 1000)
-                    span.log(
-                        output=str(exc),
-                        metrics={"latency_ms": latency_ms},
-                        metadata={"status": "error", "error": str(exc)},
-                    )
+            if bt_span is not None:
+                latency_ms = int((time.time() - start_time) * 1000)
+                bt_span.log(
+                    output=str(exc),
+                    metrics={"latency_ms": latency_ms},
+                    metadata={"status": "error", "error": str(exc)},
+                )
             raise
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
@@ -406,9 +405,8 @@ class ClaudeAgentService:
             output = "Sorry, I encountered an issue generating a response."
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
-        if not trace_id and current_span is not None:
-            span = current_span()
-            trace_id = getattr(span, "id", None)
+        if not trace_id:
+            trace_id = getattr(bt_span, "id", None)
 
         # Extract token counts from ResultMessage.usage (standard Anthropic format)
         input_tokens = None
@@ -422,43 +420,39 @@ class ClaudeAgentService:
             cache_read_tokens = result_usage.get("cache_read_input_tokens")
 
         # Log output, metrics, and metadata to the Braintrust span.
-        # We set output explicitly to override the @traced auto-capture of
-        # the full AgentResponse (which includes token counts, model, etc.).
-        if current_span is not None:
-            span = current_span()
-            if span is not None:
-                refs = extract_refs(tool_calls_list)
-                span_output: dict[str, Any] = {
-                    "content": output,
-                    "ref_count": len(refs),
-                    "tool_count": len(tool_calls_list),
-                }
-                span_metadata: dict[str, Any] = {
-                    "refs": refs,
-                    "tool_calls": tool_calls_list,
-                }
-                metrics: dict[str, Any] = {
-                    "latency_ms": latency_ms,
-                    "tool_count": len(tool_calls_list),
-                }
-                if llm_call_count:
-                    metrics["llm_calls"] = llm_call_count
-                # Token metrics using Braintrust standard names.
-                # Convention: prompt_tokens includes cache tokens.
-                if input_tokens is not None:
-                    prompt_tokens = (
-                        input_tokens + (cache_read_tokens or 0) + (cache_creation_tokens or 0)
-                    )
-                    metrics["prompt_tokens"] = prompt_tokens
-                    metrics["completion_tokens"] = output_tokens or 0
-                    metrics["tokens"] = prompt_tokens + (output_tokens or 0)
-                if cache_read_tokens is not None:
-                    metrics["prompt_cached_tokens"] = cache_read_tokens
-                if cache_creation_tokens is not None:
-                    metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
-                if total_cost_usd is not None:
-                    metrics["total_cost_usd"] = total_cost_usd
-                span.log(output=span_output, metrics=metrics, metadata=span_metadata)
+        if bt_span is not None:
+            refs = extract_refs(tool_calls_list)
+            span_output: dict[str, Any] = {
+                "content": output,
+                "ref_count": len(refs),
+                "tool_count": len(tool_calls_list),
+            }
+            span_metadata: dict[str, Any] = {
+                "refs": refs,
+                "tool_calls": tool_calls_list,
+            }
+            metrics: dict[str, Any] = {
+                "latency_ms": latency_ms,
+                "tool_count": len(tool_calls_list),
+            }
+            if llm_call_count:
+                metrics["llm_calls"] = llm_call_count
+            # Token metrics using Braintrust standard names.
+            # Convention: prompt_tokens includes cache tokens.
+            if input_tokens is not None:
+                prompt_tokens = (
+                    input_tokens + (cache_read_tokens or 0) + (cache_creation_tokens or 0)
+                )
+                metrics["prompt_tokens"] = prompt_tokens
+                metrics["completion_tokens"] = output_tokens or 0
+                metrics["tokens"] = prompt_tokens + (output_tokens or 0)
+            if cache_read_tokens is not None:
+                metrics["prompt_cached_tokens"] = cache_read_tokens
+            if cache_creation_tokens is not None:
+                metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
+            if total_cost_usd is not None:
+                metrics["total_cost_usd"] = total_cost_usd
+            bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
 
         return AgentResponse(
             content=output,
