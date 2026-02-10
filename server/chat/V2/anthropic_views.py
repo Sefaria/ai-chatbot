@@ -39,7 +39,6 @@ from ..auth import (
 from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
-from .checks import run_pre_flight_checks
 from .logging import get_turn_logging_service
 from .services import create_or_get_session, load_session_summary, save_user_message
 
@@ -232,17 +231,6 @@ def chat_anthropic_v2(request):
         )
         summary_text = ""
 
-    # Pre-flight checks (guardrail)
-    preflight = run_pre_flight_checks(user_message_text, session)
-    if not preflight.passed:
-        return Response(
-            to_anthropic_error(
-                "invalid_request_error",
-                preflight.rejection_message,
-            ),
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     turn_id = ChatMessage.generate_turn_id()
     user_message_id = ChatMessage.generate_message_id()
 
@@ -293,6 +281,13 @@ def chat_anthropic_v2(request):
         )
 
     _flush_braintrust()
+
+    # Guardrail blocked — return error response, skip persistence
+    if agent_response.guardrail_blocked:
+        return Response(
+            to_anthropic_error("invalid_request_error", agent_response.content),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     latency_ms = int((time.time() - start_time) * 1000)
 

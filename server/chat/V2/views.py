@@ -41,7 +41,6 @@ from ..auth import (
 from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
-from .checks import run_pre_flight_checks
 from .logging import get_turn_logging_service
 from .services import (
     create_or_get_session,
@@ -148,18 +147,6 @@ def chat_stream_v2(request):
 
     # Create or get session with ownership validation
     session, _ = create_or_get_session(data["sessionId"], actor)
-
-    # Pre-flight checks (guardrail)
-    preflight = run_pre_flight_checks(data["text"], session)
-    if not preflight.passed:
-
-        def generate_rejection_sse():
-            yield f"event: guardrail\ndata: {json.dumps({'blocked': True, 'message': preflight.rejection_message, 'reason': preflight.rejection_reason, 'type': preflight.rejection_type})}\n\n"
-
-        resp = StreamingHttpResponse(generate_rejection_sse(), content_type="text/event-stream")
-        resp["Cache-Control"] = "no-cache"
-        resp["X-Accel-Buffering"] = "no"
-        return resp
 
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
@@ -295,6 +282,12 @@ def chat_stream_v2(request):
 
         # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
+
+        # Guardrail blocked — yield rejection event and skip persistence
+        if agent_response.guardrail_blocked:
+            yield f"event: guardrail\ndata: {json.dumps({'blocked': True, 'message': agent_response.content, 'reason': 'guardrail', 'type': 'guardrail'})}\n\n"
+            return
+
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
             session=session,

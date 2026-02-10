@@ -20,5 +20,5 @@ def _mock_guardrail_allow_all():
     mock_service = MagicMock()
     mock_service.check_message.return_value = GuardrailResult(allowed=True)
 
-    with patch("chat.V2.checks.get_guardrail_service", return_value=mock_service):
+    with patch("chat.V2.agent.claude_service.get_guardrail_service", return_value=mock_service):
         yield mock_service

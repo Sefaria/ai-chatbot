@@ -52,6 +52,7 @@ _BRAINTRUST_SETUP_DONE = False
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
+from ..guardrail import get_guardrail_service
 from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import build_system_prompt
 from .sefaria_client import SefariaClient
@@ -59,6 +60,11 @@ from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
 
 logger = logging.getLogger("chat.agent")
+
+GUARDRAIL_REJECTION_MESSAGE = (
+    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
+    "Could you rephrase your question to be about a Jewish text or topic?"
+)
 
 # ---------------------------------------------------------------------------
 # Data classes — these are the public API types passed between layers
@@ -108,6 +114,7 @@ class AgentResponse:
     latency_ms: int
     model: str | None = None
     trace_id: str | None = None  # Braintrust trace ID for feedback linking
+    guardrail_blocked: bool = False
     llm_calls: int | None = None
     # Token usage from ResultMessage (standard Anthropic fields)
     input_tokens: int | None = None
@@ -299,11 +306,39 @@ class ClaudeAgentService:
             except Exception as exc:
                 logger.warning(f"Progress callback error: {exc}")
 
-        # --- Step 1: Assemble the system prompt -------------------------
+        # --- Guardrail: check message before running the agent ----------
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
             "",
         )
+        guardrail_result = get_guardrail_service().check_message(last_user_message)
+
+        # Log guardrail decision to Braintrust span
+        if current_span is not None:
+            span = current_span()
+            if span is not None:
+                span.log(
+                    input={"message": last_user_message},
+                    output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+                    metadata={"guardrail_blocked": not guardrail_result.allowed},
+                )
+
+        if not guardrail_result.allowed:
+            logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
+            latency_ms = int((time.time() - start_time) * 1000)
+            trace_id = None
+            if current_span is not None:
+                span = current_span()
+                trace_id = getattr(span, "id", None)
+            return AgentResponse(
+                content=GUARDRAIL_REJECTION_MESSAGE,
+                guardrail_blocked=True,
+                tool_calls=[],
+                latency_ms=latency_ms,
+                trace_id=trace_id,
+            )
+
+        # --- Step 1: Assemble the system prompt -------------------------
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
         system_prompt, summary_included = build_system_prompt(
             core_prompt.text,
