@@ -21,10 +21,7 @@ class ChatSession(models.Model):
 
     # Legacy flow state (unused in v2 agent flow)
     current_flow = models.CharField(
-        max_length=20,
-        blank=True,
-        default="",
-        help_text="Current conversation label (optional)",
+        max_length=20, blank=True, default="", help_text="Current conversation label (optional)"
     )
 
     # Rolling conversation summary for agent context

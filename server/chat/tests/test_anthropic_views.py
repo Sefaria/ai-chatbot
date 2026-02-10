@@ -319,6 +319,8 @@ class TestChatAnthropicEndpoint:
 
         call_kwargs = mock_agent_service.send_message.call_args.kwargs
         assert call_kwargs["on_progress"] is None
+        # Stateless mode (no X-Session-ID) means no summary
+        assert call_kwargs["context"].summary_text is None
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")

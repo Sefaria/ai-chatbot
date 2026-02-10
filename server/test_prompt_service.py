@@ -31,8 +31,7 @@ def test_prompt_service():
     checks = {
         "TOOL USAGE (CRITICAL)": "TOOL USAGE (CRITICAL)" in core_prompt.text,
         "MUST use tools": "MUST use the provided Sefaria tools" in core_prompt.text,
-        "NEVER answer from memory": "NEVER answer questions about Jewish texts"
-        in core_prompt.text,
+        "NEVER answer from memory": "NEVER answer questions about Jewish texts" in core_prompt.text,
     }
 
     print("\nTool usage checks in system prompt:")
