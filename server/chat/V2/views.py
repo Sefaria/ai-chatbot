@@ -61,6 +61,16 @@ def build_session_info(session) -> dict:
     }
 
 
+# Initialize Braintrust logger at module load so @braintrust.traced spans
+# are real from the first request (without init_logger they're silent NOOPs).
+import braintrust
+
+_bt_logger = braintrust.init_logger(
+    project=os.environ.get("BRAINTRUST_PROJECT", "On Site Agent"),
+    api_key=os.environ.get("BRAINTRUST_API_KEY"),
+)
+
+
 def _create_traced_executor() -> concurrent.futures.Executor:
     """Create a ThreadPoolExecutor that preserves Braintrust span context.
 
@@ -68,37 +78,12 @@ def _create_traced_executor() -> concurrent.futures.Executor:
     into the worker thread, so LLM calls on the background thread appear
     as children of the request-level span.
     """
-    import braintrust
-
     return braintrust.TracedThreadPoolExecutor(max_workers=1)
 
 
 def _flush_braintrust():
     """Flush pending Braintrust spans so they're sent before the request ends."""
-    import braintrust
-
     braintrust.flush()
-
-
-# Initialize Braintrust logger eagerly so @braintrust.traced spans are real
-# (without init_logger, braintrust.traced creates silent NOOP spans).
-_bt_logger = None
-
-
-def get_braintrust_logger():
-    """Get or create a Braintrust logger for feedback and tracing."""
-    import braintrust
-
-    global _bt_logger
-    if _bt_logger is None:
-        api_key = os.environ.get("BRAINTRUST_API_KEY")
-        project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-        _bt_logger = braintrust.init_logger(project=project, api_key=api_key)
-    return _bt_logger
-
-
-# Eagerly initialize so traced spans work from the first request.
-get_braintrust_logger()
 
 
 @api_view(["POST"])
@@ -333,7 +318,7 @@ def chat_feedback_v2(request):
         )
 
     data = serializer.validated_data
-    bt_logger = get_braintrust_logger()
+    bt_logger = _bt_logger
 
     metadata = {
         "user_id": data.get("userId", ""),
