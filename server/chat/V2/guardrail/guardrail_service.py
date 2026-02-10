@@ -1,7 +1,7 @@
 """
 Guardrail service — pre-agent LLM filter that classifies user messages.
 
-Calls Haiku with a Braintrust-managed prompt to decide if a message is
+Calls an LLM with a Braintrust-managed prompt to decide if a message is
 within scope. Fails closed: any error → message blocked.
 """
 
@@ -16,8 +16,6 @@ from django.conf import settings
 from ..prompts import get_prompt_service
 
 logger = logging.getLogger("chat.guardrail")
-
-GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
 
 GUARDRAIL_REJECTION_MESSAGE = (
     "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
@@ -64,7 +62,7 @@ class GuardrailService:
 
         try:
             response = self.client.messages.create(
-                model=GUARDRAIL_MODEL,
+                model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
                 temperature=0.0,
                 system=system_prompt,

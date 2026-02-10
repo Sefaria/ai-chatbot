@@ -159,7 +159,7 @@ class ClaudeAgentService:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str | None = None,
         max_iterations: int = 10,
         max_tokens: int = 8000,
         temperature: float = 0.7,
@@ -182,7 +182,9 @@ class ClaudeAgentService:
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = self.api_key
 
-        self.model = model
+        from django.conf import settings as django_settings
+
+        self.model = model or django_settings.AGENT_MODEL
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature

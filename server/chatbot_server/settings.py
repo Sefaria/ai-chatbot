@@ -182,9 +182,13 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # ============================================================================
 # Anthropic API Configuration
 # ============================================================================
-# Set ANTHROPIC_API_KEY environment variable
+# Set ANTHROPIC_API_KEY environment variable.
 #
-# Note: Uses Claude Sonnet by default for the main agent.
+# Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
+# (guardrail classification, summarization). Override via env vars.
+AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
+GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
+SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
 # Sefaria API Configuration (optional)

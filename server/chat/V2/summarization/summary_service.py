@@ -7,7 +7,7 @@ captures the essential context: topic, intent, referenced texts, etc.
 
 The summary is updated after each successful turn:
     views.py generate_sse() → summary_service.update_summary()
-        → _llm_summarize (Claude Haiku) or _simple_summarize (rule-based fallback)
+        → _llm_summarize or _simple_summarize (rule-based fallback)
         → persisted to ConversationSummary model
         → injected into the system prompt on the next turn via prompt_fragments.py
 """
@@ -17,6 +17,7 @@ import os
 from typing import Any
 
 import anthropic
+from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
@@ -46,17 +47,17 @@ Keep the summary focused and under 500 characters total."""
 
 
 class SummaryService:
-    """Generates structured conversation summaries using Claude Haiku.
+    """Generates structured conversation summaries using a lightweight LLM.
 
     Two strategies:
-    - LLM: sends the previous summary + latest turn to Haiku, asks for JSON
+    - LLM: sends the previous summary + latest turn to the model, asks for JSON
     - Simple: fast rule-based extraction (fallback when LLM is unavailable or fails)
     """
 
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-3-haiku-20240307",  # Use fast/cheap model
+        model: str | None = None,
         use_llm: bool = True,
     ):
         """
@@ -68,7 +69,7 @@ class SummaryService:
             use_llm: Whether to use LLM (False = simple extraction)
         """
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.model = model
+        self.model = model or settings.SUMMARY_MODEL
         self.use_llm = use_llm and bool(self.api_key)
 
         if self.use_llm:

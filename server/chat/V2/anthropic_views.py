@@ -215,7 +215,7 @@ def chat_anthropic_v2(request):
 
     metadata = data.get("metadata") or {}
     core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
-    model = data.get("model") or "claude-sonnet-4-5-20250929"
+    model = data.get("model") or settings.AGENT_MODEL
 
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
