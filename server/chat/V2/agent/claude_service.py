@@ -19,6 +19,7 @@ Key integration points:
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -314,7 +315,9 @@ class ClaudeAgentService:
         )
 
         guardrail_span = bt_span.start_span(name="guardrail") if bt_span else None
-        guardrail_result = get_guardrail_service().check_message(last_user_message)
+        guardrail_result = await asyncio.to_thread(
+            get_guardrail_service().check_message, last_user_message
+        )
         if guardrail_span is not None:
             guardrail_span.log(
                 input={"message": last_user_message},

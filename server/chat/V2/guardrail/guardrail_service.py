@@ -100,6 +100,8 @@ class GuardrailService:
             if "decision" in data:
                 allowed = data["decision"].upper() == "ALLOW"
                 reason = data.get("refusal_message") or ", ".join(data.get("reason_codes", []))
+                if not allowed and not reason:
+                    logger.debug("Guardrail BLOCK decision with no reason or refusal_message")
                 return GuardrailResult(allowed=allowed, reason=reason or "")
 
             # Simple format: {allowed: bool, reason: str}
@@ -127,3 +129,9 @@ def get_guardrail_service() -> GuardrailService:
     if _default_service is None:
         _default_service = GuardrailService()
     return _default_service
+
+
+def reset_guardrail_service() -> None:
+    """Reset the singleton (for tests)."""
+    global _default_service
+    _default_service = None
