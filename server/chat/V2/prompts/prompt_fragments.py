@@ -1,15 +1,30 @@
 """
-Reusable text fragments that are composed into LLM prompts.
+Reusable text fragments for prompts and user-facing messages.
 
-All text that gets injected into messages sent to Claude lives here,
-so prompt content is easy to find, review, and update in one place.
+All static text — whether injected into LLM prompts or sent back to the
+user — lives here so content is easy to find, review, and update in one place.
 
 Note: The core system prompt lives in Braintrust (fetched by prompt_service.py).
 The summary generation prompt lives in summarization/summary_service.py
 since it targets a different model.
 """
 
+# ---------------------------------------------------------------------------
+# Messages sent back to the user
+# ---------------------------------------------------------------------------
+
 ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
+
+INTERNAL_ERROR_MESSAGE = "An internal error occurred."
+
+GUARDRAIL_REJECTION_MESSAGE = (
+    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
+    "Could you rephrase your question to be about a Jewish text or topic?"
+)
+
+# ---------------------------------------------------------------------------
+# Prompt fragments (injected into LLM system prompts)
+# ---------------------------------------------------------------------------
 
 SECTION_SEPARATOR = "\n\n"
 

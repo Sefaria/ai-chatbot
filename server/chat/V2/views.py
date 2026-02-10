@@ -42,7 +42,7 @@ from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
-from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
+from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -278,7 +278,7 @@ def chat_stream_v2(request):
             user_message.response_message = error_msg
             user_message.save(update_fields=["response_message"])
 
-            yield f"event: error\ndata: {json.dumps({'error': 'An internal error occurred.'})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'error': INTERNAL_ERROR_MESSAGE})}\n\n"
             return
 
         # --- Success path: update summary, persist turn, yield final event ---

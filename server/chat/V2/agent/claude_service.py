@@ -52,9 +52,13 @@ _BRAINTRUST_SETUP_DONE = False
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
-from ..guardrail import GUARDRAIL_REJECTION_MESSAGE, get_guardrail_service
+from ..guardrail import get_guardrail_service
 from ..prompts import PromptService, get_prompt_service
-from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, build_system_prompt
+from ..prompts.prompt_fragments import (
+    ERROR_FALLBACK_MESSAGE,
+    GUARDRAIL_REJECTION_MESSAGE,
+    build_system_prompt,
+)
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools

@@ -40,6 +40,7 @@ from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .services import create_or_get_session, load_session_summary, save_user_message
 
 logger = logging.getLogger("chat")
@@ -270,13 +271,13 @@ def chat_anthropic_v2(request):
             actor=actor,
             turn_id=turn_id,
             latency_ms=latency_ms,
-            error_text="Internal server error",
+            error_text=INTERNAL_ERROR_MESSAGE,
         )
         db_user_message.response_message = error_msg
         db_user_message.save(update_fields=["response_message"])
 
         return Response(
-            to_anthropic_error("api_error", "Internal server error", latency_ms),
+            to_anthropic_error("api_error", INTERNAL_ERROR_MESSAGE, latency_ms),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

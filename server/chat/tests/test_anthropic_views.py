@@ -339,7 +339,7 @@ class TestChatAnthropicEndpoint:
 
         assert response.status_code == 500
         assert response.data["error"]["type"] == "api_error"
-        assert response.data["error"]["message"] == "Internal server error"
+        assert response.data["error"]["message"] == "An internal error occurred."
         # Error response should also have metadata
         assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
 
@@ -660,7 +660,7 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 500
         assert "error" in response.data
         assert response.data["error"]["type"] == "api_error"
-        assert response.data["error"]["message"] == "Internal server error"
+        assert response.data["error"]["message"] == "An internal error occurred."
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")

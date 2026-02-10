@@ -17,11 +17,6 @@ from ..prompts import get_prompt_service
 
 logger = logging.getLogger("chat.guardrail")
 
-GUARDRAIL_REJECTION_MESSAGE = (
-    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
-    "Could you rephrase your question to be about a Jewish text or topic?"
-)
-
 
 @dataclass
 class GuardrailResult:
