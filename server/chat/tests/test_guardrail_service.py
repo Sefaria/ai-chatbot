@@ -79,3 +79,23 @@ class TestGuardrailService:
         service.prompt_service = MagicMock()
         result = service.check_message("Hello")
         assert result.allowed is False
+
+    def test_braintrust_decision_format_allow(self):
+        """Braintrust prompt returns {decision: "ALLOW", ...} format."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '```json\n{"decision": "ALLOW", "reason_codes": [], "refusal_message": null, "confidence": 0.99}\n```'
+        )
+        result = service.check_message("What is Shabbat?")
+        assert result.allowed is True
+        assert result.reason == ""
+
+    def test_braintrust_decision_format_block(self):
+        """Braintrust prompt returns {decision: "BLOCK", ...} format."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '```json\n{"decision": "BLOCK", "reason_codes": ["OFF_TOPIC"], "refusal_message": "Not about Jewish texts", "confidence": 0.95}\n```'
+        )
+        result = service.check_message("How do I hack a website?")
+        assert result.allowed is False
+        assert result.reason == "Not about Jewish texts"

@@ -76,10 +76,30 @@ class GuardrailService:
         return core_prompt.text
 
     def _parse_response(self, response) -> GuardrailResult:
-        """Parse LLM response JSON. Fail closed on malformed output."""
+        """Parse LLM response JSON. Fail closed on malformed output.
+
+        Supports two response schemas:
+        - Braintrust prompt format: {decision: "ALLOW"/"BLOCK", reason_codes, refusal_message}
+        - Simple format: {allowed: bool, reason: str}
+
+        Response may be wrapped in markdown code fences (```json ... ```).
+        """
         try:
-            text = response.content[0].text
+            text = response.content[0].text.strip()
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                lines = text.split("\n")
+                lines = [line for line in lines if not line.strip().startswith("```")]
+                text = "\n".join(lines).strip()
             data = json.loads(text)
+
+            # Braintrust prompt format: {decision: "ALLOW"/"BLOCK", ...}
+            if "decision" in data:
+                allowed = data["decision"].upper() == "ALLOW"
+                reason = data.get("refusal_message") or ", ".join(data.get("reason_codes", []))
+                return GuardrailResult(allowed=allowed, reason=reason or "")
+
+            # Simple format: {allowed: bool, reason: str}
             allowed = data.get("allowed")
             if not isinstance(allowed, bool):
                 logger.warning(f"Guardrail: 'allowed' not a bool: {text[:200]}")
