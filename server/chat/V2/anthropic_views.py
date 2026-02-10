@@ -129,6 +129,8 @@ def to_anthropic_response(
         "usage": {
             "input_tokens": stats.get("inputTokens", 0),
             "output_tokens": stats.get("outputTokens", 0),
+            "cache_read_input_tokens": stats.get("cacheReadTokens", 0),
+            "cache_creation_input_tokens": stats.get("cacheCreationTokens", 0),
         },
         "metadata": {
             "trace_id": agent_response.trace_id,

@@ -54,6 +54,22 @@ class TestBuildStatsTokens:
         assert stats["outputTokens"] == 200
         assert stats["totalCostUsd"] == 0.05
 
+    def test_includes_cache_tokens_in_total(self):
+        """inputTokens should be the total: base + cache_read + cache_creation."""
+        resp = AgentResponse(
+            content="hi",
+            tool_calls=[],
+            latency_ms=100,
+            input_tokens=2,
+            output_tokens=200,
+            cache_read_tokens=13000,
+            cache_creation_tokens=6000,
+        )
+        stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
+        assert stats["inputTokens"] == 2 + 13000 + 6000
+        assert stats["cacheReadTokens"] == 13000
+        assert stats["cacheCreationTokens"] == 6000
+
     def test_omits_tokens_when_none(self):
         resp = AgentResponse(content="hi", tool_calls=[], latency_ms=100)
         stats = TurnLoggingService.build_stats(agent_response=resp, latency_ms=100)
@@ -117,8 +133,10 @@ class TestFinalizeSuccessTokens:
             content="Answer",
             tool_calls=[],
             latency_ms=100,
-            input_tokens=800,
+            input_tokens=5,
             output_tokens=200,
+            cache_read_tokens=10000,
+            cache_creation_tokens=3000,
             total_cost_usd=0.03,
         )
         svc = TurnLoggingService()
@@ -131,7 +149,8 @@ class TestFinalizeSuccessTokens:
             summary_text="",
         )
         session.refresh_from_db()
-        assert session.total_input_tokens == 800
+        # total_input_tokens should include cache tokens
+        assert session.total_input_tokens == 5 + 10000 + 3000
         assert session.total_output_tokens == 200
 
     def test_none_tokens_leave_session_unchanged(self, session, user_message):

@@ -220,19 +220,28 @@ class ClaudeAgentService(BaseLLMService):
         The entire turn is wrapped in a Braintrust traced span named
         "chat-agent" so that LLM calls and tool calls appear as children
         in the Braintrust dashboard.
+
+        We avoid returning AgentResponse from the traced function because
+        @braintrust.traced auto-serializes return values as span output,
+        which would bleed internal fields (raw input_tokens, trace_id, etc.)
+        into the span.  Output is logged explicitly in _send_message_inner.
         """
         context = context or MessageContext()
+        result: AgentResponse | None = None
 
         @braintrust.traced(name="chat-agent", type="task")
-        async def run() -> AgentResponse:
-            return await self._send_message_inner(
+        async def run() -> None:
+            nonlocal result
+            result = await self._send_message_inner(
                 messages=messages,
                 core_prompt_id=core_prompt_id,
                 on_progress=on_progress,
                 context=context,
             )
 
-        return await run()
+        await run()
+        assert result is not None
+        return result
 
     # -------------------------------------------------------------------
     # Core turn logic
