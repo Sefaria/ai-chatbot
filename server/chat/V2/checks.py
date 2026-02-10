@@ -18,6 +18,11 @@ GUARDRAIL_REJECTION_MESSAGE = (
     "Could you rephrase your question to be about a Jewish text or topic?"
 )
 
+MULTI_TURN_REJECTION_MESSAGE = (
+    "Multi-turn conversations are temporarily disabled. "
+    "Please start a new conversation to ask another question."
+)
+
 
 @dataclass
 class PreFlightResult:
@@ -35,7 +40,18 @@ def run_pre_flight_checks(user_message_text: str, session: ChatSession) -> PreFl
     Returns PreFlightResult with passed=True if all checks pass,
     or passed=False with rejection details if any check fails.
     """
-    # Check 1: Guardrail — is the message in scope?
+    # Check 1: Multi-turn limit — only one turn per session
+    turn_count = session.turn_count if hasattr(session, "turn_count") else 0
+    if (turn_count or 0) >= 1:
+        logger.info(f"Multi-turn blocked: session has {turn_count} turns")
+        return PreFlightResult(
+            passed=False,
+            rejection_message=MULTI_TURN_REJECTION_MESSAGE,
+            rejection_reason="Multi-turn conversations are temporarily disabled",
+            rejection_type="multi_turn",
+        )
+
+    # Check 2: Guardrail — is the message in scope?
     guardrail = get_guardrail_service()
     result = guardrail.check_message(user_message_text)
     if not result.allowed:
