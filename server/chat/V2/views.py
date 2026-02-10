@@ -284,11 +284,6 @@ def chat_stream_v2(request):
         # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
 
-        # Guardrail blocked — yield rejection event and skip persistence
-        if agent_response.guardrail_blocked:
-            yield f"event: guardrail\ndata: {json.dumps({'blocked': True, 'message': agent_response.content, 'reason': 'guardrail', 'type': 'guardrail'})}\n\n"
-            return
-
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
             session=session,

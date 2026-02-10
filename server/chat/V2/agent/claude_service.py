@@ -109,7 +109,6 @@ class AgentResponse:
     latency_ms: int
     model: str | None = None
     trace_id: str | None = None  # Braintrust trace ID for feedback linking
-    guardrail_blocked: bool = False
     llm_calls: int | None = None
     # Token usage from ResultMessage (standard Anthropic fields)
     input_tokens: int | None = None
@@ -329,7 +328,6 @@ class ClaudeAgentService:
                 trace_id = getattr(span, "id", None)
             return AgentResponse(
                 content=GUARDRAIL_REJECTION_MESSAGE,
-                guardrail_blocked=True,
                 tool_calls=[],
                 latency_ms=latency_ms,
                 trace_id=trace_id,

@@ -282,13 +282,6 @@ def chat_anthropic_v2(request):
 
     _flush_braintrust()
 
-    # Guardrail blocked — return error response, skip persistence
-    if agent_response.guardrail_blocked:
-        return Response(
-            to_anthropic_error("invalid_request_error", agent_response.content),
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     latency_ms = int((time.time() - start_time) * 1000)
 
     # Log successful response
