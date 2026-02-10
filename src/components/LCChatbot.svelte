@@ -582,7 +582,9 @@
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
           </button>
-          <h2>Library Assistant</h2>
+          <h2>Library Assistant
+          <img src="{staticBaseUrl}/static/icons/AI.svg"/>
+          </h2>
         </div>
         <div class="header-actions">
           <button aria-label="Panel" class="panel-btn">
@@ -598,7 +600,7 @@
                   <img src="{staticBaseUrl}/static/icons/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
-                <a class="menu-item" href="https://www.sefaria.org" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" href="https://forms.gle/j7V6G7yupHydb1oGA" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                   </svg>
@@ -606,7 +608,7 @@
                 </a>
                 <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
                   <img src="{staticBaseUrl}/static/icons/info.svg" alt="" width="16" height="16" />
-                  Get help
+                  Help
                 </a>
                 <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticBaseUrl}/static/icons/toggle-right.svg" alt="" width="16" height="16" />
@@ -958,9 +960,18 @@
   }
 
   .lc-chatbot-header h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: 16px;
     font-weight: 600;
     color: var(--lc-text);
+    margin: 0;
+    line-height: 1.1;
+  }
+
+  .lc-chatbot-header h2 img {
+    display: block;
   }
 
   .settings-btn {
@@ -998,9 +1009,8 @@
     align-items: center;
     gap: 6px;
     padding: 6px 10px;
-    background: var(--lc-bg-tertiary);
-    border: 1px solid var(--lc-border);
-    border-radius: var(--lc-radius-sm);
+    border: 0px;
+    background: transparent;
     color: var(--lc-text-secondary);
     cursor: pointer;
     font-size: 12px;
@@ -1010,9 +1020,14 @@
   }
 
   .menu-btn:hover,
-  .panel-btn:hover {
-    background: var(--lc-bg-secondary);
+  .panel-btn:hover,
+  .menu-btn:focus-visible,
+  .panel-btn:focus-visible,
+  .menu-btn:active,
+  .panel-btn:active {
+    background: var(--lc-bg-tertiary);
     color: var(--lc-text);
+    border-color: var(--lc-border);
   }
 
   .menu-dropdown {
