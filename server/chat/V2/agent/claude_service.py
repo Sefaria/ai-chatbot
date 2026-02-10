@@ -180,10 +180,6 @@ class ClaudeAgentService(BaseLLMService):
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self._braintrust_api_key = os.environ.get("BRAINTRUST_API_KEY")
-        if not self._braintrust_api_key:
-            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
-        self._braintrust_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 
         # Sefaria HTTP client is shared between the executor and this service
         # so we get connection reuse across tool calls within a single turn.
@@ -205,7 +201,7 @@ class ClaudeAgentService(BaseLLMService):
         if _BRAINTRUST_SETUP_DONE:
             return
 
-        setup_claude_agent_sdk(project=self._braintrust_project, api_key=self._braintrust_api_key)
+        setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
         _BRAINTRUST_SETUP_DONE = True
 
     # -------------------------------------------------------------------
@@ -652,8 +648,8 @@ class ClaudeAgentService(BaseLLMService):
             # Pass API keys into the SDK subprocess environment
             env = {
                 "ANTHROPIC_API_KEY": self.api_key,
-                "BRAINTRUST_API_KEY": self._braintrust_api_key,
-                "BRAINTRUST_PROJECT": self._braintrust_project,
+                "BRAINTRUST_API_KEY": self.braintrust_api_key,
+                "BRAINTRUST_PROJECT": self.braintrust_project,
             }
             options_kwargs["env"] = env
         if debug_enabled:

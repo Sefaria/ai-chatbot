@@ -8,7 +8,10 @@ from .prompts import PromptService, get_prompt_service
 
 
 class BaseLLMService:
-    """Shared init for LLM-backed services (API key, client, prompt service)."""
+    """Shared init for LLM-backed services (API key, client, prompt service).
+
+    Provides Anthropic client, Braintrust config, and prompt service.
+    """
 
     def __init__(
         self,
@@ -18,6 +21,8 @@ class BaseLLMService:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.client = anthropic.Anthropic(api_key=self.api_key) if self.api_key else None
         self.prompt_service = prompt_service or get_prompt_service()
+        self.braintrust_api_key = os.environ.get("BRAINTRUST_API_KEY", "")
+        self.braintrust_project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 
     def _ensure_client(self) -> None:
         """Raise ValueError if no Anthropic client is available."""
