@@ -47,6 +47,13 @@
   let isClearing = $state(false);
   let conversationComplete = $state(false);
 
+  // Consent state
+  let consentAccepted = $state(false);
+  let consentCheck1 = $state(false);
+  let consentCheck2 = $state(false);
+  let showWhyInfo = $state(false);
+  let canAccept = $derived(consentCheck1 && consentCheck2);
+
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
@@ -59,6 +66,12 @@
 
   // Initialize on mount
   $effect(() => {
+    // Check consent
+    const savedConsent = getStorage(STORAGE_KEYS.CONSENT, null);
+    if (savedConsent?.accepted) {
+      consentAccepted = true;
+    }
+
     // Initialize session
     const { sessionId: sid } = getOrCreateSession();
     sessionId = sid;
@@ -515,6 +528,12 @@
       }
     }));
   }
+
+  function acceptConsent() {
+    if (!canAccept) return;
+    consentAccepted = true;
+    setStorage(STORAGE_KEYS.CONSENT, { accepted: true, timestamp: new Date().toISOString() });
+  }
 </script>
 
 <div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
@@ -620,6 +639,40 @@
           </div>
 
           <p class="settings-note">Changes apply to new messages.</p>
+        </div>
+      {:else if !consentAccepted}
+        <!-- Consent Panel -->
+        <div class="consent-panel">
+          <div class="consent-heading">Before you begin</div>
+          <p class="consent-intro">Please review and accept the following to continue:</p>
+
+          <label class="consent-item">
+            <input type="checkbox" bind:checked={consentCheck1} />
+            <span>My questions may be reviewed to improve this tool. My identity will be obfuscated.</span>
+          </label>
+
+          <label class="consent-item">
+            <input type="checkbox" bind:checked={consentCheck2} />
+            <span>This is a beta product. AI responses can contain errors and should be verified.</span>
+          </label>
+
+          <button class="consent-why-toggle" onclick={() => showWhyInfo = !showWhyInfo}>
+            {showWhyInfo ? 'Hide details' : 'Why am I seeing this?'}
+          </button>
+
+          {#if showWhyInfo}
+            <div class="consent-why-content">
+              <p>We use conversations to evaluate and improve the assistant. Your user identity is obfuscated in our review process — we see an anonymized ID, not your personal information. Accepting these terms helps us build a better tool for the community.</p>
+            </div>
+          {/if}
+
+          <button
+            class="consent-accept-btn"
+            onclick={acceptConsent}
+            disabled={!canAccept}
+          >
+            Accept &amp; Continue
+          </button>
         </div>
       {:else}
       <!-- Message List -->
@@ -1564,6 +1617,108 @@
 
   .new-conversation-btn:hover {
     background: var(--lc-primary-hover);
+  }
+
+  /* Consent Panel */
+  .consent-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 28px 24px;
+    overflow: auto;
+    flex: 1;
+    background: var(--lc-bg);
+  }
+
+  .consent-heading {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--lc-text);
+  }
+
+  .consent-intro {
+    font-size: 14px;
+    color: var(--lc-text-secondary);
+    line-height: 1.5;
+  }
+
+  .consent-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--lc-bg-secondary);
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--lc-text);
+    transition: border-color 0.15s ease;
+  }
+
+  .consent-item:hover {
+    border-color: var(--lc-primary);
+  }
+
+  .consent-item input[type="checkbox"] {
+    margin-top: 3px;
+    flex-shrink: 0;
+    accent-color: var(--lc-primary);
+    width: 16px;
+    height: 16px;
+  }
+
+  .consent-why-toggle {
+    background: none;
+    border: none;
+    color: var(--lc-primary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+    font-family: var(--lc-font);
+  }
+
+  .consent-why-toggle:hover {
+    text-decoration: underline;
+  }
+
+  .consent-why-content {
+    padding: 12px 16px;
+    background: var(--lc-bg-tertiary);
+    border-radius: var(--lc-radius-sm);
+    font-size: 13px;
+    color: var(--lc-text-secondary);
+    line-height: 1.6;
+  }
+
+  .consent-why-content p {
+    margin: 0;
+  }
+
+  .consent-accept-btn {
+    padding: 12px 20px;
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    align-self: stretch;
+  }
+
+  .consent-accept-btn:hover:not(:disabled) {
+    background: var(--lc-primary-hover);
+  }
+
+  .consent-accept-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
 </style>
