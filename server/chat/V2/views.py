@@ -42,6 +42,7 @@ from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -271,7 +272,7 @@ def chat_stream_v2(request):
                 actor=actor,
                 turn_id=turn_id,
                 latency_ms=latency_ms,
-                error_text="I'm sorry, I encountered an error processing your request.",
+                error_text=ERROR_FALLBACK_MESSAGE,
             )
 
             user_message.response_message = error_msg

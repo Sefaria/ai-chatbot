@@ -52,19 +52,14 @@ _BRAINTRUST_SETUP_DONE = False
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
-from ..guardrail import get_guardrail_service
+from ..guardrail import GUARDRAIL_REJECTION_MESSAGE, get_guardrail_service
 from ..prompts import PromptService, get_prompt_service
-from ..prompts.prompt_fragments import build_system_prompt
+from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, build_system_prompt
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
 
 logger = logging.getLogger("chat.agent")
-
-GUARDRAIL_REJECTION_MESSAGE = (
-    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
-    "Could you rephrase your question to be about a Jewish text or topic?"
-)
 
 # ---------------------------------------------------------------------------
 # Data classes — these are the public API types passed between layers
@@ -437,7 +432,7 @@ class ClaudeAgentService:
 
         output = final_text.strip()
         if not output:
-            output = "Sorry, I encountered an issue generating a response."
+            output = ERROR_FALLBACK_MESSAGE
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
         if not trace_id:

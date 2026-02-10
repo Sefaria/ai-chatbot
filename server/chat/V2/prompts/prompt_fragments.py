@@ -9,6 +9,8 @@ The summary generation prompt lives in summarization/summary_service.py
 since it targets a different model.
 """
 
+ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
+
 SECTION_SEPARATOR = "\n\n"
 
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"

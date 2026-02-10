@@ -19,6 +19,11 @@ logger = logging.getLogger("chat.guardrail")
 
 GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
 
+GUARDRAIL_REJECTION_MESSAGE = (
+    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
+    "Could you rephrase your question to be about a Jewish text or topic?"
+)
+
 
 @dataclass
 class GuardrailResult:
