@@ -45,6 +45,9 @@ class GuardrailService:
         Returns GuardrailResult(allowed=True/False, reason=...).
         On any failure, returns allowed=False (fail closed).
         """
+        # Fail closed: every early return blocks the message. This ensures
+        # that infrastructure failures (missing client, Braintrust outage,
+        # LLM errors) don't accidentally let unfiltered messages through.
         if not self.client:
             logger.error("Guardrail: no Anthropic client configured")
             return GuardrailResult(allowed=False, reason="Guardrail service unavailable")
@@ -56,6 +59,8 @@ class GuardrailService:
             return GuardrailResult(allowed=False, reason="Guardrail service unavailable")
 
         try:
+            # Uses Haiku for speed/cost — classification doesn't need Sonnet.
+            # temperature=0.0 for deterministic decisions.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
@@ -111,6 +116,8 @@ class GuardrailService:
             return GuardrailResult(allowed=False, reason="Malformed guardrail response")
 
 
+# Singleton — shared across requests within a process. The Anthropic client
+# and prompt service are both safe to reuse, so this avoids per-request setup.
 _default_service: GuardrailService | None = None
 
 

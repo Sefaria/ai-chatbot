@@ -15,7 +15,11 @@ def _make_anthropic_response(text: str):
 
 
 class TestGuardrailService:
-    """Test GuardrailService.check_message() with mocked Anthropic client."""
+    """Test GuardrailService.check_message() with mocked Anthropic client.
+
+    Uses __new__ to bypass __init__ (avoids needing real API keys / Braintrust).
+    Verifies the "fail closed" contract: every error path must block, never allow.
+    """
 
     def _make_service(self):
         service = GuardrailService.__new__(GuardrailService)

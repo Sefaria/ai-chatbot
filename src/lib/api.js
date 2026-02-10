@@ -232,6 +232,9 @@ export async function sendMessageStream(
                 callbacks.onMessage(finalMessage);
               }
             } else if (currentEvent === 'guardrail' && data.blocked) {
+              // Guardrail rejection: construct a synthetic ChatResponse so the
+              // UI renders the block message as a normal assistant reply.
+              // No server-side messageId exists, so we generate a client-side one.
               finalMessage = {
                 messageId: `guardrail_${Date.now()}`,
                 sessionId: data.sessionId || '',

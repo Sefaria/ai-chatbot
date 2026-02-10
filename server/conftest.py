@@ -12,6 +12,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "chatbot_server.test_settings")
 def _mock_guardrail_allow_all():
     """Auto-mock the guardrail service to allow all messages in tests.
 
+    Without this, every test that exercises the agent path would need a
+    real Anthropic API key and Braintrust prompt — and would fail closed
+    (blocking all messages) if either is unavailable.
+
     Tests that specifically test guardrail behavior can override by
     patching get_guardrail_service themselves.
     """

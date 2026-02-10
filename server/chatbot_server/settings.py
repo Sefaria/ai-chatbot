@@ -170,6 +170,7 @@ REST_FRAMEWORK = {
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
 # Prompt slug defaults (Braintrust)
+# These slugs identify which Braintrust prompt to fetch for each service.
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
 GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-checker")
 

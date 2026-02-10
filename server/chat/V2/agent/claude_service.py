@@ -283,9 +283,10 @@ class ClaudeAgentService:
         on_progress: Callable[[AgentProgressUpdate], None] | None,
         context: MessageContext,
     ) -> AgentResponse:
-        """Runs one full agent turn: prompt assembly → SDK loop → response.
+        """Runs one full agent turn: guardrail → prompt assembly → SDK loop → response.
 
         Steps:
+        0. Run guardrail check — short-circuits with a rejection if blocked
         1. Build the system prompt (core from Braintrust + optional summary/page context)
         2. Wrap each Sefaria tool as an SDK-compatible MCP tool
         3. Configure and launch the ClaudeSDKClient
@@ -307,13 +308,16 @@ class ClaudeAgentService:
                 logger.warning(f"Progress callback error: {exc}")
 
         # --- Guardrail: check message before running the agent ----------
+        # Runs inside _send_message_inner (not in the view) so it's captured
+        # within the Braintrust "chat-agent" trace span for observability.
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
             "",
         )
         guardrail_result = get_guardrail_service().check_message(last_user_message)
 
-        # Log guardrail decision to Braintrust span
+        # Log the guardrail decision to Braintrust (both allows and blocks).
+        # This lets us monitor guardrail behavior in the Braintrust dashboard.
         if current_span is not None:
             span = current_span()
             if span is not None:
@@ -323,6 +327,9 @@ class ClaudeAgentService:
                     metadata={"guardrail_blocked": not guardrail_result.allowed},
                 )
 
+        # Short-circuit: return a canned rejection as a normal AgentResponse.
+        # The views treat this the same as any successful response (persisted,
+        # summarized, returned to client) — no special error handling needed.
         if not guardrail_result.allowed:
             logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
             latency_ms = int((time.time() - start_time) * 1000)

@@ -12,6 +12,10 @@ since it targets a different model.
 # ---------------------------------------------------------------------------
 # Messages sent back to the user
 # ---------------------------------------------------------------------------
+# Centralized here so copy is easy to review, update, and translate.
+# ERROR_FALLBACK_MESSAGE — shown when the agent crashes (DB-persisted as the response)
+# INTERNAL_ERROR_MESSAGE — sent to the client via SSE/API error events (less detail)
+# GUARDRAIL_REJECTION_MESSAGE — returned when the guardrail blocks a message
 
 ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
 
