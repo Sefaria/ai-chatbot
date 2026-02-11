@@ -1,4 +1,4 @@
-"""Tests for PromptService - caching, fallback to defaults, Braintrust integration."""
+"""Tests for PromptService - caching, Braintrust integration."""
 
 import time
 from unittest.mock import MagicMock, patch
@@ -10,13 +10,30 @@ from chat.V2.prompts.prompt_service import CorePrompt, PromptService, get_prompt
 
 
 @pytest.fixture
-def service() -> PromptService:
-    return PromptService(api_key=None)
+def mock_braintrust() -> MagicMock:
+    mock_bt = MagicMock()
+    mock_prompt = MagicMock()
+    mock_prompt.version = "bt_v1"
+    mock_prompt.build.return_value = {
+        "messages": [{"role": "system", "content": "Braintrust prompt content"}]
+    }
+    mock_bt.load_prompt.return_value = mock_prompt
+    return mock_bt
 
 
 @pytest.fixture
-def service_short_ttl() -> PromptService:
-    return PromptService(api_key=None, cache_ttl_seconds=1)
+def service(mock_braintrust: MagicMock) -> PromptService:
+    """Service with a mocked Braintrust client."""
+    svc = PromptService(api_key=None)
+    svc._braintrust_client = mock_braintrust
+    return svc
+
+
+@pytest.fixture
+def service_short_ttl(mock_braintrust: MagicMock) -> PromptService:
+    svc = PromptService(api_key=None, cache_ttl_seconds=1)
+    svc._braintrust_client = mock_braintrust
+    return svc
 
 
 class TestCorePrompt:
@@ -56,43 +73,42 @@ class TestPromptServiceInit:
         assert svc.cache_ttl == 600
 
 
-class TestFallbackToDefaults:
-    """Test fallback to local default prompts."""
+class TestNoBraintrustClient:
+    """Test behavior when Braintrust is not configured."""
 
-    def test_get_core_prompt_falls_back_to_local(self) -> None:
-        """When Braintrust is unavailable, should return local default prompt."""
-        service = PromptService(api_key=None)
-        service._braintrust_client = None  # Ensure no Braintrust access
-        prompt = service.get_core_prompt()
-        assert isinstance(prompt, CorePrompt)
-        assert prompt.text is not None
-        assert prompt.version == "local"
+    def test_raises_when_no_client(self) -> None:
+        svc = PromptService(api_key=None)
+        svc._braintrust_client = None
+        with pytest.raises(RuntimeError, match="Braintrust not configured"):
+            svc.get_core_prompt()
 
 
 class TestCaching:
     """Test prompt caching behavior."""
 
-    def test_cache_stores_prompt(self, service_short_ttl: PromptService) -> None:
-        service_short_ttl._cache["core:v1"] = {
-            "prompt": "Test prompt",
-            "version": "v1",
-            "timestamp": time.time(),
-        }
-        assert "core:v1" in service_short_ttl._cache
-
-    def test_cache_hit(self, service_short_ttl: PromptService) -> None:
-        prompt1 = service_short_ttl.get_core_prompt()
-        prompt2 = service_short_ttl.get_core_prompt()
+    def test_cache_hit(self, service: PromptService) -> None:
+        prompt1 = service.get_core_prompt()
+        prompt2 = service.get_core_prompt()
         assert prompt1.text == prompt2.text
 
-    def test_cache_expiry(self, service_short_ttl: PromptService) -> None:
-        service_short_ttl._get_prompt("test_id", "v1")
+    def test_cache_expiry_refetches(self, service_short_ttl: PromptService) -> None:
+        """When cache expires, re-fetches from Braintrust."""
+        service_short_ttl.get_core_prompt()
         with service_short_ttl._cache_lock:
             for key in service_short_ttl._cache:
                 service_short_ttl._cache[key]["timestamp"] = time.time() - 10
-        text, version = service_short_ttl._get_prompt("test_id", "v1")
-        assert version == "local"
-        assert text
+        prompt = service_short_ttl.get_core_prompt()
+        assert prompt.text == "Braintrust prompt content"
+
+    def test_cache_expiry_raises_on_fetch_failure(self, service_short_ttl: PromptService) -> None:
+        """When cache expires and re-fetch fails, raises error."""
+        service_short_ttl.get_core_prompt()
+        with service_short_ttl._cache_lock:
+            for key in service_short_ttl._cache:
+                service_short_ttl._cache[key]["timestamp"] = time.time() - 10
+        service_short_ttl._braintrust_client.load_prompt.side_effect = Exception("API down")
+        with pytest.raises(RuntimeError, match="Failed to fetch prompt"):
+            service_short_ttl.get_core_prompt()
 
     def test_invalidate_cache_all(self, service_short_ttl: PromptService) -> None:
         service_short_ttl._cache["prompt_a:v1"] = {
@@ -127,17 +143,6 @@ class TestCaching:
 class TestBraintrustIntegration:
     """Test Braintrust prompt fetching (mocked)."""
 
-    @pytest.fixture
-    def mock_braintrust(self) -> MagicMock:
-        mock_bt = MagicMock()
-        mock_prompt = MagicMock()
-        mock_prompt.version = "bt_v1"
-        mock_prompt.build.return_value = {
-            "messages": [{"role": "system", "content": "Braintrust prompt content"}]
-        }
-        mock_bt.load_prompt.return_value = mock_prompt
-        return mock_bt
-
     def test_fetch_from_braintrust_success(self, mock_braintrust: MagicMock) -> None:
         svc = PromptService(api_key=None)
         svc._braintrust_client = mock_braintrust
@@ -154,12 +159,28 @@ class TestBraintrustIntegration:
         assert prompt_text is None
         assert version == ""
 
-    def test_fetch_from_braintrust_error(self, mock_braintrust: MagicMock) -> None:
+    def test_fetch_from_braintrust_error_propagates(self, mock_braintrust: MagicMock) -> None:
         mock_braintrust.load_prompt.side_effect = Exception("API Error")
         svc = PromptService(api_key=None)
         svc._braintrust_client = mock_braintrust
-        prompt_text, _ = svc._fetch_from_braintrust("test_slug", "stable")
-        assert prompt_text is None
+        with pytest.raises(Exception, match="API Error"):
+            svc._fetch_from_braintrust("test_slug", "stable")
+
+    def test_empty_fetch_raises(self, mock_braintrust: MagicMock) -> None:
+        """When Braintrust returns empty prompt, raises RuntimeError."""
+        mock_braintrust.load_prompt.return_value = None
+        svc = PromptService(api_key=None)
+        svc._braintrust_client = mock_braintrust
+        with pytest.raises(RuntimeError, match="returned empty"):
+            svc.get_core_prompt()
+
+    def test_fetch_error_raises(self, mock_braintrust: MagicMock) -> None:
+        """When Braintrust fetch fails, raises RuntimeError."""
+        mock_braintrust.load_prompt.side_effect = Exception("Network error")
+        svc = PromptService(api_key=None)
+        svc._braintrust_client = mock_braintrust
+        with pytest.raises(RuntimeError, match="Failed to fetch prompt"):
+            svc.get_core_prompt()
 
 
 class TestPromptExtraction:

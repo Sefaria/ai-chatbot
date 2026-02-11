@@ -1,9 +1,15 @@
 """
-Conversation summary service for agent context.
+Conversation summary service — maintains a rolling summary of each chat session.
 
-Creates and maintains rolling summaries of conversations to:
-- Provide efficient context to the agent
-- Track conversation state without full history
+Instead of passing the full message history to the agent (which would blow up
+token usage in long conversations), we maintain a structured summary that
+captures the essential context: topic, intent, referenced texts, etc.
+
+The summary is updated after each successful turn:
+    views.py generate_sse() → summary_service.update_summary()
+        → _llm_summarize (Claude Haiku) or _simple_summarize (rule-based fallback)
+        → persisted to ConversationSummary model
+        → injected into the system prompt on the next turn via prompt_fragments.py
 """
 
 import logging
@@ -40,11 +46,11 @@ Keep the summary focused and under 500 characters total."""
 
 
 class SummaryService:
-    """
-    Service for generating and managing conversation summaries.
+    """Generates structured conversation summaries using Claude Haiku.
 
-    Uses Claude for intelligent summarization with structured output.
-    Falls back to simple extraction for speed when needed.
+    Two strategies:
+    - LLM: sends the previous summary + latest turn to Haiku, asks for JSON
+    - Simple: fast rule-based extraction (fallback when LLM is unavailable or fails)
     """
 
     def __init__(
@@ -204,7 +210,7 @@ class SummaryService:
         current_summary: ConversationSummary | None,
         data: dict[str, Any],
     ) -> ConversationSummary:
-        """Apply structured summary data to the model and persist."""
+        """Map the JSON output from the LLM onto the Django model and save."""
 
         def _safe_list(value: Any) -> list:
             return value if isinstance(value, list) else []

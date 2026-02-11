@@ -1,5 +1,20 @@
 """
-V2 chat API views with Claude agent integration.
+V2 streaming chat endpoint — the primary API used by the Svelte frontend.
+
+Request flow:
+    POST /api/v2/chat/stream
+    → authenticate via userId token
+    → create/resume session, load conversation summary
+    → save user message to DB
+    → return SSE StreamingHttpResponse that:
+        1. Runs the agent on a background thread
+        2. Streams progress events (tool_start, tool_end, status) in real-time
+        3. On success: updates summary, persists response, yields final "message" event
+        4. On error: persists error message, yields "error" event
+
+Also includes:
+    GET  /api/v2/prompts/defaults — returns default Braintrust prompt slugs
+    POST /api/v2/chat/feedback    — logs user feedback to Braintrust
 """
 
 import asyncio
@@ -25,10 +40,9 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
-from .agent import AgentProgressUpdate, ConversationMessage, get_agent_service
+from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .services import (
-    apply_page_context_to_message,
     create_or_get_session,
     load_session_summary,
     save_user_message,
@@ -47,7 +61,13 @@ def build_session_info(session) -> dict:
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
-    """Create a ThreadPoolExecutor that preserves Braintrust context when available."""
+    """Create a ThreadPoolExecutor that preserves Braintrust span context.
+
+    Braintrust's TracedThreadPoolExecutor copies the current trace span
+    into the worker thread, so LLM calls on the background thread appear
+    as children of the request-level span. Falls back to a plain executor
+    if Braintrust isn't installed.
+    """
     try:
         import braintrust
 
@@ -58,6 +78,16 @@ def _create_traced_executor() -> concurrent.futures.Executor:
         pass
 
     return concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+
+def _flush_braintrust():
+    """Flush pending Braintrust spans so they're sent before the request ends."""
+    try:
+        import braintrust
+
+        braintrust.flush()
+    except Exception:
+        pass
 
 
 # Global services (initialized lazily)
@@ -138,8 +168,26 @@ def chat_stream_v2(request):
         client_version=context.get("clientVersion", ""),
     )
 
+    msg_context = MessageContext(
+        summary_text=summary_text,
+        page_url=page_url or None,
+        session_id=data["sessionId"],
+    )
+
     def generate_sse():
-        """Generator that yields SSE events."""
+        """Generator that yields SSE events for a single chat turn.
+
+        Runs the agent on a background thread (since the Agent SDK is async)
+        and bridges progress updates to the main thread via a queue. The main
+        thread consumes the queue and yields SSE events to the client.
+
+        Lifecycle:
+          1. Start agent on background thread
+          2. Stream progress events as they arrive
+          3. Wait for agent to finish
+          4. On error  → log, persist error message, yield error event
+          5. On success → update summary, persist messages, yield final event
+        """
         progress_queue = queue.Queue()
         result_holder = {"response": None, "error": None}
 
@@ -147,34 +195,41 @@ def chat_stream_v2(request):
             progress_queue.put(update)
 
         def run_agent():
+            """Background thread: runs the async agent and captures the result."""
             try:
-                user_content = apply_page_context_to_message(data["text"], page_url)
-                conversation = [ConversationMessage(role="user", content=user_content)]
+                conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service()
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
-                        summary_text=summary_text,
+                        context=msg_context,
                     )
                 )
             except Exception as e:
+                logger.exception("Agent error in streaming endpoint")
                 result_holder["error"] = str(e)
             finally:
+                _flush_braintrust()
+                # Sentinel: signals the main thread that the agent is done
                 progress_queue.put(None)
 
+        # Preserve contextvars (e.g. Braintrust trace context) into the thread
         ctx = contextvars.copy_context()
         executor = _create_traced_executor()
         future = executor.submit(ctx.run, run_agent)
 
+        # --- Stream progress events to the client ---
         while True:
             try:
                 update = progress_queue.get(timeout=60)
 
+                # None sentinel means the agent thread finished
                 if update is None:
                     break
 
+                # Build the SSE payload, including optional tool-call fields
                 event_data = {
                     "type": update.type,
                     "text": update.text,
@@ -194,8 +249,11 @@ def chat_stream_v2(request):
                 yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
 
             except queue.Empty:
+                # No update in 60s — send a keepalive to prevent
+                # proxies/load-balancers from closing the connection
                 yield ": keepalive\n\n"
 
+        # --- Agent finished — clean up the thread ---
         try:
             future.result(timeout=5)
         except Exception:
@@ -204,6 +262,7 @@ def chat_stream_v2(request):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
+        # --- Error path: persist an error message and notify client ---
         if result_holder["error"]:
             logger.error(f"Agent error: {result_holder['error']}")
 
@@ -219,12 +278,11 @@ def chat_stream_v2(request):
             user_message.response_message = error_msg
             user_message.save(update_fields=["response_message"])
 
-            yield f"event: error\ndata: {json.dumps({'error': result_holder['error']})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'error': 'An internal error occurred.'})}\n\n"
             return
 
+        # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
-
-        # Update summary
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
             session=session,
@@ -237,13 +295,12 @@ def chat_stream_v2(request):
             user_message=user_message,
             agent_response=agent_response,
             latency_ms=latency_ms,
-            model_name="claude-sonnet-4-5-20250929",
+            model_name=agent_response.model or "unknown",
             summary_text=new_summary.to_prompt_text(),
         )
 
         response_message = logging_result.response_message
 
-        # Reload session to get updated turn_count
         session.refresh_from_db()
 
         final_data = {

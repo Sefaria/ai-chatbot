@@ -19,7 +19,7 @@ server/
 │       │   └── sefaria_client.py    # Sefaria API client
 │       ├── prompts/
 │       │   ├── prompt_service.py    # Braintrust prompt loading
-│       │   └── default_prompts.py   # Local fallbacks
+│       │   └── prompt_fragments.py  # LLM-facing text fragments (context sections)
 │       └── summarization/
 │           └── summary_service.py   # Conversation summarization
 └── chatbot_server/
@@ -38,6 +38,7 @@ server/
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v2/chat/stream` | POST | Send message (SSE streaming) |
+| `/api/v2/chat/anthropic` | POST | Anthropic Messages API format (for Braintrust) |
 | `/api/v2/chat/feedback` | POST | Feedback for trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
 | `/api/history` | GET | Conversation history |
