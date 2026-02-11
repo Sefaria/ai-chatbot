@@ -40,7 +40,10 @@ from ..guardrail import get_guardrail_service
 from ..prompts import PromptService
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
+    GUARDRAIL_MALFORMED_REASON,
     GUARDRAIL_REJECTION_MESSAGE,
+    GUARDRAIL_REJECTION_WITH_REASON,
+    GUARDRAIL_UNAVAILABLE_REASON,
     build_system_prompt,
 )
 from .sefaria_client import SefariaClient
@@ -304,13 +307,21 @@ class ClaudeAgentService(BaseLLMService):
 
         if not guardrail_result.allowed:
             logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
+            # Show the LLM's reason to the user when it's a real content reason
+            # (not an internal infra reason like "service unavailable").
+            internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
+            reason = guardrail_result.reason
+            if reason and reason not in internal_reasons:
+                rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
+            else:
+                rejection = GUARDRAIL_REJECTION_MESSAGE
             latency_ms = int((time.time() - start_time) * 1000)
             bt_span.log(
-                output={"content": GUARDRAIL_REJECTION_MESSAGE, "guardrail_blocked": True},
+                output={"content": rejection, "guardrail_blocked": True},
                 metrics={"latency_ms": latency_ms},
             )
             return AgentResponse(
-                content=GUARDRAIL_REJECTION_MESSAGE,
+                content=rejection,
                 tool_calls=[],
                 latency_ms=latency_ms,
                 trace_id=bt_span.id,

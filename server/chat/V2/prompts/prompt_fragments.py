@@ -25,6 +25,7 @@ GUARDRAIL_REJECTION_MESSAGE = (
     "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
     "Could you rephrase your question to be about a Jewish text or topic?"
 )
+GUARDRAIL_REJECTION_WITH_REASON = GUARDRAIL_REJECTION_MESSAGE + "\n\nReason: {reason}"
 
 # Internal reasons logged when the guardrail can't run or returns bad data.
 # Not user-facing — used in GuardrailResult.reason for debugging / tracing.
