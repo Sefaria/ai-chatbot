@@ -43,7 +43,7 @@ from ..prompts.prompt_fragments import (
     GUARDRAIL_REJECTION_MESSAGE,
     GUARDRAIL_REJECTION_WITH_REASON,
     GUARDRAIL_UNAVAILABLE_REASON,
-    build_system_prompt,
+    build_prompt,
 )
 from ..utils import get_anthropic_client, get_braintrust_config
 from .sefaria_client import SefariaClient
@@ -299,14 +299,18 @@ class ClaudeAgentService:
             span_metadata["session_id"] = context.session_id
         bt_span.log(input=span_input, metadata=span_metadata)
 
-        guardrail_response = await self._run_guardrail(bt_span, last_user_message, start_time)
+        guardrail_response = await self._run_guardrail(
+            bt_span, last_user_message, context, start_time
+        )
         if guardrail_response:
             return guardrail_response
 
-        # --- Step 1: Assemble the system prompt -------------------------
+        # --- Step 1: Assemble the full prompt ------------------------------
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
-        system_prompt, summary_included = build_system_prompt(
-            core_prompt.text,
+        conversation_text = self._format_conversation(messages)
+        full_prompt, summary_included = build_prompt(
+            conversation_text,
+            core_prompt=core_prompt.text,
             summary_text=context.summary_text,
             page_url=context.page_url,
         )
@@ -328,8 +332,10 @@ class ClaudeAgentService:
         )
 
         # --- Step 3: Configure SDK options ------------------------------
+        # When the SDK supports system_prompt in options, pass the full prompt
+        # there. Otherwise, it becomes the prompt_text sent to client.query().
         options, system_prompt_in_options = self._build_agent_options(
-            system_prompt=system_prompt,
+            system_prompt=full_prompt,
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
@@ -344,11 +350,7 @@ class ClaudeAgentService:
             }
         )
 
-        # If the SDK version doesn't support system_prompt in options,
-        # prepend it to the conversation text as a fallback.
-        prompt_text = self._format_conversation(messages)
-        if not system_prompt_in_options:
-            prompt_text = f"{system_prompt}\n\n{prompt_text}" if prompt_text else system_prompt
+        prompt_text = full_prompt if not system_prompt_in_options else conversation_text
 
         # --- Step 4: Run the SDK query → response loop ------------------
         emit(AgentProgressUpdate(type="status", text="Thinking..."))
@@ -461,15 +463,19 @@ class ClaudeAgentService:
     # -------------------------------------------------------------------
 
     async def _run_guardrail(
-        self, bt_span, user_message: str, start_time: float
+        self, bt_span, user_message: str, context: MessageContext, start_time: float
     ) -> AgentResponse | None:
         """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
+        enriched_message, _ = build_prompt(
+            user_message, summary_text=context.summary_text, page_url=context.page_url
+        )
+
         guardrail_span = bt_span.start_span(name="guardrail", type="task")
         guardrail_result = await asyncio.to_thread(
-            get_guardrail_service().check_message, user_message
+            get_guardrail_service().check_message, enriched_message
         )
         guardrail_span.log(
-            input={"message": user_message},
+            input={"message": enriched_message},
             output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
             metadata={"guardrail_blocked": not guardrail_result.allowed},
         )

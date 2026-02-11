@@ -39,9 +39,8 @@ class PromptService:
     Service for fetching and caching the core prompt from Braintrust.
 
     Features:
-    - Braintrust prompt registry integration
+    - Braintrust prompt registry integration (required)
     - In-memory caching with TTL
-    - Fallback to local default
     - Version tracking for reproducibility
     """
 

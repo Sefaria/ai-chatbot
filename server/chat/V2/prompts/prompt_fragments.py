@@ -41,25 +41,36 @@ SECTION_SEPARATOR = "\n\n"
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"
 
 PAGE_CONTEXT_SECTION = (
-    "The user is currently on the Sefaria page: {page_url}. "
+    "Context: The user is currently on the Sefaria page: {page_url}. "
     "If the context is relevant, use that information in your response."
 )
 
 
-def build_system_prompt(
-    core_prompt: str,
+def build_prompt(
+    user_message: str,
     *,
+    core_prompt: str | None = None,
     summary_text: str | None = None,
     page_url: str | None = None,
 ) -> tuple[str, bool]:
-    """Compose the full system prompt from core prompt and optional context sections.
+    """Assemble a prompt from a user message, optional system instructions, and context.
 
-    Returns (system_prompt, summary_included).
+    Order: core_prompt → summary → page context → user_message.
+    This follows Anthropic's long-context guidance: place long reference material
+    (system instructions, context) first, and the query last — closest to where
+    the model generates its response — to maximize instruction recall.
+
+    Used for both the agent system prompt and the guardrail input (which omits
+    core_prompt).
+
+    Returns (prompt_text, summary_included).
     """
-    if not core_prompt or not core_prompt.strip():
+    if core_prompt is not None and not core_prompt.strip():
         raise ValueError("core_prompt cannot be empty")
 
-    parts = [core_prompt]
+    parts: list[str] = []
+    if core_prompt is not None:
+        parts.append(core_prompt)
     summary_included = False
 
     if summary_text:
@@ -67,5 +78,7 @@ def build_system_prompt(
         summary_included = True
     if page_url:
         parts.append(PAGE_CONTEXT_SECTION.format(page_url=page_url))
+
+    parts.append(user_message)
 
     return SECTION_SEPARATOR.join(parts), summary_included
