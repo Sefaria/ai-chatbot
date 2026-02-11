@@ -26,4 +26,4 @@ branches:
   - name: "production"
   - name: "main"
     channel: "dev"
-    prerelease: true
+    prerelease: "dev"
