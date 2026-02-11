@@ -31,7 +31,7 @@ class TestGuardrailService:
     def test_allowed_message(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"allowed": true, "reason": ""}'
+            '{"decision": "ALLOW", "reason": ""}'
         )
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
@@ -40,7 +40,7 @@ class TestGuardrailService:
     def test_blocked_message(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"allowed": false, "reason": "Off-topic question"}'
+            '{"decision": "BLOCK", "reason": "Off-topic question"}'
         )
         result = service.check_message("What is the capital of France?")
         assert result.allowed is False
@@ -69,7 +69,7 @@ class TestGuardrailService:
         assert result.allowed is False
         assert "malformed" in result.reason.lower()
 
-    def test_missing_allowed_field_fails_closed(self):
+    def test_missing_decision_field_fails_closed(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
             '{"reason": "some reason"}'
@@ -77,12 +77,15 @@ class TestGuardrailService:
         result = service.check_message("Hello")
         assert result.allowed is False
 
-    def test_no_client_fails_closed(self):
-        service = GuardrailService.__new__(GuardrailService)
-        service.client = None
-        service.prompt_service = MagicMock()
-        result = service.check_message("Hello")
-        assert result.allowed is False
+    def test_no_api_key_raises(self):
+        """Missing API key is a config error — should raise, not silently degrade."""
+        from unittest.mock import patch
+
+        import pytest
+
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
+            with pytest.raises(ValueError):
+                GuardrailService()
 
     def test_decision_format_allow(self):
         """Prompt returns {decision: "ALLOW", reason: "..."} format."""

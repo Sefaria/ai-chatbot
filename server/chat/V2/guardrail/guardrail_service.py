@@ -13,7 +13,7 @@ from django.conf import settings
 
 from ..prompts import get_prompt_service
 from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
-from ..utils import get_anthropic_client
+from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.guardrail")
 
@@ -30,15 +30,12 @@ class GuardrailService:
     """Classifies user messages as allowed or blocked using an LLM filter.
 
     Uses a Braintrust-managed prompt (guardrail-checker) as the system prompt,
-    sends the user message, and expects JSON {allowed, reason} back.
+    sends the user message, and expects JSON {decision, reason} back.
     Fails closed on any error.
     """
 
     def __init__(self, api_key: str | None = None):
-        try:
-            self.client = get_anthropic_client(api_key)
-        except ValueError:
-            self.client = None
+        self.client = get_anthropic_client(api_key)
         self.prompt_service = get_prompt_service()
 
     def check_message(self, user_message: str) -> GuardrailResult:
@@ -47,13 +44,8 @@ class GuardrailService:
         Returns GuardrailResult(allowed=True/False, reason=...).
         On any failure, returns allowed=False (fail closed).
         """
-        # Fail closed: every early return blocks the message. This ensures
-        # that infrastructure failures (missing client, Braintrust outage,
-        # LLM errors) don't accidentally let unfiltered messages through.
-        if not self.client:
-            logger.error("Guardrail: no Anthropic client configured")
-            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
-
+        # Fail closed: runtime errors (Braintrust outage, LLM errors) block
+        # the message rather than accidentally letting unfiltered content through.
         try:
             system_prompt = self._load_prompt()
         except Exception as exc:
@@ -85,30 +77,22 @@ class GuardrailService:
 
         Expected format: {decision: "ALLOW"/"BLOCK", reason: "..."}
         Response may be wrapped in markdown code fences (```json ... ```).
+        Only an explicit "ALLOW" passes — any other decision value is a block.
+        This is intentional: typos, unexpected values, or new decision types
+        should all fail closed rather than accidentally letting messages through.
         """
         try:
-            text = response.content[0].text.strip()
-            # Strip markdown code fences if present
-            if text.startswith("```"):
-                lines = text.split("\n")
-                lines = [line for line in lines if not line.strip().startswith("```")]
-                text = "\n".join(lines).strip()
+            text = strip_markdown_fences(response.content[0].text)
             data = json.loads(text)
 
-            if "decision" in data:
-                allowed = data["decision"].upper() == "ALLOW"
-                reason = data.get("reason", "")
-                return GuardrailResult(allowed=allowed, reason=reason)
-
-            # Legacy format: {allowed: bool, reason: str}
-            allowed = data.get("allowed")
-            if not isinstance(allowed, bool):
-                logger.warning(f"Guardrail: 'allowed' not a bool: {text[:200]}")
+            decision = data.get("decision", "")
+            if not decision:
+                logger.warning(f"Guardrail: missing 'decision' field: {text[:200]}")
                 return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
-            return GuardrailResult(
-                allowed=allowed,
-                reason=data.get("reason", ""),
-            )
+
+            # Only explicit "ALLOW" passes — everything else is a block.
+            allowed = decision.upper() == "ALLOW"
+            return GuardrailResult(allowed=allowed, reason=data.get("reason", ""))
         except (json.JSONDecodeError, IndexError, KeyError) as exc:
             logger.warning(f"Guardrail: failed to parse response: {exc}")
             return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
@@ -116,18 +100,4 @@ class GuardrailService:
 
 # Singleton — shared across requests within a process. The Anthropic client
 # and prompt service are both safe to reuse, so this avoids per-request setup.
-_default_service: GuardrailService | None = None
-
-
-def get_guardrail_service() -> GuardrailService:
-    """Get or create the default guardrail service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = GuardrailService()
-    return _default_service
-
-
-def reset_guardrail_service() -> None:
-    """Reset the singleton (for tests)."""
-    global _default_service
-    _default_service = None
+get_guardrail_service, reset_guardrail_service = make_singleton(GuardrailService)
