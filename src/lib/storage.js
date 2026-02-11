@@ -33,24 +33,13 @@ export function setStorage(key, value) {
   }
 }
 
-/**
- * Remove a value from localStorage
- * @param {string} key - Storage key (will be prefixed)
- */
-export function removeStorage(key) {
-  try {
-    localStorage.removeItem(PREFIX + key);
-  } catch (e) {
-    console.warn(`[lc-chatbot] Failed to remove ${key} from storage:`, e);
-  }
-}
-
 // Storage keys constants
 export const STORAGE_KEYS = {
   SIZE: 'size',
   SESSION: 'session',
   DRAFT: 'draft',
   UI: 'ui',
-  MESSAGES: 'messages'
+  MESSAGES: 'messages',
+  PROMPT_SLUGS: 'prompt_slugs',
+  BOT_VERSION: 'bot_version'
 };
-

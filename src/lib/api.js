@@ -19,6 +19,12 @@ import { generateMessageId } from './session.js';
  * @property {string} timestamp
  * @property {string} text
  * @property {MessageContext} context
+ * @property {PromptSlugs} [promptSlugs]
+ */
+
+/**
+ * @typedef {Object} SessionInfo
+ * @property {number} turnCount
  */
 
 /**
@@ -27,6 +33,13 @@ import { generateMessageId } from './session.js';
  * @property {string} sessionId
  * @property {string} timestamp
  * @property {string} markdown
+ * @property {string} [traceId]
+ * @property {SessionInfo} [session]
+ */
+
+/**
+ * @typedef {Object} PromptSlugs
+ * @property {string} [corePromptSlug]
  */
 
 /**
@@ -74,13 +87,22 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
     throw error;
   }
-  
+
   return response.json();
 }
 
@@ -109,9 +131,17 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} sessionId - Session ID
  * @param {string} text - Message text
  * @param {StreamCallbacks} callbacks - Streaming callbacks
+ * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @returns {Promise<ChatResponse>}
  */
-export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, callbacks = {}) {
+export async function sendMessageStream(
+  apiBaseUrl,
+  userId,
+  sessionId,
+  text,
+  callbacks = {},
+  promptSlugs = null
+) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
   
@@ -128,6 +158,10 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
       clientVersion: CLIENT_VERSION
     }
   };
+
+  if (promptSlugs) {
+    payload.promptSlugs = promptSlugs;
+  }
   
   const response = await fetch(`${apiBaseUrl}/chat/stream`, {
     method: 'POST',
@@ -136,13 +170,22 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
     },
     body: JSON.stringify(payload)
   });
-  
+
   if (!response.ok) {
-    const error = new Error(`Chat request failed: ${response.status}`);
+    // Try to parse error response
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+
+    const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
+    error.code = errorData?.error;
     throw error;
   }
-  
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -180,8 +223,10 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
                 sessionId: data.sessionId,
                 timestamp: data.timestamp,
                 markdown: data.markdown,
+                traceId: data.traceId,
                 toolCalls: data.toolCalls,
-                stats: data.stats
+                stats: data.stats,
+                session: data.session
               };
               if (callbacks.onMessage) {
                 callbacks.onMessage(finalMessage);
@@ -214,13 +259,63 @@ export async function sendMessageStream(apiBaseUrl, userId, sessionId, text, cal
 }
 
 /**
+ * Fetch default prompt slugs from the server.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @returns {Promise<PromptSlugs>}
+ */
+export async function fetchPromptDefaults(apiBaseUrl) {
+  const response = await fetch(`${apiBaseUrl}/v2/prompts/defaults`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to load prompt defaults: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Send user feedback for a trace.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {Object} payload - Feedback payload
+ * @returns {Promise<{ success: boolean }>}
+ */
+export async function sendFeedback(apiBaseUrl, payload) {
+  const response = await fetch(`${apiBaseUrl}/v2/chat/feedback`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let errorData = null;
+    try {
+      errorData = await response.json();
+    } catch {
+      // Ignore JSON parse errors
+    }
+    const error = new Error(errorData?.error || `Feedback request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
  * Load conversation history
  * @param {string} apiBaseUrl - Base URL for API
  * @param {string} userId - User ID
  * @param {string} sessionId - Session ID
  * @param {string} [before] - Load messages before this timestamp
  * @param {number} [limit=20] - Number of messages to load
- * @returns {Promise<{ messages: HistoryMessage[], hasMore: boolean }>}
+ * @returns {Promise<{ messages: HistoryMessage[], hasMore: boolean, session: SessionInfo | null }>}
  */
 export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, limit = 20) {
   const params = new URLSearchParams({
@@ -250,7 +345,7 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
   
   return {
     messages: data.messages || [],
-    hasMore: data.hasMore ?? false
+    hasMore: data.hasMore ?? false,
+    session: data.session || null
   };
 }
-

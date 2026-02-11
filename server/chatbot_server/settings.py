@@ -2,9 +2,17 @@
 Django settings for chatbot_server project.
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
+
 from corsheaders.defaults import default_headers
+
+try:
+    import whitenoise  # noqa: F401
+
+    _WHITENOISE_AVAILABLE = True
+except ImportError:
+    _WHITENOISE_AVAILABLE = False
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -13,74 +21,88 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Loads from server/.env (same directory as manage.py)
 try:
     from dotenv import load_dotenv
+
     # Load .env from the server directory (parent of chatbot_server)
-    env_path = BASE_DIR / '.env'
+    env_path = BASE_DIR / ".env"
     load_dotenv(dotenv_path=env_path)
 except ImportError:
     pass
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-dev-key-change-in-production')
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() == 'true'
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ["*"]
 
 # Application definition
 INSTALLED_APPS = [
-    'django.contrib.contenttypes',
-    'django.contrib.staticfiles',
-    'corsheaders',
-    'rest_framework',
-    'chat',
+    "django.contrib.contenttypes",
+    "django.contrib.staticfiles",
+    "corsheaders",
+    "rest_framework",
+    "chat",
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
 ]
 
-ROOT_URLCONF = 'chatbot_server.urls'
+if _WHITENOISE_AVAILABLE:
+    MIDDLEWARE.append("whitenoise.middleware.WhiteNoiseMiddleware")
+
+ROOT_URLCONF = "chatbot_server.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'chatbot_server.wsgi.application'
+WSGI_APPLICATION = "chatbot_server.wsgi.application"
 
 # Database - using postgres for production
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME"),
+        "USER": os.environ.get("DB_USER"),
+        "PASSWORD": os.environ.get("DB_PASSWORD"),
+        "HOST": os.environ.get("DB_HOST"),
+        "PORT": os.environ.get("DB_PORT"),
     }
 }
 
 # Internationalization
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
 # Static files
-STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_URL = "/static/"
+
+# WhiteNoise configuration for serving static files in production
+if _WHITENOISE_AVAILABLE:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Default primary key field type
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS settings - allow all origins in development
 # Set to True to allow any origin (for local development)
@@ -90,18 +112,18 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow all methods
 CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
 ]
 
 # CORS headers for SSE streaming (include Sentry tracing headers)
 CORS_ALLOW_HEADERS = list(default_headers) + [
-    'sentry-trace',
-    'baggage',
+    "sentry-trace",
+    "baggage",
 ]
 
 
@@ -110,9 +132,9 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Expose headers needed for SSE
 CORS_EXPOSE_HEADERS = [
-    'Content-Type',
-    'Cache-Control',
-    'X-Accel-Buffering',
+    "Content-Type",
+    "Cache-Control",
+    "X-Accel-Buffering",
 ]
 
 # Allow preflight requests to be cached
@@ -120,13 +142,13 @@ CORS_PREFLIGHT_MAX_AGE = 86400
 
 # REST Framework settings
 REST_FRAMEWORK = {
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
     ],
-    'DEFAULT_PARSER_CLASSES': [
-        'rest_framework.parsers.JSONParser',
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
     ],
-    'UNAUTHENTICATED_USER': None,
+    "UNAUTHENTICATED_USER": None,
 }
 
 # ============================================================================
@@ -142,24 +164,32 @@ REST_FRAMEWORK = {
 # ============================================================================
 # Set these environment variables to enable Braintrust:
 # - BRAINTRUST_API_KEY=<your-api-key>
-# - BRAINTRUST_PROJECT=sefaria-chatbot (optional, defaults to this)
+# - BRAINTRUST_PROJECT=On Site Agent (optional, defaults to this)
 
 # Environment tag for logging
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+
+# Prompt slug defaults (Braintrust)
+# These slugs identify which Braintrust prompt to fetch for each service.
+CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
+GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-checker")
+
+# ============================================================================
+# Chat User Token Configuration
+# ============================================================================
+# Token secret used to decrypt incoming userId values for chat requests.
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
 
 # ============================================================================
 # Anthropic API Configuration
 # ============================================================================
-# Set ANTHROPIC_API_KEY environment variable
+# Set ANTHROPIC_API_KEY environment variable.
 #
-# AI Router & Guardrails Configuration:
-# - ROUTER_USE_AI=true/false (default: true) - Enable AI-based flow routing
-# - GUARDRAILS_USE_AI=true/false (default: true) - Enable AI-based guardrails
-# - ROUTER_MODEL=claude-3-5-haiku-20241022 (default) - Model for routing
-# - GUARDRAIL_MODEL=claude-3-5-haiku-20241022 (default) - Model for guardrails
-#
-# Note: Uses Claude 3.5 Haiku by default for speed and cost-effectiveness.
-# Falls back to rule-based classification if AI fails or is disabled.
+# Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
+# (guardrail classification, summarization). Override via env vars.
+AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
+GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
+SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
 # Sefaria API Configuration (optional)
@@ -172,73 +202,63 @@ ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 
 # Logging configuration
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
         },
-        'chat': {
-            'format': '{asctime} | {message}',
-            'style': '{',
-            'datefmt': '%H:%M:%S',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-        'chat_console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'chat',
+        "chat": {
+            "format": "{asctime} | {message}",
+            "style": "{",
+            "datefmt": "%H:%M:%S",
         },
     },
-    'loggers': {
-        'chat': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
         },
-        'chat.agent': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+        "chat_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "chat",
         },
-        'chat.router': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+    },
+    "loggers": {
+        "chat": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'chat.router.guardrails': {
-            'handlers': ['chat_console'],
-            'level': 'WARNING',
-            'propagate': False,
+        "chat.agent": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'chat.prompts': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+        "chat.prompts": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'chat.tracing': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+        "chat.tracing": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'chat.logging': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+        "chat.logging": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'chat.summarization': {
-            'handlers': ['chat_console'],
-            'level': 'INFO',
-            'propagate': False,
+        "chat.summarization": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
         },
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
         },
     },
 }

@@ -3,7 +3,7 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessage, sendMessageStream, loadHistory } from '../lib/api.js';
+  import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
 
@@ -12,7 +12,8 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right'
+    placement = 'right',
+    'max-input-chars': maxInputChars = 500
   } = $props();
 
   // State
@@ -31,6 +32,20 @@
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
+
+  // Settings state
+  let showSettings = $state(false);
+  let promptSlugs = $state({
+    corePromptSlug: ''
+  });
+  let defaultPromptSlugs = $state({
+    corePromptSlug: ''
+  });
+  let settingsLoaded = $state(false);
+  let isLoadingSettings = $state(false);
+  let settingsError = $state('');
+
+  let isClearing = $state(false);
 
   // Refs
   let messageListRef = $state(null);
@@ -69,6 +84,15 @@
       inputText = savedDraft.text;
     }
 
+    // Restore prompt slugs
+    const savedPromptSlugs = getStorage(STORAGE_KEYS.PROMPT_SLUGS, null);
+    if (savedPromptSlugs) {
+      promptSlugs = {
+        corePromptSlug: savedPromptSlugs.corePromptSlug || ''
+      };
+      settingsLoaded = true;
+    }
+
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
@@ -93,40 +117,118 @@
 
   function openPanel() {
     isOpen = true;
+    showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
     dispatchEvent('opened');
-    
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
     }, 100);
 
-    // Load history if no messages
-    if (messages.length === 0 && sessionId && apiBaseUrl) {
-      loadInitialHistory();
+    // Always sync session state from server (for turn limit info)
+    if (sessionId && apiBaseUrl) {
+      syncSessionState();
     }
   }
 
   function closePanel() {
     isOpen = false;
+    showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, placement });
     dispatchEvent('closed');
   }
 
-  async function loadInitialHistory() {
+  function handleNewChat() {
+    if (isSending) return;
+
+    const { sessionId: newSessionId } = getOrCreateSession(true);
+    sessionId = newSessionId;
+    messages = [];
+    inputText = '';
+    isLoadingHistory = false;
+    hasMoreHistory = false;
+    currentProgress = null;
+    toolHistory = [];
+
+    setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+  }
+
+  async function openSettings() {
+    showSettings = true;
+    settingsError = '';
+
+    if (!settingsLoaded && apiBaseUrl) {
+      isLoadingSettings = true;
+      try {
+        const defaults = await fetchPromptDefaults(apiBaseUrl);
+        defaultPromptSlugs = {
+          corePromptSlug: defaults.corePromptSlug || ''
+        };
+        promptSlugs = {
+          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug
+        };
+        settingsLoaded = true;
+      } catch (e) {
+        settingsError = e.message || 'Failed to load settings.';
+      } finally {
+        isLoadingSettings = false;
+      }
+    }
+  }
+
+  function closeSettings() {
+    showSettings = false;
+    settingsError = '';
+  }
+
+  function saveSettings() {
+    setStorage(STORAGE_KEYS.PROMPT_SLUGS, {
+      corePromptSlug: promptSlugs.corePromptSlug || ''
+    });
+    settingsError = '';
+  }
+
+  async function resetSettings() {
+    settingsError = '';
+    if (!apiBaseUrl) {
+      settingsError = 'API base URL is missing.';
+      return;
+    }
+
+    isLoadingSettings = true;
+    try {
+      const defaults = await fetchPromptDefaults(apiBaseUrl);
+      defaultPromptSlugs = {
+        corePromptSlug: defaults.corePromptSlug || ''
+      };
+      promptSlugs = { ...defaultPromptSlugs };
+      setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
+      settingsLoaded = true;
+    } catch (e) {
+      settingsError = e.message || 'Failed to reset settings.';
+    } finally {
+      isLoadingSettings = false;
+    }
+  }
+
+  async function syncSessionState() {
     if (!userId || !sessionId || !apiBaseUrl) return;
-    
-    isLoadingHistory = true;
+
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
-      messages = result.messages;
-      hasMoreHistory = result.hasMore;
-      saveMessagesToStorage();
-      scrollToBottom();
+
+
+      // Only load messages if we don't have any locally
+      if (messages.length === 0 && result.messages.length > 0) {
+        messages = result.messages;
+        hasMoreHistory = result.hasMore;
+        saveMessagesToStorage();
+        scrollToBottom();
+      }
     } catch (e) {
-      console.warn('[lc-chatbot] Failed to load history:', e);
-    } finally {
-      isLoadingHistory = false;
+      console.warn('[lc-chatbot] Failed to sync session state:', e);
     }
   }
 
@@ -215,7 +317,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      });
+      }, promptSlugs);
 
       // Update user message status
       messages = messages.map(m => 
@@ -233,6 +335,8 @@
         content: response.markdown,
         timestamp: response.timestamp,
         status: 'sent',
+        traceId: response.traceId || null,
+        feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats
       };
@@ -240,6 +344,7 @@
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
       scrollToBottom();
+
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -250,8 +355,8 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
-      
-      // Mark message as failed
+
+      // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: 'failed' }
@@ -275,6 +380,27 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  }
+
+  async function handleFeedback(messageId, score) {
+    const target = messages.find(m => m.messageId === messageId);
+    if (!target?.traceId || !apiBaseUrl) return;
+
+    messages = messages.map(m =>
+      m.messageId === messageId ? { ...m, feedback: score > 0 ? 'like' : 'dislike' } : m
+    );
+
+    try {
+      await sendFeedback(apiBaseUrl, {
+        traceId: target.traceId,
+        score,
+        userId,
+        sessionId,
+        messageId
+      });
+    } catch (e) {
+      console.warn('[lc-chatbot] Feedback failed:', e);
     }
   }
 
@@ -423,22 +549,84 @@
 
       <!-- Header -->
       <header class="lc-chatbot-header">
-        <h2>Chat</h2>
-        <button class="close-btn" onclick={closePanel} aria-label="Close chat">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div class="header-left">
+          <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+          <h2>Library Assistant</h2>
+        </div>
+        <div class="header-actions">
+          <button class="new-chat-btn" onclick={handleNewChat} disabled={isSending} aria-label="Start a new chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12h18"></path>
+              <path d="M12 3v18"></path>
+            </svg>
+            <span>New chat</span>
+          </button>
+          <button class="close-btn" onclick={closePanel} aria-label="Close chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
       </header>
 
+      {#if showSettings}
+        <div class="settings-panel">
+          <div class="settings-header">
+            <button class="settings-back" onclick={closeSettings} aria-label="Back to chat">
+              ← Back
+            </button>
+            <div class="settings-title">Agent Settings</div>
+          </div>
+
+          {#if isLoadingSettings}
+            <div class="settings-loading">Loading defaults...</div>
+          {/if}
+
+          {#if settingsError}
+            <div class="settings-error">{settingsError}</div>
+          {/if}
+
+          <div class="settings-fields">
+            <label class="settings-field">
+              <span>Core prompt slug</span>
+              <input
+                type="text"
+                bind:value={promptSlugs.corePromptSlug}
+                placeholder="core-8fbc"
+                disabled={isLoadingSettings}
+              />
+            </label>
+          </div>
+
+          <div class="settings-actions">
+            <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
+              Save
+            </button>
+            <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
+              Reset to defaults
+            </button>
+          </div>
+
+          <p class="settings-note">Changes apply to new messages.</p>
+        </div>
+      {:else}
       <!-- Message List -->
-      <div 
-      class="lc-chatbot-messages"
-      bind:this={messageListRef}
-      onscroll={handleScroll}
-      onclick={handleMessageLinkClick}
-    >
+      <div
+        class="lc-chatbot-messages"
+        class:clearing={isClearing}
+        bind:this={messageListRef}
+        onscroll={handleScroll}
+        onclick={handleMessageLinkClick}
+        role="log"
+        aria-label="Chat messages"
+        aria-live="polite"
+      >
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
@@ -470,13 +658,32 @@
                 {/if}
               </div>
               <div class="message-meta">
-                <span class="message-time">{formatTime(item.timestamp)}</span>
                 {#if item.status === 'sending'}
                   <span class="message-status sending">Sending...</span>
                 {:else if item.status === 'failed'}
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
+                {/if}
+                {#if item.role === 'assistant' && item.status === 'sent' && item.traceId}
+                  <div class="feedback-buttons">
+                    <button
+                      class="feedback-btn"
+                      class:active={item.feedback === 'like'}
+                      onclick={() => handleFeedback(item.messageId, 1)}
+                      aria-label="Like response"
+                    >
+                      👍
+                    </button>
+                    <button
+                      class="feedback-btn"
+                      class:active={item.feedback === 'dislike'}
+                      onclick={() => handleFeedback(item.messageId, 0)}
+                      aria-label="Dislike response"
+                    >
+                      👎
+                    </button>
+                  </div>
                 {/if}
               </div>
             </div>
@@ -553,12 +760,13 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          maxlength={maxInputChars}
           placeholder="Type a message..."
           rows="1"
           disabled={isSending}
         ></textarea>
-        <button 
-          class="send-btn" 
+        <button
+          class="send-btn"
           onclick={handleSend}
           disabled={!inputText.trim() || isSending}
           aria-label="Send message"
@@ -569,6 +777,7 @@
           </svg>
         </button>
       </footer>
+      {/if}
     </div>
   {/if}
 </div>
@@ -693,10 +902,67 @@
     border-bottom: 1px solid var(--lc-border);
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
   .lc-chatbot-header h2 {
     font-size: 16px;
     font-weight: 600;
     color: var(--lc-text);
+  }
+
+  .settings-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--lc-border);
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-btn:hover {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .new-chat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--lc-bg-tertiary);
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    color: var(--lc-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--lc-font);
+    transition: all 0.15s ease;
+  }
+
+  .new-chat-btn:hover:not(:disabled) {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .new-chat-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .close-btn {
@@ -790,6 +1056,8 @@
     color: var(--lc-assistant-text);
     border-bottom-left-radius: 4px;
     border: 1px solid var(--lc-border);
+    line-height: 17px;
+    font-size: 14px;
   }
 
   .message.failed .message-content {
@@ -880,11 +1148,6 @@
     padding: 0 4px;
   }
 
-  .message-time {
-    font-size: 11px;
-    color: var(--lc-text-muted);
-  }
-
   .message-status {
     font-size: 11px;
     color: var(--lc-text-muted);
@@ -906,6 +1169,34 @@
 
   .retry-btn:hover {
     color: #dc2626;
+  }
+
+  .feedback-buttons {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 4px;
+  }
+
+  .feedback-btn {
+    border: 1px solid var(--lc-border);
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    font-size: 12px;
+    border-radius: 8px;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .feedback-btn:hover {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .feedback-btn.active {
+    background: var(--lc-primary);
+    color: white;
+    border-color: transparent;
   }
 
   /* Thinking/Progress Indicator */
@@ -1108,4 +1399,128 @@
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
   }
+
+  /* Settings Panel */
+  .settings-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 20px 20px;
+    overflow: auto;
+    flex: 1;
+    background: var(--lc-bg);
+  }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .settings-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--lc-text);
+  }
+
+  .settings-back {
+    border: none;
+    background: transparent;
+    color: var(--lc-primary);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 0;
+  }
+
+  .settings-loading {
+    font-size: 12px;
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-error {
+    font-size: 12px;
+    color: var(--lc-error);
+  }
+
+  .settings-fields {
+    display: grid;
+    gap: 12px;
+  }
+
+  .settings-field {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-field input {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--lc-font);
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+  }
+
+  .settings-field input:disabled {
+    opacity: 0.6;
+  }
+
+  .settings-note {
+    font-size: 12px;
+    color: var(--lc-text-muted);
+  }
+
+  .settings-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .settings-save,
+  .settings-reset {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--lc-font);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .settings-save {
+    background: var(--lc-primary);
+    color: white;
+    border-color: transparent;
+  }
+
+  .settings-save:hover:not(:disabled) {
+    background: var(--lc-primary-hover);
+  }
+
+  .settings-reset {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-reset:hover:not(:disabled) {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
+  }
+
+  .settings-save:disabled,
+  .settings-reset:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Clearing animation for message list */
+  .lc-chatbot-messages.clearing {
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+  }
+
 </style>

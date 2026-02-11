@@ -145,6 +145,7 @@ langfuse_cache/
 .local/
 local/
 *.local
+.logs/
 
 # Coverage reports
 htmlcov/
@@ -208,3 +209,4 @@ public
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+.worktrees/

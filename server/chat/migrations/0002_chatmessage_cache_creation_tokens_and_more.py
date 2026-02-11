@@ -4,65 +4,64 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chat', '0001_initial'),
+        ("chat", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='chatmessage',
-            name='cache_creation_tokens',
+            model_name="chatmessage",
+            name="cache_creation_tokens",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='cache_read_tokens',
+            model_name="chatmessage",
+            name="cache_read_tokens",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='input_tokens',
+            model_name="chatmessage",
+            name="input_tokens",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='llm_calls',
+            model_name="chatmessage",
+            name="llm_calls",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='model_name',
-            field=models.CharField(blank=True, default='', max_length=100),
+            model_name="chatmessage",
+            name="model_name",
+            field=models.CharField(blank=True, default="", max_length=100),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='output_tokens',
+            model_name="chatmessage",
+            name="output_tokens",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='tool_calls_count',
+            model_name="chatmessage",
+            name="tool_calls_count",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatmessage',
-            name='tool_calls_data',
+            model_name="chatmessage",
+            name="tool_calls_data",
             field=models.JSONField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='chatsession',
-            name='total_input_tokens',
+            model_name="chatsession",
+            name="total_input_tokens",
             field=models.IntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='chatsession',
-            name='total_output_tokens',
+            model_name="chatsession",
+            name="total_output_tokens",
             field=models.IntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='chatsession',
-            name='total_tool_calls',
+            model_name="chatsession",
+            name="total_tool_calls",
             field=models.IntegerField(default=0),
         ),
     ]

@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - dev
+      - production
 
 jobs:
   release:
@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.version }}
+          ref: v${{ needs.release.outputs.version }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -109,12 +109,11 @@ jobs:
           file: ./Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-# Need to add new deploy scripts to infra repo and update this item
-#     - name: Deploy server
-#       run: |
-#         curl \
-#         -X POST \
-#         -H "Accept: application/vnd.github.v3+json" \
-#         -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
-#         https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/mcp-deploy.yml/dispatches \
-#         -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'main') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}", "appName": "ai-chatbot" }}'
+      - name: Deploy server
+        run: |
+          curl \
+          -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
+          https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/chatbot-deploy.yml/dispatches \
+          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'production') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
