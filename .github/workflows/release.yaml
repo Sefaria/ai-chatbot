@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - dev
+      - production
 
 jobs:
   release:
@@ -116,4 +116,4 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
           https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/chatbot-deploy.yml/dispatches \
-          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'main') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
+          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'production') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'

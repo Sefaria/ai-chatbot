@@ -23,7 +23,7 @@ plugins:
   - - "@semantic-release/github"
     - "successComment": false
 branches:
+  - name: "production"
   - name: "main"
-  - name: "dev"
     channel: "dev"
     prerelease: true
