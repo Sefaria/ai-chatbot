@@ -164,7 +164,7 @@ REST_FRAMEWORK = {
 # ============================================================================
 # Set these environment variables to enable Braintrust:
 # - BRAINTRUST_API_KEY=<your-api-key>
-# - BRAINTRUST_PROJECT=sefaria-chatbot (optional, defaults to this)
+# - BRAINTRUST_PROJECT=On Site Agent (optional, defaults to this)
 
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")

@@ -64,7 +64,7 @@ class PromptService:
         self.api_key = api_key or os.environ.get("BRAINTRUST_API_KEY")
         if not self.api_key:
             raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
-        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "sefaria-chatbot")
+        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         self.cache_ttl = cache_ttl_seconds
 
         self._cache: dict[str, dict[str, Any]] = {}

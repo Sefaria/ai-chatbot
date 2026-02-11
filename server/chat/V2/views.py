@@ -22,10 +22,10 @@ import concurrent.futures
 import contextvars
 import json
 import logging
-import os
 import queue
 import time
 
+import braintrust
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from rest_framework import status
@@ -49,6 +49,8 @@ from .services import (
     save_user_message,
 )
 from .summarization import get_summary_service
+from .utils import flush_braintrust as _flush_braintrust
+from .utils import get_braintrust_config
 
 logger = logging.getLogger("chat")
 
@@ -63,12 +65,9 @@ def build_session_info(session) -> dict:
 
 # Braintrust logger instance — used by chat_feedback_v2() to attach user
 # ratings to traces. Per-thread tracing setup is handled in claude_service.py.
-import braintrust
 
-_bt_logger = braintrust.init_logger(
-    project=os.environ.get("BRAINTRUST_PROJECT", "On Site Agent"),
-    api_key=os.environ.get("BRAINTRUST_API_KEY"),
-)
+_bt_config = get_braintrust_config()
+_bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
@@ -79,11 +78,6 @@ def _create_traced_executor() -> concurrent.futures.Executor:
     as children of the request-level span.
     """
     return braintrust.TracedThreadPoolExecutor(max_workers=1)
-
-
-def _flush_braintrust():
-    """Flush pending Braintrust spans so they're sent before the request ends."""
-    braintrust.flush()
 
 
 @api_view(["POST"])

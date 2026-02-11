@@ -11,8 +11,9 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
-from ..base_llm_service import BaseLLMService
+from ..prompts import get_prompt_service
 from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
+from ..utils import get_anthropic_client
 
 logger = logging.getLogger("chat.guardrail")
 
@@ -25,7 +26,7 @@ class GuardrailResult:
     reason: str = ""
 
 
-class GuardrailService(BaseLLMService):
+class GuardrailService:
     """Classifies user messages as allowed or blocked using an LLM filter.
 
     Uses a Braintrust-managed prompt (guardrail-checker) as the system prompt,
@@ -34,7 +35,11 @@ class GuardrailService(BaseLLMService):
     """
 
     def __init__(self, api_key: str | None = None):
-        super().__init__(api_key=api_key)
+        try:
+            self.client = get_anthropic_client(api_key)
+        except ValueError:
+            self.client = None
+        self.prompt_service = get_prompt_service()
 
     def check_message(self, user_message: str) -> GuardrailResult:
         """Check whether a user message is allowed.
@@ -45,9 +50,7 @@ class GuardrailService(BaseLLMService):
         # Fail closed: every early return blocks the message. This ensures
         # that infrastructure failures (missing client, Braintrust outage,
         # LLM errors) don't accidentally let unfiltered messages through.
-        try:
-            self._ensure_client()
-        except ValueError:
+        if not self.client:
             logger.error("Guardrail: no Anthropic client configured")
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 

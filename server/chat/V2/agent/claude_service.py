@@ -35,9 +35,8 @@ from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
-from ..base_llm_service import BaseLLMService
 from ..guardrail import get_guardrail_service
-from ..prompts import PromptService
+from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     GUARDRAIL_MALFORMED_REASON,
@@ -46,6 +45,7 @@ from ..prompts.prompt_fragments import (
     GUARDRAIL_UNAVAILABLE_REASON,
     build_system_prompt,
 )
+from ..utils import get_anthropic_client, get_braintrust_config
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
@@ -144,7 +144,7 @@ def truncate(text: str, max_len: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-class ClaudeAgentService(BaseLLMService):
+class ClaudeAgentService:
     """Orchestrates a single chat turn: prompt → SDK → tool calls → response.
 
     One instance is created per request by `get_agent_service()`. It holds
@@ -171,11 +171,16 @@ class ClaudeAgentService(BaseLLMService):
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        super().__init__(api_key=api_key, prompt_service=prompt_service)
-        self._ensure_client()
+        self.client = get_anthropic_client(api_key)
+        self.prompt_service = prompt_service or get_prompt_service()
+        bt = get_braintrust_config()
+        self.braintrust_api_key = bt.api_key
+        self.braintrust_project = bt.project
+
         # The SDK reads the key from the environment, so ensure it's set.
+        api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            os.environ["ANTHROPIC_API_KEY"] = self.api_key
+            os.environ["ANTHROPIC_API_KEY"] = api_key_str
 
         from django.conf import settings as django_settings
 
@@ -294,38 +299,9 @@ class ClaudeAgentService(BaseLLMService):
             span_metadata["session_id"] = context.session_id
         bt_span.log(input=span_input, metadata=span_metadata)
 
-        guardrail_span = bt_span.start_span(name="guardrail", type="task")
-        guardrail_result = await asyncio.to_thread(
-            get_guardrail_service().check_message, last_user_message
-        )
-        guardrail_span.log(
-            input={"message": last_user_message},
-            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
-            metadata={"guardrail_blocked": not guardrail_result.allowed},
-        )
-        guardrail_span.end()
-
-        if not guardrail_result.allowed:
-            logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
-            # Show the LLM's reason to the user when it's a real content reason
-            # (not an internal infra reason like "service unavailable").
-            internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
-            reason = guardrail_result.reason
-            if reason and reason not in internal_reasons:
-                rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
-            else:
-                rejection = GUARDRAIL_REJECTION_MESSAGE
-            latency_ms = int((time.time() - start_time) * 1000)
-            bt_span.log(
-                output={"content": rejection, "guardrail_blocked": True},
-                metrics={"latency_ms": latency_ms},
-            )
-            return AgentResponse(
-                content=rejection,
-                tool_calls=[],
-                latency_ms=latency_ms,
-                trace_id=bt_span.id,
-            )
+        guardrail_response = await self._run_guardrail(bt_span, last_user_message, start_time)
+        if guardrail_response:
+            return guardrail_response
 
         # --- Step 1: Assemble the system prompt -------------------------
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
@@ -481,6 +457,49 @@ class ClaudeAgentService(BaseLLMService):
         )
 
     # -------------------------------------------------------------------
+    # Guardrail helper
+    # -------------------------------------------------------------------
+
+    async def _run_guardrail(
+        self, bt_span, user_message: str, start_time: float
+    ) -> AgentResponse | None:
+        """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
+        guardrail_span = bt_span.start_span(name="guardrail", type="task")
+        guardrail_result = await asyncio.to_thread(
+            get_guardrail_service().check_message, user_message
+        )
+        guardrail_span.log(
+            input={"message": user_message},
+            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+            metadata={"guardrail_blocked": not guardrail_result.allowed},
+        )
+        guardrail_span.end()
+
+        if guardrail_result.allowed:
+            return None
+
+        logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
+        # Show the LLM's reason to the user when it's a real content reason
+        # (not an internal infra reason like "service unavailable").
+        internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
+        reason = guardrail_result.reason
+        if reason and reason not in internal_reasons:
+            rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
+        else:
+            rejection = GUARDRAIL_REJECTION_MESSAGE
+        latency_ms = int((time.time() - start_time) * 1000)
+        bt_span.log(
+            output={"content": rejection, "guardrail_blocked": True},
+            metrics={"latency_ms": latency_ms},
+        )
+        return AgentResponse(
+            content=rejection,
+            tool_calls=[],
+            latency_ms=latency_ms,
+            trace_id=bt_span.id,
+        )
+
+    # -------------------------------------------------------------------
     # Tool wiring — bridging our Sefaria tools into the Claude Agent SDK
     # -------------------------------------------------------------------
 
@@ -603,7 +622,10 @@ class ClaudeAgentService(BaseLLMService):
         simplified: dict[str, Any] = {}
         for key, schema in properties.items():
             if isinstance(schema, dict):
-                simplified[key] = type_map.get(schema.get("type"), str)
+                type_name = schema.get("type", "string")
+                simplified[key] = (
+                    type_map.get(type_name, str) if isinstance(type_name, str) else str
+                )
             else:
                 simplified[key] = str
 
@@ -661,12 +683,11 @@ class ClaudeAgentService(BaseLLMService):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
             # Pass API keys into the SDK subprocess environment
-            env = {
-                "ANTHROPIC_API_KEY": self.api_key,
+            options_kwargs["env"] = {
+                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
                 "BRAINTRUST_API_KEY": self.braintrust_api_key,
                 "BRAINTRUST_PROJECT": self.braintrust_project,
             }
-            options_kwargs["env"] = env
         if debug_enabled:
             if self._supports_option("extra_args"):
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
