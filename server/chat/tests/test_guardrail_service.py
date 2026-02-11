@@ -84,22 +84,32 @@ class TestGuardrailService:
         result = service.check_message("Hello")
         assert result.allowed is False
 
-    def test_braintrust_decision_format_allow(self):
-        """Braintrust prompt returns {decision: "ALLOW", ...} format."""
+    def test_decision_format_allow(self):
+        """Prompt returns {decision: "ALLOW", reason: "..."} format."""
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '```json\n{"decision": "ALLOW", "reason_codes": [], "refusal_message": null, "confidence": 0.99}\n```'
+            '{"decision": "ALLOW", "reason": "Legitimate question about Jewish texts"}'
         )
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
-        assert result.reason == ""
+        assert result.reason == "Legitimate question about Jewish texts"
 
-    def test_braintrust_decision_format_block(self):
-        """Braintrust prompt returns {decision: "BLOCK", ...} format."""
+    def test_decision_format_block(self):
+        """Prompt returns {decision: "BLOCK", reason: "..."} format."""
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '```json\n{"decision": "BLOCK", "reason_codes": ["OFF_TOPIC"], "refusal_message": "Not about Jewish texts", "confidence": 0.95}\n```'
+            '{"decision": "BLOCK", "reason": "Not about Jewish texts"}'
         )
         result = service.check_message("How do I hack a website?")
         assert result.allowed is False
         assert result.reason == "Not about Jewish texts"
+
+    def test_decision_format_with_code_fences(self):
+        """Handles response wrapped in markdown code fences."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '```json\n{"decision": "ALLOW", "reason": "On-topic question"}\n```'
+        )
+        result = service.check_message("What is Shabbat?")
+        assert result.allowed is True
+        assert result.reason == "On-topic question"
