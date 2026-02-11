@@ -84,10 +84,13 @@ class TurnLoggingService:
         session.conversation_summary = summary_text
         session.summary_updated_at = timezone.now()
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
-        if agent_response.input_tokens:
-            session.total_input_tokens = (
-                session.total_input_tokens or 0
-            ) + agent_response.input_tokens
+        if agent_response.input_tokens is not None:
+            total_prompt = (
+                agent_response.input_tokens
+                + (agent_response.cache_read_tokens or 0)
+                + (agent_response.cache_creation_tokens or 0)
+            )
+            session.total_input_tokens = (session.total_input_tokens or 0) + total_prompt
         if agent_response.output_tokens:
             session.total_output_tokens = (
                 session.total_output_tokens or 0
@@ -123,9 +126,19 @@ class TurnLoggingService:
             "latencyMs": latency_ms,
         }
         if agent_response.input_tokens is not None:
-            stats["inputTokens"] = agent_response.input_tokens
+            # Total prompt tokens = base + cache_read + cache_creation.
+            # Anthropic's raw input_tokens excludes cached tokens.
+            stats["inputTokens"] = (
+                agent_response.input_tokens
+                + (agent_response.cache_read_tokens or 0)
+                + (agent_response.cache_creation_tokens or 0)
+            )
         if agent_response.output_tokens is not None:
             stats["outputTokens"] = agent_response.output_tokens
+        if agent_response.cache_read_tokens is not None:
+            stats["cacheReadTokens"] = agent_response.cache_read_tokens
+        if agent_response.cache_creation_tokens is not None:
+            stats["cacheCreationTokens"] = agent_response.cache_creation_tokens
         if agent_response.total_cost_usd is not None:
             stats["totalCostUsd"] = agent_response.total_cost_usd
         return stats

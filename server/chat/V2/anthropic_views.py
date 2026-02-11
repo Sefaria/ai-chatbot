@@ -40,22 +40,14 @@ from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .services import create_or_get_session, load_session_summary, save_user_message
+from .utils import flush_braintrust as _flush_braintrust
 
 logger = logging.getLogger("chat")
 
 # Origin identifier for Braintrust requests (used in metadata)
 BRAINTRUST_ORIGIN = "braintrust"
-
-
-def _flush_braintrust():
-    """Flush pending Braintrust spans so they're sent before the request ends."""
-    try:
-        import braintrust
-
-        braintrust.flush()
-    except Exception:
-        pass
 
 
 def extract_user_message(messages: list[dict]) -> str:
@@ -131,6 +123,8 @@ def to_anthropic_response(
         "usage": {
             "input_tokens": stats.get("inputTokens", 0),
             "output_tokens": stats.get("outputTokens", 0),
+            "cache_read_input_tokens": stats.get("cacheReadTokens", 0),
+            "cache_creation_input_tokens": stats.get("cacheCreationTokens", 0),
         },
         "metadata": {
             "trace_id": agent_response.trace_id,
@@ -215,7 +209,7 @@ def chat_anthropic_v2(request):
 
     metadata = data.get("metadata") or {}
     core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
-    model = data.get("model") or "claude-sonnet-4-5-20250929"
+    model = data.get("model") or settings.AGENT_MODEL
 
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
@@ -270,13 +264,13 @@ def chat_anthropic_v2(request):
             actor=actor,
             turn_id=turn_id,
             latency_ms=latency_ms,
-            error_text="Internal server error",
+            error_text=INTERNAL_ERROR_MESSAGE,
         )
         db_user_message.response_message = error_msg
         db_user_message.save(update_fields=["response_message"])
 
         return Response(
-            to_anthropic_error("api_error", "Internal server error", latency_ms),
+            to_anthropic_error("api_error", INTERNAL_ERROR_MESSAGE, latency_ms),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

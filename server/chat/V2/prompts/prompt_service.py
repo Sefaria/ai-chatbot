@@ -22,6 +22,8 @@ from typing import Any
 
 from django.conf import settings
 
+from ..utils import make_singleton
+
 logger = logging.getLogger("chat.prompts")
 
 
@@ -39,9 +41,8 @@ class PromptService:
     Service for fetching and caching the core prompt from Braintrust.
 
     Features:
-    - Braintrust prompt registry integration
+    - Braintrust prompt registry integration (required)
     - In-memory caching with TTL
-    - Fallback to local default
     - Version tracking for reproducibility
     """
 
@@ -59,31 +60,17 @@ class PromptService:
             project_name: Braintrust project name (default: from env)
             cache_ttl_seconds: How long to cache prompts
         """
+        import braintrust
+
         self.api_key = api_key or os.environ.get("BRAINTRUST_API_KEY")
-        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "sefaria-chatbot")
+        if not self.api_key:
+            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
+        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         self.cache_ttl = cache_ttl_seconds
 
         self._cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = Lock()
-        self._braintrust_client = None
-
-        self._init_braintrust()
-
-    def _init_braintrust(self) -> None:
-        """Initialize Braintrust client if configured."""
-        if not self.api_key:
-            logger.info("Braintrust API key not configured, using local core prompt only")
-            return
-
-        try:
-            import braintrust
-
-            self._braintrust_client = braintrust
-            logger.info(f"Braintrust client initialized for project: {self.project_name}")
-        except ImportError:
-            logger.warning("Braintrust package not installed, using local core prompt only")
-        except Exception as exc:
-            logger.warning(f"Failed to initialize Braintrust: {exc}")
+        self._braintrust_client = braintrust
 
     def get_core_prompt(
         self,
@@ -117,11 +104,6 @@ class PromptService:
             if cached and time.time() - cached["timestamp"] < self.cache_ttl:
                 logger.debug("Prompt cache hit: %s (version=%s)", prompt_id, cached["version"])
                 return cached["prompt"], cached["version"]
-
-        if not self._braintrust_client:
-            raise RuntimeError(
-                f"Cannot load prompt '{prompt_id}': Braintrust not configured (no API key)"
-            )
 
         try:
             fetch_start = time.time()
@@ -271,12 +253,4 @@ class PromptService:
         logger.info(f"Prompt cache invalidated: {prompt_id or 'all'}")
 
 
-_default_service = None
-
-
-def get_prompt_service() -> PromptService:
-    """Get or create the default prompt service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = PromptService()
-    return _default_service
+get_prompt_service, reset_prompt_service = make_singleton(PromptService)

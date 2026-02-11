@@ -1,38 +1,77 @@
 """
-Reusable text fragments that are composed into LLM prompts.
+Reusable text fragments for prompts and user-facing messages.
 
-All text that gets injected into messages sent to Claude lives here,
-so prompt content is easy to find, review, and update in one place.
+All static text — whether injected into LLM prompts or sent back to the
+user — lives here so content is easy to find, review, and update in one place.
 
 Note: The core system prompt lives in Braintrust (fetched by prompt_service.py).
 The summary generation prompt lives in summarization/summary_service.py
 since it targets a different model.
 """
 
+# ---------------------------------------------------------------------------
+# Messages sent back to the user
+# ---------------------------------------------------------------------------
+# Centralized here so copy is easy to review, update, and translate.
+# ERROR_FALLBACK_MESSAGE — shown when the agent crashes (DB-persisted as the response)
+# INTERNAL_ERROR_MESSAGE — sent to the client via SSE/API error events (less detail)
+# GUARDRAIL_REJECTION_MESSAGE — returned when the guardrail blocks a message
+
+ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
+
+INTERNAL_ERROR_MESSAGE = "An internal error occurred."
+
+GUARDRAIL_REJECTION_MESSAGE = (
+    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
+    "Could you rephrase your question to be about a Jewish text or topic?"
+)
+GUARDRAIL_REJECTION_WITH_REASON = GUARDRAIL_REJECTION_MESSAGE + "\n\nReason: {reason}"
+
+# Internal reasons logged when the guardrail can't run or returns bad data.
+# Not user-facing — used in GuardrailResult.reason for debugging / tracing.
+GUARDRAIL_UNAVAILABLE_REASON = "Guardrail service unavailable"
+GUARDRAIL_MALFORMED_REASON = "Malformed guardrail response"
+
+# ---------------------------------------------------------------------------
+# Prompt fragments (injected into LLM system prompts)
+# ---------------------------------------------------------------------------
+
 SECTION_SEPARATOR = "\n\n"
 
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"
 
 PAGE_CONTEXT_SECTION = (
+    "Page context:\n"
     "The user is currently on the Sefaria page: {page_url}. "
     "If the context is relevant, use that information in your response."
 )
 
 
-def build_system_prompt(
-    core_prompt: str,
+def build_prompt(
+    user_message: str,
     *,
+    core_prompt: str | None = None,
     summary_text: str | None = None,
     page_url: str | None = None,
 ) -> tuple[str, bool]:
-    """Compose the full system prompt from core prompt and optional context sections.
+    """Assemble a prompt from a user message, optional system instructions, and context.
 
-    Returns (system_prompt, summary_included).
+    Order: core_prompt → summary → page context → user_message.
+    This follows Anthropic's long-context guidance: place long reference material
+    (system instructions, context) first, and the query last — closest to where
+    the model generates its response — to maximize instruction recall.
+
+    Used for both the agent system prompt and the guardrail input (which omits
+    core_prompt).
+
+    Returns (prompt_text, summary_included).
     """
-    if not core_prompt or not core_prompt.strip():
+    if core_prompt is not None and not core_prompt.strip():
         raise ValueError("core_prompt cannot be empty")
 
-    parts = [core_prompt]
+    parts: list[str] = []
+    if core_prompt is not None:
+        parts.append(core_prompt)
     summary_included = False
 
     if summary_text:
@@ -40,5 +79,7 @@ def build_system_prompt(
         summary_included = True
     if page_url:
         parts.append(PAGE_CONTEXT_SECTION.format(page_url=page_url))
+
+    parts.append(user_message)
 
     return SECTION_SEPARATOR.join(parts), summary_included

@@ -22,10 +22,10 @@ import concurrent.futures
 import contextvars
 import json
 import logging
-import os
 import queue
 import time
 
+import braintrust
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from rest_framework import status
@@ -42,12 +42,15 @@ from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .services import (
     create_or_get_session,
     load_session_summary,
     save_user_message,
 )
 from .summarization import get_summary_service
+from .utils import flush_braintrust as _flush_braintrust
+from .utils import get_braintrust_config
 
 logger = logging.getLogger("chat")
 
@@ -60,57 +63,21 @@ def build_session_info(session) -> dict:
     }
 
 
+# Braintrust logger instance — used by chat_feedback_v2() to attach user
+# ratings to traces. Per-thread tracing setup is handled in claude_service.py.
+
+_bt_config = get_braintrust_config()
+_bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
+
+
 def _create_traced_executor() -> concurrent.futures.Executor:
     """Create a ThreadPoolExecutor that preserves Braintrust span context.
 
     Braintrust's TracedThreadPoolExecutor copies the current trace span
     into the worker thread, so LLM calls on the background thread appear
-    as children of the request-level span. Falls back to a plain executor
-    if Braintrust isn't installed.
+    as children of the request-level span.
     """
-    try:
-        import braintrust
-
-        traced_executor = getattr(braintrust, "TracedThreadPoolExecutor", None)
-        if traced_executor:
-            return traced_executor(max_workers=1)
-    except Exception:
-        pass
-
-    return concurrent.futures.ThreadPoolExecutor(max_workers=1)
-
-
-def _flush_braintrust():
-    """Flush pending Braintrust spans so they're sent before the request ends."""
-    try:
-        import braintrust
-
-        braintrust.flush()
-    except Exception:
-        pass
-
-
-# Global services (initialized lazily)
-_bt_logger = None
-
-
-def get_braintrust_logger():
-    """Get or create a Braintrust logger for feedback."""
-    global _bt_logger
-    api_key = os.environ.get("BRAINTRUST_API_KEY")
-    project = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
-    if not api_key:
-        return None
-
-    try:
-        import braintrust
-
-        # init_logger also sets the current logger for this thread/context
-        _bt_logger = braintrust.init_logger(project=project, api_key=api_key)
-        return _bt_logger
-    except Exception as e:
-        logger.warning(f"⚠️  Failed to initialize Braintrust logger: {e}")
-        return None
+    return braintrust.TracedThreadPoolExecutor(max_workers=1)
 
 
 @api_view(["POST"])
@@ -272,17 +239,18 @@ def chat_stream_v2(request):
                 actor=actor,
                 turn_id=turn_id,
                 latency_ms=latency_ms,
-                error_text="I'm sorry, I encountered an error processing your request.",
+                error_text=ERROR_FALLBACK_MESSAGE,
             )
 
             user_message.response_message = error_msg
             user_message.save(update_fields=["response_message"])
 
-            yield f"event: error\ndata: {json.dumps({'error': 'An internal error occurred.'})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'error': INTERNAL_ERROR_MESSAGE})}\n\n"
             return
 
         # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
+
         summary_service = get_summary_service()
         new_summary = summary_service.update_summary(
             session=session,
@@ -344,12 +312,7 @@ def chat_feedback_v2(request):
         )
 
     data = serializer.validated_data
-    bt_logger = get_braintrust_logger()
-    if not bt_logger:
-        return Response(
-            {"error": "braintrust_unavailable"},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    bt_logger = _bt_logger
 
     metadata = {
         "user_id": data.get("userId", ""),

@@ -24,14 +24,14 @@ def mock_braintrust() -> MagicMock:
 @pytest.fixture
 def service(mock_braintrust: MagicMock) -> PromptService:
     """Service with a mocked Braintrust client."""
-    svc = PromptService(api_key=None)
+    svc = PromptService(api_key="test-key")
     svc._braintrust_client = mock_braintrust
     return svc
 
 
 @pytest.fixture
 def service_short_ttl(mock_braintrust: MagicMock) -> PromptService:
-    svc = PromptService(api_key=None, cache_ttl_seconds=1)
+    svc = PromptService(api_key="test-key", cache_ttl_seconds=1)
     svc._braintrust_client = mock_braintrust
     return svc
 
@@ -49,38 +49,27 @@ class TestCorePrompt:
 class TestPromptServiceInit:
     """Test PromptService initialization."""
 
-    def test_init_without_api_key(self) -> None:
+    def test_init_requires_api_key(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            svc = PromptService(api_key=None)
-            assert svc.api_key is None
-            assert svc._braintrust_client is None
+            with pytest.raises(RuntimeError, match="BRAINTRUST_API_KEY"):
+                PromptService(api_key=None)
 
     def test_init_with_api_key(self) -> None:
         svc = PromptService(api_key="test_key")
         assert svc.api_key == "test_key"
 
     def test_init_custom_project_name(self) -> None:
-        svc = PromptService(api_key=None, project_name="custom-project")
+        svc = PromptService(api_key="test-key", project_name="custom-project")
         assert svc.project_name == "custom-project"
 
     def test_init_default_project_name(self) -> None:
         with patch.dict("os.environ", {"BRAINTRUST_PROJECT": "env-project"}):
-            svc = PromptService(api_key=None)
+            svc = PromptService(api_key="test-key")
             assert svc.project_name == "env-project"
 
     def test_init_cache_ttl(self) -> None:
-        svc = PromptService(api_key=None, cache_ttl_seconds=600)
+        svc = PromptService(api_key="test-key", cache_ttl_seconds=600)
         assert svc.cache_ttl == 600
-
-
-class TestNoBraintrustClient:
-    """Test behavior when Braintrust is not configured."""
-
-    def test_raises_when_no_client(self) -> None:
-        svc = PromptService(api_key=None)
-        svc._braintrust_client = None
-        with pytest.raises(RuntimeError, match="Braintrust not configured"):
-            svc.get_core_prompt()
 
 
 class TestCaching:
@@ -144,7 +133,7 @@ class TestBraintrustIntegration:
     """Test Braintrust prompt fetching (mocked)."""
 
     def test_fetch_from_braintrust_success(self, mock_braintrust: MagicMock) -> None:
-        svc = PromptService(api_key=None)
+        svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         svc.project_name = "test-project"
         prompt_text, version = svc._fetch_from_braintrust("test_slug", "stable")
@@ -153,7 +142,7 @@ class TestBraintrustIntegration:
 
     def test_fetch_from_braintrust_not_found(self, mock_braintrust: MagicMock) -> None:
         mock_braintrust.load_prompt.return_value = None
-        svc = PromptService(api_key=None)
+        svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         prompt_text, version = svc._fetch_from_braintrust("missing_slug", "stable")
         assert prompt_text is None
@@ -161,7 +150,7 @@ class TestBraintrustIntegration:
 
     def test_fetch_from_braintrust_error_propagates(self, mock_braintrust: MagicMock) -> None:
         mock_braintrust.load_prompt.side_effect = Exception("API Error")
-        svc = PromptService(api_key=None)
+        svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         with pytest.raises(Exception, match="API Error"):
             svc._fetch_from_braintrust("test_slug", "stable")
@@ -169,7 +158,7 @@ class TestBraintrustIntegration:
     def test_empty_fetch_raises(self, mock_braintrust: MagicMock) -> None:
         """When Braintrust returns empty prompt, raises RuntimeError."""
         mock_braintrust.load_prompt.return_value = None
-        svc = PromptService(api_key=None)
+        svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         with pytest.raises(RuntimeError, match="returned empty"):
             svc.get_core_prompt()
@@ -177,7 +166,7 @@ class TestBraintrustIntegration:
     def test_fetch_error_raises(self, mock_braintrust: MagicMock) -> None:
         """When Braintrust fetch fails, raises RuntimeError."""
         mock_braintrust.load_prompt.side_effect = Exception("Network error")
-        svc = PromptService(api_key=None)
+        svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         with pytest.raises(RuntimeError, match="Failed to fetch prompt"):
             svc.get_core_prompt()
@@ -199,18 +188,20 @@ class TestGetPromptService:
     """Test get_prompt_service singleton."""
 
     def test_returns_prompt_service(self) -> None:
-        import chat.V2.prompts.prompt_service as ps
+        from chat.V2.prompts.prompt_service import reset_prompt_service
 
-        ps._default_service = None
-        svc = get_prompt_service()
+        reset_prompt_service()
+        with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
+            svc = get_prompt_service()
         assert isinstance(svc, PromptService)
 
     def test_returns_same_instance(self) -> None:
-        import chat.V2.prompts.prompt_service as ps
+        from chat.V2.prompts.prompt_service import reset_prompt_service
 
-        ps._default_service = None
-        service1 = get_prompt_service()
-        service2 = get_prompt_service()
+        reset_prompt_service()
+        with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
+            service1 = get_prompt_service()
+            service2 = get_prompt_service()
         assert service1 is service2
 
 
