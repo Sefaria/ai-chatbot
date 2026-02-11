@@ -22,6 +22,8 @@ from typing import Any
 
 from django.conf import settings
 
+from ..utils import make_singleton
+
 logger = logging.getLogger("chat.prompts")
 
 
@@ -251,12 +253,4 @@ class PromptService:
         logger.info(f"Prompt cache invalidated: {prompt_id or 'all'}")
 
 
-_default_service = None
-
-
-def get_prompt_service() -> PromptService:
-    """Get or create the default prompt service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = PromptService()
-    return _default_service
+get_prompt_service, reset_prompt_service = make_singleton(PromptService)

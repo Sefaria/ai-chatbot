@@ -188,17 +188,17 @@ class TestGetPromptService:
     """Test get_prompt_service singleton."""
 
     def test_returns_prompt_service(self) -> None:
-        import chat.V2.prompts.prompt_service as ps
+        from chat.V2.prompts.prompt_service import reset_prompt_service
 
-        ps._default_service = None
+        reset_prompt_service()
         with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
             svc = get_prompt_service()
         assert isinstance(svc, PromptService)
 
     def test_returns_same_instance(self) -> None:
-        import chat.V2.prompts.prompt_service as ps
+        from chat.V2.prompts.prompt_service import reset_prompt_service
 
-        ps._default_service = None
+        reset_prompt_service()
         with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
             service1 = get_prompt_service()
             service2 = get_prompt_service()

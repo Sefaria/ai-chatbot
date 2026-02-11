@@ -21,6 +21,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
+from ..utils import make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
 
@@ -143,19 +144,10 @@ class SummaryService:
             # Parse JSON response
             response_text = response.content[0].text
 
-            # Try to extract JSON
             import json
 
             try:
-                # Handle potential markdown code blocks
-                if "```json" in response_text:
-                    json_str = response_text.split("```json")[1].split("```")[0]
-                elif "```" in response_text:
-                    json_str = response_text.split("```")[1].split("```")[0]
-                else:
-                    json_str = response_text
-
-                data = json.loads(json_str.strip())
+                data = json.loads(strip_markdown_fences(response_text))
 
                 return self._apply_summary_data(
                     session=session,
@@ -266,13 +258,4 @@ class SummaryService:
         return "other"
 
 
-# Default service instance
-_default_service = None
-
-
-def get_summary_service() -> SummaryService:
-    """Get or create the default summary service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = SummaryService()
-    return _default_service
+get_summary_service, reset_summary_service = make_singleton(SummaryService)
