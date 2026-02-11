@@ -287,11 +287,16 @@ class ClaudeAgentService(BaseLLMService):
             span_metadata["session_id"] = context.session_id
         bt_span.log(input=span_input, metadata=span_metadata)
 
-        guardrail_result = await asyncio.get_event_loop().run_in_executor(
-            braintrust.TracedThreadPoolExecutor(max_workers=1),
-            get_guardrail_service().check_message,
-            last_user_message,
+        guardrail_span = bt_span.start_span(name="guardrail")
+        guardrail_result = await asyncio.to_thread(
+            get_guardrail_service().check_message, last_user_message
         )
+        guardrail_span.log(
+            input={"message": last_user_message},
+            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+            metadata={"guardrail_blocked": not guardrail_result.allowed},
+        )
+        guardrail_span.end()
 
         if not guardrail_result.allowed:
             logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
