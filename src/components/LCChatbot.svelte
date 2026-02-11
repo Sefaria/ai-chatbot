@@ -1609,11 +1609,8 @@
 
   /* Feedback Modal */
   .feedback-modal-overlay {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
+position: absolute;
+inset: 8px;
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
