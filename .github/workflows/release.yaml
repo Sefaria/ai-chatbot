@@ -50,7 +50,7 @@ jobs:
               echo "No release version available"
               exit 1
             else
-            echo "appVersion=$(git tag --points-at HEAD -l 'v*')" >> $GITHUB_OUTPUT
+            echo "appVersion=$(git tag --points-at HEAD -l 'v*' | sed 's/v\(.*\)/\1/')" >> $GITHUB_OUTPUT
             fi
           else
             echo "appVersion=${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_OUTPUT
@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.version }}
+          ref: v${{ needs.release.outputs.version }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
