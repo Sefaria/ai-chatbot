@@ -41,7 +41,8 @@ SECTION_SEPARATOR = "\n\n"
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"
 
 PAGE_CONTEXT_SECTION = (
-    "Context: The user is currently on the Sefaria page: {page_url}. "
+    "Page context:\n"
+    "The user is currently on the Sefaria page: {page_url}. "
     "If the context is relevant, use that information in your response."
 )
 
