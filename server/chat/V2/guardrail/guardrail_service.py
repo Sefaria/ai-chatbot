@@ -9,6 +9,8 @@ import json
 import logging
 from dataclasses import dataclass
 
+import braintrust
+from braintrust import current_span
 from django.conf import settings
 
 from ..base_llm_service import BaseLLMService
@@ -41,10 +43,36 @@ class GuardrailService(BaseLLMService):
 
         Returns GuardrailResult(allowed=True/False, reason=...).
         On any failure, returns allowed=False (fail closed).
+
+        The check is wrapped in a Braintrust traced span named "guardrail"
+        so it appears as a child in the dashboard. The caller must ensure
+        Braintrust context is propagated (e.g. via TracedThreadPoolExecutor).
         """
-        # Fail closed: every early return blocks the message. This ensures
-        # that infrastructure failures (missing client, Braintrust outage,
-        # LLM errors) don't accidentally let unfiltered messages through.
+
+        @braintrust.traced(name="guardrail")
+        def run() -> GuardrailResult:
+            return self._check_message_inner(user_message)
+
+        return run()
+
+    def _check_message_inner(self, user_message: str) -> GuardrailResult:
+        """Run the guardrail check and log results to the current span.
+
+        Fails closed: every early return blocks the message.
+        """
+        bt_span = current_span()
+        bt_span.log(input={"message": user_message})
+
+        result = self._run_check(user_message)
+
+        bt_span.log(
+            output={"allowed": result.allowed, "reason": result.reason},
+            metadata={"guardrail_blocked": not result.allowed},
+        )
+        return result
+
+    def _run_check(self, user_message: str) -> GuardrailResult:
+        """Core guardrail logic. Fail closed on any error."""
         try:
             self._ensure_client()
         except ValueError:
@@ -58,8 +86,6 @@ class GuardrailService(BaseLLMService):
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 
         try:
-            # Uses Haiku for speed/cost — classification doesn't need Sonnet.
-            # temperature=0.0 for deterministic decisions.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
