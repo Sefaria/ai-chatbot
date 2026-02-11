@@ -193,16 +193,20 @@ class ClaudeAgentService(BaseLLMService):
         self._setup_braintrust_tracing()
 
     def _setup_braintrust_tracing(self) -> None:
-        """One-time setup: monkey-patches the Claude Agent SDK to emit Braintrust spans.
+        """Ensure Braintrust tracing is active for this thread.
 
-        Uses a global flag (_BRAINTRUST_SETUP_DONE) because the patch is process-wide.
+        Two concerns:
+        1. SDK monkey-patching (global, once per process via _BRAINTRUST_SETUP_DONE)
+        2. Setting current_logger in this thread's ContextVar so @braintrust.traced
+           produces real spans. init_logger stores the logger in a ContextVar, which
+           is per-thread — so every new request thread needs its own init_logger call.
         """
         global _BRAINTRUST_SETUP_DONE
-        if _BRAINTRUST_SETUP_DONE:
-            return
-
-        setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
-        _BRAINTRUST_SETUP_DONE = True
+        if not _BRAINTRUST_SETUP_DONE:
+            setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
+            _BRAINTRUST_SETUP_DONE = True
+        elif not braintrust.current_logger():
+            braintrust.init_logger(project=self.braintrust_project, api_key=self.braintrust_api_key)
 
     # -------------------------------------------------------------------
     # Public API
@@ -287,7 +291,7 @@ class ClaudeAgentService(BaseLLMService):
             span_metadata["session_id"] = context.session_id
         bt_span.log(input=span_input, metadata=span_metadata)
 
-        guardrail_span = bt_span.start_span(name="guardrail")
+        guardrail_span = bt_span.start_span(name="guardrail", type="task")
         guardrail_result = await asyncio.to_thread(
             get_guardrail_service().check_message, last_user_message
         )

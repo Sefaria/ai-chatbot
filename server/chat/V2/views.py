@@ -61,8 +61,8 @@ def build_session_info(session) -> dict:
     }
 
 
-# Initialize Braintrust logger at module load so @braintrust.traced spans
-# are real from the first request (without init_logger they're silent NOOPs).
+# Braintrust logger instance — used by chat_feedback_v2() to attach user
+# ratings to traces. Per-thread tracing setup is handled in claude_service.py.
 import braintrust
 
 _bt_logger = braintrust.init_logger(
