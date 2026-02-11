@@ -5,12 +5,9 @@ Calls an LLM with a Braintrust-managed prompt to decide if a message is
 within scope. Fails closed: any error → message blocked.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from django.conf import settings
 
@@ -39,30 +36,15 @@ class GuardrailService(BaseLLMService):
     def __init__(self, api_key: str | None = None):
         super().__init__(api_key=api_key)
 
-    def check_message(self, user_message: str, *, parent_span: Any = None) -> GuardrailResult:
+    def check_message(self, user_message: str) -> GuardrailResult:
         """Check whether a user message is allowed.
 
         Returns GuardrailResult(allowed=True/False, reason=...).
         On any failure, returns allowed=False (fail closed).
-
-        If parent_span is provided, creates a child "guardrail" span and logs
-        input/output to it. This is needed because the guardrail runs in a
-        thread (via asyncio.to_thread) where Braintrust's context doesn't
-        propagate automatically.
         """
-        span = parent_span.start_span(name="guardrail") if parent_span else None
-        result = self._run_check(user_message)
-        if span:
-            span.log(
-                input={"message": user_message},
-                output={"allowed": result.allowed, "reason": result.reason},
-                metadata={"guardrail_blocked": not result.allowed},
-            )
-            span.end()
-        return result
-
-    def _run_check(self, user_message: str) -> GuardrailResult:
-        """Core guardrail logic. Fail closed on any error."""
+        # Fail closed: every early return blocks the message. This ensures
+        # that infrastructure failures (missing client, Braintrust outage,
+        # LLM errors) don't accidentally let unfiltered messages through.
         try:
             self._ensure_client()
         except ValueError:
@@ -76,6 +58,8 @@ class GuardrailService(BaseLLMService):
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
 
         try:
+            # Uses Haiku for speed/cost — classification doesn't need Sonnet.
+            # temperature=0.0 for deterministic decisions.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
