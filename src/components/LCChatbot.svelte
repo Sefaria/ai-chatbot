@@ -12,7 +12,8 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right'
+    placement = 'right',
+    'max-input-chars': maxInputChars = 500
   } = $props();
 
   // State
@@ -759,6 +760,7 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          maxlength={maxInputChars}
           placeholder="Type a message..."
           rows="1"
           disabled={isSending}
