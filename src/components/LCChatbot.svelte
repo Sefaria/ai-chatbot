@@ -60,6 +60,8 @@
   const FEEDBACK_UP = 'up';
   const FEEDBACK_DOWN = 'down';
 
+  const FEEDBACK_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
     { value: 'inaccurate', label: 'Inaccurate' },
@@ -75,6 +77,7 @@
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
+  let staticIconsBaseUrl = '{staticBaseUrl}/static/icons';
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -568,7 +571,7 @@
     showMenu = false;
   }
 
-  function handleMenuClick(e) {
+  function handleClick(e) {
     // Close menu when clicking outside
     if (showMenu && !e.target.closest('.menu-container')) {
       closeMenu();
@@ -619,7 +622,7 @@
 
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header" role="banner" onclick={handleMenuClick}>
+      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
           <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -628,35 +631,33 @@
             </svg>
           </button>
           <h2>Library Assistant
-          <img src="{staticBaseUrl}/static/icons/AI.svg"/>
+          <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
           <button aria-label="Panel" class="panel-btn">
-            <img src="{staticBaseUrl}/static/icons/panel-right-close.svg" alt="" width="16" height="16" />
+            <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
           <div class="menu-container">
             <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
-              <img src="{staticBaseUrl}/static/icons/ellipsis-vertical.svg" alt="" width="18" height="18" />
+              <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </button>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
-                  <img src="{staticBaseUrl}/static/icons/rotate-ccw.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
                 <a class="menu-item" href="https://forms.gle/j7V6G7yupHydb1oGA" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
+                  {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
                 <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticBaseUrl}/static/icons/info.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   Help
                 </a>
                 <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticBaseUrl}/static/icons/toggle-right.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   Opt-out
                 </a>
               </div>
@@ -1145,7 +1146,7 @@
     font-family: var(--lc-font);
     text-decoration: none;
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background 0.15s ease;
   }
 
