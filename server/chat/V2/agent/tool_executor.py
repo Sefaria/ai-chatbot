@@ -1,5 +1,13 @@
 """
-Tool executor for Sefaria agent tools.
+Tool executor — dispatches Claude's tool calls to SefariaClient methods.
+
+This is the bridge between the Claude Agent SDK and the Sefaria API:
+
+    Claude decides to call a tool (e.g. "get_text")
+    → SDK invokes our MCP handler (in claude_service._build_sdk_tools)
+    → handler calls SefariaToolExecutor.execute(tool_name, tool_input)
+    → _dispatch routes to the matching SefariaClient method
+    → result is wrapped in ToolResult and returned to the SDK
 """
 
 import json
@@ -14,31 +22,25 @@ logger = logging.getLogger("chat.agent")
 
 @dataclass
 class ToolResult:
-    """Result from executing a tool."""
+    """Normalized result returned to the SDK. Content is always a list of
+    Anthropic-style content blocks (e.g. [{"type": "text", "text": "..."}]).
+    """
 
     content: list[dict[str, Any]]
     is_error: bool = False
 
 
 class SefariaToolExecutor:
-    """
-    Executes Sefaria tools based on Claude's tool calls.
+    """Routes tool calls to SefariaClient methods and normalizes results.
+
+    Stateless except for the shared SefariaClient (HTTP connection pool).
     """
 
     def __init__(self, client: SefariaClient | None = None):
         self.client = client or SefariaClient()
 
     async def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
-        """
-        Execute a tool and return the result.
-
-        Args:
-            tool_name: Name of the tool to execute
-            tool_input: Input parameters for the tool
-
-        Returns:
-            ToolResult with content and error status
-        """
+        """Execute a tool by name. Errors are caught and returned as ToolResult(is_error=True)."""
         try:
             result = await self._dispatch(tool_name, tool_input)
             return self._wrap(result)
@@ -47,7 +49,7 @@ class SefariaToolExecutor:
             return self._wrap_error(str(e))
 
     async def _dispatch(self, tool_name: str, input_data: dict[str, Any]) -> Any:
-        """Dispatch to the appropriate tool method."""
+        """Route a tool call to the corresponding SefariaClient method."""
 
         if tool_name == "get_text":
             return await self.client.get_text(
@@ -116,8 +118,14 @@ class SefariaToolExecutor:
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
+    # -------------------------------------------------------------------
+    # Result normalization
+    # -------------------------------------------------------------------
+
     def _wrap(self, payload: Any) -> ToolResult:
-        """Wrap a successful result."""
+        """Wrap a successful result as a text content block.
+        Dicts/lists are JSON-serialized so Claude can read them.
+        """
         if isinstance(payload, str):
             text = payload
         else:
@@ -126,23 +134,19 @@ class SefariaToolExecutor:
         return ToolResult(content=[{"type": "text", "text": text}], is_error=False)
 
     def _wrap_error(self, message: str) -> ToolResult:
-        """Wrap an error result."""
+        """Wrap an error as a JSON content block with is_error=True."""
         return ToolResult(
             content=[{"type": "text", "text": json.dumps({"error": message})}], is_error=True
         )
 
 
+# ---------------------------------------------------------------------------
+# Human-readable tool call descriptions (used for SSE progress events)
+# ---------------------------------------------------------------------------
+
+
 def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
-    """
-    Generate a human-readable description of a tool call.
-
-    Args:
-        tool_name: Name of the tool
-        tool_input: Input parameters
-
-    Returns:
-        Human-readable description
-    """
+    """Generate a short label like 'Searching texts for "shabbat"' for the frontend."""
 
     def q(v: Any, max_len: int = 140) -> str:
         if isinstance(v, str):

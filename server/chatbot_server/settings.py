@@ -164,13 +164,15 @@ REST_FRAMEWORK = {
 # ============================================================================
 # Set these environment variables to enable Braintrust:
 # - BRAINTRUST_API_KEY=<your-api-key>
-# - BRAINTRUST_PROJECT=sefaria-chatbot (optional, defaults to this)
+# - BRAINTRUST_PROJECT=On Site Agent (optional, defaults to this)
 
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
 # Prompt slug defaults (Braintrust)
+# These slugs identify which Braintrust prompt to fetch for each service.
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
+GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-checker")
 
 # ============================================================================
 # Chat User Token Configuration
@@ -181,9 +183,13 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # ============================================================================
 # Anthropic API Configuration
 # ============================================================================
-# Set ANTHROPIC_API_KEY environment variable
+# Set ANTHROPIC_API_KEY environment variable.
 #
-# Note: Uses Claude Sonnet by default for the main agent.
+# Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
+# (guardrail classification, summarization). Override via env vars.
+AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
+GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
+SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
 # Sefaria API Configuration (optional)

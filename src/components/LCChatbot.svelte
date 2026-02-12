@@ -13,7 +13,8 @@
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
     placement = 'right',
-    mode: modeProp = 'floating'
+    mode: modeProp = 'floating',
+    'max-input-chars': maxInputChars = 500
   } = $props();
 
   // State
@@ -50,6 +51,27 @@
 
   // Menu state
   let showMenu = $state(false);
+  // Feedback modal state
+  let showFeedbackModal = $state(false);
+  let feedbackModalMessageId = $state(null);
+  let feedbackComment = $state('');
+  let feedbackType = $state(null); // FEEDBACK_UP | FEEDBACK_DOWN
+  let feedbackReason = $state(''); // For dislikes: selected reason category
+
+  // Feedback score constants (must match backend SCORE_CHOICES)
+  const FEEDBACK_UP = 'up';
+  const FEEDBACK_DOWN = 'down';
+
+  const FEEDBACK_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+
+  // Feedback issue options for dislikes
+  const DISLIKE_REASONS = [
+    { value: 'inaccurate', label: 'Inaccurate' },
+    { value: 'too_authoritative', label: 'Too Authoritative' },
+    { value: 'disrespectful', label: 'Disrespectful' },
+    { value: 'too_slow', label: 'Too Slow' },
+    { value: 'other', label: 'Other' }
+  ];
 
   // Refs
   let messageListRef = $state(null);
@@ -57,6 +79,7 @@
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
+  let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -420,20 +443,45 @@
     const target = messages.find(m => m.messageId === messageId);
     if (!target?.traceId || !apiBaseUrl) return;
 
-    messages = messages.map(m =>
-      m.messageId === messageId ? { ...m, feedback: score > 0 ? 'like' : 'dislike' } : m
-    );
+    // Show the feedback modal for both likes and dislikes
+    feedbackModalMessageId = messageId;
+    feedbackComment = '';
+    feedbackReason = '';
+    feedbackType = score === 1 ? FEEDBACK_UP : FEEDBACK_DOWN;
+    showFeedbackModal = true;
 
+    // Update UI immediately to show selection
+    messages = messages.map(m =>
+      m.messageId === messageId ? { ...m, feedback: feedbackType } : m
+    );
+  }
+
+  function closeFeedbackModal() {
+    showFeedbackModal = false;
+    feedbackModalMessageId = null;
+    feedbackComment = '';
+    feedbackType = null;
+    feedbackReason = '';
+  }
+
+  async function submitFeedback(includeDetails = true) {
+    const target = messages.find(m => m.messageId === feedbackModalMessageId);
     try {
-      await sendFeedback(apiBaseUrl, {
-        traceId: target.traceId,
-        score,
-        userId,
-        sessionId,
-        messageId
-      });
+      if (target?.traceId) {
+        await sendFeedback(apiBaseUrl, {
+          traceId: target.traceId,
+          score: feedbackType,
+          userId,
+          sessionId,
+          messageId: feedbackModalMessageId,
+          comment: includeDetails ? feedbackComment : '',
+          feedbackReason: includeDetails ? feedbackReason : ''
+        });
+      }
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
+    } finally {
+      closeFeedbackModal();
     }
   }
 
@@ -555,7 +603,7 @@
     showMenu = false;
   }
 
-  function handleMenuClick(e) {
+  function handleClick(e) {
     // Close menu when clicking outside
     if (showMenu && !e.target.closest('.menu-container')) {
       closeMenu();
@@ -613,7 +661,7 @@
 
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header" role="banner" onclick={handleMenuClick}>
+      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
           <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -622,35 +670,33 @@
             </svg>
           </button>
           <h2>Library Assistant
-          <img src="{staticBaseUrl}/static/icons/AI.svg"/>
+          <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
           <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
-            <img src="{staticBaseUrl}/static/icons/panel-right-close.svg" alt="" width="16" height="16" />
+            <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
           <div class="menu-container">
             <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
-              <img src="{staticBaseUrl}/static/icons/ellipsis-vertical.svg" alt="" width="18" height="18" />
+              <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </button>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
-                  <img src="{staticBaseUrl}/static/icons/rotate-ccw.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
                 <a class="menu-item" href="https://forms.gle/j7V6G7yupHydb1oGA" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
+                  {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
                 <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticBaseUrl}/static/icons/info.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   Help
                 </a>
                 <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticBaseUrl}/static/icons/toggle-right.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   Opt-out
                 </a>
               </div>
@@ -748,7 +794,6 @@
                 {/if}
               </div>
               <div class="message-meta">
-                <span class="message-time">{formatTime(item.timestamp)}</span>
                 {#if item.status === 'sending'}
                   <span class="message-status sending">Sending...</span>
                 {:else if item.status === 'failed'}
@@ -760,7 +805,7 @@
                   <div class="feedback-buttons">
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'like'}
+                      class:active={item.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(item.messageId, 1)}
                       aria-label="Like response"
                     >
@@ -768,7 +813,7 @@
                     </button>
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'dislike'}
+                      class:active={item.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(item.messageId, 0)}
                       aria-label="Dislike response"
                     >
@@ -851,6 +896,7 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          maxlength={maxInputChars}
           placeholder="Type a message..."
           rows="1"
           disabled={isSending}
@@ -867,6 +913,47 @@
           </svg>
         </button>
       </footer>
+      {/if}
+
+      <!-- Feedback Modal -->
+      {#if showFeedbackModal}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
+            <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
+            <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
+            {#if feedbackType === FEEDBACK_DOWN}
+              <select
+                class="feedback-modal-select"
+                bind:value={feedbackReason}
+              >
+                <option value="" disabled>Select Issue</option>
+                {#each DISLIKE_REASONS as issue}
+                  <option value={issue.value}>{issue.label}</option>
+                {/each}
+              </select>
+            {/if}
+            <input
+              type="text"
+              class="feedback-modal-input"
+              bind:value={feedbackComment}
+              placeholder={feedbackType === FEEDBACK_DOWN ? 'More details' : "Anything you'd like to add?"}
+            />
+            <div class="feedback-modal-actions">
+              <button
+                class="feedback-modal-btn submit"
+                onclick={() => submitFeedback(true)}
+                disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
+              >
+                Submit
+              </button>
+              <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
       {/if}
     </div>
   {/if}
@@ -893,6 +980,8 @@
     --lc-radius: 16px;
     --lc-radius-sm: 8px;
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --lc-font-size: 14px;
+    --lc-font-size-lg: 16px;
 
     display: block;
     font-family: var(--lc-font);
@@ -975,7 +1064,7 @@
     border-radius: 9999px;
     cursor: pointer;
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-weight: 500;
     box-shadow: var(--lc-shadow);
     transition: all 0.2s ease;
@@ -1049,7 +1138,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 16px;
+    font-size: var(--lc-font-size-lg);
+    white-space: nowrap;
     font-weight: 600;
     color: var(--lc-text);
     margin: 0;
@@ -1143,7 +1233,7 @@
     font-family: var(--lc-font);
     text-decoration: none;
     cursor: pointer;
-    text-align: left;
+    text-align: start;
     transition: background 0.15s ease;
   }
 
@@ -1252,6 +1342,8 @@
     color: var(--lc-assistant-text);
     border-bottom-left-radius: 4px;
     border: 1px solid var(--lc-border);
+    line-height: 17px;
+    font-size: var(--lc-font-size);
   }
 
   .message.failed .message-content {
@@ -1340,11 +1432,6 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
-  }
-
-  .message-time {
-    font-size: 11px;
-    color: var(--lc-text-muted);
   }
 
   .message-status {
@@ -1507,7 +1594,7 @@
   }
 
   .empty-state p {
-    font-size: 14px;
+    font-size: var(--lc-font-size);
   }
 
   /* Loading Indicator */
@@ -1552,7 +1639,7 @@
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     resize: none;
     outline: none;
     transition: border-color 0.15s ease;
@@ -1617,7 +1704,7 @@
   }
 
   .settings-title {
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-weight: 600;
     color: var(--lc-text);
   }
@@ -1720,6 +1807,145 @@
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;
+  }
+
+  /* Feedback Modal */
+  .feedback-modal-overlay {
+position: absolute;
+inset: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    animation: fadeIn 0.15s ease;
+    border-radius: calc(var(--lc-radius) - 4px);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .feedback-modal {
+    background: var(--lc-bg);
+    border-radius: var(--lc-radius);
+    padding: 24px;
+    width: 320px;
+    max-width: calc(100% - 32px);
+    box-shadow: var(--lc-shadow);
+    animation: slideUp 0.2s ease;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .feedback-modal-title {
+    font-size: var(--lc-font-size-lg);
+    font-weight: 600;
+    color: var(--lc-text);
+    margin: 0 0 8px 0;
+  }
+
+  .feedback-modal-subtitle {
+    font-size: var(--lc-font-size);
+    font-style: italic;
+    color: var(--lc-text-secondary);
+    margin: 0 0 16px 0;
+  }
+
+  .feedback-modal-select,
+  .feedback-modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size);
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+    outline: none;
+    transition: border-color 0.15s ease;
+    box-sizing: border-box;
+  }
+
+  .feedback-modal-select {
+    margin-bottom: 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,...");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  .feedback-modal-select:focus {
+    border-color: var(--lc-primary);
+  }
+
+  .feedback-modal-select option[value=""][disabled] {
+    color: var(--lc-text-muted);
+  }
+
+
+
+  .feedback-modal-input:focus {
+    border-color: var(--lc-primary);
+  }
+
+  .feedback-modal-input::placeholder {
+    color: var(--lc-text-muted);
+  }
+
+  .feedback-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .feedback-modal-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .feedback-modal-btn.submit {
+    background: var(--lc-primary);
+    color: white;
+    border: none;
+  }
+
+  .feedback-modal-btn.submit:hover:not(:disabled) {
+    background: var(--lc-primary-hover);
+  }
+
+  .feedback-modal-btn.submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .feedback-modal-btn.skip {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    border: 1px solid var(--lc-border);
+  }
+
+  .feedback-modal-btn.skip:hover {
+    background: var(--lc-bg-secondary);
+    color: var(--lc-text);
   }
 
 </style>

@@ -1,8 +1,16 @@
 """
-Prompt service with Braintrust integration.
+Prompt service — fetches the core system prompt from Braintrust.
 
-Fetches the core system prompt from Braintrust with a local fallback.
-Supports versioning and caching.
+The core prompt (the large system-level instruction that tells Claude how to
+behave as a Sefaria learning assistant) lives in Braintrust's prompt registry,
+not in this codebase. This service fetches it by slug + version, caches it
+in-memory with a TTL, and returns a CorePrompt dataclass.
+
+Flow:
+    ClaudeAgentService.__init__ → get_prompt_service() → PromptService
+    ClaudeAgentService._send_message_inner → prompt_service.get_core_prompt()
+        → cache hit? return cached
+        → cache miss? fetch from Braintrust API → cache → return
 """
 
 import logging
@@ -13,6 +21,8 @@ from threading import Lock
 from typing import Any
 
 from django.conf import settings
+
+from ..utils import make_singleton
 
 logger = logging.getLogger("chat.prompts")
 
@@ -31,9 +41,8 @@ class PromptService:
     Service for fetching and caching the core prompt from Braintrust.
 
     Features:
-    - Braintrust prompt registry integration
+    - Braintrust prompt registry integration (required)
     - In-memory caching with TTL
-    - Fallback to local default
     - Version tracking for reproducibility
     """
 
@@ -51,35 +60,17 @@ class PromptService:
             project_name: Braintrust project name (default: from env)
             cache_ttl_seconds: How long to cache prompts
         """
+        import braintrust
+
         self.api_key = api_key or os.environ.get("BRAINTRUST_API_KEY")
-        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "sefaria-chatbot")
+        if not self.api_key:
+            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
+        self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         self.cache_ttl = cache_ttl_seconds
 
         self._cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = Lock()
-        self._braintrust_client = None
-
-        from .default_prompts import CORE_PROMPT
-
-        self._default_core_prompt = CORE_PROMPT
-
-        self._init_braintrust()
-
-    def _init_braintrust(self) -> None:
-        """Initialize Braintrust client if configured."""
-        if not self.api_key:
-            logger.info("Braintrust API key not configured, using local core prompt only")
-            return
-
-        try:
-            import braintrust
-
-            self._braintrust_client = braintrust
-            logger.info(f"Braintrust client initialized for project: {self.project_name}")
-        except ImportError:
-            logger.warning("Braintrust package not installed, using local core prompt only")
-        except Exception as exc:
-            logger.warning(f"Failed to initialize Braintrust: {exc}")
+        self._braintrust_client = braintrust
 
     def get_core_prompt(
         self,
@@ -111,64 +102,74 @@ class PromptService:
         with self._cache_lock:
             cached = self._cache.get(cache_key)
             if cached and time.time() - cached["timestamp"] < self.cache_ttl:
+                logger.debug("Prompt cache hit: %s (version=%s)", prompt_id, cached["version"])
                 return cached["prompt"], cached["version"]
 
-        if self._braintrust_client:
-            try:
-                prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
-                if prompt_text:
-                    with self._cache_lock:
-                        self._cache[cache_key] = {
-                            "prompt": prompt_text,
-                            "version": actual_version,
-                            "timestamp": time.time(),
-                        }
-                    return prompt_text, actual_version
-            except Exception as exc:
-                logger.warning(f"Failed to fetch prompt {prompt_id} from Braintrust: {exc}")
+        try:
+            fetch_start = time.time()
+            prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
+            fetch_ms = int((time.time() - fetch_start) * 1000)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to fetch prompt '{prompt_id}' from Braintrust: {exc}"
+            ) from exc
 
-        return self._default_core_prompt, "local"
+        if not prompt_text:
+            raise RuntimeError(
+                f"Prompt '{prompt_id}' returned empty from Braintrust ({fetch_ms}ms)"
+            )
+
+        with self._cache_lock:
+            self._cache[cache_key] = {
+                "prompt": prompt_text,
+                "version": actual_version,
+                "timestamp": time.time(),
+            }
+        logger.info(
+            "Prompt fetched from Braintrust: %s (version=%s, %dms)",
+            prompt_id,
+            actual_version,
+            fetch_ms,
+        )
+        return prompt_text, actual_version
 
     def _fetch_from_braintrust(self, prompt_id: str, version: str) -> tuple[str | None, str]:
         """
         Fetch a prompt from Braintrust.
 
         Returns (prompt_text, version) or (None, "") if not found.
+        Raises on network/API errors (caller handles).
         """
-        try:
-            prompt = self._braintrust_client.load_prompt(
-                project=self.project_name,
-                slug=prompt_id,
-                version=version if version != "stable" else None,
-            )
+        prompt = self._braintrust_client.load_prompt(
+            project=self.project_name,
+            slug=prompt_id,
+            version=version if version != "stable" else None,
+        )
 
-            if prompt is None:
-                return None, ""
-
-            actual_version = getattr(prompt, "version", version) or version
-            prompt_text = self._extract_prompt_text(prompt)
-
-            if prompt_text:
-                logger.info(
-                    f"Loaded core prompt from Braintrust: {prompt_id}, version={actual_version}"
-                )
-                return prompt_text, str(actual_version)
-
+        if prompt is None:
             return None, ""
 
-        except Exception as exc:
-            logger.warning(f"Braintrust prompt fetch error for {prompt_id}: {exc}")
-            return None, ""
+        actual_version = getattr(prompt, "version", version) or version
+        prompt_text = self._extract_prompt_text(prompt)
+
+        if prompt_text:
+            return prompt_text, str(actual_version)
+
+        return None, ""
 
     def _extract_prompt_text(self, prompt) -> str | None:
-        """
-        Extract prompt text from a Braintrust Prompt object.
+        """Extract prompt text from a Braintrust Prompt object.
 
-        Braintrust prompts can be:
-        - Chat prompts: have messages array with system/user messages
-        - Completion prompts: have a single prompt string
+        Braintrust prompts can be structured in several ways depending on the
+        SDK version and how the prompt was created in the UI:
 
-        Returns the system prompt text or None if extraction fails.
+        Path 1: prompt.build() → dict with "messages" (chat format)
+            → look for role="system" message → return its content
+        Path 2: prompt.build() → dict with "prompt" key (completion format)
+        Path 3: prompt.prompt_data.prompt.messages (older SDK object model)
+        Path 4: direct attributes (prompt.prompt, .content, .text, .system)
+
+        We try each path in order and return the first successful extraction.
         """
         try:
             if hasattr(prompt, "build"):
@@ -252,12 +253,4 @@ class PromptService:
         logger.info(f"Prompt cache invalidated: {prompt_id or 'all'}")
 
 
-_default_service = None
-
-
-def get_prompt_service() -> PromptService:
-    """Get or create the default prompt service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = PromptService()
-    return _default_service
+get_prompt_service, reset_prompt_service = make_singleton(PromptService)

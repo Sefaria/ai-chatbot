@@ -1,9 +1,15 @@
 """
-Conversation summary service for agent context.
+Conversation summary service — maintains a rolling summary of each chat session.
 
-Creates and maintains rolling summaries of conversations to:
-- Provide efficient context to the agent
-- Track conversation state without full history
+Instead of passing the full message history to the agent (which would blow up
+token usage in long conversations), we maintain a structured summary that
+captures the essential context: topic, intent, referenced texts, etc.
+
+The summary is updated after each successful turn:
+    views.py generate_sse() → summary_service.update_summary()
+        → _llm_summarize or _simple_summarize (rule-based fallback)
+        → persisted to ConversationSummary model
+        → injected into the system prompt on the next turn via prompt_fragments.py
 """
 
 import logging
@@ -11,9 +17,11 @@ import os
 from typing import Any
 
 import anthropic
+from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
+from ..utils import make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
 
@@ -40,17 +48,17 @@ Keep the summary focused and under 500 characters total."""
 
 
 class SummaryService:
-    """
-    Service for generating and managing conversation summaries.
+    """Generates structured conversation summaries using a lightweight LLM.
 
-    Uses Claude for intelligent summarization with structured output.
-    Falls back to simple extraction for speed when needed.
+    Two strategies:
+    - LLM: sends the previous summary + latest turn to the model, asks for JSON
+    - Simple: fast rule-based extraction (fallback when LLM is unavailable or fails)
     """
 
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-3-haiku-20240307",  # Use fast/cheap model
+        model: str | None = None,
         use_llm: bool = True,
     ):
         """
@@ -62,7 +70,7 @@ class SummaryService:
             use_llm: Whether to use LLM (False = simple extraction)
         """
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.model = model
+        self.model = model or settings.SUMMARY_MODEL
         self.use_llm = use_llm and bool(self.api_key)
 
         if self.use_llm:
@@ -136,19 +144,10 @@ class SummaryService:
             # Parse JSON response
             response_text = response.content[0].text
 
-            # Try to extract JSON
             import json
 
             try:
-                # Handle potential markdown code blocks
-                if "```json" in response_text:
-                    json_str = response_text.split("```json")[1].split("```")[0]
-                elif "```" in response_text:
-                    json_str = response_text.split("```")[1].split("```")[0]
-                else:
-                    json_str = response_text
-
-                data = json.loads(json_str.strip())
+                data = json.loads(strip_markdown_fences(response_text))
 
                 return self._apply_summary_data(
                     session=session,
@@ -204,7 +203,7 @@ class SummaryService:
         current_summary: ConversationSummary | None,
         data: dict[str, Any],
     ) -> ConversationSummary:
-        """Apply structured summary data to the model and persist."""
+        """Map the JSON output from the LLM onto the Django model and save."""
 
         def _safe_list(value: Any) -> list:
             return value if isinstance(value, list) else []
@@ -259,13 +258,4 @@ class SummaryService:
         return "other"
 
 
-# Default service instance
-_default_service = None
-
-
-def get_summary_service() -> SummaryService:
-    """Get or create the default summary service."""
-    global _default_service
-    if _default_service is None:
-        _default_service = SummaryService()
-    return _default_service
+get_summary_service, reset_summary_service = make_singleton(SummaryService)

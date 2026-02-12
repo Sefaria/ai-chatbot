@@ -37,6 +37,7 @@ class ChatSession(models.Model):
     total_input_tokens = models.IntegerField(default=0)
     total_output_tokens = models.IntegerField(default=0)
     total_tool_calls = models.IntegerField(default=0)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0, null=True)
 
     # Session metadata
     user_locale = models.CharField(max_length=10, blank=True, default="")
@@ -259,6 +260,7 @@ class ChatMessage(models.Model):
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_tokens = models.IntegerField(null=True, blank=True)
     cache_read_tokens = models.IntegerField(null=True, blank=True)
+    total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
 
     class Meta:
         ordering = ["server_timestamp"]

@@ -218,8 +218,8 @@ The fix works because:
 ## Related Issues
 
 This fix also resolved:
-- JSON parsing issues (documented in [JSON_PARSING_FIX.md](JSON_PARSING_FIX.md))
-- Core prompt loading (documented in [CORE_PROMPT_UPDATE.md](CORE_PROMPT_UPDATE.md))
+- JSON parsing issues (documented in [JSON_PARSING_FIX.md](JSON_PARSING_FIX.md) in this archive)
+- Core prompt loading (documented in [CORE_PROMPT_UPDATE.md](CORE_PROMPT_UPDATE.md) in this archive)
 
 ## Braintrust Prompt Updates
 
