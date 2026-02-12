@@ -314,33 +314,24 @@ def chat_feedback_v2(request):
     data = serializer.validated_data
     bt_logger = _bt_logger
 
-    metadata = {
-        "user_id": data.get("userId", ""),
-        "session_id": data.get("sessionId", ""),
-        "message_id": data.get("messageId", ""),
-    }
-    comment = (data.get("comment") or "").strip() or None
-    scores = {"user_rating": data["score"]}
+    feedback_reason = (data.get("feedbackReason") or "").strip()
+    score = data["score"]
+    comment = (data.get("comment") or "").strip()
 
     try:
-        if hasattr(bt_logger, "log_feedback"):
-            bt_logger.log_feedback(
-                id=data["traceId"],
-                scores=scores,
-                comment=comment,
-                metadata=metadata,
-            )
-        elif hasattr(bt_logger, "logFeedback"):
-            bt_logger.logFeedback(
-                {
-                    "id": data["traceId"],
-                    "scores": scores,
-                    "comment": comment,
-                    "metadata": metadata,
-                }
-            )
-        else:
-            raise AttributeError("Braintrust logger does not support feedback logging")
+        # Log feedback in Braintrust's feedback system
+        # Update trace metadata so feedback appears in the same metadata blob in the UI
+        # (that blob is span metadata set at message-creation time)
+        # This allows us to easily view feedback metadata in the UI.
+        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, 
+                            "feedback_comment": comment, "session_id": data["sessionId"],
+                            "user_id": data["userId"],
+                            "message_id": data["messageId"],
+                            }
+        try:
+            bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
+        except Exception as _e:
+            logger.debug("Could not update span metadata with feedback metadata: %s", _e)
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
         return Response(
