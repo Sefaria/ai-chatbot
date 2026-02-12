@@ -12,7 +12,6 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right',
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500
   } = $props();
@@ -140,21 +139,6 @@
     }
   });
 
-  /* When docked and open, signal host to reserve space (push content)
-  $effect(() => {
-    const dockedOpen = mode === 'docked' && isOpen;
-    if (dockedOpen) {
-      document.body.dataset.chatbotDocked = 'true';
-      document.body.dataset.chatbotPlacement = placement;
-      document.body.style.setProperty('--chatbot-docked-width', `${panelWidth}px`);
-    } else {
-      delete document.body.dataset.chatbotDocked;
-      delete document.body.dataset.chatbotPlacement;
-      document.body.style.removeProperty('--chatbot-docked-width');
-    }
-  });
-  */
-
   // Dispatch custom events
   function dispatchEvent(name, detail = {}) {
     const event = new CustomEvent(`chatbot:${name}`, {
@@ -168,7 +152,7 @@
   function openPanel() {
     isOpen = true;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: true, placement, mode });
+    setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
     // Focus input after panel opens
@@ -185,7 +169,7 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: false, placement, mode });
+    setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
   }
 
@@ -506,10 +490,13 @@
   // Resize handling
   function startResize(edge, e) {
     e.preventDefault();
+
     // In docked mode, only allow horizontal resize (e/w)
-    if (mode === 'docked' && (edge.includes('n') || edge.includes('s'))) {
-      return;
-    }
+    const allowHorizontal = edge.includes('w') || edge.includes('e');
+    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked'; 
+
+    if (!allowHorizontal && !allowVertical) return;
+
     isResizing = true;
     resizeEdge = edge;
 
@@ -525,12 +512,12 @@
       const maxWidth = window.innerWidth * MAX_WIDTH_RATIO;
       const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
 
-      if (resizeEdge.includes('w') || resizeEdge.includes('e')) {
+      if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
         panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
       }
 
-      if (mode !== 'docked' && (resizeEdge.includes('n') || resizeEdge.includes('s'))) {
+      if (allowVertical) {
         const heightDelta = resizeEdge.includes('n') ? -dy : dy;
         panelHeight = Math.max(MIN_HEIGHT, Math.min(startHeight + heightDelta, maxHeight));
       }
@@ -621,7 +608,6 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
-  style={mode === 'docked' && isOpen ? `--lc-panel-width: ${panelWidth}px` : undefined}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1012,7 +998,7 @@
   }
 
   .lc-chatbot-container.mode-docked.is-open {
-    width: var(--lc-panel-width, 380px);
+    width: fit-content;
   }
 
   .lc-chatbot-container.mode-docked .lc-chatbot-trigger {
@@ -1032,7 +1018,6 @@
   .lc-chatbot-container.mode-docked .lc-chatbot-panel {
     flex: 1;
     min-height: 0;
-    width: 100% !important;
     height: 100% !important;
     border-radius: 0;
   }
