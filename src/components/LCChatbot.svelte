@@ -12,10 +12,12 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right'
+    placement = 'right',
+    mode: modeProp = 'floating'
   } = $props();
 
   // State
+  let mode = $state('floating');
   let isOpen = $state(false);
   let messages = $state([]);
   let inputText = $state('');
@@ -75,6 +77,11 @@
     } else if (defaultOpen) {
       isOpen = true;
     }
+    if (savedUI?.mode) {
+      mode = savedUI.mode;
+    } else {
+      mode = modeProp;
+    }
 
     // Restore size
     const savedSize = getStorage(STORAGE_KEYS.SIZE, null);
@@ -123,7 +130,7 @@
   function openPanel() {
     isOpen = true;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
+    setStorage(STORAGE_KEYS.UI, { isOpen: true, placement, mode });
     dispatchEvent('opened');
 
     // Focus input after panel opens
@@ -140,8 +147,14 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: false, placement });
+    setStorage(STORAGE_KEYS.UI, { isOpen: false, placement, mode });
     dispatchEvent('closed');
+  }
+
+  function toggleMode() {
+    mode = mode === 'floating' ? 'docked' : 'floating';
+    const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
+    setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
   }
 
   function handleNewChat() {
@@ -430,6 +443,10 @@
   // Resize handling
   function startResize(edge, e) {
     e.preventDefault();
+    // In docked mode, only allow horizontal resize (e/w)
+    if (mode === 'docked' && (edge.includes('n') || edge.includes('s'))) {
+      return;
+    }
     isResizing = true;
     resizeEdge = edge;
 
@@ -450,7 +467,7 @@
         panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
       }
 
-      if (resizeEdge.includes('n') || resizeEdge.includes('s')) {
+      if (mode !== 'docked' && (resizeEdge.includes('n') || resizeEdge.includes('s'))) {
         const heightDelta = resizeEdge.includes('n') ? -dy : dy;
         panelHeight = Math.max(MIN_HEIGHT, Math.min(startHeight + heightDelta, maxHeight));
       }
@@ -536,7 +553,7 @@
   }
 </script>
 
-<div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
+<div class="lc-chatbot-container" class:placement-left={placement === 'left'} class:mode-floating={mode === 'floating'} class:mode-docked={mode === 'docked'}>
   {#if !isOpen}
     <!-- Floating Button -->
     <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
@@ -587,7 +604,7 @@
           </h2>
         </div>
         <div class="header-actions">
-          <button aria-label="Panel" class="panel-btn">
+          <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
             <img src="{staticBaseUrl}/static/icons/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
           <div class="menu-container">
@@ -875,6 +892,39 @@
   .lc-chatbot-container.placement-left {
     right: auto;
     left: 24px;
+  }
+
+  .lc-chatbot-container.mode-docked {
+    top: 0;
+    bottom: auto;
+    right: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .lc-chatbot-container.mode-docked .lc-chatbot-trigger {
+    align-self: flex-end;
+  }
+
+  .lc-chatbot-container.mode-docked.placement-left {
+    right: auto;
+    left: 0;
+  }
+
+  .lc-chatbot-container.mode-docked .lc-chatbot-panel {
+    flex: 1;
+    min-height: 0;
+    height: 100% !important;
+  }
+
+  .lc-chatbot-container.mode-docked .resize-n,
+  .lc-chatbot-container.mode-docked .resize-s,
+  .lc-chatbot-container.mode-docked .resize-ne,
+  .lc-chatbot-container.mode-docked .resize-nw,
+  .lc-chatbot-container.mode-docked .resize-se,
+  .lc-chatbot-container.mode-docked .resize-sw {
+    display: none;
   }
 
   /* Trigger Button */
