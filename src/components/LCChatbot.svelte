@@ -618,7 +618,6 @@
 
 <div
   class="lc-chatbot-container"
-  class:placement-left={placement === 'left'}
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
@@ -996,13 +995,8 @@
   .lc-chatbot-container {
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    inset-inline-end: 24px;
     z-index: 9999;
-  }
-
-  .lc-chatbot-container.placement-left {
-    right: auto;
-    left: 24px;
   }
 
   .lc-chatbot-container.mode-docked {
