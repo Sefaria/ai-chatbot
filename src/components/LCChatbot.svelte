@@ -967,6 +967,7 @@
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
+    --lc-docked-top-offset: 60px;
 
     display: block;
     font-family: var(--lc-font);
@@ -989,8 +990,8 @@
     position: static;
     flex-shrink: 0;
     width: 48px;
-    height: calc(100vh - 60px);
-    margin-top: 60px;
+    height: calc(100vh - var(--lc-docked-top-offset));
+    margin-top: var(--lc-docked-top-offset);
     display: flex;
     flex-direction: column;
     align-items: stretch;
