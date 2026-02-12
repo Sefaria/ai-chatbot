@@ -77,7 +77,7 @@
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
-  let staticIconsBaseUrl = '{staticBaseUrl}/static/icons';
+  let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -1053,6 +1053,7 @@
     align-items: center;
     gap: 6px;
     font-size: var(--lc-font-size-lg);
+    white-space: nowrap;
     font-weight: 600;
     color: var(--lc-text);
     margin: 0;
