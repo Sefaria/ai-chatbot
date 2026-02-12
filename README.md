@@ -33,28 +33,6 @@ Visit `http://localhost:5173` to see the widget.
 
 Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
 
-### CSS Customization
-
-Override CSS custom properties to match your site's design:
-
-```css
-lc-chatbot {
-  --lc-primary: #6366f1;
-  --lc-primary-hover: #4f46e5;
-  --lc-docked-top-offset: 60px;  /* Height of your site's header (docked mode only) */
-  /* ... other theme variables */
-}
-```
-
-Key customization properties:
-
-| Property | Default | Description |
-|----------|---------|-------------|
-| `--lc-docked-top-offset` | `60px` | Top offset for docked mode (e.g., header height) |
-| `--lc-primary` | `#6366f1` | Primary brand color |
-| `--lc-bg` | `#ffffff` | Background color |
-| `--lc-text` | `#1e293b` | Text color |
-
 ## API
 
 ### POST /api/v2/chat/stream
