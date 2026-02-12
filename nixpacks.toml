@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "npm run build",
+  "test -f dist/lc-chatbot.umd.cjs"
+]
+
+[start]
+cmd = "npx --yes serve -s dist -l ${PORT:-8080}"

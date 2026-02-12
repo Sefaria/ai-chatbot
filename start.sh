@@ -82,10 +82,27 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # --- Start Backend ---
+echo -e "${BLUE}Installing backend dependencies...${NC}"
+(
+    cd server
+    source venv/bin/activate
+    pip install -r requirements.txt
+) > "$LOG_DIR/pip.log" 2>&1
+echo -e "${GREEN}✓${NC} Dependencies installed"
+
+echo -e "${BLUE}Running migrations...${NC}"
+(
+    cd server
+    source venv/bin/activate
+    export DJANGO_SETTINGS_MODULE=chatbot_server.settings
+    python manage.py migrate
+) > "$LOG_DIR/migrate.log" 2>&1
+echo -e "${GREEN}✓${NC} Migrations complete"
+
 echo -e "${BLUE}Starting backend...${NC}"
 (
-    source server/venv/bin/activate
     cd server
+    source venv/bin/activate
     export DJANGO_SETTINGS_MODULE=chatbot_server.settings
     python manage.py runserver 0.0.0.0:8001 2>&1
 ) > "$LOG_DIR/backend.log" 2>&1 &

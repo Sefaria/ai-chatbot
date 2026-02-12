@@ -1,5 +1,16 @@
 """
-Sefaria API client for tool implementations.
+Sefaria API client — async HTTP interface to the Sefaria REST APIs.
+
+This is the lowest layer in the tool-call stack:
+
+    Claude Agent SDK → tool handler → SefariaToolExecutor → SefariaClient → HTTP
+
+Two base URLs are used:
+- base_url (sefaria.org): texts, search, calendar, links, manuscripts, etc.
+- ai_base_url (ai.sefaria.org): semantic search (KNN embeddings service)
+
+Response optimization methods (_optimize_*) strip large/unnecessary fields
+from API responses before they're sent back to Claude, keeping token usage low.
 """
 
 import asyncio
@@ -11,8 +22,13 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+# ---------------------------------------------------------------------------
+# Base URL configuration — supports both public Sefaria and local k8s service
+# ---------------------------------------------------------------------------
+
 DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
 
+# In k8s, the AI service may be available via service discovery env vars.
 VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST")
 VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT")
 
@@ -23,6 +39,8 @@ if VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST and VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT:
 else:
     DEFAULT_SEFARIA_AI_BASE_URL = os.environ.get("SEFARIA_AI_BASE_URL", "https://ai.sefaria.org")
 
+# Mapping from Sefaria search filter paths to human-friendly dictionary names.
+# Used by search_in_dictionaries to scope search to lexicon categories.
 LEXICON_MAP = {
     "Reference/Dictionary/Jastrow": "Jastrow Dictionary",
     "Reference/Dictionary/Klein Dictionary": "Klein Dictionary",
@@ -35,8 +53,11 @@ LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 
 
 class SefariaClient:
-    """
-    Client for interacting with Sefaria APIs.
+    """Async HTTP client for the Sefaria REST API.
+
+    Lazily creates an httpx.AsyncClient and reuses it for connection pooling.
+    The client is bound to the current event loop — if the loop changes
+    (e.g. asyncio.run in a new thread), a fresh client is created.
     """
 
     def __init__(
@@ -49,14 +70,18 @@ class SefariaClient:
         self._client_loop: asyncio.AbstractEventLoop | None = None
 
     async def close(self):
-        """Close the HTTP client."""
+        """Close the HTTP client and release connections."""
         if self._client:
             await self._client.aclose()
             self._client = None
             self._client_loop = None
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get an AsyncClient bound to the current event loop."""
+        """Get an AsyncClient bound to the current event loop.
+
+        If the event loop changed (e.g. different thread), close the old
+        client and create a new one to avoid "attached to a different loop" errors.
+        """
         loop = asyncio.get_running_loop()
         if self._client and self._client_loop is loop and not loop.is_closed():
             return self._client
@@ -81,27 +106,38 @@ class SefariaClient:
         elif version_language == "english":
             params["version"] = "english"
         elif version_language == "both":
-            params["version"] = "english|source"
+            params["version"] = ["english", "source"]
 
         data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
         return self._optimize_text_response(data)
 
     async def text_search(
         self, query: str, filters: list[str] | None = None, size: int = 10
-    ) -> list[dict[str, Any]]:
-        """Search across the Jewish library."""
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        """Search across the Jewish library.
+
+        Uses Sefaria's Elasticsearch wrapper. If no results are found with
+        the requested filters, retries without filters as a fallback (so the
+        agent still gets useful results even if the filter path was wrong).
+        """
         data = await self._search(query, filters, size)
         results = self._format_search_results(data, filters)
 
         if results:
             return results
 
-        # Fallback: try without filters
+        # Fallback: retry without filters (the filter path may have been wrong)
         if filters:
             fallback_data = await self._search(query, None, size)
-            return self._format_search_results(fallback_data, None, filters)
+            fallback_results = self._format_search_results(fallback_data, None, filters)
+            if fallback_results:
+                return fallback_results
 
-        return []
+        return {
+            "no_results": True,
+            "query": query,
+            "suggestion": "No texts found matching this query. Consider using different keywords or trying a broader search term. If searching in Hebrew, try the exact phrase from the source text.",
+        }
 
     async def get_current_calendar(self) -> dict[str, Any]:
         """Get current Jewish calendar information."""
@@ -111,8 +147,12 @@ class SefariaClient:
     async def english_semantic_search(
         self, query: str, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Perform semantic search on English text embeddings."""
-        payload = {"query": query}
+        """Semantic (KNN) search on English text embeddings via ai.sefaria.org.
+
+        This hits a separate service from the main Sefaria API. Returns a 404
+        gracefully if the embeddings service is down.
+        """
+        payload: dict[str, Any] = {"query": query}
         if filters:
             payload["filters"] = filters
 
@@ -123,9 +163,18 @@ class SefariaClient:
 
         url = f"{self.ai_base_url}/api/knn-search"
         client = await self._get_client()
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
+
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {
+                    "error": "Semantic search is currently unavailable.",
+                    "suggestion": "Use text_search instead for keyword-based search.",
+                }
+            raise
 
     async def get_links_between_texts(
         self, reference: str, with_text: str = "0"
@@ -255,12 +304,21 @@ class SefariaClient:
             "source_url": image_url,
         }
 
+    # -------------------------------------------------------------------
+    # Low-level HTTP helpers
+    # -------------------------------------------------------------------
+
     async def _search(
         self, query: str, filters: list[str] | None = None, size: int = 8
     ) -> dict[str, Any]:
-        """Internal search method."""
+        """POST to Sefaria's Elasticsearch wrapper (es8 endpoint).
+
+        Uses naive_lemmatizer field with slop=10 for fuzzy phrase matching,
+        sorted by pagesheetrank (Sefaria's relevance score).
+        """
         url = f"{self.base_url}/api/search-wrapper/es8"
         filter_list = filters or []
+        # filter_fields must be the same length as filters; None means "path" field
         filter_fields = [None] * len(filter_list)
 
         payload = {
@@ -286,21 +344,27 @@ class SefariaClient:
         response.raise_for_status()
         return response.json()
 
-    async def _get_json(self, endpoint: str, params: dict[str, str] | None = None) -> Any:
-        """Make a GET request and return JSON."""
+    async def _get_json(
+        self, endpoint: str, params: dict[str, str | list[str]] | None = None
+    ) -> Any:
+        """GET a JSON endpoint from the main Sefaria API."""
         url = f"{self.base_url}/{endpoint}"
         if params:
             filtered_params = {k: v for k, v in params.items() if v}
             if filtered_params:
-                url = f"{url}?{urlencode(filtered_params)}"
+                url = f"{url}?{urlencode(filtered_params, doseq=True)}"
 
         client = await self._get_client()
         response = await client.get(url)
         response.raise_for_status()
         return response.json()
 
+    # -------------------------------------------------------------------
+    # Response optimizers — strip unnecessary fields to save tokens
+    # -------------------------------------------------------------------
+
     def _optimize_text_response(self, data: Any) -> dict[str, Any]:
-        """Optimize text response by keeping only essential fields."""
+        """Keep only fields Claude needs from a /texts response."""
         if not isinstance(data, dict):
             return data
 
@@ -419,7 +483,11 @@ class SefariaClient:
         filter_used: list[str] | None = None,
         original_filters: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Format search results."""
+        """Format Elasticsearch hits into a compact list for Claude.
+
+        If results came from a fallback (no filters), annotates each result
+        so Claude knows the original filter was removed.
+        """
         hits = data.get("hits", {}).get("hits", [])
         if not isinstance(hits, list):
             return []

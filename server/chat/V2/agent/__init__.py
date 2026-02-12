@@ -13,6 +13,7 @@ from .claude_service import (
     AgentResponse,
     ClaudeAgentService,
     ConversationMessage,
+    MessageContext,
     get_agent_service,
 )
 from .sefaria_client import SefariaClient
@@ -23,6 +24,7 @@ __all__ = [
     "ClaudeAgentService",
     "get_agent_service",
     "ConversationMessage",
+    "MessageContext",
     "AgentResponse",
     "AgentProgressUpdate",
     "SEFARIA_TOOL_SCHEMAS",
