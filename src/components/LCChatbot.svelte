@@ -47,6 +47,8 @@
 
   let isClearing = $state(false);
 
+  // Menu state
+  let showMenu = $state(false);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -57,6 +59,8 @@
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
   const FEEDBACK_DOWN = 'down';
+
+  const FEEDBACK_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
@@ -70,6 +74,10 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+
+  // Derive static base URL by removing '/api' suffix from apiBaseUrl
+  let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
+  let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -554,6 +562,26 @@
       }
     }));
   }
+
+  function toggleMenu() {
+    showMenu = !showMenu;
+  }
+
+  function closeMenu() {
+    showMenu = false;
+  }
+
+  function handleClick(e) {
+    // Close menu when clicking outside
+    if (showMenu && !e.target.closest('.menu-container')) {
+      closeMenu();
+    }
+  }
+
+  function handleRestartConvo() {
+    closeMenu();
+    handleNewChat();
+  }
 </script>
 
 <div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
@@ -592,8 +620,9 @@
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header">
+      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
           <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -601,16 +630,39 @@
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
           </button>
-          <h2>Library Assistant</h2>
+          <h2>Library Assistant
+          <img src="{staticIconsBaseUrl}/AI.svg"/>
+          </h2>
         </div>
         <div class="header-actions">
-          <button class="new-chat-btn" onclick={handleNewChat} disabled={isSending} aria-label="Start a new chat">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 12h18"></path>
-              <path d="M12 3v18"></path>
-            </svg>
-            <span>New chat</span>
+          <button aria-label="Panel" class="panel-btn">
+            <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
+          <div class="menu-container">
+            <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
+              <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
+            </button>
+            {#if showMenu}
+              <div class="menu-dropdown" role="menu">
+                <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
+                  Restart conversation
+                </button>
+                <a class="menu-item" href="https://forms.gle/j7V6G7yupHydb1oGA" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                  {@html FEEDBACK_ICON}
+                  Give feedback
+                </a>
+                <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                  <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
+                  Help
+                </a>
+                <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
+                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                  Opt-out
+                </a>
+              </div>
+            {/if}
+          </div>
           <button class="close-btn" onclick={closePanel} aria-label="Close chat">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -997,9 +1049,19 @@
   }
 
   .lc-chatbot-header h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: var(--lc-font-size-lg);
+    white-space: nowrap;
     font-weight: 600;
     color: var(--lc-text);
+    margin: 0;
+    line-height: 1.1;
+  }
+
+  .lc-chatbot-header h2 img {
+    display: block;
   }
 
   .settings-btn {
@@ -1027,14 +1089,18 @@
     gap: 8px;
   }
 
-  .new-chat-btn {
+  .menu-container {
+    position: relative;
+  }
+
+  .menu-btn,
+  .panel-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 10px;
-    background: var(--lc-bg-tertiary);
-    border: 1px solid var(--lc-border);
-    border-radius: var(--lc-radius-sm);
+    padding: 4px;
+    border: 0px;
+    background: transparent;
     color: var(--lc-text-secondary);
     cursor: pointer;
     font-size: 12px;
@@ -1043,14 +1109,60 @@
     transition: all 0.15s ease;
   }
 
-  .new-chat-btn:hover:not(:disabled) {
-    background: var(--lc-bg-secondary);
+  .menu-btn:hover,
+  .panel-btn:hover,
+  .menu-btn:focus-visible,
+  .panel-btn:focus-visible,
+  .menu-btn:active,
+  .panel-btn:active {
+    background: var(--lc-bg-tertiary);
     color: var(--lc-text);
+    border-color: var(--lc-border);
   }
 
-  .new-chat-btn:disabled {
-    opacity: 0.6;
+  .menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 200px;
+    background: var(--lc-bg);
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    box-shadow: var(--lc-shadow);
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    color: var(--lc-text);
+    font-size: 13px;
+    font-family: var(--lc-font);
+    text-decoration: none;
+    cursor: pointer;
+    text-align: start;
+    transition: background 0.15s ease;
+  }
+
+  .menu-item:hover:not(:disabled) {
+    background: var(--lc-bg-tertiary);
+  }
+
+  .menu-item:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .menu-item svg {
+    flex-shrink: 0;
+    color: var(--lc-text-secondary);
   }
 
   .close-btn {
