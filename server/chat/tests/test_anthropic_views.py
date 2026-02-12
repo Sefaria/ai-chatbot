@@ -80,13 +80,12 @@ class TestToAnthropicResponse:
 
     @pytest.fixture
     def default_stats(self):
-        return {"llmCalls": 1, "toolCalls": 0, "latencyMs": 100}
+        return {"llmCalls": None, "toolCalls": 0, "latencyMs": 100}
 
     def test_basic_text_response(self, default_stats):
         agent_response = AgentResponse(
             content="This is the response",
             tool_calls=[],
-            llm_calls=1,
             latency_ms=100,
             trace_id="trace_123",
         )
@@ -112,7 +111,6 @@ class TestToAnthropicResponse:
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 1:1"}},
                 {"tool_name": "text_search", "tool_input": {"query": "shabbat"}},
             ],
-            llm_calls=2,
             latency_ms=500,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -130,7 +128,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="",
             tool_calls=[],
-            llm_calls=1,
             latency_ms=50,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -141,7 +138,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="Response",
             tool_calls=[{}],  # Empty tool call
-            llm_calls=1,
             latency_ms=100,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -153,7 +149,6 @@ class TestToAnthropicResponse:
         agent_response = AgentResponse(
             content="Test",
             tool_calls=[],
-            llm_calls=1,
             latency_ms=100,
         )
         result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
@@ -187,7 +182,6 @@ class TestChatAnthropicEndpoint:
             tool_calls=[
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 2:3"}},
             ],
-            llm_calls=1,
             latency_ms=200,
             trace_id="trace_abc123",
         )
@@ -326,7 +320,7 @@ class TestChatAnthropicEndpoint:
         call_kwargs = mock_agent_service.send_message.call_args.kwargs
         assert call_kwargs["on_progress"] is None
         # Stateless mode (no X-Session-ID) means no summary
-        assert call_kwargs["summary_text"] == ""
+        assert call_kwargs["context"].summary_text is None
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
@@ -345,7 +339,7 @@ class TestChatAnthropicEndpoint:
 
         assert response.status_code == 500
         assert response.data["error"]["type"] == "api_error"
-        assert response.data["error"]["message"] == "Internal server error"
+        assert response.data["error"]["message"] == "An internal error occurred."
         # Error response should also have metadata
         assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
 
@@ -471,7 +465,6 @@ class TestChatAnthropicHTTPIntegration:
             tool_calls=[
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 2:3"}},
             ],
-            llm_calls=1,
             latency_ms=200,
             trace_id="trace_abc123",
         )
@@ -667,7 +660,7 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 500
         assert "error" in response.data
         assert response.data["error"]["type"] == "api_error"
-        assert response.data["error"]["message"] == "Internal server error"
+        assert response.data["error"]["message"] == "An internal error occurred."
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")

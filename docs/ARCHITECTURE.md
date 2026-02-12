@@ -69,9 +69,8 @@ Sefaria API wrapper providing text access:
 
 Single core prompt:
 
-- **Core prompt** (`CORE_PROMPT_SLUG`) loaded from Braintrust
-- Local fallback in `default_prompts.py`
-- 5-minute cache to reduce external calls
+- **Core prompt** (`CORE_PROMPT_SLUG`) loaded from Braintrust (required)
+- 5-minute in-memory cache to reduce external calls
 
 ## Data Models
 
@@ -80,7 +79,8 @@ ChatSession
 ├── session_id, user_id
 ├── conversation_summary
 ├── turn_count
-└── total_input_tokens, total_output_tokens
+├── total_input_tokens, total_output_tokens
+└── total_cost_usd
 
 ChatMessage
 ├── session (FK)
@@ -99,6 +99,7 @@ RouteDecision (legacy)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v2/chat/stream` | POST | Send message (SSE streaming) |
+| `/api/v2/chat/anthropic` | POST | Anthropic Messages API format (for Braintrust evals) |
 | `/api/v2/chat/feedback` | POST | Feedback for Braintrust trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
 | `/api/history` | GET | Load conversation history |
@@ -155,12 +156,16 @@ Braintrust Agent SDK tracing is enabled via `setup_claude_agent_sdk`, which capt
 ```
 server/
 ├── chat/
-│   ├── views.py              # API orchestration
+│   ├── views.py              # Shared endpoints (history, health)
 │   ├── models.py             # Data models
 │   ├── serializers.py        # Request/response validation
+│   ├── auth/                 # Token authentication + Actor
 │   ├── V2/
 │   │   ├── agent/             # Claude Agent SDK integration
-│   │   ├── prompts/           # Braintrust prompt service + fallbacks
+│   │   ├── guardrail/         # Pre-agent message filtering
+│   │   ├── prompts/           # Braintrust prompt service
+│   │   ├── logging/           # Turn logging (DB persistence)
+│   │   ├── services/          # Session + shared chat ops
 │   │   └── summarization/     # Conversation summary
 └── chatbot_server/
     └── settings.py           # Django config
@@ -181,9 +186,9 @@ src/
 ```bash
 # Required
 ANTHROPIC_API_KEY=sk-...
-
-# Optional - Observability
 BRAINTRUST_API_KEY=...
+
+# Optional
 BRAINTRUST_PROJECT=...
 
 # Optional - Prompts

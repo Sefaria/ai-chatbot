@@ -12,7 +12,8 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right'
+    placement = 'right',
+    'max-input-chars': maxInputChars = 500
   } = $props();
 
   // State
@@ -50,8 +51,12 @@
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
   let feedbackComment = $state('');
-  let feedbackType = $state(null); // 'up' or 'down'
+  let feedbackType = $state(null); // FEEDBACK_UP | FEEDBACK_DOWN
   let feedbackReason = $state(''); // For dislikes: selected reason category
+
+  // Feedback score constants (must match backend SCORE_CHOICES)
+  const FEEDBACK_UP = 'up';
+  const FEEDBACK_DOWN = 'down';
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
@@ -406,7 +411,7 @@
     feedbackModalMessageId = messageId;
     feedbackComment = '';
     feedbackReason = '';
-    feedbackType = score > 0 ? 'up' : 'down';
+    feedbackType = score === 1 ? FEEDBACK_UP : FEEDBACK_DOWN;
     showFeedbackModal = true;
 
     // Update UI immediately to show selection
@@ -425,25 +430,23 @@
 
   async function submitFeedback(includeDetails = true) {
     const target = messages.find(m => m.messageId === feedbackModalMessageId);
-    if (!target?.traceId) {
-      closeFeedbackModal();
-      return;
-    }
-
     try {
-      await sendFeedback(apiBaseUrl, {
-        traceId: target.traceId,
-        score: feedbackType,
-        userId,
-        sessionId,
-        messageId: feedbackModalMessageId,
-        comment: includeDetails ? feedbackComment : '',
-        feedbackReason: includeDetails ? feedbackReason : ''
-      });
+      if (target?.traceId) {
+        await sendFeedback(apiBaseUrl, {
+          traceId: target.traceId,
+          score: feedbackType,
+          userId,
+          sessionId,
+          messageId: feedbackModalMessageId,
+          comment: includeDetails ? feedbackComment : '',
+          feedbackReason: includeDetails ? feedbackReason : ''
+        });
+      }
     } catch (e) {
       console.warn('[lc-chatbot] Feedback failed:', e);
+    } finally {
+      closeFeedbackModal();
     }
-    closeFeedbackModal();
   }
 
   function handleScroll(e) {
@@ -711,7 +714,7 @@
                   <div class="feedback-buttons">
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'up'}
+                      class:active={item.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(item.messageId, 1)}
                       aria-label="Like response"
                     >
@@ -719,7 +722,7 @@
                     </button>
                     <button
                       class="feedback-btn"
-                      class:active={item.feedback === 'down'}
+                      class:active={item.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(item.messageId, 0)}
                       aria-label="Dislike response"
                     >
@@ -802,6 +805,7 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          maxlength={maxInputChars}
           placeholder="Type a message..."
           rows="1"
           disabled={isSending}
@@ -828,7 +832,7 @@
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
             <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
             <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
-            {#if feedbackType === 'down'}
+            {#if feedbackType === FEEDBACK_DOWN}
               <select
                 class="feedback-modal-select"
                 bind:value={feedbackReason}
@@ -843,13 +847,13 @@
               type="text"
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === 'down' ? 'More details' : "Anything you'd like to add?"}
+              placeholder={feedbackType === FEEDBACK_DOWN ? 'More details' : "Anything you'd like to add?"}
             />
             <div class="feedback-modal-actions">
               <button
                 class="feedback-modal-btn submit"
                 onclick={() => submitFeedback(true)}
-                disabled={feedbackType === 'down' && !feedbackReason}
+                disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
               >
                 Submit
               </button>
@@ -885,6 +889,8 @@
     --lc-radius: 16px;
     --lc-radius-sm: 8px;
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --lc-font-size: 14px;
+    --lc-font-size-lg: 16px;
 
     display: block;
     font-family: var(--lc-font);
@@ -920,7 +926,7 @@
     border-radius: 9999px;
     cursor: pointer;
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-weight: 500;
     box-shadow: var(--lc-shadow);
     transition: all 0.2s ease;
@@ -991,7 +997,7 @@
   }
 
   .lc-chatbot-header h2 {
-    font-size: 16px;
+    font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--lc-text);
   }
@@ -1139,7 +1145,7 @@
     border-bottom-left-radius: 4px;
     border: 1px solid var(--lc-border);
     line-height: 17px;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
   }
 
   .message.failed .message-content {
@@ -1390,7 +1396,7 @@
   }
 
   .empty-state p {
-    font-size: 14px;
+    font-size: var(--lc-font-size);
   }
 
   /* Loading Indicator */
@@ -1435,7 +1441,7 @@
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     resize: none;
     outline: none;
     transition: border-color 0.15s ease;
@@ -1500,7 +1506,7 @@
   }
 
   .settings-title {
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-weight: 600;
     color: var(--lc-text);
   }
@@ -1607,11 +1613,8 @@
 
   /* Feedback Modal */
   .feedback-modal-overlay {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
+position: absolute;
+inset: 8px;
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
@@ -1648,35 +1651,39 @@
   }
 
   .feedback-modal-title {
-    font-size: 16px;
+    font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--lc-text);
     margin: 0 0 8px 0;
   }
 
   .feedback-modal-subtitle {
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: italic;
     color: var(--lc-text-secondary);
     margin: 0 0 16px 0;
   }
 
-  .feedback-modal-select {
+  .feedback-modal-select,
+  .feedback-modal-input {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     color: var(--lc-text);
     background: var(--lc-bg-secondary);
     outline: none;
     transition: border-color 0.15s ease;
     box-sizing: border-box;
+  }
+
+  .feedback-modal-select {
     margin-bottom: 12px;
     cursor: pointer;
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,...");
     background-repeat: no-repeat;
     background-position: right 12px center;
     padding-right: 36px;
@@ -1690,19 +1697,7 @@
     color: var(--lc-text-muted);
   }
 
-  .feedback-modal-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--lc-border);
-    border-radius: var(--lc-radius-sm);
-    font-family: var(--lc-font);
-    font-size: 14px;
-    color: var(--lc-text);
-    background: var(--lc-bg-secondary);
-    outline: none;
-    transition: border-color 0.15s ease;
-    box-sizing: border-box;
-  }
+
 
   .feedback-modal-input:focus {
     border-color: var(--lc-primary);
@@ -1723,7 +1718,7 @@
     padding: 10px 16px;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;

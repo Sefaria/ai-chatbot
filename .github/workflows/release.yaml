@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - dev
+      - production
 
 jobs:
   release:
@@ -50,7 +50,7 @@ jobs:
               echo "No release version available"
               exit 1
             else
-            echo "appVersion=$(git tag --points-at HEAD -l 'v*')" >> $GITHUB_OUTPUT
+            echo "appVersion=$(git tag --points-at HEAD -l 'v*' | sed 's/v\(.*\)/\1/')" >> $GITHUB_OUTPUT
             fi
           else
             echo "appVersion=${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_OUTPUT
@@ -116,4 +116,4 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
           https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/chatbot-deploy.yml/dispatches \
-          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'main') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
+          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'production') && 'prod' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
