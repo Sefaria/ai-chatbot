@@ -986,40 +986,21 @@
     z-index: 9999;
   }
 
-  .lc-chatbot-container.mode-docked {
+  .lc-chatbot-container.mode-docked.is-open {
     position: static;
     flex-shrink: 0;
-    width: 48px;
+    width: fit-content;
     height: calc(100vh - var(--lc-docked-top-offset));
     margin-top: var(--lc-docked-top-offset);
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    z-index: 9999;
-  }
-
-  .lc-chatbot-container.mode-docked.is-open {
-    width: fit-content;
-  }
-
-  .lc-chatbot-container.mode-docked .lc-chatbot-trigger {
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
-    justify-content: center;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-  }
-
-  .lc-chatbot-container.mode-docked .lc-chatbot-trigger .trigger-label {
-    transform: rotate(-90deg);
-    white-space: nowrap;
   }
 
   .lc-chatbot-container.mode-docked .lc-chatbot-panel {
     flex: 1;
     min-height: 0;
-    height: 100% !important;
+    height: 100%;
     border-radius: 0;
   }
 
