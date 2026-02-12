@@ -117,6 +117,21 @@
     }
   });
 
+  /* When docked and open, signal host to reserve space (push content)
+  $effect(() => {
+    const dockedOpen = mode === 'docked' && isOpen;
+    if (dockedOpen) {
+      document.body.dataset.chatbotDocked = 'true';
+      document.body.dataset.chatbotPlacement = placement;
+      document.body.style.setProperty('--chatbot-docked-width', `${panelWidth}px`);
+    } else {
+      delete document.body.dataset.chatbotDocked;
+      delete document.body.dataset.chatbotPlacement;
+      document.body.style.removeProperty('--chatbot-docked-width');
+    }
+  });
+  */
+
   // Dispatch custom events
   function dispatchEvent(name, detail = {}) {
     const event = new CustomEvent(`chatbot:${name}`, {
@@ -553,7 +568,14 @@
   }
 </script>
 
-<div class="lc-chatbot-container" class:placement-left={placement === 'left'} class:mode-floating={mode === 'floating'} class:mode-docked={mode === 'docked'}>
+<div
+  class="lc-chatbot-container"
+  class:placement-left={placement === 'left'}
+  class:mode-floating={mode === 'floating'}
+  class:mode-docked={mode === 'docked'}
+  class:is-open={isOpen}
+  style={mode === 'docked' && isOpen ? `--lc-panel-width: ${panelWidth}px` : undefined}
+>
   {#if !isOpen}
     <!-- Floating Button -->
     <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
@@ -895,27 +917,41 @@
   }
 
   .lc-chatbot-container.mode-docked {
-    top: 0;
-    bottom: auto;
-    right: 0;
-    height: 100vh;
+    position: static;
+    flex-shrink: 0;
+    width: 48px;
+    height: calc(100vh - 60px);
+    margin-top: 60px;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    z-index: 9999;
+  }
+
+  .lc-chatbot-container.mode-docked.is-open {
+    width: var(--lc-panel-width, 380px);
   }
 
   .lc-chatbot-container.mode-docked .lc-chatbot-trigger {
-    align-self: flex-end;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    justify-content: center;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
   }
 
-  .lc-chatbot-container.mode-docked.placement-left {
-    right: auto;
-    left: 0;
+  .lc-chatbot-container.mode-docked .lc-chatbot-trigger .trigger-label {
+    transform: rotate(-90deg);
+    white-space: nowrap;
   }
 
   .lc-chatbot-container.mode-docked .lc-chatbot-panel {
     flex: 1;
     min-height: 0;
+    width: 100% !important;
     height: 100% !important;
+    border-radius: 0;
   }
 
   .lc-chatbot-container.mode-docked .resize-n,
