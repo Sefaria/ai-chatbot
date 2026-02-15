@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-import braintrust
 from django.conf import settings
 
 from ..utils import get_braintrust_config, make_singleton
