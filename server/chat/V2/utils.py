@@ -27,18 +27,29 @@ def get_anthropic_client(api_key: str | None = None) -> anthropic.Anthropic:
 class BraintrustConfig:
     api_key: str
     project: str
+    enabled: bool
 
 
 def get_braintrust_config() -> BraintrustConfig:
-    """Read Braintrust config from environment."""
+    """Read Braintrust config from environment.
+
+    ``BRAINTRUST_ENABLED`` defaults to ``true``.  Set to ``false`` to
+    disable all Braintrust tracing/logging (useful during load tests).
+    """
     return BraintrustConfig(
         api_key=os.environ.get("BRAINTRUST_API_KEY", ""),
         project=os.environ.get("BRAINTRUST_PROJECT", "On Site Agent"),
+        enabled=os.environ.get("BRAINTRUST_ENABLED", "true").lower() == "true",
     )
 
 
 def flush_braintrust() -> None:
-    """Flush pending Braintrust spans so they're sent before the request ends."""
+    """Flush pending Braintrust spans so they're sent before the request ends.
+
+    No-op when Braintrust is disabled via ``BRAINTRUST_ENABLED=false``.
+    """
+    if not get_braintrust_config().enabled:
+        return
     braintrust.flush()
 
 

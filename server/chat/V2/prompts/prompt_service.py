@@ -22,7 +22,7 @@ from typing import Any
 
 from django.conf import settings
 
-from ..utils import make_singleton
+from ..utils import get_braintrust_config, make_singleton
 
 logger = logging.getLogger("chat.prompts")
 
@@ -60,17 +60,24 @@ class PromptService:
             project_name: Braintrust project name (default: from env)
             cache_ttl_seconds: How long to cache prompts
         """
-        import braintrust
+        bt_config = get_braintrust_config()
+        self._braintrust_enabled = bt_config.enabled
 
         self.api_key = api_key or os.environ.get("BRAINTRUST_API_KEY")
-        if not self.api_key:
+        if not self.api_key and self._braintrust_enabled:
             raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
         self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         self.cache_ttl = cache_ttl_seconds
 
         self._cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = Lock()
-        self._braintrust_client = braintrust
+
+        if self._braintrust_enabled:
+            import braintrust
+
+            self._braintrust_client = braintrust
+        else:
+            self._braintrust_client = None
 
     def get_core_prompt(
         self,
@@ -139,7 +146,11 @@ class PromptService:
 
         Returns (prompt_text, version) or (None, "") if not found.
         Raises on network/API errors (caller handles).
+        Returns (None, "") immediately when Braintrust is disabled.
         """
+        if not self._braintrust_enabled or not self._braintrust_client:
+            return None, ""
+
         prompt = self._braintrust_client.load_prompt(
             project=self.project_name,
             slug=prompt_id,

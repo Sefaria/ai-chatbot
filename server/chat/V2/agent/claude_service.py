@@ -176,6 +176,7 @@ class ClaudeAgentService:
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
+        self.braintrust_enabled = bt.enabled
 
         # The SDK reads the key from the environment, so ensure it's set.
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -203,12 +204,17 @@ class ClaudeAgentService:
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is active for this thread.
 
+        No-op when ``BRAINTRUST_ENABLED=false``.
+
         Two concerns:
         1. SDK monkey-patching (global, once per process via _BRAINTRUST_SETUP_DONE)
         2. Setting current_logger in this thread's ContextVar so @braintrust.traced
            produces real spans. init_logger stores the logger in a ContextVar, which
            is per-thread — so every new request thread needs its own init_logger call.
         """
+        if not self.braintrust_enabled:
+            return
+
         global _BRAINTRUST_SETUP_DONE
         if not _BRAINTRUST_SETUP_DONE:
             setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
@@ -229,20 +235,26 @@ class ClaudeAgentService:
     ) -> AgentResponse:
         """Entry point for a single chat turn.
 
-        The entire turn is wrapped in a Braintrust traced span named
-        "chat-agent" so that LLM calls and tool calls appear as children
-        in the Braintrust dashboard.
+        When Braintrust is enabled the turn is wrapped in a traced span
+        named "chat-agent" so that LLM calls and tool calls appear as
+        children in the Braintrust dashboard.  When disabled the agent
+        runs without any tracing overhead.
         """
         context = context or MessageContext()
 
+        message_task = self._send_message_inner(
+            messages=messages,
+            core_prompt_id=core_prompt_id,
+            on_progress=on_progress,
+            context=context,
+        )
+
+        if not self.braintrust_enabled:
+            return await message_task
+
         @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
-            return await self._send_message_inner(
-                messages=messages,
-                core_prompt_id=core_prompt_id,
-                on_progress=on_progress,
-                context=context,
-            )
+            return await message_task
 
         return await run()
 
@@ -271,7 +283,8 @@ class ClaudeAgentService:
         start_time = time.time()
 
         # Grab the Braintrust span once — all logging below uses this reference.
-        bt_span = current_span()
+        # When Braintrust is disabled bt_span is None and all .log() calls are skipped.
+        bt_span = current_span() if self.braintrust_enabled else None
 
         def emit(update: AgentProgressUpdate) -> None:
             """Safe wrapper — swallows callback errors so they don't kill the turn."""
@@ -297,7 +310,8 @@ class ClaudeAgentService:
         span_metadata: dict[str, Any] = {"model": self.model}
         if context.session_id:
             span_metadata["session_id"] = context.session_id
-        bt_span.log(input=span_input, metadata=span_metadata)
+        if bt_span:
+            bt_span.log(input=span_input, metadata=span_metadata)
 
         guardrail_response = await self._run_guardrail(
             bt_span, last_user_message, context, start_time
@@ -341,14 +355,15 @@ class ClaudeAgentService:
         )
 
         # Log prompt-specific metadata (input already logged before guardrail).
-        bt_span.log(
-            metadata={
-                "core_prompt_id": core_prompt.prompt_id,
-                "core_prompt_version": core_prompt.version,
-                "core_prompt_in_options": system_prompt_in_options,
-                "summary_included": summary_included,
-            }
-        )
+        if bt_span:
+            bt_span.log(
+                metadata={
+                    "core_prompt_id": core_prompt.prompt_id,
+                    "core_prompt_version": core_prompt.version,
+                    "core_prompt_in_options": system_prompt_in_options,
+                    "summary_included": summary_included,
+                }
+            )
 
         prompt_text = full_prompt if not system_prompt_in_options else conversation_text
 
@@ -381,11 +396,12 @@ class ClaudeAgentService:
         except Exception as exc:
             # Record the error in the Braintrust span before re-raising
             latency_ms = int((time.time() - start_time) * 1000)
-            bt_span.log(
-                output=str(exc),
-                metrics={"latency_ms": latency_ms},
-                metadata={"status": "error", "error": str(exc)},
-            )
+            if bt_span:
+                bt_span.log(
+                    output=str(exc),
+                    metrics={"latency_ms": latency_ms},
+                    metadata={"status": "error", "error": str(exc)},
+                )
             raise
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
@@ -398,7 +414,7 @@ class ClaudeAgentService:
             output = ERROR_FALLBACK_MESSAGE
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
-        if not trace_id:
+        if not trace_id and bt_span:
             trace_id = bt_span.id
 
         # Extract token counts from ResultMessage.usage (standard Anthropic format)
@@ -442,7 +458,8 @@ class ClaudeAgentService:
             metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
         if total_cost_usd is not None:
             metrics["total_cost_usd"] = total_cost_usd
-        bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
+        if bt_span:
+            bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
 
         return AgentResponse(
             content=output,
@@ -463,23 +480,24 @@ class ClaudeAgentService:
     # -------------------------------------------------------------------
 
     async def _run_guardrail(
-        self, bt_span, user_message: str, context: MessageContext, start_time: float
+        self, bt_span: Any | None, user_message: str, context: MessageContext, start_time: float
     ) -> AgentResponse | None:
         """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
         enriched_message, _ = build_prompt(
             user_message, summary_text=context.summary_text, page_url=context.page_url
         )
 
-        guardrail_span = bt_span.start_span(name="guardrail", type="task")
+        guardrail_span = bt_span.start_span(name="guardrail", type="task") if bt_span else None
         guardrail_result = await asyncio.to_thread(
             get_guardrail_service().check_message, enriched_message
         )
-        guardrail_span.log(
-            input={"message": enriched_message},
-            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
-            metadata={"guardrail_blocked": not guardrail_result.allowed},
-        )
-        guardrail_span.end()
+        if guardrail_span:
+            guardrail_span.log(
+                input={"message": enriched_message},
+                output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+                metadata={"guardrail_blocked": not guardrail_result.allowed},
+            )
+            guardrail_span.end()
 
         if guardrail_result.allowed:
             return None
@@ -494,15 +512,16 @@ class ClaudeAgentService:
         else:
             rejection = GUARDRAIL_REJECTION_MESSAGE
         latency_ms = int((time.time() - start_time) * 1000)
-        bt_span.log(
-            output={"content": rejection, "guardrail_blocked": True},
-            metrics={"latency_ms": latency_ms},
-        )
+        if bt_span:
+            bt_span.log(
+                output={"content": rejection, "guardrail_blocked": True},
+                metrics={"latency_ms": latency_ms},
+            )
         return AgentResponse(
             content=rejection,
             tool_calls=[],
             latency_ms=latency_ms,
-            trace_id=bt_span.id,
+            trace_id=bt_span.id if bt_span else None,
         )
 
     # -------------------------------------------------------------------
