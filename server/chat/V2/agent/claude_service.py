@@ -480,7 +480,7 @@ class ClaudeAgentService:
     # -------------------------------------------------------------------
 
     async def _run_guardrail(
-        self, bt_span, user_message: str, context: MessageContext, start_time: float
+        self, bt_span: Any | None, user_message: str, context: MessageContext, start_time: float
     ) -> AgentResponse | None:
         """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
         enriched_message, _ = build_prompt(
