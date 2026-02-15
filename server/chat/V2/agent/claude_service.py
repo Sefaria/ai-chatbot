@@ -242,7 +242,7 @@ class ClaudeAgentService:
         """
         context = context or MessageContext()
 
-        inner = self._send_message_inner(
+        message_task = self._send_message_inner(
             messages=messages,
             core_prompt_id=core_prompt_id,
             on_progress=on_progress,
@@ -250,11 +250,11 @@ class ClaudeAgentService:
         )
 
         if not self.braintrust_enabled:
-            return await inner
+            return await message_task
 
         @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
-            return await inner
+            return await message_task
 
         return await run()
 

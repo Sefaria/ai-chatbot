@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
+import braintrust
 from django.conf import settings
 
 from ..utils import get_braintrust_config, make_singleton
@@ -73,8 +74,6 @@ class PromptService:
         self._cache_lock = Lock()
 
         if self._braintrust_enabled:
-            import braintrust
-
             self._braintrust_client = braintrust
         else:
             self._braintrust_client = None
