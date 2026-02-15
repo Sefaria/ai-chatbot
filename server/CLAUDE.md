@@ -69,6 +69,7 @@ pytest                                    # Run tests
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `BRAINTRUST_API_KEY` | Yes | Prompt management & tracing |
+| `BRAINTRUST_API_KEY` | When enabled | Prompt management & tracing |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
+| `BRAINTRUST_ENABLED` | No | `true` (default) or `false` to disable tracing for load tests |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
