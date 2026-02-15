@@ -1,0 +1,11 @@
+{
+  "type": "auto_spawn_suggestion",
+  "from_agent": "code-quality-reviewer",
+  "to_agent": "security-auditor",
+  "timestamp": "2026-02-15T12:23:14.149Z",
+  "trigger_reason": "code-quality-reviewer completed - proceeding with security scan",
+  "priority": "high",
+  "session_id": "ai-chatbot-main-0215-1345-771d",
+  "auto_triggered": true,
+  "status": "suggested"
+}

@@ -1,0 +1,65 @@
+{
+  "session_id": "912ee726-38cc-4f44-9c48-f1d851f633ff",
+  "actions": [
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:09.708Z",
+      "summary": "✓ git branch -r | grep -i dev",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    },
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:10.285Z",
+      "summary": "✓ git branch -a | head -30",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    },
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:12.842Z",
+      "summary": "✓ git diff origin/dev...HEAD --stat",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    },
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:13.369Z",
+      "summary": "✓ git log origin/dev..HEAD --oneline",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    },
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:13.839Z",
+      "summary": "✓ git diff origin/dev...HEAD --name-only",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    },
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-11T09:02:18.159Z",
+      "summary": "✓ git diff origin/dev...HEAD",
+      "result": "success",
+      "exit_code": 0,
+      "category": "git"
+    }
+  ],
+  "started_at": "2026-02-11T09:02:09.708Z",
+  "last_action_at": "2026-02-11T09:02:18.159Z",
+  "stats": {
+    "total_actions": 6,
+    "reads": 0,
+    "writes": 0,
+    "tests": 0,
+    "builds": 0,
+    "agent_spawns": 0,
+    "success_rate": 1
+  },
+  "inferred_pattern": "mixed"
+}

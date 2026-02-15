@@ -1,0 +1,11 @@
+{
+  "type": "auto_spawn_suggestion",
+  "from_agent": "test-generator",
+  "to_agent": "code-quality-reviewer",
+  "timestamp": "2026-02-15T12:23:50.460Z",
+  "trigger_reason": "test-generator completed - validating test quality and coverage",
+  "priority": "high",
+  "session_id": "ai-chatbot-main-0215-1345-771d",
+  "auto_triggered": true,
+  "status": "suggested"
+}

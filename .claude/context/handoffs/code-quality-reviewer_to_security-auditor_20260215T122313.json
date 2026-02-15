@@ -1,0 +1,8 @@
+{
+  "from_agent": "code-quality-reviewer",
+  "to_agent": "security-auditor",
+  "timestamp": "2026-02-15T12:23:13.589Z",
+  "summary": "Agent code-quality-reviewer completed",
+  "suggestions": "Next: security-auditor should perform security scan",
+  "status": "ready_for_handoff"
+}

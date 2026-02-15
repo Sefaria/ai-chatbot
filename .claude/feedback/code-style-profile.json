@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-02-15T14:48:50.112Z",
+  "samples_count": 61,
+  "languages": {
+    "python": {
+      "samples": 61,
+      "indentation": {
+        "tabs": 0,
+        "spaces_2": 0,
+        "spaces_4": 61
+      },
+      "quotes": {
+        "single": 0,
+        "double": 61
+      },
+      "semicolons": {
+        "always": 0,
+        "omit": 0
+      },
+      "trailing_comma": {
+        "always": 58,
+        "minimal": 3
+      },
+      "type_hints": {
+        "used": 58,
+        "not_used": 3
+      },
+      "docstring_style": {
+        "simple": 43,
+        "google": 15
+      }
+    }
+  },
+  "global_preferences": {
+    "indentation": {
+      "style": "unknown",
+      "size": 4,
+      "confidence": 0
+    },
+    "quotes": {
+      "style": "unknown",
+      "confidence": 0
+    }
+  }
+}

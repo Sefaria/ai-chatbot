@@ -1,0 +1,33 @@
+{
+  "session_id": "a7fefc2d-b43c-408e-92d4-b088cc1659a3",
+  "actions": [
+    {
+      "tool": "Bash",
+      "timestamp": "2026-02-10T10:47:31.008Z",
+      "summary": "✓ find /Users/yotamfromm/dev/sefaria/ai-chatbot -typ...",
+      "result": "success",
+      "exit_code": 0,
+      "category": "execution"
+    },
+    {
+      "tool": "Skill",
+      "timestamp": "2026-02-10T10:48:06.727Z",
+      "summary": "✓ Skill",
+      "result": "success",
+      "exit_code": 0,
+      "category": "other"
+    }
+  ],
+  "started_at": "2026-02-10T10:47:31.008Z",
+  "last_action_at": "2026-02-10T10:48:06.727Z",
+  "stats": {
+    "total_actions": 2,
+    "reads": 0,
+    "writes": 0,
+    "tests": 0,
+    "builds": 0,
+    "agent_spawns": 0,
+    "success_rate": 1
+  },
+  "inferred_pattern": "mixed"
+}
