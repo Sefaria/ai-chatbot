@@ -17,20 +17,37 @@ services:
       timeout: 5s
       retries: 5
 
+  mock-anthropic:
+    build:
+      context: .
+      dockerfile: server/loadtest/Dockerfile.mock
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
   app:
     build: .
     ports:
       - "8001:8001"
+    env_file:
+      - server/.env
     environment:
       DB_NAME: chatbot
       DB_USER: chatbot
       DB_PASSWORD: chatbot_password
       DB_HOST: postgres
       DB_PORT: 5432
-      BRAINTRUST_ENABLED: "true"  # Set to "false" to disable tracing during load tests
+      ANTHROPIC_BASE_URL: "http://mock-anthropic:8002"
+      BRAINTRUST_ENABLED: "false"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
     depends_on:
       postgres:
+        condition: service_healthy
+      mock-anthropic:
         condition: service_healthy
 
 volumes:
