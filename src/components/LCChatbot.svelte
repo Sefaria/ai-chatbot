@@ -12,11 +12,12 @@
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
-    placement = 'right',
+    mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500
   } = $props();
 
   // State
+  let mode = $state('floating');
   let isOpen = $state(false);
   let messages = $state([]);
   let inputText = $state('');
@@ -98,6 +99,11 @@
     } else if (defaultOpen) {
       isOpen = true;
     }
+    if (savedUI?.mode) {
+      mode = savedUI.mode;
+    } else {
+      mode = modeProp;
+    }
 
     // Restore size
     const savedSize = getStorage(STORAGE_KEYS.SIZE, null);
@@ -146,7 +152,7 @@
   function openPanel() {
     isOpen = true;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: true, placement });
+    setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
     // Focus input after panel opens
@@ -163,8 +169,14 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
-    setStorage(STORAGE_KEYS.UI, { isOpen: false, placement });
+    setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
+  }
+
+  function toggleMode() {
+    mode = mode === 'floating' ? 'docked' : 'floating';
+    const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
+    setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
   }
 
   function handleNewChat() {
@@ -478,6 +490,13 @@
   // Resize handling
   function startResize(edge, e) {
     e.preventDefault();
+
+    // In docked mode, only allow horizontal resize (e/w)
+    const allowHorizontal = edge.includes('w') || edge.includes('e');
+    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked'; 
+
+    if (!allowHorizontal && !allowVertical) return;
+
     isResizing = true;
     resizeEdge = edge;
 
@@ -493,12 +512,12 @@
       const maxWidth = window.innerWidth * MAX_WIDTH_RATIO;
       const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
 
-      if (resizeEdge.includes('w') || resizeEdge.includes('e')) {
+      if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
         panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
       }
 
-      if (resizeEdge.includes('n') || resizeEdge.includes('s')) {
+      if (allowVertical) {
         const heightDelta = resizeEdge.includes('n') ? -dy : dy;
         panelHeight = Math.max(MIN_HEIGHT, Math.min(startHeight + heightDelta, maxHeight));
       }
@@ -584,7 +603,12 @@
   }
 </script>
 
-<div class="lc-chatbot-container" class:placement-left={placement === 'left'}>
+<div
+  class="lc-chatbot-container"
+  class:mode-floating={mode === 'floating'}
+  class:mode-docked={mode === 'docked'}
+  class:is-open={isOpen}
+>
   {#if !isOpen}
     <!-- Floating Button -->
     <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
@@ -635,7 +659,7 @@
           </h2>
         </div>
         <div class="header-actions">
-          <button aria-label="Panel" class="panel-btn">
+          <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
             <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
           <div class="menu-container">
@@ -943,6 +967,7 @@
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
+    --lc-docked-top-offset: 60px;
 
     display: block;
     font-family: var(--lc-font);
@@ -957,13 +982,35 @@
   .lc-chatbot-container {
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    inset-inline-end: 24px;
     z-index: 9999;
   }
 
-  .lc-chatbot-container.placement-left {
-    right: auto;
-    left: 24px;
+  .lc-chatbot-container.mode-docked.is-open {
+    position: static;
+    flex-shrink: 0;
+    width: fit-content;
+    height: calc(100vh - var(--lc-docked-top-offset));
+    margin-top: var(--lc-docked-top-offset);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lc-chatbot-container.mode-docked .lc-chatbot-panel {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .lc-chatbot-container.mode-docked .resize-n,
+  .lc-chatbot-container.mode-docked .resize-s,
+  .lc-chatbot-container.mode-docked .resize-ne,
+  .lc-chatbot-container.mode-docked .resize-nw,
+  .lc-chatbot-container.mode-docked .resize-se,
+  .lc-chatbot-container.mode-docked .resize-sw {
+    display: none;
   }
 
   /* Trigger Button */
