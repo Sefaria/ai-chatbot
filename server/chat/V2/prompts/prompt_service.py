@@ -73,6 +73,8 @@ class PromptService:
         self._cache_lock = Lock()
 
         if self._braintrust_enabled:
+            import braintrust
+
             self._braintrust_client = braintrust
         else:
             self._braintrust_client = None
