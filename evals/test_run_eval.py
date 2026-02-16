@@ -1,86 +1,63 @@
 """Tests for the evaluation script."""
 
 import pytest
+from unittest.mock import patch
 
 
-class TestChatbotClientExtractText:
-    """Tests for ChatbotClient.extract_text method."""
+class TestCreateScorer:
+    """Tests for create_scorer function."""
 
-    @pytest.fixture
-    def client(self):
-        # Import here to avoid import errors when server isn't available
-        import sys
-        import os
+    def test_creates_scorer_with_correct_name(self):
+        from evals.run_eval import create_scorer
 
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        scorer = create_scorer("test-scorer")
+        assert scorer.__name__ == "test_scorer"
+
+    def test_scorer_calls_invoke_with_output(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"score": 0.8}
+            result = scorer("test output")
+            assert result == 0.8
+            mock_invoke.assert_called_once()
+            call_args = mock_invoke.call_args
+            assert call_args.kwargs["input"]["output"] == "test output"
+
+    def test_scorer_includes_expected_when_provided(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"score": 1.0}
+            scorer("output", expected="expected value")
+            call_args = mock_invoke.call_args
+            assert call_args.kwargs["input"]["expected"] == "expected value"
+
+    def test_scorer_returns_zero_on_error(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.side_effect = Exception("API error")
+            result = scorer("test output")
+            assert result == 0.0
+
+
+class TestChatbotClient:
+    """Tests for ChatbotClient."""
+
+    def test_requires_user_token(self):
         from evals.run_eval import ChatbotClient
 
-        return ChatbotClient.__new__(ChatbotClient)
+        with patch("evals.run_eval.USER_TOKEN", None):
+            with pytest.raises(ValueError, match="CHATBOT_USER_TOKEN"):
+                ChatbotClient(base_url="http://localhost:8001")
 
-    def test_extracts_single_text_block(self, client):
-        """Should extract text from a single text block."""
-        response = {"content": [{"type": "text", "text": "Hello world"}]}
-        assert client.extract_text(response) == "Hello world"
-
-    def test_extracts_multiple_text_blocks(self, client):
-        """Should join multiple text blocks with newlines."""
-        response = {
-            "content": [
-                {"type": "text", "text": "First"},
-                {"type": "text", "text": "Second"},
-            ]
-        }
-        assert client.extract_text(response) == "First\nSecond"
-
-    def test_ignores_non_text_blocks(self, client):
-        """Should skip tool_use and other block types."""
-        response = {
-            "content": [
-                {"type": "text", "text": "Hello"},
-                {"type": "tool_use", "id": "123", "name": "search"},
-                {"type": "text", "text": "World"},
-            ]
-        }
-        assert client.extract_text(response) == "Hello\nWorld"
-
-    def test_handles_empty_content(self, client):
-        """Should return empty string for empty content."""
-        assert client.extract_text({"content": []}) == ""
-        assert client.extract_text({}) == ""
-
-    def test_handles_missing_text_field(self, client):
-        """Should handle text blocks missing the text field."""
-        response = {"content": [{"type": "text"}]}
-        assert client.extract_text(response) == ""
-
-
-class TestChatbotClientExtractToolCalls:
-    """Tests for ChatbotClient.extract_tool_calls method."""
-
-    @pytest.fixture
-    def client(self):
-        import sys
-        import os
-
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    def test_strips_trailing_slash_from_base_url(self):
         from evals.run_eval import ChatbotClient
 
-        return ChatbotClient.__new__(ChatbotClient)
-
-    def test_extracts_tool_use_blocks(self, client):
-        """Should extract only tool_use blocks."""
-        response = {
-            "content": [
-                {"type": "text", "text": "Let me search"},
-                {"type": "tool_use", "id": "1", "name": "search", "input": {}},
-                {"type": "text", "text": "Found it"},
-            ]
-        }
-        tools = client.extract_tool_calls(response)
-        assert len(tools) == 1
-        assert tools[0]["name"] == "search"
-
-    def test_returns_empty_list_when_no_tools(self, client):
-        """Should return empty list when no tool calls."""
-        response = {"content": [{"type": "text", "text": "No tools"}]}
-        assert client.extract_tool_calls(response) == []
+        with patch("evals.run_eval.USER_TOKEN", "test-token"):
+            client = ChatbotClient(base_url="http://localhost:8001/")
+            assert client.base_url == "http://localhost:8001"
