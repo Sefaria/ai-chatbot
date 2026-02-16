@@ -673,7 +673,7 @@
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
-                <a class="menu-item" https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
