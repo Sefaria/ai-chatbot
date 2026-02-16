@@ -204,7 +204,7 @@ class ClaudeAgentService:
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is active for this thread.
 
-        No-op when ``BRAINTRUST_ENABLED=false``.
+        No-op when ``BRAINTRUST_LOGGING_ENABLED=false``.
 
         Two concerns:
         1. SDK monkey-patching (global, once per process via _BRAINTRUST_SETUP_DONE)

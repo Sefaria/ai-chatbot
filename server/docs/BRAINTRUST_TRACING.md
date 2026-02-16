@@ -156,20 +156,19 @@ Uses `braintrust.init_logger()` to log user feedback:
 |----------|---------|-------------|
 | `BRAINTRUST_API_KEY` | (required when enabled) | API key to enable tracing |
 | `BRAINTRUST_PROJECT` | `"On Site Agent"` | Project name in Braintrust |
-| `BRAINTRUST_ENABLED` | `"true"` | Set to `"false"` to disable all tracing/logging |
+| `BRAINTRUST_LOGGING_ENABLED` | `"true"` | Set to `"false"` to disable tracing/logging (prompt fetching is unaffected) |
 | `CORE_PROMPT_SLUG` | `"core-8fbc"` | Prompt ID for system prompt |
 
-### Disabling Braintrust for Load Tests
+### Disabling Braintrust Logging for Load Tests
 
-Set `BRAINTRUST_ENABLED=false` to completely disable Braintrust tracing, logging,
-and prompt fetching. This is useful during load tests to reduce noise and avoid
-unnecessary API calls. When disabled:
+Set `BRAINTRUST_LOGGING_ENABLED=false` to disable Braintrust tracing and logging.
+This is useful during load tests to reduce noise. **Prompt fetching is unaffected**
+and always runs when `BRAINTRUST_API_KEY` is set. When logging is disabled:
 
 - SDK monkey-patching (`setup_claude_agent_sdk`) is skipped
 - All span creation and logging is bypassed
 - `TracedThreadPoolExecutor` falls back to a plain `ThreadPoolExecutor`
 - `flush_braintrust()` becomes a no-op
-- Prompt fetching from Braintrust is skipped (prompts must be available locally)
 - Feedback logging via `update_span()` is skipped
 
 The default is `"true"`, so existing deployments are unaffected.

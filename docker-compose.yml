@@ -42,7 +42,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       ANTHROPIC_BASE_URL: "http://mock-anthropic:8002"
-      BRAINTRUST_ENABLED: "false"
+      BRAINTRUST_LOGGING_ENABLED: "false"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
     depends_on:
       postgres:

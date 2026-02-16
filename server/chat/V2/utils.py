@@ -33,20 +33,21 @@ class BraintrustConfig:
 def get_braintrust_config() -> BraintrustConfig:
     """Read Braintrust config from environment.
 
-    ``BRAINTRUST_ENABLED`` defaults to ``true``.  Set to ``false`` to
-    disable all Braintrust tracing/logging (useful during load tests).
+    ``BRAINTRUST_LOGGING_ENABLED`` defaults to ``true``.  Set to ``false`` to
+    disable Braintrust tracing/logging (useful during load tests).
+    Prompt fetching is unaffected and always runs when BRAINTRUST_API_KEY is set.
     """
     return BraintrustConfig(
         api_key=os.environ.get("BRAINTRUST_API_KEY", ""),
         project=os.environ.get("BRAINTRUST_PROJECT", "On Site Agent"),
-        enabled=os.environ.get("BRAINTRUST_ENABLED", "true").lower() == "true",
+        enabled=os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true").lower() == "true",
     )
 
 
 def flush_braintrust() -> None:
     """Flush pending Braintrust spans so they're sent before the request ends.
 
-    No-op when Braintrust is disabled via ``BRAINTRUST_ENABLED=false``.
+    No-op when Braintrust logging is disabled via ``BRAINTRUST_LOGGING_ENABLED=false``.
     """
     if not get_braintrust_config().enabled:
         return
