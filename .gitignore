@@ -211,5 +211,6 @@ public
 .pnp.*
 .worktrees/
 .claude/
+!.claude/settings.json
 .instance/
 k8s/secrets.yaml
