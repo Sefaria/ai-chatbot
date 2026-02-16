@@ -210,3 +210,6 @@ public
 .yarn/install-state.gz
 .pnp.*
 .worktrees/
+.claude/
+.instance/
+k8s/secrets.yaml

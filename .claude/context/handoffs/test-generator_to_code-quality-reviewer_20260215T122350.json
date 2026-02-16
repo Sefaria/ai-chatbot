@@ -1,8 +1,0 @@
-{
-  "from_agent": "test-generator",
-  "to_agent": "code-quality-reviewer",
-  "timestamp": "2026-02-15T12:23:50.964Z",
-  "summary": "Agent test-generator completed",
-  "suggestions": "Next: code-quality-reviewer should validate implementation",
-  "status": "ready_for_handoff"
-}
