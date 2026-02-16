@@ -273,6 +273,7 @@ def main():
     if args.all_scorers:
         scorers = get_all_scorers()
     elif args.scorers:
+        braintrust.login()
         scorers = [create_scorer(s.strip()) for s in args.scorers.split(",")]
 
     asyncio.run(
