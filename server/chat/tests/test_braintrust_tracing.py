@@ -23,7 +23,7 @@ class TestSetupBraintrustOnlyOnce:
         """
         mock_setup = MagicMock(return_value=True)
 
-        with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key"}):
+        with patch.dict("os.environ", {"BRAINTRUST_API_KEY": "test-key", "BRAINTRUST_LOGGING_ENABLED": "true"}):
             with patch(
                 "chat.V2.agent.claude_service.setup_claude_agent_sdk",
                 mock_setup,

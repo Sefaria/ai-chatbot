@@ -22,6 +22,7 @@ Deviations from Anthropic Messages API standard:
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 
@@ -48,6 +49,8 @@ logger = logging.getLogger("chat")
 
 # Origin identifier for Braintrust requests (used in metadata)
 BRAINTRUST_ORIGIN = "braintrust"
+
+_IS_LOAD_TESTING = os.environ.get("IS_LOAD_TESTING", "false").lower() == "true"
 
 
 def extract_user_message(messages: list[dict]) -> str:
@@ -241,7 +244,7 @@ def chat_anthropic_v2(request):
     msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
 
     try:
-        agent = get_agent_service()
+        agent = get_agent_service(is_load_testing=_IS_LOAD_TESTING)
         conversation = [ConversationMessage(role="user", content=user_message_text)]
         agent_response = asyncio.run(
             agent.send_message(

@@ -4,7 +4,7 @@ import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import anthropic
 import braintrust
@@ -12,7 +12,9 @@ import braintrust
 T = TypeVar("T")
 
 
-def get_anthropic_client(api_key: str | None = None) -> anthropic.Anthropic:
+def get_anthropic_client(
+    api_key: str | None = None, base_url: str | None = None
+) -> anthropic.Anthropic:
     """Create an Anthropic client, reading the key from env if not provided.
 
     Raises ValueError if no key is available.
@@ -20,7 +22,10 @@ def get_anthropic_client(api_key: str | None = None) -> anthropic.Anthropic:
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise ValueError("ANTHROPIC_API_KEY is required")
-    return anthropic.Anthropic(api_key=key)
+    kwargs: dict[str, Any] = {"api_key": key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return anthropic.Anthropic(**kwargs)
 
 
 @dataclass
@@ -45,12 +50,7 @@ def get_braintrust_config() -> BraintrustConfig:
 
 
 def flush_braintrust() -> None:
-    """Flush pending Braintrust spans so they're sent before the request ends.
-
-    No-op when Braintrust logging is disabled via ``BRAINTRUST_LOGGING_ENABLED=false``.
-    """
-    if not get_braintrust_config().enabled:
-        return
+    """Flush pending Braintrust spans so they're sent before the request ends."""
     braintrust.flush()
 
 

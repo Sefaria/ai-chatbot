@@ -72,4 +72,6 @@ pytest                                    # Run tests
 | `BRAINTRUST_API_KEY` | When enabled | Prompt management & tracing |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `BRAINTRUST_LOGGING_ENABLED` | No | `true` (default) or `false` to disable tracing for load tests |
+| `IS_LOAD_TESTING` | No | `false` (default) or `true` to route requests to mock Anthropic server |
+| `MOCK_ANTHROPIC_URL` | No | Mock server URL (default: `http://mock-anthropic:8002`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |

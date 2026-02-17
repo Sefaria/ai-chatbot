@@ -22,6 +22,7 @@ import concurrent.futures
 import contextvars
 import json
 import logging
+import os
 import queue
 import time
 
@@ -74,19 +75,19 @@ _bt_logger = (
     else None
 )
 
+# When IS_LOAD_TESTING=true, agent requests are routed to the mock Anthropic server.
+_IS_LOAD_TESTING = os.environ.get("IS_LOAD_TESTING", "false").lower() == "true"
+
 
 def _create_traced_executor() -> concurrent.futures.Executor:
     """Create a ThreadPoolExecutor that preserves Braintrust span context.
 
     Braintrust's TracedThreadPoolExecutor copies the current trace span
     into the worker thread, so LLM calls on the background thread appear
-    as children of the request-level span.
-
-    When Braintrust is disabled, falls back to a plain ThreadPoolExecutor.
+    as children of the request-level span. Passes through as a plain
+    executor when Braintrust is not initialized.
     """
-    if _bt_config.enabled:
-        return braintrust.TracedThreadPoolExecutor(max_workers=1)
-    return concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    return braintrust.TracedThreadPoolExecutor(max_workers=1)
 
 
 @api_view(["POST"])
@@ -174,7 +175,7 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service()
+                agent = get_agent_service(is_load_testing=_IS_LOAD_TESTING)
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,

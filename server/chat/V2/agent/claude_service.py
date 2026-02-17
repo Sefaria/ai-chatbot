@@ -155,6 +155,7 @@ class ClaudeAgentService:
     def __init__(
         self,
         api_key: str | None = None,
+        base_url: str | None = None,
         model: str | None = None,
         max_iterations: int = 10,
         max_tokens: int = 8000,
@@ -171,7 +172,7 @@ class ClaudeAgentService:
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        self.client = get_anthropic_client(api_key)
+        self.client = get_anthropic_client(api_key, base_url=base_url)
         self.prompt_service = prompt_service or get_prompt_service()
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
@@ -182,6 +183,15 @@ class ClaudeAgentService:
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key_str
+
+        # The Claude Agent SDK reads ANTHROPIC_BASE_URL from the environment.
+        # Set it here so the SDK routes to the mock server during load tests.
+        # NOTE: This is a process-global mutation. It is safe only because IS_LOAD_TESTING
+        # is a process-level flag (read once at module import) — all requests in a load-test
+        # process route to the mock, so a single write per process is correct. If per-request
+        # load-test routing is ever needed, pass base_url per-request instead of via env.
+        if base_url and not os.environ.get("ANTHROPIC_BASE_URL"):
+            os.environ["ANTHROPIC_BASE_URL"] = base_url
 
         from django.conf import settings as django_settings
 
@@ -249,9 +259,6 @@ class ClaudeAgentService:
             context=context,
         )
 
-        if not self.braintrust_enabled:
-            return await message_task
-
         @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
             return await message_task
@@ -283,8 +290,8 @@ class ClaudeAgentService:
         start_time = time.time()
 
         # Grab the Braintrust span once — all logging below uses this reference.
-        # When Braintrust is disabled bt_span is None and all .log() calls are skipped.
-        bt_span = current_span() if self.braintrust_enabled else None
+        # Returns a noop span when Braintrust is not initialized; .log() calls are silent.
+        bt_span = current_span()
 
         def emit(update: AgentProgressUpdate) -> None:
             """Safe wrapper — swallows callback errors so they don't kill the turn."""
@@ -310,8 +317,7 @@ class ClaudeAgentService:
         span_metadata: dict[str, Any] = {"model": self.model}
         if context.session_id:
             span_metadata["session_id"] = context.session_id
-        if bt_span:
-            bt_span.log(input=span_input, metadata=span_metadata)
+        bt_span.log(input=span_input, metadata=span_metadata)
 
         guardrail_response = await self._run_guardrail(
             bt_span, last_user_message, context, start_time
@@ -355,15 +361,14 @@ class ClaudeAgentService:
         )
 
         # Log prompt-specific metadata (input already logged before guardrail).
-        if bt_span:
-            bt_span.log(
-                metadata={
-                    "core_prompt_id": core_prompt.prompt_id,
-                    "core_prompt_version": core_prompt.version,
-                    "core_prompt_in_options": system_prompt_in_options,
-                    "summary_included": summary_included,
-                }
-            )
+        bt_span.log(
+            metadata={
+                "core_prompt_id": core_prompt.prompt_id,
+                "core_prompt_version": core_prompt.version,
+                "core_prompt_in_options": system_prompt_in_options,
+                "summary_included": summary_included,
+            }
+        )
 
         prompt_text = full_prompt if not system_prompt_in_options else conversation_text
 
@@ -396,12 +401,11 @@ class ClaudeAgentService:
         except Exception as exc:
             # Record the error in the Braintrust span before re-raising
             latency_ms = int((time.time() - start_time) * 1000)
-            if bt_span:
-                bt_span.log(
-                    output=str(exc),
-                    metrics={"latency_ms": latency_ms},
-                    metadata={"status": "error", "error": str(exc)},
-                )
+            bt_span.log(
+                output=str(exc),
+                metrics={"latency_ms": latency_ms},
+                metadata={"status": "error", "error": str(exc)},
+            )
             raise
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
@@ -414,8 +418,7 @@ class ClaudeAgentService:
             output = ERROR_FALLBACK_MESSAGE
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
-        if not trace_id and bt_span:
-            trace_id = bt_span.id
+        trace_id = trace_id or bt_span.id
 
         # Extract token counts from ResultMessage.usage (standard Anthropic format)
         input_tokens = None
@@ -458,8 +461,7 @@ class ClaudeAgentService:
             metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
         if total_cost_usd is not None:
             metrics["total_cost_usd"] = total_cost_usd
-        if bt_span:
-            bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
+        bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
 
         return AgentResponse(
             content=output,
@@ -480,24 +482,23 @@ class ClaudeAgentService:
     # -------------------------------------------------------------------
 
     async def _run_guardrail(
-        self, bt_span: Any | None, user_message: str, context: MessageContext, start_time: float
+        self, bt_span: Any, user_message: str, context: MessageContext, start_time: float
     ) -> AgentResponse | None:
         """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
         enriched_message, _ = build_prompt(
             user_message, summary_text=context.summary_text, page_url=context.page_url
         )
 
-        guardrail_span = bt_span.start_span(name="guardrail", type="task") if bt_span else None
+        guardrail_span = bt_span.start_span(name="guardrail", type="task")
         guardrail_result = await asyncio.to_thread(
             get_guardrail_service().check_message, enriched_message
         )
-        if guardrail_span:
-            guardrail_span.log(
-                input={"message": enriched_message},
-                output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
-                metadata={"guardrail_blocked": not guardrail_result.allowed},
-            )
-            guardrail_span.end()
+        guardrail_span.log(
+            input={"message": enriched_message},
+            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+            metadata={"guardrail_blocked": not guardrail_result.allowed},
+        )
+        guardrail_span.end()
 
         if guardrail_result.allowed:
             return None
@@ -512,16 +513,15 @@ class ClaudeAgentService:
         else:
             rejection = GUARDRAIL_REJECTION_MESSAGE
         latency_ms = int((time.time() - start_time) * 1000)
-        if bt_span:
-            bt_span.log(
-                output={"content": rejection, "guardrail_blocked": True},
-                metrics={"latency_ms": latency_ms},
-            )
+        bt_span.log(
+            output={"content": rejection, "guardrail_blocked": True},
+            metrics={"latency_ms": latency_ms},
+        )
         return AgentResponse(
             content=rejection,
             tool_calls=[],
             latency_ms=latency_ms,
-            trace_id=bt_span.id if bt_span else None,
+            trace_id=bt_span.id,
         )
 
     # -------------------------------------------------------------------
@@ -803,6 +803,15 @@ class ClaudeAgentService:
 # ---------------------------------------------------------------------------
 
 
-def get_agent_service() -> ClaudeAgentService:
-    """Create a fresh agent service instance (one per request)."""
+_MOCK_ANTHROPIC_URL = os.environ.get("MOCK_ANTHROPIC_URL", "http://mock-anthropic:8002")
+
+
+def get_agent_service(is_load_testing: bool = False) -> ClaudeAgentService:
+    """Create a fresh agent service instance (one per request).
+
+    Pass ``is_load_testing=True`` to route requests to the mock Anthropic server
+    instead of the real API — no environment variable switch required.
+    """
+    if is_load_testing:
+        return ClaudeAgentService(base_url=_MOCK_ANTHROPIC_URL)
     return ClaudeAgentService()

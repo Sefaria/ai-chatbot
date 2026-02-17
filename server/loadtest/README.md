@@ -26,10 +26,14 @@ docker compose up -d --build
 # 2. Run database migrations (first time only)
 docker compose exec app python manage.py migrate
 
-# 3. Run the load test against the app container
-cd server
-source venv/bin/activate
-pip install -r loadtest/requirements.txt
+# 3. Run the load test (from project root)
+docker compose run --rm loadtest
+
+# Custom params (override default 50 requests, 10 concurrent):
+docker compose run --rm loadtest python -m loadtest.load_test --url http://app:8001 -n 200 -c 50
+
+# Or run from host with custom params:
+cd server && source venv/bin/activate && pip install -r loadtest/requirements.txt
 python -m loadtest.load_test --url http://localhost:8001 -n 50 -c 10
 
 # 4. Tear down when done
@@ -39,38 +43,7 @@ docker compose down
 This starts three services:
 - **postgres** (:5438) — database
 - **mock-anthropic** (:8002) — mock Anthropic API
-- **app** (:8001) — Django server with `ANTHROPIC_BASE_URL` pointed at the mock
-
-## Quick Start (Kubernetes / Minikube)
-
-Deploy the load-test stack to a local Kubernetes cluster (e.g. minikube):
-
-```bash
-# 1. Start minikube (if not already running)
-minikube start
-
-# 2. Build images in minikube's Docker daemon
-eval $(minikube docker-env)
-docker build -t ai-chatbot-app:latest .
-docker build -t ai-chatbot-mock-anthropic:latest -f server/loadtest/Dockerfile.mock .
-
-# 3. Create secrets from server/.env (copy k8s/secrets.yaml.example to k8s/secrets.yaml, fill in keys)
-kubectl apply -f k8s/secrets.yaml
-
-# 4. Deploy postgres, mock-anthropic, and app
-kubectl apply -f k8s/postgres.yaml -f k8s/mock-anthropic.yaml -f k8s/app.yaml
-
-# 5. Run migrations (first time only)
-kubectl exec deployment/app -- python manage.py migrate
-
-# 6. Run load test via port-forward (NodePort not directly reachable on Docker driver)
-kubectl port-forward deployment/app 8001:8080 &
-cd server && source venv/bin/activate && pip install -r loadtest/requirements.txt
-python -m loadtest.load_test --url http://localhost:8001 -n 50 -c 10
-
-# 7. Tear down
-kubectl delete -f k8s/app.yaml -f k8s/mock-anthropic.yaml -f k8s/postgres.yaml -f k8s/secrets.yaml
-```
+- **app** (:8001) — Django server with `IS_LOAD_TESTING=true` routing requests to the mock
 
 ## Quick Start (Manual)
 
@@ -85,7 +58,7 @@ pip install -r server/loadtest/requirements.txt
 uvicorn loadtest.mock_anthropic:app --port 8002
 
 # 3. Start the Django server pointing at the mock
-ANTHROPIC_BASE_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
+IS_LOAD_TESTING=true MOCK_ANTHROPIC_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
 
 # 4. Run the load test
 python -m loadtest.load_test --url http://localhost:8001 -n 50 -c 10

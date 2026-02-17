@@ -166,10 +166,12 @@ This is useful during load tests to reduce noise. **Prompt fetching is unaffecte
 and always runs when `BRAINTRUST_API_KEY` is set. When logging is disabled:
 
 - SDK monkey-patching (`setup_claude_agent_sdk`) is skipped
-- All span creation and logging is bypassed
-- `TracedThreadPoolExecutor` falls back to a plain `ThreadPoolExecutor`
-- `flush_braintrust()` becomes a no-op
-- Feedback logging via `update_span()` is skipped
+- `_setup_braintrust_tracing()` returns early — `init_logger()` is never called
+- All `.log()` and `.start_span()` calls are silent no-ops (Braintrust SDK noop span)
+- `@braintrust.traced` decorator is a pass-through no-op
+- `TracedThreadPoolExecutor` still used (it passes through as a plain executor when no logger is active)
+- `braintrust.flush()` is still called (it's a no-op when no logger is initialized)
+- Feedback logging via `update_span()` is skipped (`_bt_logger` is `None`)
 
 The default is `"true"`, so existing deployments are unaffected.
 
