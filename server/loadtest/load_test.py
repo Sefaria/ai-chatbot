@@ -162,7 +162,7 @@ def _create_test_token(user_id: str, secret: str = "secret") -> str:
     payload_bytes = json.dumps(payload).encode("utf-8")
     key = hashlib.sha256(secret.encode("utf-8")).digest()
     aesgcm = AESGCM(key)
-    nonce = b"\x00" * 12
+    nonce = os.urandom(12)
     encrypted = aesgcm.encrypt(nonce, payload_bytes, None)
     token_bytes = nonce + encrypted
     return base64.urlsafe_b64encode(token_bytes).decode("ascii").rstrip("=")
@@ -197,6 +197,7 @@ async def send_chat_request(
         "messageId": str(uuid.uuid4()),
         "text": message,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "isLoadTest": True,
     }
 
     try:

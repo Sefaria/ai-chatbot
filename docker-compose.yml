@@ -39,7 +39,6 @@ services:
       DB_PASSWORD: chatbot_password
       DB_HOST: postgres
       DB_PORT: 5432
-      IS_LOAD_TESTING: "true"
       MOCK_ANTHROPIC_URL: "http://mock-anthropic:8002"
       BRAINTRUST_LOGGING_ENABLED: "false"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]

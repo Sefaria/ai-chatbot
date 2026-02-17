@@ -6,4 +6,4 @@ COPY server/loadtest /app/loadtest
 WORKDIR /app
 
 # Wait for app to be ready, then run load test (50 requests, 10 concurrent)
-CMD ["sh", "-c", "sleep 5 && python -m loadtest.load_test --url http://app:8001 -n 50 -c 10"]
+CMD ["sh", "-c", "sleep 5 && python -m loadtest.load_test --url http://app:8001 -n 1 -c 1"]

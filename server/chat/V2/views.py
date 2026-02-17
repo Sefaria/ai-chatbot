@@ -22,7 +22,6 @@ import concurrent.futures
 import contextvars
 import json
 import logging
-import os
 import queue
 import time
 
@@ -75,8 +74,6 @@ _bt_logger = (
     else None
 )
 
-# When IS_LOAD_TESTING=true, agent requests are routed to the mock Anthropic server.
-_IS_LOAD_TESTING = os.environ.get("IS_LOAD_TESTING", "false").lower() == "true"
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
@@ -175,7 +172,7 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service(is_load_testing=_IS_LOAD_TESTING)
+                agent = get_agent_service(is_load_testing=data.get("isLoadTest", False))
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,

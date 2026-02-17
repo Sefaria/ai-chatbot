@@ -186,10 +186,9 @@ class ClaudeAgentService:
 
         # The Claude Agent SDK reads ANTHROPIC_BASE_URL from the environment.
         # Set it here so the SDK routes to the mock server during load tests.
-        # NOTE: This is a process-global mutation. It is safe only because IS_LOAD_TESTING
-        # is a process-level flag (read once at module import) — all requests in a load-test
-        # process route to the mock, so a single write per process is correct. If per-request
-        # load-test routing is ever needed, pass base_url per-request instead of via env.
+        # NOTE: This is a process-global mutation. Safe only for load-test processes where
+        # every request routes to the mock. Per-request routing is handled in views.py via
+        # the isLoadTest request field — callers pass base_url only when load testing.
         if base_url and not os.environ.get("ANTHROPIC_BASE_URL"):
             os.environ["ANTHROPIC_BASE_URL"] = base_url
 

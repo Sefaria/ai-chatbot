@@ -15,7 +15,7 @@ Tools for measuring server capacity without Claude API costs.
 uvicorn loadtest.mock_anthropic:app --port 8002
 
 # 2. Start Django pointed at mock (Terminal 2)
-IS_LOAD_TESTING=true MOCK_ANTHROPIC_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
+MOCK_ANTHROPIC_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
 
 # 3. Run load test (Terminal 3)
 python -m loadtest.load_test --url http://localhost:8001 -n 50 -c 10

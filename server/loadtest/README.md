@@ -43,7 +43,7 @@ docker compose down
 This starts three services:
 - **postgres** (:5438) — database
 - **mock-anthropic** (:8002) — mock Anthropic API
-- **app** (:8001) — Django server with `IS_LOAD_TESTING=true` routing requests to the mock
+- **app** (:8001) — Django server (requests with `isLoadTest: true` in body route to the mock)
 
 ## Quick Start (Manual)
 
@@ -58,7 +58,7 @@ pip install -r server/loadtest/requirements.txt
 uvicorn loadtest.mock_anthropic:app --port 8002
 
 # 3. Start the Django server pointing at the mock
-IS_LOAD_TESTING=true MOCK_ANTHROPIC_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
+MOCK_ANTHROPIC_URL=http://localhost:8002 python manage.py runserver 0.0.0.0:8001
 
 # 4. Run the load test
 python -m loadtest.load_test --url http://localhost:8001 -n 50 -c 10

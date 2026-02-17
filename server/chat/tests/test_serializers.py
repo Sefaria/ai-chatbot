@@ -117,6 +117,50 @@ class TestChatRequestSerializer:
         serializer = ChatRequestSerializer(data=valid_request_data)
         assert serializer.is_valid()
 
+    # --- isLoadTest field ---
+
+    def test_is_load_test_absent_defaults_to_false(self, valid_request_data):
+        """isLoadTest is optional; omitting it produces False in validated_data."""
+        # Arrange: no isLoadTest key in request body
+        assert "isLoadTest" not in valid_request_data
+
+        # Act
+        serializer = ChatRequestSerializer(data=valid_request_data)
+
+        # Assert
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["isLoadTest"] is False
+
+    def test_is_load_test_explicit_false(self, valid_request_data):
+        """isLoadTest=false is explicitly accepted and normalised to Python False."""
+        valid_request_data["isLoadTest"] = False
+        serializer = ChatRequestSerializer(data=valid_request_data)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["isLoadTest"] is False
+
+    def test_is_load_test_explicit_true(self, valid_request_data):
+        """isLoadTest=true is accepted and normalised to Python True."""
+        valid_request_data["isLoadTest"] = True
+        serializer = ChatRequestSerializer(data=valid_request_data)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["isLoadTest"] is True
+
+    @pytest.mark.parametrize("truthy_value", [True, 1, "true", "True", "1"])
+    def test_is_load_test_truthy_values_accepted(self, valid_request_data, truthy_value):
+        """DRF BooleanField accepts common truthy representations."""
+        valid_request_data["isLoadTest"] = truthy_value
+        serializer = ChatRequestSerializer(data=valid_request_data)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["isLoadTest"] is True
+
+    @pytest.mark.parametrize("falsy_value", [False, 0, "false", "False", "0"])
+    def test_is_load_test_falsy_values_accepted(self, valid_request_data, falsy_value):
+        """DRF BooleanField accepts common falsy representations."""
+        valid_request_data["isLoadTest"] = falsy_value
+        serializer = ChatRequestSerializer(data=valid_request_data)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["isLoadTest"] is False
+
 
 class TestChatResponseSerializer:
     """Test ChatResponseSerializer."""
