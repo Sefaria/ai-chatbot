@@ -24,11 +24,11 @@ def _setup_braintrust_tracing(self) -> None:
 
     global _BRAINTRUST_SETUP_DONE
     if _BRAINTRUST_SETUP_DONE:
-        self._braintrust_enabled = True
+        self._braintrust_logging_enabled = True
         return
 
     setup_claude_agent_sdk(project=bt_project, api_key=bt_api_key)
-    self._braintrust_enabled = True
+    self._braintrust_logging_enabled = True
     _BRAINTRUST_SETUP_DONE = True
 ```
 
@@ -47,7 +47,7 @@ async def send_message(...) -> AgentResponse:
     async def run() -> AgentResponse:
         return await self._send_message_inner(...)
 
-    if braintrust and self._braintrust_enabled:
+    if braintrust and self._braintrust_logging_enabled:
         traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
         return await traced_run()
 

@@ -177,7 +177,7 @@ class ClaudeAgentService:
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
-        self.braintrust_enabled = bt.enabled
+        self.braintrust_logging_enabled = bt.enabled
 
         # The SDK reads the key from the environment, so ensure it's set.
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -222,7 +222,7 @@ class ClaudeAgentService:
            produces real spans. init_logger stores the logger in a ContextVar, which
            is per-thread — so every new request thread needs its own init_logger call.
         """
-        if not self.braintrust_enabled:
+        if not self.braintrust_logging_enabled:
             return
 
         global _BRAINTRUST_SETUP_DONE

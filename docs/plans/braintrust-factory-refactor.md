@@ -5,7 +5,7 @@
 ### Root cause
 `_send_message_inner` holds a `bt_span` reference initialized conditionally:
 ```python
-bt_span = current_span() if self.braintrust_enabled else None
+bt_span = current_span() if self.braintrust_logging_enabled else None
 ```
 Then every logging site guards against `None`:
 ```python
@@ -28,10 +28,10 @@ So the only conditional that must remain is at the **initialization point**.
 
 #### `server/chat/V2/agent/claude_service.py`
 
-1. **`send_message`** — remove `braintrust_enabled` guard, always use `@traced`:
+1. **`send_message`** — remove `braintrust_logging_enabled` guard, always use `@traced`:
    ```python
    # REMOVE this block:
-   if not self.braintrust_enabled:
+   if not self.braintrust_logging_enabled:
        return await message_task
    ```
    Just always define and call `run()` with `@braintrust.traced`.
@@ -39,7 +39,7 @@ So the only conditional that must remain is at the **initialization point**.
 2. **`_send_message_inner`** — remove conditional on `bt_span`:
    ```python
    # BEFORE:
-   bt_span = current_span() if self.braintrust_enabled else None
+   bt_span = current_span() if self.braintrust_logging_enabled else None
    # AFTER:
    bt_span = current_span()
    ```
@@ -125,7 +125,7 @@ So the only conditional that must remain is at the **initialization point**.
 
 ### Net result
 Reduces if-else checks from ~10 scattered guards to **2 init-only conditionals**:
-- `_setup_braintrust_tracing`: `if not self.braintrust_enabled: return`
+- `_setup_braintrust_tracing`: `if not self.braintrust_logging_enabled: return`
 - `views.py` module level: `_bt_logger = ... if _bt_config.enabled else None`
 
 ---
