@@ -910,9 +910,9 @@
             <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
             {#if feedbackType === FEEDBACK_DOWN}
               <div class="feedback-modal-field">
-                <label for="slelect" class="feedback-modal-select-label">What was the issue?</label>
+                <label for="select" class="feedback-modal-select-label">What was the issue?</label>
                 <select
-                  id="slelect"
+                  id="select"
                   class="feedback-modal-select"
                   class:is-placeholder={!feedbackReason}
                   bind:value={feedbackReason}
