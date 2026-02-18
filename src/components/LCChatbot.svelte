@@ -969,9 +969,7 @@
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-text: #999;
-    --lc-buttons-blue: #1D374E;
     --lc-submit-white: #FBFDFE;
-    --lc-border-gray: #D9D9D9;
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --lc-radius: 16px;
@@ -1913,7 +1911,7 @@ inset: 8px;
   }
 
   .feedback-modal-btn.submit {
-    background: var(--lc-buttons-blue);
+    background: var(--lc-sefaria-blue);
     color: var(--lc-submit-white);
   }
 
@@ -1924,13 +1922,12 @@ inset: 8px;
   .feedback-modal-btn.submit:disabled {
     background: var(--lc-disabled-button);
     color: var(--lc-disabled-text);
-    border: 1.5px solid var(--lc-border-gray);
     cursor: not-allowed;
   }
 
   .feedback-modal-btn.skip {
     background: transparent;
-    color: var(--lc-buttons-blue);
+    color: var(--lc-sefaria-blue);
     border: none;
   }
 
