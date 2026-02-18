@@ -909,17 +909,22 @@
             <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
             <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
             {#if feedbackType === FEEDBACK_DOWN}
-              <select
-                class="feedback-modal-select"
-                bind:value={feedbackReason}
-              >
-                <option value="" disabled>Select Issue</option>
-                {#each DISLIKE_REASONS as issue}
-                  <option value={issue.value}>{issue.label}</option>
-                {/each}
-              </select>
+              <div class="feedback-modal-field">
+                <label for="slelect" class="feedback-modal-select-label">What was the issue?</label>
+                <select
+                  id="slelect"
+                  class="feedback-modal-select"
+                  class:is-placeholder={!feedbackReason}
+                  bind:value={feedbackReason}
+                >
+                  <option value="" disabled>Select Issue</option>
+                  {#each DISLIKE_REASONS as issue}
+                    <option value={issue.value}>{issue.label}</option>
+                  {/each}
+                </select>
+              </div>
             {/if}
-            <input
+            <textarea
               type="text"
               class="feedback-modal-input"
               bind:value={feedbackComment}
@@ -961,6 +966,13 @@
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
     --lc-error: #ef4444;
+    --lc-sefaria-blue: var(--sefaria-blue);
+    --lc-disabled-button: #e6e6e6;
+    --lc-disabled-text: #999;
+    --lc-buttons-blue: #1D374E;
+    --lc-submit-white: #FBFDFE;
+    --lc-border-gray: #D9D9D9;
+
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --lc-radius: 16px;
     --lc-radius-sm: 8px;
@@ -1810,17 +1822,31 @@ inset: 8px;
   }
 
   .feedback-modal-title {
-    font-size: var(--lc-font-size-lg);
+    font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--lc-text);
+    color: var(--lc-sefaria-blue);
     margin: 0 0 8px 0;
   }
 
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
+    font-weight: 400;
     font-style: italic;
-    color: var(--lc-text-secondary);
+    color: var(--lc-sefaria-blue);
     margin: 0 0 16px 0;
+  }
+
+  .feedback-modal-field {
+    display: flex;
+    flex-direction: column;
+    height: 67px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .feedback-modal-select-label {
+    font-size: var(--lc-font-size);
+    font-weight: 400;
   }
 
   .feedback-modal-select,
@@ -1831,15 +1857,17 @@ inset: 8px;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
-    color: var(--lc-text);
     background: var(--lc-bg-secondary);
     outline: none;
     transition: border-color 0.15s ease;
     box-sizing: border-box;
   }
 
+  .feedback-modal-input {
+    min-height: 80px;
+  }
+
   .feedback-modal-select {
-    margin-bottom: 12px;
     cursor: pointer;
     appearance: none;
     background-image: url("data:image/svg+xml,...");
@@ -1852,8 +1880,8 @@ inset: 8px;
     border-color: var(--lc-primary);
   }
 
-  .feedback-modal-select option[value=""][disabled] {
-    color: var(--lc-text-muted);
+  .feedback-modal-select.is-placeholder {
+    color: var(--lc-disabled-text);
   }
 
 
@@ -1863,11 +1891,12 @@ inset: 8px;
   }
 
   .feedback-modal-input::placeholder {
-    color: var(--lc-text-muted);
+    color: var(--lc-disabled-text);
   }
 
   .feedback-modal-actions {
     display: flex;
+    flex-direction: column;
     gap: 10px;
     margin-top: 16px;
   }
@@ -1884,9 +1913,8 @@ inset: 8px;
   }
 
   .feedback-modal-btn.submit {
-    background: var(--lc-primary);
-    color: white;
-    border: none;
+    background: var(--lc-buttons-blue);
+    color: var(--lc-submit-white);
   }
 
   .feedback-modal-btn.submit:hover:not(:disabled) {
@@ -1894,19 +1922,16 @@ inset: 8px;
   }
 
   .feedback-modal-btn.submit:disabled {
-    opacity: 0.5;
+    background: var(--lc-disabled-button);
+    color: var(--lc-disabled-text);
+    border: 1.5px solid var(--lc-border-gray);
     cursor: not-allowed;
   }
 
   .feedback-modal-btn.skip {
-    background: var(--lc-bg-tertiary);
-    color: var(--lc-text-secondary);
-    border: 1px solid var(--lc-border);
-  }
-
-  .feedback-modal-btn.skip:hover {
-    background: var(--lc-bg-secondary);
-    color: var(--lc-text);
+    background: transparent;
+    color: var(--lc-buttons-blue);
+    border: none;
   }
 
 </style>
