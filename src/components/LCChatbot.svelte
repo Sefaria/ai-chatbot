@@ -988,9 +988,16 @@
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
     --lc-docked-top-offset: 60px;
+    --lc-viewport-height: 100%;
 
     display: block;
     font-family: var(--lc-font);
+  }
+
+  @supports (height: 100%) {
+    :host {
+      --lc-viewport-height: 100%;
+    }
   }
 
   * {
@@ -1010,7 +1017,7 @@
     position: static;
     flex-shrink: 0;
     width: fit-content;
-    height: calc(100vh - var(--lc-docked-top-offset));
+    height: max(0px, calc(var(--lc-viewport-height) - var(--lc-docked-top-offset)));
     margin-top: var(--lc-docked-top-offset);
     display: flex;
     flex-direction: column;
