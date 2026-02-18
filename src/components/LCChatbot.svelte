@@ -925,7 +925,6 @@
               </div>
             {/if}
             <textarea
-              type="text"
               class="feedback-modal-input"
               bind:value={feedbackComment}
               placeholder={feedbackType === FEEDBACK_DOWN ? 'More details' : "Anything you'd like to add?"}
