@@ -1,0 +1,27 @@
+# ServiceMonitor for Prometheus Operator
+# Tells Prometheus to scrape /api/metrics from the ai-chatbot service.
+#
+# Prerequisites:
+# - Prometheus Operator installed in the cluster
+# - Service for ai-chatbot with a port named "http" (or update port below)
+# - Prometheus instance configured to select ServiceMonitors (e.g. via
+#   spec.serviceMonitorSelector or spec.podMonitorSelector)
+#
+# Apply: kubectl apply -f manifests/servicemonitor.yaml
+# Or include in Helm/Kustomize/Flux deployment.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-chatbot
+  labels:
+    app.kubernetes.io/name: ai-chatbot
+    app.kubernetes.io/component: metrics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-chatbot
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+      scrapeTimeout: 10s

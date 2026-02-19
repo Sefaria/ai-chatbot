@@ -35,6 +35,7 @@ from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
+from ...metrics import record_tool_call
 from ..guardrail import get_guardrail_service
 from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import (
@@ -545,6 +546,11 @@ class ClaudeAgentService:
                 tool_start = time.time()
                 result = await self.tool_executor.execute(tool_name, tool_input)
                 tool_latency = int((time.time() - tool_start) * 1000)
+                duration_seconds = time.time() - tool_start
+
+                # Record Prometheus metrics for time-series queries (SC-41316)
+                status_label = "error" if result.is_error else "success"
+                record_tool_call(tool_name, status_label, duration_seconds)
 
                 # Flatten content blocks into a single string for the preview
                 output_text = "".join(
