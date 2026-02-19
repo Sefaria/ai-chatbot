@@ -7,7 +7,7 @@ for analysis and comparison across experiments.
 
 Usage:
     python evals/run_eval.py --all-scorers                    # Run with all project scorers
-    python evals/run_eval.py --scorers accuracy,relevance     # Run with specific scorers
+    python evals/run_eval.py --scorers accuracy-374376eb2     # Run with specific scorer slugs
     python evals/run_eval.py --local                          # Test against local server
     python evals/run_eval.py -d "My Dataset" -e "Test Run"    # Custom dataset/experiment
 
@@ -195,6 +195,7 @@ async def run_evaluation(
             input_data.get("prompt")
             or input_data.get("input")
             or input_data.get("query")
+            or input_data.get("message")
             or str(input_data)
             if isinstance(input_data, dict)
             else str(input_data)
