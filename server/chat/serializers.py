@@ -36,7 +36,7 @@ class ChatRequestSerializer(serializers.Serializer):
 class FeedbackRequestSerializer(serializers.Serializer):
     """User feedback payload for Braintrust logging."""
 
-    SCORE_CHOICES = [("good", "Thumbs up"), ("bad", "Thumbs down")]
+    SCORE_CHOICES = [("up", "Thumbs up"), ("down", "Thumbs down")]
 
     traceId = serializers.CharField(max_length=200)
     score = serializers.ChoiceField(choices=SCORE_CHOICES)
