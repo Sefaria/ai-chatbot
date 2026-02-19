@@ -3,6 +3,7 @@ Chat API URL configuration.
 """
 
 from django.urls import path
+from django.views.decorators.http import require_GET
 
 from . import views
 from .V2 import views as v2_views
@@ -20,4 +21,5 @@ urlpatterns = [
     # Admin/management endpoints
     path("admin/reload-prompts", views.reload_prompts, name="reload_prompts"),
     path("health", views.health, name="health"),
+    path("metrics", require_GET(views.metrics), name="metrics"),
 ]

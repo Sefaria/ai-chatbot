@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
+from django.http import HttpResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -124,6 +126,16 @@ def reload_prompts(request):
     except Exception as e:
         logger.error(f"❌ Failed to reload prompts: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def metrics(request):
+    """
+    Prometheus metrics endpoint.
+
+    GET /api/metrics
+    """
+    data = generate_latest()
+    return HttpResponse(data, content_type=CONTENT_TYPE_LATEST)
 
 
 @api_view(["GET"])
