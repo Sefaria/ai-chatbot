@@ -68,10 +68,11 @@
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
-    { value: 'inaccurate', label: 'Inaccurate' },
-    { value: 'too_authoritative', label: 'Too Authoritative' },
-    { value: 'disrespectful', label: 'Disrespectful' },
-    { value: 'too_slow', label: 'Too Slow' },
+    { value: 'inaccurate', label: 'Incorrect or misleading' },
+    { value: 'disrespectful', label: 'Inappropriate tone' },
+    { value: 'unhelpful', label: 'Not helpful or unclear' },
+    { value: 'overly_definitive', label: 'Overly definitive' },
+    { value: 'tech_issue', label: 'Technical issue' },
     { value: 'other', label: 'Other' }
   ];
 
@@ -677,17 +678,17 @@
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
-                <a class="menu-item" href="https://forms.gle/j7V6G7yupHydb1oGA" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
                 <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  Help
+                  Help (Coming soon)
                 </a>
                 <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  Opt-out
+                  Opt-out in Settings
                 </a>
               </div>
             {/if}
