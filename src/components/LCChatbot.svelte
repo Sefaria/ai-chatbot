@@ -583,7 +583,7 @@
               </svg>
             </button>
           {/if}
-          <h2>Library Assistant
+          <h2>Library Assistant39
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
