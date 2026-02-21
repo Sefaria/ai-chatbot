@@ -143,6 +143,28 @@
     }
   });
 
+  // GA4 tracking: attach listener on the host element (light DOM) so it
+  // receives clicks bubbling out of the shadow root
+  $effect(() => {
+    const host = $host();
+    if (!host) return;
+
+    function trackClick(e) {
+      const target = e.composedPath()[0];
+      if (!(target instanceof Element)) return;
+      const className = (target.className && typeof target.className === 'string')
+        ? target.className.trim()
+        : '';
+      if (!className) return;
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'assistant_click', { text: className });
+      }
+    }
+
+    host.addEventListener('click', trackClick);
+    return () => host.removeEventListener('click', trackClick);
+  });
+
   // Dispatch custom events
   function dispatchEvent(name, detail = {}) {
     const event = new CustomEvent(`chatbot:${name}`, {
@@ -601,18 +623,6 @@
     }
   }
 
-  function trackClick(e) {
-    const target = e.composedPath()[0];
-    if (!(target instanceof Element)) return;
-    const className = (target.className && typeof target.className === 'string')
-      ? target.className.trim()
-      : '';
-    if (!className) return;
-    if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_click', { text: className });
-    }
-  }
-
   function handleRestartConvo() {
     closeMenu();
     handleNewChat();
@@ -624,7 +634,6 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
-  onclick={trackClick}
 >
   {#if !isOpen}
     <!-- Floating Button -->
