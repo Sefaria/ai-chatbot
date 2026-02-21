@@ -708,7 +708,7 @@
             <button class="settings-back" onclick={closeSettings} aria-label="Back to chat">
               ← Back
             </button>
-            <div class="settings-title">Agent Settings</div>
+            <div class="settings-title">Agent Settingsx</div>
           </div>
 
           {#if isLoadingSettings}
