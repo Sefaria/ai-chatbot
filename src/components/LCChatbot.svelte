@@ -162,7 +162,9 @@
       );
       if (link) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url: link.getAttribute('href') });
+          const raw = link.getAttribute('href');
+          const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url });
         }
         return;
       }
