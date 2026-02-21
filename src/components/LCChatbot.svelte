@@ -150,13 +150,26 @@
     if (!host) return;
 
     function trackClick(e) {
-      const target = e.composedPath().find(
+      const path = e.composedPath();
+
+      // Check if a link was clicked — capture the href
+      const link = path.find(
+        el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
+      );
+      if (link) {
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'assistant_click', { text: link.getAttribute('href') });
+        }
+        return;
+      }
+
+      // Otherwise capture the nearest aria-label
+      const target = path.find(
         el => el instanceof Element && el.getAttribute('aria-label')
       );
       if (!target) return;
-      const label = target.getAttribute('aria-label');
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { text: label });
+        window.gtag('event', 'assistant_click', { text: target.getAttribute('aria-label') });
       }
     }
 
@@ -915,6 +928,7 @@
           onkeydown={handleKeydown}
           maxlength={maxInputChars}
           placeholder="What are you learning today?"
+          aria-label="Prompt input"
           rows="1"
           disabled={isSending}
         ></textarea>
