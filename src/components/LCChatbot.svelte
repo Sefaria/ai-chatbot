@@ -151,7 +151,11 @@
 
     function trackClick(e) {
       const path = e.composedPath();
-
+      // Skip the toggle button — toggleMode() fires its own specific event
+      const isToggle = path.some(
+        el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
+      );
+      if (isToggle) return;
       // If a response link was clicked — capture the link text
       const link = path.find(
         el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
@@ -212,9 +216,13 @@
   }
 
   function toggleMode() {
-    mode = mode === 'floating' ? 'docked' : 'floating';
+    const newMode = mode === 'floating' ? 'docked' : 'floating';
+    mode = newMode;
     const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
     setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}` });
+    }
   }
 
   function handleNewChat() {
