@@ -601,6 +601,18 @@
     }
   }
 
+  function trackClick(e) {
+    const target = e.composedPath()[0];
+    if (!(target instanceof Element)) return;
+    const className = (target.className && typeof target.className === 'string')
+      ? target.className.trim()
+      : '';
+    if (!className) return;
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_click', { text: className });
+    }
+  }
+
   function handleRestartConvo() {
     closeMenu();
     handleNewChat();
@@ -612,6 +624,7 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
+  onclick={trackClick}
 >
   {#if !isOpen}
     <!-- Floating Button -->
