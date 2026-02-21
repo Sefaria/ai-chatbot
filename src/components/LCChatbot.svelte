@@ -695,19 +695,19 @@
             </button>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
-                <a class="menu-item" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Give feedback" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
-                <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Get help" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   Help (Coming soon)
                 </a>
-                <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Opt-out" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   Opt-out in Settings
                 </a>
@@ -914,7 +914,7 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={maxInputChars}
-          placeholder="Type a message..."
+          placeholder="What are you learning today?"
           rows="1"
           disabled={isSending}
         ></textarea>
