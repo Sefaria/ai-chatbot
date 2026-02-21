@@ -162,7 +162,7 @@
       );
       if (link) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim() });
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url: link.getAttribute('href') });
         }
         return;
       }
@@ -353,7 +353,7 @@
     const text = inputText.trim();
     if (!text || isSending || !userId || !apiBaseUrl) return;
     if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_message_sent', { message_length: text.length });
+      window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
     // Clear input and draft
     inputText = '';
