@@ -150,14 +150,13 @@
     if (!host) return;
 
     function trackClick(e) {
-      const target = e.composedPath()[0];
-      if (!(target instanceof Element)) return;
-      const className = (target.className && typeof target.className === 'string')
-        ? target.className.trim()
-        : '';
-      if (!className) return;
+      const target = e.composedPath().find(
+        el => el instanceof Element && el.getAttribute('aria-label')
+      );
+      if (!target) return;
+      const label = target.getAttribute('aria-label');
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { text: className });
+        window.gtag('event', 'assistant_click', { text: label });
       }
     }
 
