@@ -152,24 +152,24 @@
     function trackClick(e) {
       const path = e.composedPath();
 
-      // Check if a link was clicked — capture the href
+      // If a response link was clicked — capture the link text
       const link = path.find(
         el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
       );
       if (link) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { text: link.getAttribute('href') });
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim() });
         }
         return;
       }
 
-      // Otherwise capture the nearest aria-label
+      // Otherwise walk up the path for the nearest aria-label
       const target = path.find(
         el => el instanceof Element && el.getAttribute('aria-label')
       );
       if (!target) return;
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { text: target.getAttribute('aria-label') });
+        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label') });
       }
     }
 
