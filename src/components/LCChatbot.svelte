@@ -608,7 +608,6 @@
     if (!sefariaPath) return;
 
     e.preventDefault();
-    e.stopPropagation();
 
     const path = sefariaPath;
     console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
@@ -699,7 +698,7 @@
           </h2>
         </div>
         <div class="header-actions">
-          <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
+          <button aria-label="Toggle docked/floating" class="panel-btn" onclick={toggleMode}>
             <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
           </button>
           <div class="menu-container">
