@@ -352,7 +352,9 @@
   async function handleSend() {
     const text = inputText.trim();
     if (!text || isSending || !userId || !apiBaseUrl) return;
-
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_message_sent', { message_length: text.length });
+    }
     // Clear input and draft
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -749,7 +751,7 @@
             <button class="settings-back" onclick={closeSettings} aria-label="Back to chat">
               ← Back
             </button>
-            <div class="settings-title">Agent Settingsx</div>
+            <div class="settings-title">Agent Settings</div>
           </div>
 
           {#if isLoadingSettings}
