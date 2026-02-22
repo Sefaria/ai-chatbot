@@ -36,7 +36,7 @@ class ChatRequestSerializer(serializers.Serializer):
 class FeedbackRequestSerializer(serializers.Serializer):
     """User feedback payload for Braintrust logging."""
 
-    SCORE_CHOICES = [('up', 'Thumbs up'), ('down', 'Thumbs down')]                                                                  
+    SCORE_CHOICES = [("up", "Thumbs up"), ("down", "Thumbs down")]
 
     traceId = serializers.CharField(max_length=200)
     score = serializers.ChoiceField(choices=SCORE_CHOICES)
@@ -44,10 +44,9 @@ class FeedbackRequestSerializer(serializers.Serializer):
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
-    #non-required fields
+    # non-required fields
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     feedbackReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
-    
 
 
 class AnthropicRequestSerializer(serializers.Serializer):
