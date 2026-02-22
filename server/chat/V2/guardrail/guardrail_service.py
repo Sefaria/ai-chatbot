@@ -26,6 +26,29 @@ class GuardrailResult:
     reason: str = ""
 
 
+def parse_guardrail_response(text: str) -> GuardrailResult:
+    """Parse guardrail LLM response text into a GuardrailResult. Fail closed on malformed output.
+
+    Expected format: {decision: "ALLOW"/"BLOCK", reason: "..."}
+    Text may be wrapped in markdown code fences (```json ... ```).
+    Only an explicit "ALLOW" passes — any other decision value is a block.
+    """
+    try:
+        cleaned = strip_markdown_fences(text)
+        data = json.loads(cleaned)
+
+        decision = data.get("decision", "")
+        if not decision:
+            logger.warning(f"Guardrail: missing 'decision' field: {cleaned[:200]}")
+            return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
+
+        allowed = decision.upper() == "ALLOW"
+        return GuardrailResult(allowed=allowed, reason=data.get("reason", ""))
+    except (json.JSONDecodeError, IndexError, KeyError) as exc:
+        logger.warning(f"Guardrail: failed to parse response: {exc}")
+        return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
+
+
 class GuardrailService:
     """Classifies user messages as allowed or blocked using an LLM filter.
 
@@ -73,29 +96,8 @@ class GuardrailService:
         return core_prompt.text
 
     def _parse_response(self, response) -> GuardrailResult:
-        """Parse LLM response JSON. Fail closed on malformed output.
-
-        Expected format: {decision: "ALLOW"/"BLOCK", reason: "..."}
-        Response may be wrapped in markdown code fences (```json ... ```).
-        Only an explicit "ALLOW" passes — any other decision value is a block.
-        This is intentional: typos, unexpected values, or new decision types
-        should all fail closed rather than accidentally letting messages through.
-        """
-        try:
-            text = strip_markdown_fences(response.content[0].text)
-            data = json.loads(text)
-
-            decision = data.get("decision", "")
-            if not decision:
-                logger.warning(f"Guardrail: missing 'decision' field: {text[:200]}")
-                return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
-
-            # Only explicit "ALLOW" passes — everything else is a block.
-            allowed = decision.upper() == "ALLOW"
-            return GuardrailResult(allowed=allowed, reason=data.get("reason", ""))
-        except (json.JSONDecodeError, IndexError, KeyError) as exc:
-            logger.warning(f"Guardrail: failed to parse response: {exc}")
-            return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
+        """Parse Anthropic Messages response. Delegates to parse_guardrail_response."""
+        return parse_guardrail_response(response.content[0].text)
 
 
 # Singleton — shared across requests within a process. The Anthropic client
