@@ -819,7 +819,7 @@
 
         {#if isSending}
           <div class="message assistant">
-            <div class="message-content thinking-content">
+            <div class="thinking-content">
               <!-- Progress Status -->
               {#if currentProgress?.type === 'tool_end' }
                 <div class="status-text" class:tool-error={currentProgress.isError}>
