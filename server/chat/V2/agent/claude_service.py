@@ -19,7 +19,6 @@ Key integration points:
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import logging
@@ -35,7 +34,8 @@ from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
-from ..guardrail import get_guardrail_service
+from ..guardrail import parse_guardrail_response
+from ..guardrail.guardrail_service import GuardrailResult
 from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
@@ -137,6 +137,12 @@ def truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 3] + "..."
+
+
+def _sum_costs(*costs: float | None) -> float | None:
+    """Sum cost values, returning None if all are None."""
+    values = [c for c in costs if c is not None]
+    return sum(values) if values else None
 
 
 # ---------------------------------------------------------------------------
@@ -258,19 +264,16 @@ class ClaudeAgentService:
         on_progress: Callable[[AgentProgressUpdate], None] | None,
         context: MessageContext,
     ) -> AgentResponse:
-        """Runs one full agent turn: guardrail → prompt assembly → SDK loop → response.
+        """Runs one full agent turn inside a single ClaudeSDKClient subprocess.
 
-        Steps:
-        0. Run guardrail check — short-circuits with a rejection if blocked
-        1. Build the system prompt (core from Braintrust + optional summary/page context)
-        2. Wrap each Sefaria tool as an SDK-compatible MCP tool
-        3. Configure and launch the ClaudeSDKClient
-        4. Stream text chunks from the SDK, accumulating the final response
-        5. Log metrics to Braintrust span
+        Two-phase flow on one subprocess for accurate cost tracking:
+        1. Guardrail phase (Haiku) — hard gate, short-circuits if blocked
+        2. Agent phase (Sonnet) — main response with tools
+
+        Both phases use the same CLI subprocess so total_cost_usd is computed
+        by the same pricing logic (the Agent SDK CLI binary).
         """
         start_time = time.time()
-
-        # Grab the Braintrust span once — all logging below uses this reference.
         bt_span = current_span()
 
         def emit(update: AgentProgressUpdate) -> None:
@@ -282,7 +285,6 @@ class ClaudeAgentService:
             except Exception as exc:
                 logger.warning(f"Progress callback error: {exc}")
 
-        # --- Guardrail: check message before running the agent ----------
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
             "",
@@ -299,29 +301,10 @@ class ClaudeAgentService:
             span_metadata["session_id"] = context.session_id
         bt_span.log(input=span_input, metadata=span_metadata)
 
-        guardrail_response = await self._run_guardrail(
-            bt_span, last_user_message, context, start_time
-        )
-        if guardrail_response:
-            return guardrail_response
-
-        # --- Step 1: Assemble the full prompt ------------------------------
-        core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
-        conversation_text = self._format_conversation(messages)
-        full_prompt, summary_included = build_prompt(
-            conversation_text,
-            core_prompt=core_prompt.text,
-            summary_text=context.summary_text,
-            page_url=context.page_url,
-        )
-
-        # --- Step 2: Build MCP tools ------------------------------------
-        # tool_calls_list is mutated by the tool handlers to record each invocation.
+        # --- Build MCP tools (needed for agent phase, harmless during guardrail) ---
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_all_tools()
         sdk_tools = self._build_sdk_tools(tools, emit, tool_calls_list)
-
-        # The SDK expects tool names prefixed with mcp__<server>__<tool>.
         allowed_tools = [
             f"mcp__{self._mcp_server_name}__{tool_schema['name']}" for tool_schema in tools
         ]
@@ -331,55 +314,75 @@ class ClaudeAgentService:
             tools=sdk_tools,
         )
 
-        # --- Step 3: Configure SDK options ------------------------------
-        # When the SDK supports system_prompt in options, pass the full prompt
-        # there. Otherwise, it becomes the prompt_text sent to client.query().
-        options, system_prompt_in_options = self._build_agent_options(
-            system_prompt=full_prompt,
+        # --- Configure SDK options (shared by both phases) ---
+        # system_prompt is empty — both phases put their prompts in query text.
+        # The guardrail model is set first; we switch to the agent model after.
+        options = self._build_agent_options(
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
 
-        # Log prompt-specific metadata (input already logged before guardrail).
-        bt_span.log(
-            metadata={
-                "core_prompt_id": core_prompt.prompt_id,
-                "core_prompt_version": core_prompt.version,
-                "core_prompt_in_options": system_prompt_in_options,
-                "summary_included": summary_included,
-            }
-        )
-
-        prompt_text = full_prompt if not system_prompt_in_options else conversation_text
-
-        # --- Step 4: Run the SDK query → response loop ------------------
-        emit(AgentProgressUpdate(type="status", text="Thinking..."))
+        guardrail_cost: float | None = None
 
         try:
-            final_text = ""
-            trace_id = None
-            llm_call_count = 0
-            result_usage: dict[str, Any] | None = None
-            total_cost_usd: float | None = None
             async with ClaudeSDKClient(options=options) as client:
-                await client.query(prompt_text)
-                # The SDK may call tools internally (triggering our MCP handlers)
-                # and then stream the final text response here.
+                # --- Phase 1: Guardrail (Haiku) — hard gate ---
+                guardrail_response = await self._run_guardrail_via_sdk(
+                    client,
+                    bt_span,
+                    last_user_message,
+                    context,
+                    start_time,
+                )
+                guardrail_cost = guardrail_response.total_cost_usd
+
+                if guardrail_response.blocked:
+                    return guardrail_response.agent_response
+
+                # --- Phase 2: Agent response (Sonnet) ---
+                await client.set_model(self.model)
+
+                core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
+                conversation_text = self._format_conversation(messages)
+                full_prompt, summary_included = build_prompt(
+                    conversation_text,
+                    core_prompt=core_prompt.text,
+                    summary_text=context.summary_text,
+                    page_url=context.page_url,
+                )
+
+                bt_span.log(
+                    metadata={
+                        "core_prompt_id": core_prompt.prompt_id,
+                        "core_prompt_version": core_prompt.version,
+                        "summary_included": summary_included,
+                    }
+                )
+
+                emit(AgentProgressUpdate(type="status", text="Thinking..."))
+
+                final_text = ""
+                llm_call_count = 0
+                result_usage: dict[str, Any] | None = None
+                agent_cost: float | None = None
+
+                await client.query(full_prompt)
                 async for message in client.receive_response():
                     if isinstance(message, AssistantMessage):
                         llm_call_count += 1
                     if isinstance(message, ResultMessage):
                         result_usage = message.usage
-                        total_cost_usd = message.total_cost_usd
+                        agent_cost = message.total_cost_usd
                     else:
                         chunk = self._extract_text_from_message(message)
                         if chunk:
                             final_text += chunk
+
                 trace_id = getattr(client, "trace_id", None) or getattr(
                     client, "last_trace_id", None
                 )
+
         except Exception as exc:
-            # Record the error in the Braintrust span before re-raising
             latency_ms = int((time.time() - start_time) * 1000)
             bt_span.log(
                 output=str(exc),
@@ -390,18 +393,19 @@ class ClaudeAgentService:
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
-        # --- Step 5: Finalize and log metrics ---------------------------
+        # --- Finalize and log metrics ---
         latency_ms = int((time.time() - start_time) * 1000)
 
         output = final_text.strip()
         if not output:
             output = ERROR_FALLBACK_MESSAGE
 
-        # Fall back to the Braintrust span ID if the SDK didn't provide one
         if not trace_id:
             trace_id = bt_span.id
 
-        # Extract token counts from ResultMessage.usage (standard Anthropic format)
+        # Sum costs from both phases (guardrail + agent).
+        total_cost_usd = _sum_costs(guardrail_cost, agent_cost)
+
         input_tokens = None
         output_tokens = None
         cache_creation_tokens = None
@@ -412,14 +416,13 @@ class ClaudeAgentService:
             cache_creation_tokens = result_usage.get("cache_creation_input_tokens")
             cache_read_tokens = result_usage.get("cache_read_input_tokens")
 
-        # Log output, metrics, and metadata to the Braintrust span.
         refs = extract_refs(tool_calls_list)
         span_output: dict[str, Any] = {
             "content": output,
             "ref_count": len(refs),
             "tool_count": len(tool_calls_list),
         }
-        span_metadata: dict[str, Any] = {
+        span_log_metadata: dict[str, Any] = {
             "refs": refs,
             "tool_calls": tool_calls_list,
         }
@@ -429,8 +432,6 @@ class ClaudeAgentService:
         }
         if llm_call_count:
             metrics["llm_calls"] = llm_call_count
-        # Token metrics using Braintrust standard names.
-        # Convention: prompt_tokens includes cache tokens.
         if input_tokens is not None:
             prompt_tokens = input_tokens + (cache_read_tokens or 0) + (cache_creation_tokens or 0)
             metrics["prompt_tokens"] = prompt_tokens
@@ -442,7 +443,7 @@ class ClaudeAgentService:
             metrics["prompt_cache_creation_tokens"] = cache_creation_tokens
         if total_cost_usd is not None:
             metrics["total_cost_usd"] = total_cost_usd
-        bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
+        bt_span.log(output=span_output, metrics=metrics, metadata=span_log_metadata)
 
         return AgentResponse(
             content=output,
@@ -462,47 +463,104 @@ class ClaudeAgentService:
     # Guardrail helper
     # -------------------------------------------------------------------
 
-    async def _run_guardrail(
-        self, bt_span, user_message: str, context: MessageContext, start_time: float
-    ) -> AgentResponse | None:
-        """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
+    @dataclass
+    class _GuardrailPhaseResult:
+        """Internal result from the guardrail SDK phase."""
+
+        blocked: bool
+        agent_response: AgentResponse | None  # set only when blocked
+        total_cost_usd: float | None
+
+    async def _run_guardrail_via_sdk(
+        self,
+        client: ClaudeSDKClient,
+        bt_span,
+        user_message: str,
+        context: MessageContext,
+        start_time: float,
+    ) -> _GuardrailPhaseResult:
+        """Run the guardrail as the first query on the shared SDK client.
+
+        Uses set_model() to switch to the guardrail model (Haiku), runs the
+        classification query, then returns the result. Fails closed on any error.
+        """
+        from django.conf import settings as django_settings
+
+        guardrail_span = bt_span.start_span(name="guardrail", type="task")
+
         enriched_message, _ = build_prompt(
             user_message, summary_text=context.summary_text, page_url=context.page_url
         )
+        guardrail_cost: float | None = None
 
-        guardrail_span = bt_span.start_span(name="guardrail", type="task")
-        guardrail_result = await asyncio.to_thread(
-            get_guardrail_service().check_message, enriched_message
-        )
+        try:
+            # Switch to guardrail model (Haiku).
+            await client.set_model(django_settings.GUARDRAIL_MODEL)
+
+            # Build the guardrail query: system prompt + user message in one text.
+            guardrail_prompt = self.prompt_service.get_core_prompt(
+                prompt_id=django_settings.GUARDRAIL_PROMPT_SLUG
+            ).text
+            query_text = f"{guardrail_prompt}\n\n---\n\nUser message:\n{enriched_message}"
+
+            # Run the guardrail classification.
+            guardrail_text = ""
+            await client.query(query_text)
+            async for message in client.receive_response():
+                if isinstance(message, ResultMessage):
+                    guardrail_cost = message.total_cost_usd
+                else:
+                    chunk = self._extract_text_from_message(message)
+                    if chunk:
+                        guardrail_text += chunk
+
+            guardrail_result = parse_guardrail_response(guardrail_text)
+
+        except Exception as exc:
+            # Fail closed: any SDK/parsing error blocks the message.
+            logger.error(f"Guardrail: SDK call failed: {exc}")
+            guardrail_result = GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
+
         guardrail_span.log(
             input={"message": enriched_message},
             output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
             metadata={"guardrail_blocked": not guardrail_result.allowed},
+            metrics={"total_cost_usd": guardrail_cost} if guardrail_cost else {},
         )
         guardrail_span.end()
 
         if guardrail_result.allowed:
-            return None
+            return self._GuardrailPhaseResult(
+                blocked=False, agent_response=None, total_cost_usd=guardrail_cost
+            )
 
+        # Blocked — build rejection response.
         logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
-        # Show the LLM's reason to the user when it's a real content reason
-        # (not an internal infra reason like "service unavailable").
         internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
         reason = guardrail_result.reason
         if reason and reason not in internal_reasons:
             rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
         else:
             rejection = GUARDRAIL_REJECTION_MESSAGE
+
         latency_ms = int((time.time() - start_time) * 1000)
         bt_span.log(
             output={"content": rejection, "guardrail_blocked": True},
-            metrics={"latency_ms": latency_ms},
+            metrics={
+                "latency_ms": latency_ms,
+                **({"total_cost_usd": guardrail_cost} if guardrail_cost else {}),
+            },
         )
-        return AgentResponse(
-            content=rejection,
-            tool_calls=[],
-            latency_ms=latency_ms,
-            trace_id=bt_span.id,
+        return self._GuardrailPhaseResult(
+            blocked=True,
+            agent_response=AgentResponse(
+                content=rejection,
+                tool_calls=[],
+                latency_ms=latency_ms,
+                trace_id=bt_span.id,
+                total_cost_usd=guardrail_cost,
+            ),
+            total_cost_usd=guardrail_cost,
         )
 
     # -------------------------------------------------------------------
@@ -661,19 +719,21 @@ class ClaudeAgentService:
 
     def _build_agent_options(
         self,
-        system_prompt: str,
         mcp_server: Any,
         allowed_tools: list[str],
-    ) -> tuple[Any, bool]:
-        """Construct ClaudeAgentOptions, feature-detecting supported params.
+    ) -> Any:
+        """Construct ClaudeAgentOptions for the shared two-phase SDK client.
 
-        Returns (options, system_prompt_in_options). If the SDK doesn't support
-        system_prompt as an option, the caller must prepend it to the conversation.
+        system_prompt is set to empty because both the guardrail and agent
+        phases put their prompts directly in the query text. The model starts
+        as the guardrail model; _send_message_inner switches to the agent
+        model via set_model() between phases.
         """
+        from django.conf import settings as django_settings
+
         options_kwargs: dict[str, Any] = {
-            "model": self.model,
-            # bypassPermissions: the SDK normally prompts for user approval
-            # of tool calls; we skip that since this is a server-side agent.
+            # Start with guardrail model; switched to agent model after guardrail.
+            "model": django_settings.GUARDRAIL_MODEL,
             "permission_mode": "bypassPermissions",
             "mcp_servers": {self._mcp_server_name: mcp_server},
             "allowed_tools": allowed_tools,
@@ -688,7 +748,6 @@ class ClaudeAgentService:
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
-            # Pass API keys into the SDK subprocess environment
             options_kwargs["env"] = {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
                 "BRAINTRUST_API_KEY": self.braintrust_api_key,
@@ -700,12 +759,11 @@ class ClaudeAgentService:
             if self._supports_option("stderr"):
                 options_kwargs["stderr"] = lambda line: logger.warning("Claude CLI: %s", line)
 
-        system_prompt_in_options = False
+        # Empty system prompt — both phases put prompts in query text.
         if self._supports_option("system_prompt"):
-            options_kwargs["system_prompt"] = system_prompt
-            system_prompt_in_options = True
+            options_kwargs["system_prompt"] = ""
 
-        return ClaudeAgentOptions(**options_kwargs), system_prompt_in_options
+        return ClaudeAgentOptions(**options_kwargs)
 
     # -------------------------------------------------------------------
     # Message formatting / text extraction
