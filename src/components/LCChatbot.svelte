@@ -1788,7 +1788,6 @@ inset: 8px;
 
   .message-content :global(.response-link) {
     width: 239px;
-    font-weight: 700;
     line-height: 21px;
     text-decoration-line: underline;
     text-decoration-style: solid;
