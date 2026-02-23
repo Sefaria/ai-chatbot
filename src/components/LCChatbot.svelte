@@ -1254,7 +1254,6 @@
   .message {
     display: flex;
     flex-direction: column;
-    max-width: 85%;
     animation: fadeInUp 0.2s ease;
   }
 
@@ -1270,6 +1269,7 @@
   }
 
   .message.user {
+    max-width: 85%;
     align-self: flex-end;
   }
 
@@ -1277,105 +1277,18 @@
     align-self: flex-start;
   }
 
-  .message-content {
+  .message.user .message-content {
     padding: 12px 16px;
     border-radius: var(--lc-radius);
     word-wrap: break-word;
-  }
-
-  .message.user .message-content {
     background: var(--lc-user-bg);
     color: var(--lc-user-text);
     border-bottom-right-radius: 4px;
   }
 
-  .message.assistant .message-content {
-    background: var(--lc-bg);
-    color: var(--lc-assistant-text);
-    border-bottom-left-radius: 4px;
-    border: 1px solid var(--lc-border);
-    line-height: 17px;
-    font-size: var(--lc-font-size);
-  }
-
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
     background: #fef2f2;
-  }
-
-  .message-content p {
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  /* Markdown Styles */
-  .message-content :global(h1),
-  .message-content :global(h2),
-  .message-content :global(h3),
-  .message-content :global(h4),
-  .message-content :global(h5),
-  .message-content :global(h6) {
-    margin-top: 12px;
-    margin-bottom: 8px;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  .message-content :global(h1) { font-size: 1.25em; }
-  .message-content :global(h2) { font-size: 1.15em; }
-  .message-content :global(h3) { font-size: 1.05em; }
-
-  .message-content :global(p) {
-    margin-bottom: 8px;
-  }
-
-  .message-content :global(p:last-child) {
-    margin-bottom: 0;
-  }
-
-  .message-content :global(a) {
-    color: var(--lc-primary);
-    text-decoration: underline;
-  }
-
-  .message-content :global(ul),
-  .message-content :global(ol) {
-    margin: 8px 0;
-    padding-left: 20px;
-  }
-
-  .message-content :global(li) {
-    margin-bottom: 4px;
-  }
-
-  .message-content :global(code) {
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
-    font-size: 0.9em;
-    background: var(--lc-bg-tertiary);
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
-
-  .message-content :global(pre) {
-    margin: 8px 0;
-    padding: 12px;
-    background: #1e293b;
-    border-radius: var(--lc-radius-sm);
-    overflow-x: auto;
-  }
-
-  .message-content :global(pre code) {
-    background: transparent;
-    padding: 0;
-    color: #e2e8f0;
-  }
-
-  .message-content :global(blockquote) {
-    margin: 8px 0;
-    padding-left: 12px;
-    border-left: 3px solid var(--lc-primary);
-    color: var(--lc-text-secondary);
-    font-style: italic;
   }
 
   .message-meta {
@@ -1847,4 +1760,51 @@ inset: 8px;
     color: var(--lc-sefaria-blue);
   }
 
+  .message.assistant .message-content {
+    color: var(--lc-sefaria-blue);
+    font-size: var(--lc-font-size);
+  }
+
+  /* css for classes that come directly from server (via @html) —
+     must use :global() so Svelte doesn't strip them */
+  .message-content :global(.response-title) {
+    font-size: var(--lc-font-size-lg);
+    font-weight: 600;
+  }
+
+  .message-content :global(.response-generic) {
+    line-height: 21px;
+  }
+
+  .message-content :global(.response-section) {
+    font-weight: 600;
+    line-height: 18px;
+  }
+
+  .message-content :global(.response-list) {
+    line-height: 18px;
+  }
+
+  .message-content :global(.response-link) {
+    width: 239px;
+    font-weight: 700;
+    line-height: 21px;
+    text-decoration-line: underline;
+    text-decoration-style: solid;
+    text-decoration-skip-ink: none;
+    text-decoration-thickness: auto;
+    text-underline-offset: auto;
+    text-underline-position: from-font;
+  }
+
+  .message-content :global(.response-signoff) {
+    font-style: italic;
+    line-height: 21px;
+  }
+
+  .message-content :global(.response-quote) {
+    /*  place holder */
+  }
+
 </style>
+
