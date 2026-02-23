@@ -1760,7 +1760,8 @@ inset: 8px;
     color: var(--lc-sefaria-blue);
   }
 
-  .message.assistant .message-content {
+  .message.assistant .message-content,
+  .message.assistant .message-content :global(a) {
     color: var(--lc-sefaria-blue);
     font-size: var(--lc-font-size);
   }
