@@ -338,8 +338,15 @@
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
-          currentProgress = progress;
-          
+          let displayText;
+          if (progress?.type === 'status') {
+            displayText = progress.text;
+          } else if (progress?.type === 'tool_start') {
+            displayText = progress.description || `Running ${progress.toolName}`;
+          }
+          displayText = displayText.replace(/…|\.\.\./, '');
+          currentProgress = {...progress, displayText};
+
           // Track tool usage in history
           if (progress.type === 'tool_start') {
             toolHistory = [...toolHistory, {
@@ -605,6 +612,7 @@
     closeMenu();
     handleNewChat();
   }
+
 </script>
 
 <div
@@ -785,9 +793,7 @@
                 {/if}
               </div>
               <div class="message-meta">
-                {#if item.status === 'sending'}
-                  <span class="message-status sending">Sending...</span>
-                {:else if item.status === 'failed'}
+                {#if item.status === 'failed'}
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
@@ -823,62 +829,26 @@
         {/each}
 
         {#if isSending}
-          <div class="message assistant thinking">
-            <div class="message-content thinking-content">
+          <div class="message assistant">
+            <div class="thinking-content">
               <!-- Progress Status -->
-              <div class="thinking-status">
-                {#if currentProgress?.type === 'status'}
-                  <div class="status-text">
-                    <div class="thinking-spinner"></div>
-                    <span>{currentProgress.text}</span>
-                  </div>
-                {:else if currentProgress?.type === 'tool_start'}
-                  <div class="status-text tool-running">
-                    <div class="thinking-spinner"></div>
-                    <span>{currentProgress.description || `Running ${currentProgress.toolName}...`}</span>
-                  </div>
-                {:else if currentProgress?.type === 'tool_end'}
-                  <div class="status-text" class:tool-error={currentProgress.isError}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      {#if currentProgress.isError}
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                      {:else}
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                      {/if}
-                    </svg>
-                    <span>{currentProgress.isError ? 'Tool error' : 'Done'}</span>
-                  </div>
-                {:else}
-                  <div class="status-text">
-                    <div class="thinking-spinner"></div>
-                    <span>Thinking...</span>
-                  </div>
-                {/if}
-              </div>
-              
-              <!-- Tool History -->
-              {#if toolHistory.length > 0}
-                <div class="tool-history">
-                  {#each toolHistory as tool, i}
-                    <div class="tool-item" class:running={tool.status === 'running'} class:error={tool.status === 'error'}>
-                      <span class="tool-icon">
-                        {#if tool.status === 'running'}
-                          <div class="mini-spinner"></div>
-                        {:else if tool.status === 'error'}
-                          ✗
-                        {:else}
-                          ✓
-                        {/if}
-                      </span>
-                      <span class="tool-desc">{tool.description || tool.toolName}</span>
-                      {#if tool.duration}
-                        <span class="tool-duration">{(tool.duration / 1000).toFixed(1)}s</span>
-                      {/if}
-                    </div>
-                  {/each}
+              {#if currentProgress?.type === 'tool_end' }
+                <div class="status-text" class:tool-error={currentProgress.isError}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    {#if currentProgress.isError}
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="15" y1="9" x2="9" y2="15"></line>
+                      <line x1="9" y1="9" x2="15" y2="15"></line>
+                    {:else}
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    {/if}
+                  </svg>
+                  <span>{currentProgress.isError ? 'Tool error' : 'Done'}</span>
+                </div>
+              {:else}
+                <div class="status-text">
+                  <p>{currentProgress?.displayText || "Thinking"}<span class="dots"></span></p>
                 </div>
               {/if}
             </div>
@@ -1462,11 +1432,8 @@
   .thinking-content {
     min-width: 200px;
     padding: 12px 16px !important;
-  }
-
-  .thinking-status {
     margin-bottom: 8px;
-  }
+}
 
   .status-text {
     display: flex;
@@ -1484,76 +1451,18 @@
     color: var(--lc-error);
   }
 
-  .thinking-spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--lc-border);
-    border-top-color: var(--lc-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
+.dots::after {
+  content: '';
+  animation: dots 1.5s steps(4, end) infinite;
+}
 
-  /* Tool History */
-  .tool-history {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    border-top: 1px solid var(--lc-border);
-    padding-top: 8px;
-    margin-top: 4px;
-  }
-
-  .tool-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-muted);
-    padding: 4px 0;
-  }
-
-  .tool-item.running {
-    color: var(--lc-primary);
-  }
-
-  .tool-item.error {
-    color: var(--lc-error);
-  }
-
-  .tool-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-
-  .tool-item:not(.running):not(.error) .tool-icon {
-    color: #22c55e;
-  }
-
-  .mini-spinner {
-    width: 12px;
-    height: 12px;
-    border: 1.5px solid var(--lc-border);
-    border-top-color: var(--lc-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  .tool-desc {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tool-duration {
-    font-size: 11px;
-    color: var(--lc-text-muted);
-    opacity: 0.7;
-  }
+@keyframes dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%  { content: '...'; }
+  100% { content: ''; }
+}
 
   /* Empty State */
   .empty-state {
