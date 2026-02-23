@@ -24,11 +24,11 @@ def _setup_braintrust_tracing(self) -> None:
 
     global _BRAINTRUST_SETUP_DONE
     if _BRAINTRUST_SETUP_DONE:
-        self._braintrust_enabled = True
+        self._braintrust_logging_enabled = True
         return
 
     setup_claude_agent_sdk(project=bt_project, api_key=bt_api_key)
-    self._braintrust_enabled = True
+    self._braintrust_logging_enabled = True
     _BRAINTRUST_SETUP_DONE = True
 ```
 
@@ -47,7 +47,7 @@ async def send_message(...) -> AgentResponse:
     async def run() -> AgentResponse:
         return await self._send_message_inner(...)
 
-    if braintrust and self._braintrust_enabled:
+    if braintrust and self._braintrust_logging_enabled:
         traced_run = braintrust.traced(name="chat-agent", type="llm")(run)
         return await traced_run()
 
@@ -154,9 +154,26 @@ Uses `braintrust.init_logger()` to log user feedback:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BRAINTRUST_API_KEY` | (required) | API key to enable tracing |
+| `BRAINTRUST_API_KEY` | (required when enabled) | API key to enable tracing |
 | `BRAINTRUST_PROJECT` | `"On Site Agent"` | Project name in Braintrust |
+| `BRAINTRUST_LOGGING_ENABLED` | `"true"` | Set to `"false"` to disable tracing/logging (prompt fetching is unaffected) |
 | `CORE_PROMPT_SLUG` | `"core-8fbc"` | Prompt ID for system prompt |
+
+### Disabling Braintrust Logging for Load Tests
+
+Set `BRAINTRUST_LOGGING_ENABLED=false` to disable Braintrust tracing and logging.
+This is useful during load tests to reduce noise. **Prompt fetching is unaffected**
+and always runs when `BRAINTRUST_API_KEY` is set. When logging is disabled:
+
+- SDK monkey-patching (`setup_claude_agent_sdk`) is skipped
+- `_setup_braintrust_tracing()` returns early — `init_logger()` is never called
+- All `.log()` and `.start_span()` calls are silent no-ops (Braintrust SDK noop span)
+- `@braintrust.traced` decorator is a pass-through no-op
+- `TracedThreadPoolExecutor` still used (it passes through as a plain executor when no logger is active)
+- `braintrust.flush()` is still called (it's a no-op when no logger is initialized)
+- Feedback logging via `update_span()` is skipped (`_bt_logger` is `None`)
+
+The default is `"true"`, so existing deployments are unaffected.
 
 ## Files
 

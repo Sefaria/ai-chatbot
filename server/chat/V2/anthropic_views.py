@@ -241,7 +241,7 @@ def chat_anthropic_v2(request):
     msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
 
     try:
-        agent = get_agent_service()
+        agent = get_agent_service(is_load_testing=False)
         conversation = [ConversationMessage(role="user", content=user_message_text)]
         agent_response = asyncio.run(
             agent.send_message(

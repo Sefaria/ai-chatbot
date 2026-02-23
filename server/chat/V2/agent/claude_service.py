@@ -155,6 +155,7 @@ class ClaudeAgentService:
     def __init__(
         self,
         api_key: str | None = None,
+        base_url: str | None = None,
         model: str | None = None,
         max_iterations: int = 10,
         max_tokens: int = 8000,
@@ -171,16 +172,25 @@ class ClaudeAgentService:
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        self.client = get_anthropic_client(api_key)
+        self.client = get_anthropic_client(api_key, base_url=base_url)
         self.prompt_service = prompt_service or get_prompt_service()
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
+        self.braintrust_logging_enabled = bt.enabled
 
         # The SDK reads the key from the environment, so ensure it's set.
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key_str
+
+        # The Claude Agent SDK reads ANTHROPIC_BASE_URL from the environment.
+        # Set it here so the SDK routes to the mock server during load tests.
+        # NOTE: This is a process-global mutation. Safe only for load-test processes where
+        # every request routes to the mock. Per-request routing is handled in views.py via
+        # the isLoadTest request field — callers pass base_url only when load testing.
+        if base_url and not os.environ.get("ANTHROPIC_BASE_URL"):
+            os.environ["ANTHROPIC_BASE_URL"] = base_url
 
         from django.conf import settings as django_settings
 
@@ -203,12 +213,17 @@ class ClaudeAgentService:
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is active for this thread.
 
+        No-op when ``BRAINTRUST_LOGGING_ENABLED=false``.
+
         Two concerns:
         1. SDK monkey-patching (global, once per process via _BRAINTRUST_SETUP_DONE)
         2. Setting current_logger in this thread's ContextVar so @braintrust.traced
            produces real spans. init_logger stores the logger in a ContextVar, which
            is per-thread — so every new request thread needs its own init_logger call.
         """
+        if not self.braintrust_logging_enabled:
+            return
+
         global _BRAINTRUST_SETUP_DONE
         if not _BRAINTRUST_SETUP_DONE:
             setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
@@ -229,20 +244,23 @@ class ClaudeAgentService:
     ) -> AgentResponse:
         """Entry point for a single chat turn.
 
-        The entire turn is wrapped in a Braintrust traced span named
-        "chat-agent" so that LLM calls and tool calls appear as children
-        in the Braintrust dashboard.
+        When Braintrust is enabled the turn is wrapped in a traced span
+        named "chat-agent" so that LLM calls and tool calls appear as
+        children in the Braintrust dashboard.  When disabled the agent
+        runs without any tracing overhead.
         """
         context = context or MessageContext()
 
+        message_task = self._send_message_inner(
+            messages=messages,
+            core_prompt_id=core_prompt_id,
+            on_progress=on_progress,
+            context=context,
+        )
+
         @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
-            return await self._send_message_inner(
-                messages=messages,
-                core_prompt_id=core_prompt_id,
-                on_progress=on_progress,
-                context=context,
-            )
+            return await message_task
 
         return await run()
 
@@ -271,6 +289,7 @@ class ClaudeAgentService:
         start_time = time.time()
 
         # Grab the Braintrust span once — all logging below uses this reference.
+        # Returns a noop span when Braintrust is not initialized; .log() calls are silent.
         bt_span = current_span()
 
         def emit(update: AgentProgressUpdate) -> None:
@@ -398,8 +417,7 @@ class ClaudeAgentService:
             output = ERROR_FALLBACK_MESSAGE
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
-        if not trace_id:
-            trace_id = bt_span.id
+        trace_id = trace_id or bt_span.id
 
         # Extract token counts from ResultMessage.usage (standard Anthropic format)
         input_tokens = None
@@ -463,7 +481,7 @@ class ClaudeAgentService:
     # -------------------------------------------------------------------
 
     async def _run_guardrail(
-        self, bt_span, user_message: str, context: MessageContext, start_time: float
+        self, bt_span: Any, user_message: str, context: MessageContext, start_time: float
     ) -> AgentResponse | None:
         """Run the guardrail check. Returns AgentResponse if blocked, None if allowed."""
         enriched_message, _ = build_prompt(
@@ -784,6 +802,15 @@ class ClaudeAgentService:
 # ---------------------------------------------------------------------------
 
 
-def get_agent_service() -> ClaudeAgentService:
-    """Create a fresh agent service instance (one per request)."""
+_MOCK_ANTHROPIC_URL = os.environ.get("MOCK_ANTHROPIC_URL", "http://mock-anthropic:8002")
+
+
+def get_agent_service(is_load_testing: bool = False) -> ClaudeAgentService:
+    """Create a fresh agent service instance (one per request).
+
+    Pass ``is_load_testing=True`` to route requests to the mock Anthropic server
+    instead of the real API — no environment variable switch required.
+    """
+    if is_load_testing:
+        return ClaudeAgentService(base_url=_MOCK_ANTHROPIC_URL)
     return ClaudeAgentService()

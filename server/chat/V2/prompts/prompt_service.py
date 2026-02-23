@@ -60,16 +60,18 @@ class PromptService:
             project_name: Braintrust project name (default: from env)
             cache_ttl_seconds: How long to cache prompts
         """
-        import braintrust
-
         self.api_key = api_key or os.environ.get("BRAINTRUST_API_KEY")
         if not self.api_key:
-            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required")
+            raise RuntimeError("BRAINTRUST_API_KEY environment variable is required for prompt fetching")
         self.project_name = project_name or os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
         self.cache_ttl = cache_ttl_seconds
 
         self._cache: dict[str, dict[str, Any]] = {}
         self._cache_lock = Lock()
+
+        # Always initialize Braintrust client for prompt fetching (regardless of tracing setting)
+        import braintrust
+
         self._braintrust_client = braintrust
 
     def get_core_prompt(
@@ -140,6 +142,9 @@ class PromptService:
         Returns (prompt_text, version) or (None, "") if not found.
         Raises on network/API errors (caller handles).
         """
+        if not self._braintrust_client:
+            return None, ""
+
         prompt = self._braintrust_client.load_prompt(
             project=self.project_name,
             slug=prompt_id,

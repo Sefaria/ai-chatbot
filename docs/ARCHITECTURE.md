@@ -190,9 +190,13 @@ BRAINTRUST_API_KEY=...
 
 # Optional
 BRAINTRUST_PROJECT=...
+BRAINTRUST_LOGGING_ENABLED=true  # set false to disable tracing (e.g. load tests); prompt fetching unaffected
 
 # Optional - Prompts
 CORE_PROMPT_SLUG=core-...
+
+# Optional - Load Testing
+MOCK_ANTHROPIC_URL=http://mock-anthropic:8002  # mock routes requests that pass isLoadTest:true in body
 
 # Optional - Sefaria
 SEFARIA_API_BASE_URL=https://www.sefaria.org

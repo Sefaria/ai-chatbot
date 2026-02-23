@@ -65,9 +65,15 @@ def build_session_info(session) -> dict:
 
 # Braintrust logger instance — used by chat_feedback_v2() to attach user
 # ratings to traces. Per-thread tracing setup is handled in claude_service.py.
+# When Braintrust is disabled, _bt_logger is None and feedback logging is skipped.
 
 _bt_config = get_braintrust_config()
-_bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
+_bt_logger = (
+    braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
+    if _bt_config.enabled
+    else None
+)
+
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
@@ -75,7 +81,8 @@ def _create_traced_executor() -> concurrent.futures.Executor:
 
     Braintrust's TracedThreadPoolExecutor copies the current trace span
     into the worker thread, so LLM calls on the background thread appear
-    as children of the request-level span.
+    as children of the request-level span. Passes through as a plain
+    executor when Braintrust is not initialized.
     """
     return braintrust.TracedThreadPoolExecutor(max_workers=1)
 
@@ -165,7 +172,7 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service()
+                agent = get_agent_service(is_load_testing=data.get("isLoadTest", False))
                 result_holder["response"] = asyncio.run(
                     agent.send_message(
                         messages=conversation,
@@ -328,10 +335,13 @@ def chat_feedback_v2(request):
                             "user_id": data["userId"],
                             "message_id": data["messageId"],
                             }
-        try:
-            bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
-        except Exception as _e:
-            logger.debug("Could not update span metadata with feedback metadata: %s", _e)
+        if bt_logger:
+            try:
+                bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
+            except Exception as _e:
+                logger.debug("Could not update span metadata with feedback metadata: %s", _e)
+        else:
+            logger.debug("Braintrust disabled — skipping feedback logging")
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
         return Response(
