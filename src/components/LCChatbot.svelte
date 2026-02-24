@@ -143,6 +143,46 @@
     }
   });
 
+  // GA4 tracking: attach listener on the host element (light DOM) so it
+  // receives clicks bubbling out of the shadow root
+  $effect(() => {
+    const host = $host();
+    if (!host) return;
+
+    function trackClick(e) {
+      const path = e.composedPath();
+      // Skip the toggle button — toggleMode() fires its own specific event
+      const isToggle = path.some(
+        el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
+      );
+      if (isToggle) return;
+      // If a response link was clicked — capture the link text
+      const link = path.find(
+        el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
+      );
+      if (link) {
+        if (typeof window.gtag === 'function') {
+          const raw = link.getAttribute('href');
+          const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url });
+        }
+        return;
+      }
+
+      // Otherwise walk up the path for the nearest aria-label
+      const target = path.find(
+        el => el instanceof Element && el.getAttribute('aria-label')
+      );
+      if (!target) return;
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label') });
+      }
+    }
+
+    host.addEventListener('click', trackClick);
+    return () => host.removeEventListener('click', trackClick);
+  });
+
   // Dispatch custom events
   function dispatchEvent(name, detail = {}) {
     const event = new CustomEvent(`chatbot:${name}`, {
@@ -178,9 +218,13 @@
   }
 
   function toggleMode() {
-    mode = mode === 'floating' ? 'docked' : 'floating';
+    const newMode = mode === 'floating' ? 'docked' : 'floating';
+    mode = newMode;
     const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
     setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}` });
+    }
   }
 
   function handleNewChat() {
@@ -310,7 +354,9 @@
   async function handleSend() {
     const text = inputText.trim();
     if (!text || isSending || !userId || !apiBaseUrl) return;
-
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_message_sent', { length: text.length });
+    }
     // Clear input and draft
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -581,7 +627,6 @@
     if (!sefariaPath) return;
 
     e.preventDefault();
-    e.stopPropagation();
 
     const path = sefariaPath;
     console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
@@ -687,19 +732,19 @@
             </button>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                <button class="menu-item" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
                 </button>
-                <a class="menu-item" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Give feedback" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
-                <a class="menu-item" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Get help" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   Help (Coming soon)
                 </a>
-                <a class="menu-item" href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Opt-out" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   Opt-out in Settings
                 </a>
@@ -868,7 +913,8 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={maxInputChars}
-          placeholder="Type a message..."
+          placeholder="What are you learning today?"
+          aria-label="Prompt input"
           rows="1"
           disabled={isSending}
         ></textarea>
