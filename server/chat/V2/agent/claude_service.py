@@ -45,6 +45,7 @@ from ..prompts.prompt_fragments import (
     GUARDRAIL_UNAVAILABLE_REASON,
     build_prompt,
 )
+from ..router import get_router_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor, describe_tool_call
@@ -262,11 +263,12 @@ class ClaudeAgentService:
 
         Steps:
         0. Run guardrail check — short-circuits with a rejection if blocked
-        1. Build the system prompt (core from Braintrust + optional summary/page context)
-        2. Wrap each Sefaria tool as an SDK-compatible MCP tool
-        3. Configure and launch the ClaudeSDKClient
-        4. Stream text chunks from the SDK, accumulating the final response
-        5. Log metrics to Braintrust span
+        1. Run router to classify the message and select the appropriate core prompt
+        2. Build the system prompt (core from Braintrust + optional summary/page context)
+        3. Wrap each Sefaria tool as an SDK-compatible MCP tool
+        4. Configure and launch the ClaudeSDKClient
+        5. Stream text chunks from the SDK, accumulating the final response
+        6. Log metrics to Braintrust span
         """
         start_time = time.time()
 
@@ -305,7 +307,12 @@ class ClaudeAgentService:
         if guardrail_response:
             return guardrail_response
 
-        # --- Step 1: Assemble the full prompt ------------------------------
+        # --- Step 1: Router: classify message and select prompt --------------------
+        router_prompt_id, messages = await self._run_router(bt_span, last_user_message, messages)
+        if router_prompt_id:
+            core_prompt_id = router_prompt_id
+
+        # --- Step 2: Assemble the full prompt ------------------------------
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
         conversation_text = self._format_conversation(messages)
         full_prompt, summary_included = build_prompt(
@@ -315,7 +322,7 @@ class ClaudeAgentService:
             page_url=context.page_url,
         )
 
-        # --- Step 2: Build MCP tools ------------------------------------
+        # --- Step 3: Build MCP tools ------------------------------------
         # tool_calls_list is mutated by the tool handlers to record each invocation.
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_all_tools()
@@ -331,7 +338,7 @@ class ClaudeAgentService:
             tools=sdk_tools,
         )
 
-        # --- Step 3: Configure SDK options ------------------------------
+        # --- Step 4: Configure SDK options ------------------------------
         # When the SDK supports system_prompt in options, pass the full prompt
         # there. Otherwise, it becomes the prompt_text sent to client.query().
         options, system_prompt_in_options = self._build_agent_options(
@@ -352,7 +359,7 @@ class ClaudeAgentService:
 
         prompt_text = full_prompt if not system_prompt_in_options else conversation_text
 
-        # --- Step 4: Run the SDK query → response loop ------------------
+        # --- Step 5: Run the SDK query → response loop ------------------
         emit(AgentProgressUpdate(type="status", text="Thinking..."))
 
         try:
@@ -390,7 +397,7 @@ class ClaudeAgentService:
 
         emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
-        # --- Step 5: Finalize and log metrics ---------------------------
+        # --- Step 6: Finalize and log metrics ---------------------------
         latency_ms = int((time.time() - start_time) * 1000)
 
         output = final_text.strip()
@@ -504,6 +511,52 @@ class ClaudeAgentService:
             latency_ms=latency_ms,
             trace_id=bt_span.id,
         )
+
+    # -------------------------------------------------------------------
+    # Router helper
+    # -------------------------------------------------------------------
+
+    async def _run_router(
+        self, bt_span, user_message: str, messages: list[ConversationMessage]
+    ) -> tuple[str | None, list[ConversationMessage]]:
+        """Run the router to classify the message and select the appropriate prompt.
+
+        Returns (core_prompt_id_override, possibly_updated_messages).
+        Fails open: errors default to (None, original_messages) — i.e. Discovery with no rewrite.
+        """
+        router_span = bt_span.start_span(name="router", type="task")
+        try:
+            router_result = await asyncio.to_thread(get_router_service().classify, user_message)
+            router_span.log(
+                input={"message": user_message},
+                output={
+                    "route": router_result.route.value,
+                    "core_prompt_id": router_result.core_prompt_id,
+                    "rewritten_message": router_result.rewritten_message,
+                },
+            )
+
+            # If the router rewrote the message, replace the last user message
+            if router_result.rewritten_message:
+                updated = list(messages)
+                for i in range(len(updated) - 1, -1, -1):
+                    if updated[i].role == "user":
+                        updated[i] = ConversationMessage(
+                            role="user", content=router_result.rewritten_message
+                        )
+                        break
+                messages = updated
+
+            return router_result.core_prompt_id, messages
+        except Exception as exc:
+            logger.error(f"Router failed, defaulting to Discovery: {exc}")
+            router_span.log(
+                input={"message": user_message},
+                output={"route": "discovery", "error": str(exc)},
+            )
+            return None, messages
+        finally:
+            router_span.end()
 
     # -------------------------------------------------------------------
     # Tool wiring — bridging our Sefaria tools into the Claude Agent SDK
