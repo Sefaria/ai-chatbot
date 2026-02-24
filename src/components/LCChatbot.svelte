@@ -674,7 +674,12 @@
         </div>
         <div class="header-actions">
           <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
-            <img src="{staticIconsBaseUrl}/panel-right-close.svg" alt="" width="16" height="16" />
+            <img
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
+              alt=""
+              width="16"
+              height="16"
+            />
           </button>
           <div class="menu-container">
             <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
