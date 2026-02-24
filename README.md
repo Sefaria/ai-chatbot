@@ -5,11 +5,32 @@ Embeddable AI chat widget for Jewish text learning. Built with Svelte and Django
 ## Quick Start
 
 ```bash
-./setup.sh   # Install deps, create venv, run migrations
-./start.sh   # Start backend (8001) + frontend (5173)
+git clone <repo-url>
+cd ai-chatbot
 ```
 
-Visit `http://localhost:5173` to see the widget.
+Follow the full onboarding guide: [docs/FRESH_INSTALL.md](docs/FRESH_INSTALL.md).
+
+Recommended local run flow:
+
+```bash
+# terminal 1 (backend)
+cd server
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# set up postgres and update .env with your DB credentials and API keys
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8001
+
+# terminal 2 (frontend)
+cd ..
+npm install
+npm run dev
+```
+
+Visit `http://localhost:5173` for the local widget.
 
 ## Widget Usage
 
@@ -35,7 +56,7 @@ Bot version and prompt slugs can be configured from the widget settings panel (g
 
 ## API
 
-### POST /api/v2/chat/stream
+### POST /api/chat/stream (alias: /api/v2/chat/stream)
 
 Send a message and receive a streamed response with Server-Sent Events.
 
@@ -68,7 +89,9 @@ pytest           # Run tests
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Yes | PostgreSQL connection for Django |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
+| `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `DJANGO_SECRET_KEY` | No | Django secret |
@@ -79,6 +102,7 @@ Create a `.env` file in the `server/` directory with your API keys.
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) - System design and API reference
+- [Fresh Install](docs/FRESH_INSTALL.md) - Local setup and troubleshooting guide
 - [Testing](docs/TESTING.md) - Test commands and CI details
 
 ## License
