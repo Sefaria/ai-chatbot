@@ -740,9 +740,9 @@
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
-                <a class="menu-item" aria-label="Get help" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Get help" href="https://voices.sefaria.org/sheets/710765" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  Help (Coming soon)
+                  Help
                 </a>
                 <a class="menu-item" aria-label="Opt-out" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
