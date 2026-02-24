@@ -740,9 +740,9 @@
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
-                <a class="menu-item" aria-label="Get help" href="https://www.sefaria.org" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Get help" href="https://voices.sefaria.org/sheets/710765" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  Help (Coming soon)
+                  Help
                 </a>
                 <a class="menu-item" aria-label="Opt-out" href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
@@ -824,7 +824,7 @@
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
-            <p>Start a conversation</p>
+            <p>Sefaria AI Experiment</p>
           </div>
         {/if}
 
