@@ -12,9 +12,22 @@ from dataclasses import dataclass
 from django.conf import settings
 
 from ..prompts import get_prompt_service
-from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
+from ..utils import get_anthropic_client, make_singleton
 
 logger = logging.getLogger("chat.guardrail")
+
+# JSON schema for structured output — guarantees valid JSON with constrained
+# decision values directly from the API, eliminating parsing edge cases.
+GUARDRAIL_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": ["ALLOW", "BLOCK"]},
+        "reason": {"type": "string"},
+        "message": {"type": "string"},
+    },
+    "required": ["decision", "reason", "message"],
+    "additionalProperties": False,
+}
 
 
 @dataclass
@@ -30,7 +43,8 @@ class GuardrailService:
     """Classifies user messages as allowed or blocked using an LLM filter.
 
     Uses a Braintrust-managed prompt (guardrail-checker) as the system prompt,
-    sends the user message, and expects JSON {decision, message} back.
+    sends the user message, and expects JSON {decision, reason, message} back.
+    Uses structured outputs (output_config) to guarantee valid JSON from the API.
     When blocked, `message` is sent directly to the user.
     Fails closed on any error.
     """
@@ -56,12 +70,19 @@ class GuardrailService:
         try:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
             # temperature=0.0 for deterministic decisions.
+            # output_config enforces JSON schema so we never get malformed output.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
                 temperature=0.0,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
+                output_config={
+                    "format": {
+                        "type": "json_schema",
+                        "schema": GUARDRAIL_OUTPUT_SCHEMA,
+                    }
+                },
             )
             return self._parse_response(response)
         except Exception as exc:
@@ -74,29 +95,17 @@ class GuardrailService:
         return core_prompt.text
 
     def _parse_response(self, response) -> GuardrailResult:
-        """Parse LLM response JSON. Fail closed on malformed output.
+        """Parse structured JSON response. Fail closed on unexpected output.
 
-        Expected format: {decision: "ALLOW"/"BLOCK", message: "..."}
-        Response may be wrapped in markdown code fences (```json ... ```).
-        Only an explicit "ALLOW" passes — any other decision value is a block.
-        This is intentional: typos, unexpected values, or new decision types
-        should all fail closed rather than accidentally letting messages through.
+        The API guarantees valid JSON matching GUARDRAIL_OUTPUT_SCHEMA via
+        output_config, so decision is always "ALLOW" or "BLOCK".
         """
         try:
-            text = strip_markdown_fences(response.content[0].text)
-            data = json.loads(text)
-
-            decision = data.get("decision", "")
-            if not decision:
-                logger.warning(f"Guardrail: missing 'decision' field: {text[:200]}")
-                return GuardrailResult(allowed=False)
-
-            # Only explicit "ALLOW" passes — everything else is a block.
-            allowed = decision.upper() == "ALLOW"
+            data = json.loads(response.content[0].text)
             return GuardrailResult(
-                allowed=allowed,
-                reason=data.get("reason", ""),
-                message=data.get("message", ""),
+                allowed=data["decision"] == "ALLOW",
+                reason=data["reason"],
+                message=data["message"],
             )
         except (json.JSONDecodeError, IndexError, KeyError) as exc:
             logger.warning(f"Guardrail: failed to parse response: {exc}")
