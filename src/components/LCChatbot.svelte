@@ -932,8 +932,8 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    --lc-primary: #6366f1;
-    --lc-primary-hover: #4f46e5;
+    --lc-primary: #18345D;
+    --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-bg-secondary: #f8fafc;
     --lc-bg-tertiary: #f1f5f9;
@@ -941,7 +941,7 @@
     --lc-text-secondary: #64748b;
     --lc-text-muted: #94a3b8;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #6366f1;
+    --lc-user-bg: #18345D;
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
