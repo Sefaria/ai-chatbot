@@ -15,22 +15,10 @@ since it targets a different model.
 # Centralized here so copy is easy to review, update, and translate.
 # ERROR_FALLBACK_MESSAGE — shown when the agent crashes (DB-persisted as the response)
 # INTERNAL_ERROR_MESSAGE — sent to the client via SSE/API error events (less detail)
-# GUARDRAIL_REJECTION_MESSAGE — returned when the guardrail blocks a message
 
 ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
 
 INTERNAL_ERROR_MESSAGE = "An internal error occurred."
-
-GUARDRAIL_REJECTION_MESSAGE = (
-    "I can only help with questions related to Jewish texts and Torah encyclopaedia available on Sefaria. "
-    "Could you rephrase your question to be about a Jewish text or topic?"
-)
-GUARDRAIL_REJECTION_WITH_REASON = GUARDRAIL_REJECTION_MESSAGE + "\n\nReason: {reason}"
-
-# Internal reasons logged when the guardrail can't run or returns bad data.
-# Not user-facing — used in GuardrailResult.reason for debugging / tracing.
-GUARDRAIL_UNAVAILABLE_REASON = "Guardrail service unavailable"
-GUARDRAIL_MALFORMED_REASON = "Malformed guardrail response"
 
 # ---------------------------------------------------------------------------
 # Prompt fragments (injected into LLM system prompts)

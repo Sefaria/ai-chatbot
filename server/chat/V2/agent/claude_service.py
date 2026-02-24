@@ -39,10 +39,6 @@ from ..guardrail import get_guardrail_service
 from ..prompts import PromptService, get_prompt_service
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
-    GUARDRAIL_MALFORMED_REASON,
-    GUARDRAIL_REJECTION_MESSAGE,
-    GUARDRAIL_REJECTION_WITH_REASON,
-    GUARDRAIL_UNAVAILABLE_REASON,
     build_prompt,
 )
 from ..utils import get_anthropic_client, get_braintrust_config
@@ -476,7 +472,11 @@ class ClaudeAgentService:
         )
         guardrail_span.log(
             input={"message": enriched_message},
-            output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
+            output={
+                "allowed": guardrail_result.allowed,
+                "reason": guardrail_result.reason,
+                "message": guardrail_result.message,
+            },
             metadata={"guardrail_blocked": not guardrail_result.allowed},
         )
         guardrail_span.end()
@@ -484,15 +484,8 @@ class ClaudeAgentService:
         if guardrail_result.allowed:
             return None
 
-        logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
-        # Show the LLM's reason to the user when it's a real content reason
-        # (not an internal infra reason like "service unavailable").
-        internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
-        reason = guardrail_result.reason
-        if reason and reason not in internal_reasons:
-            rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
-        else:
-            rejection = GUARDRAIL_REJECTION_MESSAGE
+        logger.info(f"Guardrail blocked message: {guardrail_result.message}")
+        rejection = guardrail_result.message
         latency_ms = int((time.time() - start_time) * 1000)
         bt_span.log(
             output={"content": rejection, "guardrail_blocked": True},
