@@ -2,7 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from chat.V2.guardrail.guardrail_service import GuardrailService
+from chat.V2.agent.claude_service import _sum_costs
+from chat.V2.guardrail.guardrail_service import GuardrailService, parse_guardrail_response
 
 
 def _make_anthropic_response(text: str):
@@ -116,3 +117,59 @@ class TestGuardrailService:
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
         assert result.reason == "On-topic question"
+
+
+class TestParseGuardrailResponse:
+    """Tests for the standalone parse_guardrail_response() function."""
+
+    def test_allow(self):
+        result = parse_guardrail_response('{"decision": "ALLOW", "reason": "On topic"}')
+        assert result.allowed is True
+        assert result.reason == "On topic"
+
+    def test_block(self):
+        result = parse_guardrail_response('{"decision": "BLOCK", "reason": "Off topic"}')
+        assert result.allowed is False
+        assert result.reason == "Off topic"
+
+    def test_case_insensitive_allow(self):
+        result = parse_guardrail_response('{"decision": "allow", "reason": ""}')
+        assert result.allowed is True
+
+    def test_code_fences(self):
+        result = parse_guardrail_response('```json\n{"decision": "ALLOW", "reason": ""}\n```')
+        assert result.allowed is True
+
+    def test_malformed_json_fails_closed(self):
+        result = parse_guardrail_response("not json at all")
+        assert result.allowed is False
+        assert "malformed" in result.reason.lower()
+
+    def test_missing_decision_fails_closed(self):
+        result = parse_guardrail_response('{"reason": "some reason"}')
+        assert result.allowed is False
+
+    def test_empty_string_fails_closed(self):
+        result = parse_guardrail_response("")
+        assert result.allowed is False
+
+    def test_unknown_decision_fails_closed(self):
+        result = parse_guardrail_response('{"decision": "MAYBE", "reason": ""}')
+        assert result.allowed is False
+
+
+class TestSumCosts:
+    """Tests for _sum_costs helper."""
+
+    def test_both_present(self):
+        assert _sum_costs(0.01, 0.02) == 0.03
+
+    def test_one_none(self):
+        assert _sum_costs(None, 0.05) == 0.05
+        assert _sum_costs(0.05, None) == 0.05
+
+    def test_both_none(self):
+        assert _sum_costs(None, None) is None
+
+    def test_zero_values(self):
+        assert _sum_costs(0.0, 0.0) == 0.0

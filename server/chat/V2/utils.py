@@ -8,6 +8,7 @@ from typing import TypeVar
 
 import anthropic
 import braintrust
+from braintrust import wrap_anthropic
 
 T = TypeVar("T")
 
@@ -20,7 +21,7 @@ def get_anthropic_client(api_key: str | None = None) -> anthropic.Anthropic:
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise ValueError("ANTHROPIC_API_KEY is required")
-    return anthropic.Anthropic(api_key=key)
+    return wrap_anthropic(anthropic.Anthropic(api_key=key))
 
 
 @dataclass
