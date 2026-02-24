@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from django.conf import settings
 
 from ..prompts import get_prompt_service
-from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
 from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.guardrail")
@@ -24,13 +23,15 @@ class GuardrailResult:
 
     allowed: bool
     reason: str = ""
+    message: str = ""
 
 
 class GuardrailService:
     """Classifies user messages as allowed or blocked using an LLM filter.
 
     Uses a Braintrust-managed prompt (guardrail-checker) as the system prompt,
-    sends the user message, and expects JSON {decision, reason} back.
+    sends the user message, and expects JSON {decision, message} back.
+    When blocked, `message` is sent directly to the user.
     Fails closed on any error.
     """
 
@@ -41,7 +42,7 @@ class GuardrailService:
     def check_message(self, user_message: str) -> GuardrailResult:
         """Check whether a user message is allowed.
 
-        Returns GuardrailResult(allowed=True/False, reason=...).
+        Returns GuardrailResult(allowed=True/False, message=...).
         On any failure, returns allowed=False (fail closed).
         """
         # Fail closed: runtime errors (Braintrust outage, LLM errors) block
@@ -50,7 +51,7 @@ class GuardrailService:
             system_prompt = self._load_prompt()
         except Exception as exc:
             logger.error(f"Guardrail: failed to load prompt: {exc}")
-            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
+            return GuardrailResult(allowed=False)
 
         try:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
@@ -65,7 +66,7 @@ class GuardrailService:
             return self._parse_response(response)
         except Exception as exc:
             logger.error(f"Guardrail: LLM call failed: {exc}")
-            return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
+            return GuardrailResult(allowed=False)
 
     def _load_prompt(self) -> str:
         """Fetch the guardrail prompt from Braintrust via PromptService."""
@@ -75,7 +76,7 @@ class GuardrailService:
     def _parse_response(self, response) -> GuardrailResult:
         """Parse LLM response JSON. Fail closed on malformed output.
 
-        Expected format: {decision: "ALLOW"/"BLOCK", reason: "..."}
+        Expected format: {decision: "ALLOW"/"BLOCK", message: "..."}
         Response may be wrapped in markdown code fences (```json ... ```).
         Only an explicit "ALLOW" passes — any other decision value is a block.
         This is intentional: typos, unexpected values, or new decision types
@@ -88,14 +89,18 @@ class GuardrailService:
             decision = data.get("decision", "")
             if not decision:
                 logger.warning(f"Guardrail: missing 'decision' field: {text[:200]}")
-                return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
+                return GuardrailResult(allowed=False)
 
             # Only explicit "ALLOW" passes — everything else is a block.
             allowed = decision.upper() == "ALLOW"
-            return GuardrailResult(allowed=allowed, reason=data.get("reason", ""))
+            return GuardrailResult(
+                allowed=allowed,
+                reason=data.get("reason", ""),
+                message=data.get("message", ""),
+            )
         except (json.JSONDecodeError, IndexError, KeyError) as exc:
             logger.warning(f"Guardrail: failed to parse response: {exc}")
-            return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
+            return GuardrailResult(allowed=False)
 
 
 # Singleton — shared across requests within a process. The Anthropic client

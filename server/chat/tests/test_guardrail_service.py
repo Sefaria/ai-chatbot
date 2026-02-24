@@ -31,34 +31,32 @@ class TestGuardrailService:
     def test_allowed_message(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"decision": "ALLOW", "reason": ""}'
+            '{"decision": "ALLOW", "message": ""}'
         )
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
-        assert result.reason == ""
+        assert result.message == ""
 
     def test_blocked_message(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"decision": "BLOCK", "reason": "Off-topic question"}'
+            '{"decision": "BLOCK", "message": "I can only help with Jewish texts."}'
         )
         result = service.check_message("What is the capital of France?")
         assert result.allowed is False
-        assert result.reason == "Off-topic question"
+        assert result.message == "I can only help with Jewish texts."
 
     def test_braintrust_down_fails_closed(self):
         service = self._make_service()
         service.prompt_service.get_core_prompt.side_effect = RuntimeError("Braintrust unavailable")
         result = service.check_message("Hello")
         assert result.allowed is False
-        assert "unavailable" in result.reason.lower()
 
     def test_llm_error_fails_closed(self):
         service = self._make_service()
         service.client.messages.create.side_effect = Exception("API error")
         result = service.check_message("Hello")
         assert result.allowed is False
-        assert "unavailable" in result.reason.lower()
 
     def test_malformed_json_fails_closed(self):
         service = self._make_service()
@@ -67,12 +65,11 @@ class TestGuardrailService:
         )
         result = service.check_message("Hello")
         assert result.allowed is False
-        assert "malformed" in result.reason.lower()
 
     def test_missing_decision_field_fails_closed(self):
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"reason": "some reason"}'
+            '{"message": "some message"}'
         )
         result = service.check_message("Hello")
         assert result.allowed is False
@@ -88,31 +85,41 @@ class TestGuardrailService:
                 GuardrailService()
 
     def test_decision_format_allow(self):
-        """Prompt returns {decision: "ALLOW", reason: "..."} format."""
+        """Prompt returns {decision: "ALLOW", message: "..."} format."""
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"decision": "ALLOW", "reason": "Legitimate question about Jewish texts"}'
+            '{"decision": "ALLOW", "message": "Legitimate question about Jewish texts"}'
         )
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
-        assert result.reason == "Legitimate question about Jewish texts"
+        assert result.message == "Legitimate question about Jewish texts"
 
     def test_decision_format_block(self):
-        """Prompt returns {decision: "BLOCK", reason: "..."} format."""
+        """Prompt returns {decision: "BLOCK", message: "..."} format."""
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '{"decision": "BLOCK", "reason": "Not about Jewish texts"}'
+            '{"decision": "BLOCK", "message": "I focus on Jewish texts and learning."}'
         )
         result = service.check_message("How do I hack a website?")
         assert result.allowed is False
-        assert result.reason == "Not about Jewish texts"
+        assert result.message == "I focus on Jewish texts and learning."
+
+    def test_blocked_without_message(self):
+        """When message is missing from BLOCK response, message defaults to empty string."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '{"decision": "BLOCK"}'
+        )
+        result = service.check_message("What is the capital of France?")
+        assert result.allowed is False
+        assert result.message == ""
 
     def test_decision_format_with_code_fences(self):
         """Handles response wrapped in markdown code fences."""
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
-            '```json\n{"decision": "ALLOW", "reason": "On-topic question"}\n```'
+            '```json\n{"decision": "ALLOW", "message": "On-topic question"}\n```'
         )
         result = service.check_message("What is Shabbat?")
         assert result.allowed is True
-        assert result.reason == "On-topic question"
+        assert result.message == "On-topic question"
