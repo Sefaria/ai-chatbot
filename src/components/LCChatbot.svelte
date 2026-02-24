@@ -675,7 +675,7 @@
         <div class="header-actions">
           <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
             <img
-              src="{staticIconsBaseUrl}/{(mode==='floating') ? 'panel-right-close' : 'minimize'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
               width="16"
               height="16"
