@@ -627,7 +627,7 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
       </svg>
-      <span class="trigger-label">Chat</span>
+      <span class="trigger-label">Library Assistant</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -937,8 +937,8 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    --lc-primary: #6366f1;
-    --lc-primary-hover: #4f46e5;
+    --lc-primary: #18345D;
+    --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-bg-secondary: #f8fafc;
     --lc-bg-tertiary: #f1f5f9;
@@ -946,7 +946,7 @@
     --lc-text-secondary: #64748b;
     --lc-text-muted: #94a3b8;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #6366f1;
+    --lc-user-bg: #18345D;
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
