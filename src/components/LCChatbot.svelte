@@ -996,7 +996,7 @@
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
-    --lc-error: #ef4444;
+    --lc-error: #C03522;
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-text: #999;
@@ -1339,7 +1339,8 @@
 
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
-    background: var(--lc-error);
+    background: #F9EBE9;
+    color: var(--lc-error);
   }
 
   .message-meta {
