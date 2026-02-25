@@ -160,15 +160,25 @@ class TestToolDispatch:
             ),
             (
                 "get_author_works",
-                {"author_slug": "rashi", "include_aggregations": True},
+                {
+                    "author_slug": "rashi",
+                    "include_aggregations": True,
+                    "include_descriptions": True,
+                },
                 "get_author_works",
-                ("rashi", True),
+                ("rashi", True, True),
             ),
             (
                 "get_author_works",
                 {"author_slug": "rashi"},
                 "get_author_works",
-                ("rashi", False),
+                ("rashi", False, False),
+            ),
+            (
+                "get_author_works",
+                {"author_slug": "rashi", "include_descriptions": True},
+                "get_author_works",
+                ("rashi", False, True),
             ),
         ],
     )

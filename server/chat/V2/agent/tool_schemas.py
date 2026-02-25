@@ -196,12 +196,13 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
 
 TOOL_GET_AUTHOR_WORKS = {
     "name": "get_author_works",
-    "description": "Retrieves an author's works by author slug, with optional grouped aggregations.",
+    "description": "Retrieves an author's works by author slug, with optional grouped aggregations and work descriptions.",
     "input_schema": {
         "type": "object",
         "properties": {
             "author_slug": {"type": "string"},
             "include_aggregations": {"type": "boolean", "default": False},
+            "include_descriptions": {"type": "boolean", "default": False},
         },
         "required": ["author_slug"],
     },

@@ -117,7 +117,9 @@ class SefariaToolExecutor:
 
         elif tool_name == "get_author_works":
             return await self.client.get_author_works(
-                input_data["author_slug"], input_data.get("include_aggregations", False)
+                input_data["author_slug"],
+                input_data.get("include_aggregations", False),
+                input_data.get("include_descriptions", False),
             )
 
         else:
