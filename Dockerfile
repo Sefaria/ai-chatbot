@@ -20,10 +20,7 @@ RUN mkdir -p /etc/claude-code \
 # set user as non-root with a known UID for Kubernetes
 RUN adduser -D -u 1001 appuser \
     && mkdir -p /tmp \
-    && chmod 1777 /tmp \
-    && mkdir -p /home/appuser/.claude \
-    && echo '{}' > /home/appuser/.claude/remote-settings.json \
-    && chown -R 1001:1001 /home/appuser/.claude
+    && chmod 1777 /tmp
 
 COPY /server /server
 WORKDIR /server
