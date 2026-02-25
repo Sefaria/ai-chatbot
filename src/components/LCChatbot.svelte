@@ -1339,7 +1339,7 @@
 
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
-    background: #fef2f2;
+    background: var(--lc-error);
   }
 
   .message-meta {
@@ -1834,6 +1834,7 @@ inset: 8px;
   }
 
   .message-content :global(.response-list) {
+    padding-inline-start: 20px;
     line-height: 18px;
   }
 
