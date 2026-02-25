@@ -175,7 +175,7 @@ CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
 GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-checker")
 ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "router-classifier")
 REWRITER_PROMPT_SLUG = os.environ.get("REWRITER_PROMPT_SLUG", "question-rewriter")
-TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "translation-prompt")
+TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation")
 
 # ============================================================================
 # Chat User Token Configuration

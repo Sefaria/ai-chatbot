@@ -35,7 +35,7 @@ class TestRouterService:
         )
         result = service.classify("Translate Genesis 1:1")
         assert result.route == RouteType.TRANSLATION
-        assert result.core_prompt_id == "translation-prompt"
+        assert result.core_prompt_id == "Translation"
         assert result.rewritten_message is None
 
     def test_discovery_route(self):
@@ -104,7 +104,7 @@ class TestRouterService:
         )
         result = service.classify("Translate this verse")
         assert result.route == RouteType.TRANSLATION
-        assert result.core_prompt_id == "translation-prompt"
+        assert result.core_prompt_id == "Translation"
 
     def test_missing_route_field_fails_open(self):
         service = self._make_service()
