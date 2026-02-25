@@ -14,8 +14,10 @@ RUN apk add --no-cache nodejs npm \
     && npm install -g @anthropic-ai/claude-code@2.1.37
 
 # Create managed settings for Claude Code CLI (system-level config)
+# Ensure appuser (UID 1001) can read; chmod before switching to non-root
 RUN mkdir -p /etc/claude-code \
-    && echo '{}' > /etc/claude-code/managed-settings.json
+    && echo '{}' > /etc/claude-code/managed-settings.json \
+    && chmod -R a+rX /etc/claude-code
 
 # set user as non-root with a known UID for Kubernetes
 RUN adduser -D -u 1001 appuser \
