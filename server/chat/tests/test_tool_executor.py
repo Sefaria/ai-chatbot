@@ -62,6 +62,7 @@ def mock_client():
     client.get_text_catalogue_info = AsyncMock(return_value={"info": {}})
     client.get_available_manuscripts = AsyncMock(return_value={"manuscripts": []})
     client.get_manuscript_image = AsyncMock(return_value={"image_url": "http://..."})
+    client.get_author_works = AsyncMock(return_value={"works": []})
     return client
 
 
@@ -156,6 +157,18 @@ class TestToolDispatch:
                 },
                 "get_manuscript_image",
                 ("http://example.com/image.jpg", "Leningrad Codex"),
+            ),
+            (
+                "get_author_works",
+                {"author_slug": "rashi", "include_aggregations": True},
+                "get_author_works",
+                ("rashi", True),
+            ),
+            (
+                "get_author_works",
+                {"author_slug": "rashi"},
+                "get_author_works",
+                ("rashi", False),
             ),
         ],
     )
@@ -255,6 +268,7 @@ class TestDescribeToolCall:
             ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
             ("get_current_calendar", {}, ["calendar"]),
             ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
+            ("get_author_works", {"author_slug": "rashi"}, ["author works", "rashi"]),
             ("unknown_tool", {"arg": "value"}, ["Running tool", "unknown_tool"]),
         ],
     )
