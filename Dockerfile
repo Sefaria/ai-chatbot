@@ -1,8 +1,9 @@
 FROM node:22 AS script
 
 WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-RUN npm install
 RUN npm run build
 
 
@@ -10,12 +11,19 @@ FROM python:3.11-alpine3.23 AS server
 
 # Install Node.js for Claude Code CLI (required by claude-agent-sdk)
 RUN apk add --no-cache nodejs npm \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code@2.1.56
+
+# Create managed settings for Claude Code CLI (system-level config)
+RUN mkdir -p /etc/claude-code \
+    && echo '{}' > /etc/claude-code/managed-settings.json
 
 # set user as non-root with a known UID for Kubernetes
 RUN adduser -D -u 1001 appuser \
     && mkdir -p /tmp \
-    && chmod 1777 /tmp
+    && chmod 1777 /tmp \
+    && mkdir -p /home/appuser/.claude \
+    && echo '{}' > /home/appuser/.claude/remote-settings.json \
+    && chown -R 1001:1001 /home/appuser/.claude
 
 COPY /server /server
 WORKDIR /server
