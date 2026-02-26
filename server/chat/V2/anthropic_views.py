@@ -47,9 +47,6 @@ from .utils import flush_braintrust as _flush_braintrust
 
 logger = logging.getLogger("chat")
 
-# Origin identifier for Braintrust requests (used in metadata)
-BRAINTRUST_ORIGIN = "braintrust"
-
 
 def extract_user_message(messages: list[dict]) -> str:
     """
@@ -84,7 +81,7 @@ def extract_user_message(messages: list[dict]) -> str:
 
 
 def to_anthropic_response(
-    agent_response: AgentResponse, model: str, message_id: str, stats: dict
+    agent_response: AgentResponse, model: str, message_id: str, stats: dict, origin: str = ""
 ) -> dict:
     """
     Transform our AgentResponse to Anthropic Messages API format.
@@ -129,13 +126,15 @@ def to_anthropic_response(
         },
         "metadata": {
             "trace_id": agent_response.trace_id,
-            "origin": BRAINTRUST_ORIGIN,
+            "origin": origin,
             "stats": stats,
         },
     }
 
 
-def to_anthropic_error(error_type: str, message: str, latency_ms: int = 0) -> dict:
+def to_anthropic_error(
+    error_type: str, message: str, latency_ms: int = 0, origin: str = ""
+) -> dict:
     """Format an error response in Anthropic API style."""
     return {
         "error": {
@@ -143,7 +142,7 @@ def to_anthropic_error(error_type: str, message: str, latency_ms: int = 0) -> di
             "message": message,
         },
         "metadata": {
-            "origin": BRAINTRUST_ORIGIN,
+            "origin": origin,
             "latency_ms": latency_ms,
         },
     }
@@ -212,17 +211,20 @@ def chat_anthropic_v2(request):
     core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
     model = data.get("model") or settings.AGENT_MODEL
 
+    caller_origin = request.headers.get("X-Origin")
+    resolved_origin, _ = resolve_origin(caller_origin)
+
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
     if session_id:
         # Multi-turn mode: use provided session, load summary
-        session, _ = create_or_get_session(session_id, actor, current_flow=BRAINTRUST_ORIGIN)
+        session, _ = create_or_get_session(session_id, actor, current_flow=resolved_origin)
         summary_text = load_session_summary(session)
     else:
         # Stateless mode: ephemeral session, no summary
         session_id = f"ephemeral_{uuid.uuid4().hex[:16]}"
         session, _ = create_or_get_session(
-            session_id, actor, validate_ownership=False, current_flow=BRAINTRUST_ORIGIN
+            session_id, actor, validate_ownership=False, current_flow=resolved_origin
         )
         summary_text = ""
 
@@ -236,11 +238,8 @@ def chat_anthropic_v2(request):
         message_id=user_message_id,
         turn_id=turn_id,
         content=user_message_text,
-        flow=BRAINTRUST_ORIGIN,
+        flow=resolved_origin,
     )
-
-    caller_origin = request.headers.get("X-Origin")
-    resolved_origin, _ = resolve_origin(caller_origin)
 
     msg_context = MessageContext(
         summary_text=summary_text or None, session_id=session_id, origin=resolved_origin
@@ -276,7 +275,9 @@ def chat_anthropic_v2(request):
         db_user_message.save(update_fields=["response_message"])
 
         return Response(
-            to_anthropic_error("api_error", INTERNAL_ERROR_MESSAGE, latency_ms),
+            to_anthropic_error(
+                "api_error", INTERNAL_ERROR_MESSAGE, latency_ms, origin=resolved_origin
+            ),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -303,5 +304,6 @@ def chat_anthropic_v2(request):
             model=model,
             message_id=response_message.message_id,
             stats=logging_result.stats,
+            origin=resolved_origin,
         )
     )
