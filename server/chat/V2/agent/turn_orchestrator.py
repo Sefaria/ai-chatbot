@@ -8,6 +8,7 @@ from typing import Any
 
 from braintrust import current_span
 
+from ..origin import resolve_origin
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
@@ -64,11 +65,13 @@ class TurnOrchestrator:
             "",
         )
 
+        _, is_prod = resolve_origin(context.origin)
         self.trace_logger.log_input(
             bt_span=bt_span,
             user_message=last_user_message,
             context=context,
             model=self.model,
+            is_prod=is_prod,
         )
 
         guardrail_response = await self.guardrail_gate.run_guardrail(
@@ -162,4 +165,3 @@ class TurnOrchestrator:
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
         )
-
