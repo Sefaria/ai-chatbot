@@ -136,7 +136,9 @@ def create_scorer(slug: str):
             result = invoke(project_name=PROJECT, slug=slug, input=scorer_input)
             if isinstance(result, dict):
                 if "score" not in result:
-                    raise ValueError(f"Scorer {slug} returned dict without 'score': {result}")
+                    raise ValueError(
+                        f"Scorer {slug} returned dict without 'score': {result}"
+                    )
                 return result["score"]
             return result
         except Exception as e:
@@ -223,7 +225,9 @@ def validate_scorers(scorer_slugs: list[str]) -> bool:
 
     invalid = [s for s in scorer_slugs if s not in valid_scorers]
     if invalid:
-        print(f"I can't find that scorer, please double check and try again: {', '.join(invalid)}")
+        print(
+            f"I can't find that scorer, please double check and try again: {', '.join(invalid)}"
+        )
         return False
     return True
 
@@ -246,7 +250,9 @@ def validate_dataset(dataset_name: str) -> bool:
         dataset_names = {d.get("name") for d in datasets if d.get("name")}
 
         if dataset_name not in dataset_names:
-            print(f"I can't find that dataset, please double check and try again: {dataset_name}")
+            print(
+                f"I can't find that dataset, please double check and try again: {dataset_name}"
+            )
             return False
         return True
 
