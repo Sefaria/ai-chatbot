@@ -695,7 +695,7 @@ class ClaudeAgentService:
                 "BRAINTRUST_PROJECT": self.braintrust_project,
                 # Disable auto-updates in containerized/server usage
                 # https://code.claude.com/docs/en/setup#disable-auto-updates
-                "DISABLE_AUTOUPDATER": "1",
+                "DISABLE_AUTOUPDATER": os.environ.get("DISABLE_AUTOUPDATER", "1"),
             }
         if debug_enabled:
             if self._supports_option("extra_args"):
