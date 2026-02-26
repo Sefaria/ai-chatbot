@@ -5,6 +5,9 @@ Runs the chatbot against a Braintrust dataset and scores responses using
 custom scorers defined in the Braintrust UI. Results are logged to Braintrust
 for analysis and comparison across experiments.
 
+The script validates that the specified dataset and scorers exist in Braintrust
+before running the evaluation, providing clear error messages if not found.
+
 Usage:
     python evals/run_eval.py --all-scorers                    # Run with all project scorers
     python evals/run_eval.py --scorers accuracy-374376eb2     # Run with specific scorer slugs
@@ -118,13 +121,36 @@ def create_scorer(slug: str):
             scorer_input["metadata"] = metadata
         try:
             result = invoke(project_name=PROJECT, slug=slug, input=scorer_input)
-            return result.get("score", 0.0) if isinstance(result, dict) else result
+            return result.get("score") if isinstance(result, dict) else result
         except Exception as e:
             print(f"Error running scorer {slug}: {e}")
             return 0.0
 
     scorer.__name__ = slug.replace("-", "_")
     return scorer
+
+
+def get_available_scorer_slugs() -> set:
+    """
+    Fetch all available scorer slugs from Braintrust.
+
+    Returns a set of slugs for scorers defined in Braintrust UI.
+    """
+    try:
+        braintrust.login()
+        response = braintrust.api_conn().get("/v1/function")
+        if not response.ok:
+            return set()
+
+        data = response.json()
+        functions = data.get("objects", data) if isinstance(data, dict) else data
+        return {
+            f.get("slug")
+            for f in functions
+            if f.get("function_type") == "scorer" and f.get("slug")
+        }
+    except Exception:
+        return set()
 
 
 def get_all_scorers() -> list:
@@ -167,6 +193,51 @@ def get_all_scorers() -> list:
         return []
 
 
+def validate_scorers(scorer_slugs: list[str]) -> bool:
+    """
+    Validate that all provided scorer slugs exist in Braintrust.
+
+    Returns True if all scorers are valid, False otherwise.
+    """
+    available = get_available_scorer_slugs()
+    if not available:
+        print("ERROR: Could not fetch available scorers from Braintrust")
+        return False
+
+    invalid = [s for s in scorer_slugs if s not in available]
+    if invalid:
+        print(f"I can't find that scorer, please double check and try again: {', '.join(invalid)}")
+        return False
+    return True
+
+
+def validate_dataset(dataset_name: str) -> bool:
+    """
+    Validate that the dataset exists in Braintrust.
+
+    Returns True if dataset exists, False otherwise.
+    """
+    try:
+        braintrust.login()
+        response = braintrust.api_conn().get("/v1/dataset")
+        if not response.ok:
+            print("ERROR: Could not fetch datasets from Braintrust")
+            return False
+
+        data = response.json()
+        datasets = data.get("objects", data) if isinstance(data, dict) else data
+        dataset_names = {d.get("name") for d in datasets if d.get("name")}
+
+        if dataset_name not in dataset_names:
+            print(f"I can't find that dataset, please double check and try again: {dataset_name}")
+            return False
+        return True
+
+    except Exception as e:
+        print(f"ERROR: Could not validate dataset: {e}")
+        return False
+
+
 async def run_evaluation(
     client: ChatbotClient,
     dataset_name: str,
@@ -180,10 +251,6 @@ async def run_evaluation(
     Loads the dataset from Braintrust, runs each prompt through the chatbot,
     scores the responses, and logs results to Braintrust for analysis.
     """
-    if not os.environ.get("BRAINTRUST_API_KEY"):
-        print("ERROR: BRAINTRUST_API_KEY not set")
-        sys.exit(1)
-
     if not experiment_name:
         experiment_name = (
             f"{DEFAULT_EXPERIMENT_NAME} - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
@@ -267,15 +334,28 @@ def main():
     )
     args = parser.parse_args()
 
-    base_url = LOCAL_API_URL if args.local else PROD_API_URL
-    client = ChatbotClient(base_url=base_url)
+    if not os.environ.get("BRAINTRUST_API_KEY"):
+        print("ERROR: BRAINTRUST_API_KEY not set")
+        sys.exit(1)
 
+    braintrust.login()
+
+    # Validate dataset exists
+    if not validate_dataset(args.dataset):
+        sys.exit(1)
+
+    # Validate and create scorers
     scorers = None
     if args.all_scorers:
         scorers = get_all_scorers()
     elif args.scorers:
-        braintrust.login()
-        scorers = [create_scorer(s.strip()) for s in args.scorers.split(",")]
+        scorer_slugs = [s.strip() for s in args.scorers.split(",")]
+        if not validate_scorers(scorer_slugs):
+            sys.exit(1)
+        scorers = [create_scorer(s) for s in scorer_slugs]
+
+    base_url = LOCAL_API_URL if args.local else PROD_API_URL
+    client = ChatbotClient(base_url=base_url)
 
     asyncio.run(
         run_evaluation(client, args.dataset, args.experiment, scorers, args.concurrency)
