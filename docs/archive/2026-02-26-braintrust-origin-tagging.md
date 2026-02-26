@@ -597,62 +597,20 @@ git commit -m "docs: add origin tagging docs and sefaria-project change prompt"
 
 ---
 
-## sefaria-project Change (Task 8 content)
+## sefaria-project Change
 
-The file `docs/plans/sefaria-project-origin-prompt.md` should contain the following:
+Sefaria-project renders the `<lc-chatbot>` web component. Add the `origin` attribute:
 
-```markdown
-# Sefaria-Project: Send Origin Header to LC Chatbot
-
-## Context
-
-The LC Chatbot (ai-chatbot repo) now supports origin tagging for Braintrust traces.
-Every request should include an origin identifier so production user traffic is
-distinguished from dev/eval/testing traffic in Braintrust logs.
-
-## What to Change
-
-Find where the Sefaria frontend component sends requests to the chatbot API.
-The chatbot has two endpoints:
-
-1. **Streaming endpoint** (`POST /api/v2/chat/stream`): Origin goes in the
-   request body under `context.origin`.
-2. **Anthropic endpoint** (`POST /api/v2/chat/anthropic`): Origin goes in the
-   `X-Origin` HTTP header.
-
-Sefaria-project likely uses the streaming endpoint.
-
-### For the streaming endpoint
-
-Find the request payload construction (likely in a JS/TS file that builds the
-chat request). Add `origin` to the `context` object:
-
-```javascript
-context: {
-  pageUrl: currentPageUrl,
-  locale: interfaceLanguage,
-  clientVersion: "...",
-  origin: "sefaria-prod",  // <-- ADD THIS
-}
+```html
+<lc-chatbot
+  user-id="..."
+  api-base-url="..."
+  origin="sefaria-prod"
+></lc-chatbot>
 ```
 
-The value should be `"sefaria-prod"` for the production Sefaria site. If there
-are other Sefaria deployments (staging, Israel site, etc.), use different values
-like `"sefaria-staging"` or `"sefaria-il"`.
+The `origin` attribute is a plain string passed as a web component prop. The chatbot component handles forwarding it in its API requests — sefaria-project doesn't need to touch any API calls.
 
-### For the anthropic endpoint (if used)
+If there are other Sefaria deployments (staging, Israel site, etc.), use different origin values for each, e.g. `"sefaria-staging"` or `"sefaria-il"`. The value is free-form, but only `"sefaria-prod"` is treated as production (no "dev" tag in Braintrust).
 
-Add the header `X-Origin: sefaria-prod` to the request.
-
-## Why This Matters
-
-Without this change, all chatbot traces (including real user traffic) default to
-origin `"dev"` and get tagged with a `"dev"` tag in Braintrust. This makes it
-impossible to distinguish production traffic from testing traffic.
-
-## Testing
-
-After deploying, check Braintrust traces for the "On Site Agent" project.
-Production traces should have `metadata.origin: "sefaria-prod"` and no tags.
-Dev/eval traces should have `tags: ["dev"]`.
-```
+This change is safe to deploy immediately — the current chatbot component ignores unknown attributes. Once the chatbot repo deploys its side, the attribute will be read and forwarded automatically.
