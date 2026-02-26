@@ -226,7 +226,7 @@ def validate_scorers(scorer_slugs: list[str]) -> bool:
     invalid_scorer = [s for s in scorer_slugs if s not in valid_scorers]
     if invalid_scorer:
         print(
-            f"I can't find that scorer, please double check and try again: {', '.join(invalid)}"
+            f"I can't find that scorer, please double check and try again: {', '.join(invalid_scorer)}"
         )
         return False
     return True
