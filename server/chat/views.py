@@ -122,7 +122,11 @@ def reload_prompts(request):
             }
         )
     except Exception as e:
-        logger.error(f"❌ Failed to reload prompts: {e}")
+        logger.error(
+            "Failed to reload prompts: %s",
+            e,
+            extra={"status": 500, "reason": "prompt_reload_failed", "path": request.path},
+        )
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

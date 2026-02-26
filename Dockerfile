@@ -9,8 +9,10 @@ RUN npm run build
 FROM python:3.11-alpine3.23 AS server
 
 # Install Node.js for Claude Code CLI (required by claude-agent-sdk)
+# Pin to 2.1.29 to avoid remote-settings.json ENOENT on startup (server-managed
+# settings added in 2.1.30+; we don't use them, CLI just logs ERROR when missing)
 RUN apk add --no-cache nodejs npm \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code@2.1.29
 
 # set user as non-root with a known UID for Kubernetes
 RUN adduser -D -u 1001 appuser \

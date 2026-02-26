@@ -688,11 +688,14 @@ class ClaudeAgentService:
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
-            # Pass API keys into the SDK subprocess environment
+            # Pass API keys and CLI config into the SDK subprocess environment
             options_kwargs["env"] = {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
                 "BRAINTRUST_API_KEY": self.braintrust_api_key,
                 "BRAINTRUST_PROJECT": self.braintrust_project,
+                # Disable auto-updates in containerized/server usage
+                # https://code.claude.com/docs/en/setup#disable-auto-updates
+                "DISABLE_AUTOUPDATER": os.environ.get("DISABLE_AUTOUPDATER", "1"),
             }
         if debug_enabled:
             if self._supports_option("extra_args"):

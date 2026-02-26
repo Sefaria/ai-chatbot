@@ -91,6 +91,12 @@ def chat_stream_v2(request):
 
     serializer = ChatRequestSerializer(data=request.data)
     if not serializer.is_valid():
+        logger.error(
+            "Request failed: status=400 path=%s reason=invalid_request details=%s",
+            request.path,
+            serializer.errors,
+            extra={"status": 400, "reason": "invalid_request", "path": request.path},
+        )
         return Response(
             {"error": "Invalid request", "details": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
@@ -101,10 +107,19 @@ def chat_stream_v2(request):
     try:
         actor = authenticate_request(request, data)
     except UserTokenExpired:
-        logger.warning("expired userId token")
+        logger.error(
+            "Request failed: status=401 path=%s reason=userId_expired",
+            request.path,
+            extra={"status": 401, "reason": "userId_expired", "path": request.path},
+        )
         return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
     except (InvalidUserToken, AuthenticationRequired) as exc:
-        logger.warning(f"invalid userId token: {exc}")
+        logger.error(
+            "Request failed: status=401 path=%s reason=invalid_userId error=%s",
+            request.path,
+            exc,
+            extra={"status": 401, "reason": "invalid_userId", "path": request.path},
+        )
         return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
 
     context = data.get("context", {})
@@ -231,7 +246,18 @@ def chat_stream_v2(request):
 
         # --- Error path: persist an error message and notify client ---
         if result_holder["error"]:
-            logger.error(f"Agent error: {result_holder['error']}")
+            logger.error(
+                "Request failed: status=500 path=%s session_id=%s reason=agent_error error=%s",
+                request.path,
+                data["sessionId"],
+                result_holder["error"],
+                extra={
+                    "status": 500,
+                    "reason": "agent_error",
+                    "path": request.path,
+                    "session_id": data["sessionId"],
+                },
+            )
 
             logging_service = get_turn_logging_service()
             error_msg = logging_service.record_error_message(
@@ -306,6 +332,12 @@ def chat_feedback_v2(request):
     """Capture user feedback for the latest chat trace in Braintrust."""
     serializer = FeedbackRequestSerializer(data=request.data)
     if not serializer.is_valid():
+        logger.error(
+            "Request failed: status=400 path=%s reason=invalid_request details=%s",
+            request.path,
+            serializer.errors,
+            extra={"status": 400, "reason": "invalid_request", "path": request.path},
+        )
         return Response(
             {"error": "Invalid request", "details": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
@@ -323,17 +355,25 @@ def chat_feedback_v2(request):
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, 
-                            "feedback_comment": comment, "session_id": data["sessionId"],
-                            "user_id": data["userId"],
-                            "message_id": data["messageId"],
-                            }
+        feedback_metadata = {
+            "feedback": score,
+            "feedback_reason": feedback_reason,
+            "feedback_comment": comment,
+            "session_id": data["sessionId"],
+            "user_id": data["userId"],
+            "message_id": data["messageId"],
+        }
         try:
             bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
         except Exception as _e:
             logger.debug("Could not update span metadata with feedback metadata: %s", _e)
     except Exception as e:
-        logger.error(f"❌ Failed to log feedback: {e}")
+        logger.error(
+            "Request failed: status=500 path=%s reason=feedback_log_failed error=%s",
+            request.path,
+            e,
+            extra={"status": 500, "reason": "feedback_log_failed", "path": request.path},
+        )
         return Response(
             {"error": "feedback_log_failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
