@@ -25,8 +25,6 @@ from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
-from .helpers import extract_refs as _extract_refs
-from .helpers import truncate as _truncate
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .sefaria_client import SefariaClient
@@ -40,16 +38,6 @@ logger = logging.getLogger("chat.agent")
 
 # Must remain module-global so setup_claude_agent_sdk runs once per process.
 _BRAINTRUST_SETUP_DONE = False
-
-
-def extract_refs(tool_calls: list) -> list:
-    """Backward-compatible export for tests and call sites."""
-    return _extract_refs(tool_calls)
-
-
-def truncate(text: str, max_len: int) -> str:
-    """Backward-compatible export for tests and call sites."""
-    return _truncate(text, max_len)
 
 
 class ClaudeAgentService:
@@ -166,4 +154,3 @@ class ClaudeAgentService:
 def get_agent_service() -> ClaudeAgentService:
     """Create a fresh service instance (one per request)."""
     return ClaudeAgentService()
-
