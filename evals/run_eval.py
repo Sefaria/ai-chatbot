@@ -36,6 +36,19 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / "server" / ".env")
 
+
+def extract_braintrust_items(response_data):
+    """
+    Extract items from Braintrust API response.
+
+    Braintrust returns paginated results with items under "objects" key.
+    Falls back to treating response as direct list for compatibility.
+    """
+    if isinstance(response_data, dict):
+        return response_data.get("objects", response_data)
+    return response_data
+
+
 # Configuration
 PROJECT = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 DEFAULT_DATASET = "Benchmark"
@@ -121,7 +134,11 @@ def create_scorer(slug: str):
             scorer_input["metadata"] = metadata
         try:
             result = invoke(project_name=PROJECT, slug=slug, input=scorer_input)
-            return result.get("score") if isinstance(result, dict) else result
+            if isinstance(result, dict):
+                if "score" not in result:
+                    raise ValueError(f"Scorer {slug} returned dict without 'score': {result}")
+                return result["score"]
+            return result
         except Exception as e:
             print(f"Error running scorer {slug}: {e}")
             return 0.0
@@ -143,7 +160,7 @@ def get_available_scorer_slugs() -> set:
             return set()
 
         data = response.json()
-        functions = data.get("objects", data) if isinstance(data, dict) else data
+        functions = extract_braintrust_items(data)
         return {
             f.get("slug")
             for f in functions
@@ -172,7 +189,7 @@ def get_all_scorers() -> list:
             return []
 
         data = response.json()
-        functions = data.get("objects", data) if isinstance(data, dict) else data
+        functions = extract_braintrust_items(data)
         scorer_funcs = [
             f
             for f in functions
@@ -199,12 +216,12 @@ def validate_scorers(scorer_slugs: list[str]) -> bool:
 
     Returns True if all scorers are valid, False otherwise.
     """
-    available = get_available_scorer_slugs()
-    if not available:
+    valid_scorers = get_available_scorer_slugs()
+    if not valid_scorers:
         print("ERROR: Could not fetch available scorers from Braintrust")
         return False
 
-    invalid = [s for s in scorer_slugs if s not in available]
+    invalid = [s for s in scorer_slugs if s not in valid_scorers]
     if invalid:
         print(f"I can't find that scorer, please double check and try again: {', '.join(invalid)}")
         return False
@@ -225,7 +242,7 @@ def validate_dataset(dataset_name: str) -> bool:
             return False
 
         data = response.json()
-        datasets = data.get("objects", data) if isinstance(data, dict) else data
+        datasets = extract_braintrust_items(data)
         dataset_names = {d.get("name") for d in datasets if d.get("name")}
 
         if dataset_name not in dataset_names:
