@@ -719,7 +719,11 @@
           </h2>
         </div>
         <div class="header-actions">
-          <HeaderButton className="panel-btn" title="Toggle docked/floating" onClick={(e) => { e.stopPropagation(); toggleMode(); }}>
+          <HeaderButton
+            className="panel-btn"
+            title={(mode === 'floating') ? "Dock assistant to side" : "Undock assistant"}
+            onClick={(e) => { e.stopPropagation(); toggleMode(); }}
+          >
             <img
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
@@ -728,7 +732,7 @@
             />
           </HeaderButton>
           <div class="menu-container">
-            <HeaderButton className="menu-btn" onClick={toggleMenu} title="Open menu" aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title="More options" aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
             {#if showMenu}
@@ -752,7 +756,7 @@
               </div>
             {/if}
           </div>
-          <HeaderButton className="close-btn" onClick={closePanel} title="Close Assistant">
+          <HeaderButton className="close-btn" onClick={closePanel} title="Close assistant">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
