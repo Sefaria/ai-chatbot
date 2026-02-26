@@ -51,6 +51,7 @@ from .tool_executor import SefariaToolExecutor, describe_tool_call
 from .tool_schemas import get_all_tools
 
 logger = logging.getLogger("chat.agent")
+PROMPT_LOG_MAX_CHARS = int(os.environ.get("AGENT_PROMPT_LOG_MAX_CHARS", "12000"))
 
 # Global flag to ensure setup_claude_agent_sdk is only called once per process.
 # IMPORTANT: This must be a global (not thread-local) because setup_claude_agent_sdk
@@ -137,6 +138,11 @@ def truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 3] + "..."
+
+
+def _log_prompt_text(label: str, text: str) -> None:
+    """Log prompt text with bounded length to avoid runaway logs."""
+    logger.info("%s (%d chars): %s", label, len(text), truncate(text, PROMPT_LOG_MAX_CHARS))
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +293,8 @@ class ClaudeAgentService:
             (message.content for message in reversed(messages) if message.role == "user"),
             "",
         )
+        logger.info("User message received")
+        _log_prompt_text("User message", last_user_message)
 
         # Log input early so the chat-agent span has context even if the guardrail blocks.
         span_input: dict[str, Any] = {"message": last_user_message}
@@ -314,12 +322,31 @@ class ClaudeAgentService:
             summary_text=context.summary_text,
             page_url=context.page_url,
         )
+        logger.info(
+            "Core prompt loaded: id=%s version=%s chars=%d requested_id=%s",
+            core_prompt.prompt_id,
+            core_prompt.version,
+            len(core_prompt.text),
+            core_prompt_id or "default",
+        )
+        _log_prompt_text("Core system prompt", core_prompt.text)
+        _log_prompt_text("Conversation prompt text", conversation_text)
+        _log_prompt_text("Assembled full prompt", full_prompt)
+        logger.info(
+            "Built prompt payload: conversation_chars=%d full_prompt_chars=%d summary_included=%s page_context=%s",
+            len(conversation_text),
+            len(full_prompt),
+            summary_included,
+            bool(context.page_url),
+        )
 
         # --- Step 2: Build MCP tools ------------------------------------
         # tool_calls_list is mutated by the tool handlers to record each invocation.
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_all_tools()
         sdk_tools = self._build_sdk_tools(tools, emit, tool_calls_list)
+        tool_names = [tool_schema["name"] for tool_schema in tools]
+        logger.info("Attached tools (%d): %s", len(tool_names), ", ".join(tool_names))
 
         # The SDK expects tool names prefixed with mcp__<server>__<tool>.
         allowed_tools = [
@@ -351,6 +378,12 @@ class ClaudeAgentService:
         )
 
         prompt_text = full_prompt if not system_prompt_in_options else conversation_text
+        logger.info(
+            "SDK prompt mode: system_prompt_in_options=%s query_prompt_chars=%d",
+            system_prompt_in_options,
+            len(prompt_text),
+        )
+        _log_prompt_text("SDK query prompt text", prompt_text)
 
         # --- Step 4: Run the SDK query → response loop ------------------
         emit(AgentProgressUpdate(type="status", text="Thinking..."))
@@ -396,6 +429,7 @@ class ClaudeAgentService:
         output = final_text.strip()
         if not output:
             output = ERROR_FALLBACK_MESSAGE
+        _log_prompt_text("Final agent response", output)
 
         # Fall back to the Braintrust span ID if the SDK didn't provide one
         if not trace_id:
@@ -414,6 +448,10 @@ class ClaudeAgentService:
 
         # Log output, metrics, and metadata to the Braintrust span.
         refs = extract_refs(tool_calls_list)
+        if tool_calls_list:
+            logger.info("Turn finished with %d tool call(s)", len(tool_calls_list))
+        else:
+            logger.info("Turn finished with 0 tool calls")
         span_output: dict[str, Any] = {
             "content": output,
             "ref_count": len(refs),
@@ -532,6 +570,12 @@ class ClaudeAgentService:
             async def handler(args: dict[str, Any]) -> dict[str, Any]:
                 tool_input = args or {}
                 tool_desc = describe_tool_call(tool_name, tool_input)
+                logger.info(
+                    "Tool start: name=%s input=%s description=%s",
+                    tool_name,
+                    truncate(json.dumps(tool_input, ensure_ascii=False), 5000),
+                    tool_desc,
+                )
 
                 emit(
                     AgentProgressUpdate(
@@ -551,7 +595,14 @@ class ClaudeAgentService:
                     block.get("text", "") if block.get("type") == "text" else json.dumps(block)
                     for block in result.content
                 )
-                output_preview = truncate(output_text, 500)
+                output_preview = truncate(output_text, 5000)
+                logger.info(
+                    "Tool end: name=%s is_error=%s latency_ms=%d output_preview=%s",
+                    tool_name,
+                    result.is_error,
+                    tool_latency,
+                    output_preview,
+                )
 
                 # Record for post-turn logging (persisted alongside the response)
                 tool_calls_list.append(

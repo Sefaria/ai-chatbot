@@ -194,6 +194,20 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
     },
 }
 
+TOOL_GET_AUTHOR_WORKS = {
+    "name": "get_author_works",
+    "description": "Retrieves an author's works by author slug, with optional grouped aggregations and work descriptions.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "author_slug": {"type": "string"},
+            "include_aggregations": {"type": "boolean", "default": False},
+            "include_descriptions": {"type": "boolean", "default": False},
+        },
+        "required": ["author_slug"],
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -215,6 +229,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_text_catalogue_info": TOOL_GET_TEXT_CATALOGUE_INFO,
     "get_available_manuscripts": TOOL_GET_AVAILABLE_MANUSCRIPTS,
     "get_manuscript_image": TOOL_GET_MANUSCRIPT_IMAGE,
+    "get_author_works": TOOL_GET_AUTHOR_WORKS,
 }
 
 # ============================================================================

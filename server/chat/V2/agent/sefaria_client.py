@@ -304,6 +304,20 @@ class SefariaClient:
             "source_url": image_url,
         }
 
+    async def get_author_works(
+        self,
+        author_slug: str,
+        include_aggregations: bool = False,
+        include_descriptions: bool = False,
+    ) -> dict[str, Any]:
+        """Get an author's works by author slug."""
+        encoded_slug = quote(author_slug)
+        params = {
+            "include_aggregations": "1" if include_aggregations else "0",
+            "include_descriptions": "1" if include_descriptions else "0",
+        }
+        return await self._get_json(f"api/authors/{encoded_slug}/works", params)
+
     # -------------------------------------------------------------------
     # Low-level HTTP helpers
     # -------------------------------------------------------------------

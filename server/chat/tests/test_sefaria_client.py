@@ -342,3 +342,44 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
+class TestGetAuthorWorks:
+    """Test get_author_works endpoint and query params."""
+
+    @pytest.mark.asyncio
+    async def test_include_aggregations_true_uses_one(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(return_value={"works": []})
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_works("rashi", include_aggregations=True)
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+            assert "/api/authors/rashi/works" in url
+            assert "include_aggregations=1" in url
+
+    @pytest.mark.asyncio
+    async def test_include_aggregations_false_uses_zero(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(return_value={"works": []})
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_works("rashi", include_aggregations=False)
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+            assert "/api/authors/rashi/works" in url
+            assert "include_aggregations=0" in url
+
+    @pytest.mark.asyncio
+    async def test_author_slug_is_url_encoded(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(return_value={"works": []})
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_works("rabbi akiva", include_aggregations=False)
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+            assert (
+                "/api/authors/rabbi%20akiva/works" in url or "/api/authors/rabbi+akiva/works" in url
+            )
