@@ -18,6 +18,7 @@ class BraintrustTraceLogger:
         user_message: str,
         context: MessageContext,
         model: str,
+        is_prod: bool = False,
     ) -> None:
         span_input: dict[str, Any] = {"message": user_message}
         if context.page_url:
@@ -27,7 +28,13 @@ class BraintrustTraceLogger:
         span_metadata: dict[str, Any] = {"model": model}
         if context.session_id:
             span_metadata["session_id"] = context.session_id
-        bt_span.log(input=span_input, metadata=span_metadata)
+        if context.origin:
+            span_metadata["origin"] = context.origin
+
+        log_kwargs: dict[str, Any] = {"input": span_input, "metadata": span_metadata}
+        if not is_prod:
+            log_kwargs["tags"] = ["dev"]
+        bt_span.log(**log_kwargs)
 
     def log_prompt_metadata(
         self,
@@ -73,4 +80,3 @@ class BraintrustTraceLogger:
             "tool_calls": tool_calls,
         }
         bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
-
