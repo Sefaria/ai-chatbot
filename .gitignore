@@ -144,6 +144,8 @@ langfuse_cache/
 # Local development
 .local/
 local/
+.claude/
+.instance/
 *.local
 .logs/
 
