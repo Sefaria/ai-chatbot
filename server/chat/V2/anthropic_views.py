@@ -185,6 +185,12 @@ def chat_anthropic_v2(request):
 
     serializer = AnthropicRequestSerializer(data=request.data)
     if not serializer.is_valid():
+        logger.error(
+            "Request failed: status=400 path=%s reason=invalid_request details=%s",
+            request.path,
+            serializer.errors,
+            extra={"status": 400, "reason": "invalid_request", "path": request.path},
+        )
         return Response(
             to_anthropic_error("invalid_request_error", str(serializer.errors)),
             status=status.HTTP_400_BAD_REQUEST,
@@ -195,6 +201,12 @@ def chat_anthropic_v2(request):
     try:
         actor = authenticate_request(request)
     except (AuthenticationRequired, InvalidUserToken, UserTokenExpired) as exc:
+        logger.error(
+            "Request failed: status=401 path=%s reason=authentication_error error=%s",
+            request.path,
+            exc,
+            extra={"status": 401, "reason": "authentication_error", "path": request.path},
+        )
         return Response(
             to_anthropic_error("authentication_error", str(exc)),
             status=status.HTTP_401_UNAUTHORIZED,
@@ -202,6 +214,11 @@ def chat_anthropic_v2(request):
 
     user_message_text = extract_user_message(data["messages"])
     if not user_message_text:
+        logger.error(
+            "Request failed: status=400 path=%s reason=no_user_message",
+            request.path,
+            extra={"status": 400, "reason": "no_user_message", "path": request.path},
+        )
         return Response(
             to_anthropic_error("invalid_request_error", "No user message found"),
             status=status.HTTP_400_BAD_REQUEST,
@@ -251,8 +268,20 @@ def chat_anthropic_v2(request):
                 context=msg_context,
             )
         )
-    except Exception:
+    except Exception as e:
         latency_ms = int((time.time() - start_time) * 1000)
+        logger.error(
+            "Request failed: status=500 path=%s session_id=%s reason=agent_error error=%s",
+            request.path,
+            session_id,
+            e,
+            extra={
+                "status": 500,
+                "reason": "agent_error",
+                "path": request.path,
+                "session_id": session_id,
+            },
+        )
         logger.exception("Agent error in Anthropic endpoint")
 
         _flush_braintrust()
