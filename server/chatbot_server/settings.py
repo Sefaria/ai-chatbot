@@ -169,6 +169,9 @@ REST_FRAMEWORK = {
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
+# Braintrust logging toggle — set to "false" to disable all tracing
+BRAINTRUST_LOGGING_ENABLED = os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true").lower() == "true"
+
 # Prompt slug defaults (Braintrust)
 # These slugs identify which Braintrust prompt to fetch for each service.
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")

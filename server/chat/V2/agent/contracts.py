@@ -35,6 +35,7 @@ class MessageContext:
     summary_text: str | None = None
     page_url: str | None = None
     session_id: str | None = None
+    origin: str | None = None
 
 
 @dataclass
@@ -72,5 +73,6 @@ class SdkRunner(Protocol):
 
 
 class TraceLogger(Protocol):
-    def log_input(self, bt_span: Any, user_message: str, context: MessageContext, model: str) -> None: ...
-
+    def log_input(
+        self, bt_span: Any, user_message: str, context: MessageContext, model: str
+    ) -> None: ...
