@@ -2,7 +2,7 @@
   let { className = '', onClick, title, children, ...rest } = $props();
 </script>
 
-<button class={className} onclick={onClick} aria-label={title} {...rest}>
+<button class={className} onclick={onClick} title={title} aria-label={title} {...rest}>
   {@render children()}
 </button>
 
