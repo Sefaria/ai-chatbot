@@ -30,6 +30,8 @@ Svelte Web Component -> Django REST API -> Claude Agent SDK (+ MCP tools) -> Sef
 
 ### Streaming Endpoint (`POST /api/v2/chat/stream`)
 
+https://mermaid.ai/d/9af27e86-3194-4e3c-8d7f-d62d9b0d6c07
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -52,23 +54,6 @@ sequenceDiagram
     V-->>FE: SSE progress events + final message event
 ```
 
-ASCII fallback:
-
-```text
-Frontend
-  -> views.py (chat_stream_v2)
-  -> services: auth/session/summary load + save user message
-  -> ClaudeAgentService.send_message(...)
-  -> TurnOrchestrator.run_turn(...)
-     -> guardrail_gate
-     -> prompt_pipeline + prompt_service
-     -> tool_runtime -> tool_executor -> sefaria_client (as needed)
-     -> sdk_options_builder + sdk_runner
-     -> trace_logger + metrics_mapper
-  -> AgentResponse
-  -> logging/summarization persistence
-  -> SSE: progress + final message
-```
 
 ### Anthropic-Compatible Endpoint (`POST /api/v2/chat/anthropic`)
 
@@ -91,17 +76,6 @@ sequenceDiagram
     A-->>BT: Anthropic Messages API-style JSON
 ```
 
-ASCII fallback:
-
-```text
-Braintrust client
-  -> anthropic_views.py
-  -> auth/session + save user message
-  -> ClaudeAgentService.send_message(...)
-  -> TurnOrchestrator
-  -> persist result
-  -> Anthropic-compatible response (content, usage, metadata.trace_id)
-```
 
 ## Agent Architecture (`server/chat/V2/agent/`)
 

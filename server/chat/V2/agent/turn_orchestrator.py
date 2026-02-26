@@ -116,6 +116,8 @@ class TurnOrchestrator:
             summary_included=prompt_result.summary_included,
         )
 
+        # Avoid sending the full prompt text if it's already included in the options
+        # (e.g. via a system prompt) to save tokens and improve trace clarity.
         prompt_text = (
             prompt_result.full_prompt
             if not system_prompt_in_options
