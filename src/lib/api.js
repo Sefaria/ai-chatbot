@@ -9,6 +9,7 @@ import { generateMessageId } from './session.js';
  * @property {string} pageUrl - Current page URL
  * @property {string} locale - User locale
  * @property {string} clientVersion - Widget version
+ * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  */
 
 /**
@@ -140,11 +141,22 @@ export async function sendMessageStream(
   sessionId,
   text,
   callbacks = {},
-  promptSlugs = null
+  promptSlugs = null,
+  origin = ''
 ) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
-  
+
+  /** @type {MessageContext} */
+  const context = {
+    pageUrl: window.location.href,
+    locale: navigator.language || 'en',
+    clientVersion: CLIENT_VERSION
+  };
+  if (origin) {
+    context.origin = origin;
+  }
+
   /** @type {SendMessagePayload} */
   const payload = {
     userId,
@@ -152,11 +164,7 @@ export async function sendMessageStream(
     messageId,
     timestamp,
     text,
-    context: {
-      pageUrl: window.location.href,
-      locale: navigator.language || 'en',
-      clientVersion: CLIENT_VERSION
-    }
+    context
   };
 
   if (promptSlugs) {

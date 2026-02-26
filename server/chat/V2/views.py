@@ -42,6 +42,7 @@ from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .origin import resolve_origin
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .services import (
     create_or_get_session,
@@ -139,6 +140,7 @@ def chat_stream_v2(request):
         summary_text=summary_text,
         page_url=page_url or None,
         session_id=data["sessionId"],
+        origin=resolve_origin(context.get("origin"))[0],
     )
 
     def generate_sse():
@@ -323,11 +325,14 @@ def chat_feedback_v2(request):
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, 
-                            "feedback_comment": comment, "session_id": data["sessionId"],
-                            "user_id": data["userId"],
-                            "message_id": data["messageId"],
-                            }
+        feedback_metadata = {
+            "feedback": score,
+            "feedback_reason": feedback_reason,
+            "feedback_comment": comment,
+            "session_id": data["sessionId"],
+            "user_id": data["userId"],
+            "message_id": data["messageId"],
+        }
         try:
             bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
         except Exception as _e:

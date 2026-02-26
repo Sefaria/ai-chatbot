@@ -14,7 +14,8 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500
+    'max-input-chars': maxInputChars = 500,
+    origin: originProp = ''
   } = $props();
 
   // State
@@ -414,7 +415,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs);
+      }, promptSlugs, originProp);
 
       // Update user message status
       messages = messages.map(m => 

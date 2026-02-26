@@ -40,6 +40,7 @@ from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
+from .origin import resolve_origin
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .services import create_or_get_session, load_session_summary, save_user_message
 from .utils import flush_braintrust as _flush_braintrust
@@ -238,7 +239,12 @@ def chat_anthropic_v2(request):
         flow=BRAINTRUST_ORIGIN,
     )
 
-    msg_context = MessageContext(summary_text=summary_text or None, session_id=session_id)
+    caller_origin = request.headers.get("X-Origin")
+    resolved_origin, _ = resolve_origin(caller_origin)
+
+    msg_context = MessageContext(
+        summary_text=summary_text or None, session_id=session_id, origin=resolved_origin
+    )
 
     try:
         agent = get_agent_service()
