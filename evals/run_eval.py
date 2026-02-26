@@ -223,8 +223,8 @@ def validate_scorers(scorer_slugs: list[str]) -> bool:
         print("ERROR: Could not fetch available scorers from Braintrust")
         return False
 
-    invalid = [s for s in scorer_slugs if s not in valid_scorers]
-    if invalid:
+    invalid_scorer = [s for s in scorer_slugs if s not in valid_scorers]
+    if invalid_scorer:
         print(
             f"I can't find that scorer, please double check and try again: {', '.join(invalid)}"
         )
