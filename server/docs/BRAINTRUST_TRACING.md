@@ -129,7 +129,7 @@ Flow:
 5. Log response to DB
 6. Return Anthropic Messages API format with metadata:
    - `trace_id` from agent response
-   - `origin: "braintrust"`
+   - `origin` (resolved from `X-Origin` header, defaults to `"dev"`)
    - `stats` (llmCalls, toolCalls, latencyMs)
 
 ### Trace ID Propagation
@@ -150,6 +150,26 @@ Uses `braintrust.init_logger()` to log user feedback:
 - Associates feedback with `trace_id` from the message
 - Logs score, comment, and metadata
 
+## Origin Tagging
+
+Every Braintrust trace is tagged with its origin so production user traffic can be distinguished from dev, eval, and testing traffic.
+
+**How it works:**
+- Callers send an origin identifier: `context.origin` in request body (streaming endpoint) or `X-Origin` header (Anthropic endpoint)
+- If no origin is provided, it defaults to `"dev"` (hardcoded in `server/chat/V2/origin.py`)
+- Production origins (currently `["sefaria-prod"]`) are defined in `PROD_ORIGINS` constant in `origin.py`
+- Non-production traces get `tags: ["dev"]` for easy filtering in the Braintrust UI
+- All traces get `metadata.origin` set to the resolved origin string
+
+**Filtering in Braintrust UI:**
+- To see only production traffic: filter where tag `dev` is absent
+- To see only dev/test traffic: filter by tag `dev`
+- To see a specific origin: filter by `metadata.origin`
+
+**Adding a new production origin:** Add the origin string to the `PROD_ORIGINS` list in `server/chat/V2/origin.py`.
+
+**Disabling Braintrust logging entirely:** Set `BRAINTRUST_LOGGING_ENABLED=false` in the environment. This skips all Braintrust initialization, tracing, and feedback logging.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -157,12 +177,15 @@ Uses `braintrust.init_logger()` to log user feedback:
 | `BRAINTRUST_API_KEY` | (required) | API key to enable tracing |
 | `BRAINTRUST_PROJECT` | `"On Site Agent"` | Project name in Braintrust |
 | `CORE_PROMPT_SLUG` | `"core-8fbc"` | Prompt ID for system prompt |
+| `BRAINTRUST_LOGGING_ENABLED` | `"true"` | Set to `"false"` to disable all Braintrust tracing |
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `server/chat/V2/agent/claude_service.py` | Main agent with @traced wrapper |
+| `server/chat/V2/agent/trace_logger.py` | Span logging (input, output, metrics, origin tags) |
+| `server/chat/V2/origin.py` | Origin resolution and prod/dev classification |
 | `server/chat/V2/views.py` | Streaming endpoint with TracedThreadPoolExecutor |
 | `server/chat/V2/anthropic_views.py` | Anthropic endpoint with trace_id |
 | `server/chat/V2/logging/turn_logging_service.py` | DB logging of stats |
