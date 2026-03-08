@@ -12,6 +12,7 @@ from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
 from .V2 import views as v2_views
 from .V2.prompts import get_prompt_service
+from .V2.remote_config_client import get_max_prompts
 
 logger = logging.getLogger("chat")
 
@@ -88,12 +89,25 @@ def history(request):
     # Get session info
     try:
         session = ChatSession.objects.get(session_id=session_id)
+        max_prompts = get_max_prompts()
+        turn_count = session.turn_count or 0
+        limit_reached = max_prompts > 0 and turn_count >= max_prompts
         session_info = {
-            "turnCount": session.turn_count or 0,
+            "turnCount": turn_count,
+            "maxTurns": max_prompts,
+            "limitReached": limit_reached,
             "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
         }
+        logger.info(
+            "[prompt-limit] history session=%s turn_count=%s max_prompts=%s limitReached=%s",
+            session_id,
+            turn_count,
+            max_prompts,
+            limit_reached,
+        )
     except ChatSession.DoesNotExist:
         session_info = None
+        logger.info("[prompt-limit] history session=%s: ChatSession not found", session_id)
 
     return Response(
         {

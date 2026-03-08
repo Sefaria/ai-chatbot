@@ -15,7 +15,8 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500
+    'max-input-chars': maxInputChars = 500,
+    'max-prompts': maxPrompts = 0
   } = $props();
 
   // State
@@ -49,6 +50,7 @@
   let settingsError = $state('');
 
   let isClearing = $state(false);
+  let limitReached = $state(false);
 
   // Menu state
   let showMenu = $state(false);
@@ -96,6 +98,8 @@
     // Initialize session
     const { sessionId: sid } = getOrCreateSession();
     sessionId = sid;
+
+    console.log('[lc-chatbot] [prompt-limit] init: maxPrompts=', maxPrompts, 'limitReached=', limitReached);
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
@@ -234,6 +238,8 @@
     const { sessionId: newSessionId } = getOrCreateSession(true);
     sessionId = newSessionId;
     messages = [];
+    limitReached = false;
+    console.log('[lc-chatbot] [prompt-limit] handleNewChat: reset limitReached=false');
     inputText = '';
     isLoadingHistory = false;
     hasMoreHistory = false;
@@ -316,6 +322,8 @@
         saveMessagesToStorage();
         scrollToBottom();
       }
+      limitReached = result.session?.limitReached ?? false;
+      console.log('[lc-chatbot] [prompt-limit] syncSessionState: session=', result.session, 'limitReached=', limitReached);
     } catch (e) {
       console.warn('[lc-chatbot] Failed to sync session state:', e);
     }
@@ -354,7 +362,10 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    if (!text || isSending || !userId || !apiBaseUrl) return;
+    if (!text || isSending || limitReached || !userId || !apiBaseUrl) {
+      if (limitReached) console.log('[lc-chatbot] [prompt-limit] handleSend blocked: limitReached=true');
+      return;
+    }
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -443,6 +454,8 @@
       saveMessagesToStorage();
       scrollToBottom();
 
+      limitReached = response.session?.limitReached ?? false;
+      console.log('[lc-chatbot] [prompt-limit] handleSend success: session=', response.session, 'limitReached=', limitReached);
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -453,6 +466,11 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
+
+      if (e.code === 'turn_limit_reached') {
+        console.log('[lc-chatbot] [prompt-limit] Caught turn_limit_reached, setting limitReached=true');
+        limitReached = true;
+      }
 
       // Mark message as failed for other errors
       messages = messages.map(m =>
@@ -918,15 +936,15 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={maxInputChars}
-          placeholder="What are you learning today?"
+          placeholder={limitReached ? "Conversation limit reached, please start a new chat" : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
-          disabled={isSending}
+          disabled={isSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
+          disabled={!inputText.trim() || isSending || limitReached}
           aria-label="Send message"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
