@@ -79,7 +79,7 @@
   );
   let restartMessage = $derived(
     isHebrew
-      ? (welcomeMessages.restart_hebrew
+      ? (welcomeMessages.restart_hebrew)
       : (welcomeMessages.restart_english)
   );
 
