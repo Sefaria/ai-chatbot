@@ -82,6 +82,11 @@
       ? (welcomeMessages.restart_hebrew)
       : (welcomeMessages.restart_english)
   );
+  let newSessionMessage = $derived(
+    isHebrew
+      ? (welcomeMessages.new_session_hebrew)
+      : (welcomeMessages.new_session_english)
+  );
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
@@ -464,6 +469,9 @@
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
       }
+      if (isRestarted) {
+        isRestarted = false;
+      }
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -677,7 +685,14 @@
 
   function handleRestartConvo() {
     closeMenu();
+    isRestarted = true;
     handleNewChat();
+  }
+
+  function getEmptyStateMessage() {
+    if (isFirstTimeUser) return welcomeMessage;
+    if (isRestarted) return restartMessage;
+    return newSessionMessage;
   }
 
 </script>
@@ -882,7 +897,7 @@
         {/if}
 
         {#if messages.length === 0 && !isLoadingHistory}
-          {@render assistantBubble(isFirstTimeUser ? welcomeMessage : restartMessage, false, null)}
+          {@render assistantBubble(getEmptyStateMessage(), false, null)}
         {/if}
 
         {#each messagesWithMarkers as item (item.key)}
