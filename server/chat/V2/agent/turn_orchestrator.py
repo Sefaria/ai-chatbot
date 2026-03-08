@@ -14,6 +14,7 @@ from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
 from .prompt_pipeline import build_turn_prompt
+from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .tool_runtime import ToolRuntime
@@ -35,6 +36,7 @@ class TurnOrchestrator:
         options_builder: SDKOptionsBuilder,
         sdk_runner: ClaudeSDKRunner,
         guardrail_gate: DefaultGuardrailGate,
+        router: Router,
         trace_logger: BraintrustTraceLogger,
     ):
         self.model = model
@@ -45,6 +47,7 @@ class TurnOrchestrator:
         self.options_builder = options_builder
         self.sdk_runner = sdk_runner
         self.guardrail_gate = guardrail_gate
+        self.router = router
         self.trace_logger = trace_logger
 
     async def run_turn(
@@ -79,6 +82,12 @@ class TurnOrchestrator:
         )
         if guardrail_response:
             return guardrail_response
+
+        router_prompt_id, messages = await self.router.run_router(
+            bt_span, last_user_message, messages
+        )
+        if router_prompt_id:
+            core_prompt_id = router_prompt_id
 
         core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
         prompt_result = build_turn_prompt(
@@ -162,4 +171,3 @@ class TurnOrchestrator:
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
         )
-
