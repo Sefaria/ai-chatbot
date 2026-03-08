@@ -51,6 +51,7 @@ class ClaudeAgentService:
         max_tokens: int = 8000,
         temperature: float = 0.7,
         prompt_service: PromptService | None = None,
+        is_load_test: bool = False,
     ):
         if (
             ClaudeAgentOptions is None
@@ -67,6 +68,7 @@ class ClaudeAgentService:
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
+        self.braintrust_logging_enabled = not is_load_test
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -74,7 +76,9 @@ class ClaudeAgentService:
 
         from django.conf import settings as django_settings
 
-        self.model = model or django_settings.AGENT_MODEL
+        self.model = model or (
+            django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
+        )
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -93,6 +97,7 @@ class ClaudeAgentService:
             temperature=self.temperature,
             braintrust_api_key=self.braintrust_api_key,
             braintrust_project=self.braintrust_project,
+            braintrust_logging_enabled=self.braintrust_logging_enabled,
             mcp_server_name=self._mcp_server_name,
             logger=logger,
         )
@@ -117,6 +122,8 @@ class ClaudeAgentService:
 
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is initialized for this request thread."""
+        if not self.braintrust_logging_enabled:
+            return
         global _BRAINTRUST_SETUP_DONE
         _BRAINTRUST_SETUP_DONE = ensure_braintrust_tracing(
             project=self.braintrust_project,
@@ -151,6 +158,6 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-def get_agent_service() -> ClaudeAgentService:
+def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
     """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService()
+    return ClaudeAgentService(is_load_test=is_load_test)
