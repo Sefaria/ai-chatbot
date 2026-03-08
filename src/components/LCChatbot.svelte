@@ -1048,7 +1048,11 @@
     flex: 1;
     min-height: 0;
     height: 100%;
-    border-radius: 0;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
+    margin-inline-start: 10px;
+    margin-inline-end: 42px;
+    margin-bottom: 24px;
   }
 
   .lc-chatbot-container.mode-docked .resize-n,
@@ -1132,7 +1136,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    background: var(--lc-bg);
+    background: var(--lc-bg-secondary);
     border-bottom: 1px solid var(--lc-border);
   }
 
@@ -1464,7 +1468,7 @@
   }
 
   .send-btn:disabled {
-    opacity: 0.5;
+    background: var(--lc-disabled-button);
     cursor: not-allowed;
   }
 
