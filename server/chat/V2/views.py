@@ -323,11 +323,14 @@ def chat_feedback_v2(request):
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, 
-                            "feedback_comment": comment, "session_id": data["sessionId"],
-                            "user_id": data["userId"],
-                            "message_id": data["messageId"],
-                            }
+        feedback_metadata = {
+            "feedback": score,
+            "feedback_reason": feedback_reason,
+            "feedback_comment": comment,
+            "session_id": data["sessionId"],
+            "user_id": data["userId"],
+            "message_id": data["messageId"],
+        }
         try:
             bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
         except Exception as _e:
