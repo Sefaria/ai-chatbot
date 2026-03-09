@@ -6,14 +6,14 @@ Sends concurrent requests with isLoadTest=True, which:
 - Disables Braintrust logging
 
 Usage:
-    # From server/ directory:
-    python -m loadtest.load_test --url http://localhost:8001 --users 5 --requests 10
+    # From server/ directory (uses CHATBOT_API_BASE_URL env var):
+    python -m loadtest.load_test --users 5 --requests 10
 
-    # Against Docker Compose:
-    python -m loadtest.load_test --url http://localhost:8001 --users 10 --requests 20
+    # Override URL explicitly:
+    python -m loadtest.load_test --url http://localhost:8001/api --users 10 --requests 20
 
     # Quick smoke test (1 request):
-    python -m loadtest.load_test --url http://localhost:8001 --users 1 --requests 1 --verbose
+    python -m loadtest.load_test --users 1 --requests 1 --verbose
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ def run_single_request(
 
     try:
         with httpx.Client(timeout=timeout) as client:
-            with client.stream("POST", f"{url}/api/v2/chat/stream", json=payload) as resp:
+            with client.stream("POST", f"{url}/v2/chat/stream", json=payload) as resp:
                 status_code = resp.status_code
                 if status_code != 200:
                     error = f"HTTP {status_code}"
@@ -242,16 +242,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Chat API load test (isLoadTest=true)")
     parser.add_argument(
         "--url",
-        default=os.environ.get("LOAD_TEST_URL", "http://localhost:8001"),
-        help="Base URL of the server (default: LOAD_TEST_URL env var or http://localhost:8001)",
+        default=os.environ.get("CHATBOT_API_BASE_URL", "http://localhost:8001/api"),
+        help="Base API URL of the server (default: CHATBOT_API_BASE_URL env var or http://localhost:8001/api)",
     )
     parser.add_argument("--users", type=int, default=5, help="Concurrent users")
     parser.add_argument("--requests", type=int, default=10, help="Total requests to send")
     parser.add_argument("--timeout", type=int, default=120, help="Per-request timeout in seconds")
     parser.add_argument(
         "--secret",
-        default=os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"),
-        help="Token secret (default: CHATBOT_USER_TOKEN_SECRET env var or 'secret')",
+        default=os.environ.get("CHATBOT_USER_ID_SECRET", "secret"),
+        help="Token secret (default: CHATBOT_USER_ID_SECRET env var or 'secret')",
     )
     parser.add_argument("--verbose", action="store_true", help="Print SSE events as they arrive")
     parser.add_argument(
