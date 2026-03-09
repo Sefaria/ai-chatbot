@@ -696,7 +696,7 @@
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
     if (isNewSession) return newSessionMessage;
-    return welcomeMessage;  // Same session, empty (rare): generic prompt
+    return welcomeMessage;
   }
 
 </script>
@@ -920,7 +920,13 @@
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
-              <div class="message-meta"></div>
+              <div class="message-meta">
+                {#if item.status === 'failed'}
+                  <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
+                    Retry
+                  </button>
+                {/if}
+              </div>
             </div>
           {/if}
         {/each}
