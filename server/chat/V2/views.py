@@ -196,7 +196,6 @@ def chat_stream_v2(request):
 
         # --- Stream progress events to the client ---
         while True:
-            "" + 1
             try:
                 update = progress_queue.get(timeout=60)
 

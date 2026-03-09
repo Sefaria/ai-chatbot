@@ -95,7 +95,6 @@ pytest           # Run tests
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `SENTRY_DSN` | No | Enable Sentry error monitoring for Django + agent errors |
-| `SENTRY_ENVIRONMENT` | No | Override Sentry environment tag (defaults to `ENVIRONMENT`) |
 | `SENTRY_TRACES_SAMPLE_RATE` | No | Sentry performance trace sampling rate (default `0.0`) |
 | `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
