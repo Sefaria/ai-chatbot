@@ -240,7 +240,11 @@ def run_load_test(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Chat API load test (isLoadTest=true)")
-    parser.add_argument("--url", default="http://localhost:8001", help="Base URL of the server")
+    parser.add_argument(
+        "--url",
+        default=os.environ.get("LOAD_TEST_URL", "http://localhost:8001"),
+        help="Base URL of the server (default: LOAD_TEST_URL env var or http://localhost:8001)",
+    )
     parser.add_argument("--users", type=int, default=5, help="Concurrent users")
     parser.add_argument("--requests", type=int, default=10, help="Total requests to send")
     parser.add_argument("--timeout", type=int, default=120, help="Per-request timeout in seconds")
