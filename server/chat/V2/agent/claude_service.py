@@ -118,6 +118,7 @@ class ClaudeAgentService:
             sdk_runner=sdk_runner,
             guardrail_gate=guardrail_gate,
             trace_logger=trace_logger,
+            logging_enabled=self.braintrust_logging_enabled,
         )
 
     def _setup_braintrust_tracing(self) -> None:
@@ -142,7 +143,6 @@ class ClaudeAgentService:
         """Run one chat turn and return the final response payload."""
         context = context or MessageContext()
 
-        @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
             return await self._orchestrator.run_turn(
                 messages=messages,
@@ -150,6 +150,9 @@ class ClaudeAgentService:
                 on_progress=on_progress,
                 context=context,
             )
+
+        if self.braintrust_logging_enabled:
+            run = braintrust.traced(name="chat-agent", type="task")(run)
 
         return await run()
 

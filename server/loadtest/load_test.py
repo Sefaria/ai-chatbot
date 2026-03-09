@@ -14,6 +14,10 @@ Usage:
 
     # Quick smoke test (1 request):
     python -m loadtest.load_test --users 1 --requests 1 --verbose
+
+    # Find capacity limit (step-up mode):
+    python -m loadtest.load_test --step-up
+    python -m loadtest.load_test --step-up --p95-limit 30000 --error-limit 5
 """
 
 from __future__ import annotations
@@ -171,7 +175,8 @@ def run_load_test(
     timeout: int,
     verbose: bool,
     is_load_test: bool = True,
-) -> None:
+) -> dict:
+    wall_start = time.monotonic()
     flag_label = (
         "isLoadTest=true (haiku, no Braintrust)"
         if is_load_test
@@ -212,6 +217,8 @@ def run_load_test(
                 f"  [{completed:3d}/{total_requests}] {status:30s}  total={result['total_ms']}ms  q={question[:40]!r}"
             )
 
+    wall_seconds = time.monotonic() - wall_start
+
     # Statistics
     successes = [r for r in results if r["success"]]
     failures = [r for r in results if not r["success"]]
@@ -223,13 +230,112 @@ def run_load_test(
         for f in failures:
             print(f"  FAILED: {f['error']}")
 
+    p95 = None
     if latencies:
+        p95 = statistics.quantiles(latencies, n=100)[94] if len(latencies) >= 2 else latencies[0]
+        rps = total_requests / wall_seconds if wall_seconds > 0 else 0
         print("\nLatency (total wall time):")
         print(f"  min:    {min(latencies)}ms")
         print(f"  median: {statistics.median(latencies):.0f}ms")
-        print(f"  p95:    {sorted(latencies)[int(len(latencies) * 0.95)]}ms")
+        print(f"  p95:    {p95}ms")
         print(f"  max:    {max(latencies)}ms")
         print(f"  mean:   {statistics.mean(latencies):.0f}ms")
+        print(f"\nThroughput: {rps:.2f} req/s  (wall time: {wall_seconds:.1f}s)")
+    print()
+
+    error_pct = (len(failures) / total_requests * 100) if total_requests else 100
+    return {
+        "successes": len(successes),
+        "failures": len(failures),
+        "p95": p95,
+        "error_pct": error_pct,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step-up capacity finder
+# ---------------------------------------------------------------------------
+
+STEP_UP_LEVELS = [1, 2, 5, 10, 20, 50, 100]
+
+
+def run_step_up_test(
+    url: str,
+    secret: str,
+    timeout: int,
+    p95_limit_ms: int,
+    error_limit_pct: float,
+    requests_per_level: int,
+    is_load_test: bool = True,
+) -> None:
+    """
+    Escalate concurrency level-by-level until the system degrades.
+
+    Degradation is defined as either:
+    - p95 latency exceeds p95_limit_ms, OR
+    - error rate exceeds error_limit_pct %
+
+    Prints a capacity summary at the end.
+    """
+    print("\n" + "#" * 60)
+    print("# STEP-UP CAPACITY TEST")
+    print(f"# SLA: p95 < {p95_limit_ms}ms, error rate < {error_limit_pct}%")
+    print(f"# Levels: {STEP_UP_LEVELS}")
+    print("#" * 60)
+
+    last_healthy = None
+    results_by_level: list[dict] = []
+
+    for concurrency in STEP_UP_LEVELS:
+        n = max(concurrency * 3, requests_per_level)
+        print(f"\n>>> Level: {concurrency} concurrent users ({n} total requests)")
+        stats = run_load_test(
+            url=url,
+            secret=secret,
+            concurrency=concurrency,
+            total_requests=n,
+            timeout=timeout,
+            verbose=False,
+            is_load_test=is_load_test,
+        )
+
+        healthy = True
+        reasons = []
+        if stats["p95"] is not None and stats["p95"] > p95_limit_ms:
+            healthy = False
+            reasons.append(f"p95 {stats['p95']}ms > limit {p95_limit_ms}ms")
+        if stats["error_pct"] > error_limit_pct:
+            healthy = False
+            reasons.append(f"error rate {stats['error_pct']:.1f}% > limit {error_limit_pct}%")
+
+        status = "HEALTHY" if healthy else f"DEGRADED ({', '.join(reasons)})"
+        results_by_level.append({"concurrency": concurrency, "healthy": healthy, **stats})
+        print(f"    => {status}")
+
+        if healthy:
+            last_healthy = concurrency
+        else:
+            print(f"\n>>> System degraded at {concurrency} concurrent users. Stopping.")
+            break
+
+    print("\n" + "=" * 60)
+    print("CAPACITY SUMMARY")
+    print("=" * 60)
+    print(f"{'Users':>6}  {'p95 (ms)':>10}  {'Error %':>8}  {'Status'}")
+    print("-" * 60)
+    for r in results_by_level:
+        p95_str = str(r["p95"]) if r["p95"] is not None else "N/A"
+        status = "OK" if r["healthy"] else "FAIL"
+        print(f"  {r['concurrency']:>4}  {p95_str:>10}  {r['error_pct']:>7.1f}%  {status}")
+
+    print()
+    if last_healthy:
+        print(f"  Estimated capacity: ~{last_healthy} concurrent users")
+        failing = [r for r in results_by_level if not r["healthy"]]
+        if failing:
+            print(f"  System degrades at: {failing[0]['concurrency']} concurrent users")
+    else:
+        print("  System was degraded even at 1 concurrent user.")
     print()
 
 
@@ -260,18 +366,53 @@ def main() -> None:
         action="store_false",
         help="Send isLoadTest=false (uses sonnet model + Braintrust)",
     )
+    # Step-up capacity finder
+    parser.add_argument(
+        "--step-up",
+        action="store_true",
+        help="Run escalating concurrency levels to find capacity limit",
+    )
+    parser.add_argument(
+        "--p95-limit",
+        type=int,
+        default=30000,
+        help="Step-up SLA: max acceptable p95 latency in ms (default: 30000)",
+    )
+    parser.add_argument(
+        "--error-limit",
+        type=float,
+        default=5.0,
+        help="Step-up SLA: max acceptable error rate in %% (default: 5.0)",
+    )
+    parser.add_argument(
+        "--requests-per-level",
+        type=int,
+        default=10,
+        help="Minimum requests per step-up level (actual = max(concurrency*3, this), default: 10)",
+    )
     parser.set_defaults(load_test=True)
     args = parser.parse_args()
 
-    run_load_test(
-        url=args.url,
-        secret=args.secret,
-        concurrency=args.users,
-        total_requests=args.requests,
-        timeout=args.timeout,
-        verbose=args.verbose,
-        is_load_test=args.load_test,
-    )
+    if args.step_up:
+        run_step_up_test(
+            url=args.url,
+            secret=args.secret,
+            timeout=args.timeout,
+            p95_limit_ms=args.p95_limit,
+            error_limit_pct=args.error_limit,
+            requests_per_level=args.requests_per_level,
+            is_load_test=args.load_test,
+        )
+    else:
+        run_load_test(
+            url=args.url,
+            secret=args.secret,
+            concurrency=args.users,
+            total_requests=args.requests,
+            timeout=args.timeout,
+            verbose=args.verbose,
+            is_load_test=args.load_test,
+        )
 
 
 if __name__ == "__main__":

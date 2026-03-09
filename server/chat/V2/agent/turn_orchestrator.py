@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+import braintrust
 from braintrust import current_span
 
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
@@ -36,6 +37,7 @@ class TurnOrchestrator:
         sdk_runner: ClaudeSDKRunner,
         guardrail_gate: DefaultGuardrailGate,
         trace_logger: BraintrustTraceLogger,
+        logging_enabled: bool = True,
     ):
         self.model = model
         self.mcp_server_name = mcp_server_name
@@ -46,6 +48,7 @@ class TurnOrchestrator:
         self.sdk_runner = sdk_runner
         self.guardrail_gate = guardrail_gate
         self.trace_logger = trace_logger
+        self.logging_enabled = logging_enabled
 
     async def run_turn(
         self,
@@ -56,7 +59,7 @@ class TurnOrchestrator:
         context: MessageContext,
     ) -> AgentResponse:
         start_time = time.time()
-        bt_span = current_span()
+        bt_span = current_span() if self.logging_enabled else braintrust.NOOP_SPAN
         emitter = ProgressEmitter(on_progress)
 
         last_user_message = next(
@@ -162,4 +165,3 @@ class TurnOrchestrator:
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
         )
-
