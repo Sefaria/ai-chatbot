@@ -63,17 +63,15 @@ def build_session_info(session) -> dict:
     }
 
 
-# Braintrust logger for the feedback endpoint — initialized on first use so
-# load-test-only processes never call init_logger and get true noop spans.
-# Per-request tracing setup is handled in claude_service.py.
+_bt_config = get_braintrust_config()
 _bt_logger = None
 
 
-def _get_bt_logger() -> braintrust.Logger:
+def _get_bt_logger():
+    """Lazy-init Braintrust logger so load-test-only processes never touch BT."""
     global _bt_logger
     if _bt_logger is None:
-        cfg = get_braintrust_config()
-        _bt_logger = braintrust.init_logger(project=cfg.project, api_key=cfg.api_key)
+        _bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
     return _bt_logger
 
 
@@ -186,19 +184,21 @@ def chat_stream_v2(request):
                 logger.exception("Agent error in streaming endpoint")
                 result_holder["error"] = str(e)
             finally:
-                _flush_braintrust()
+                if not is_load_test:
+                    _flush_braintrust()
                 # Sentinel: signals the main thread that the agent is done
                 progress_queue.put(None)
 
-        # Preserve contextvars (e.g. Braintrust trace context) into the thread.
-        # For load tests, use a plain executor to avoid copying Braintrust span context.
-        ctx = contextvars.copy_context()
-        executor = (
-            concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            if is_load_test
-            else _create_traced_executor()
-        )
-        future = executor.submit(ctx.run, run_agent)
+        # For load tests, run in a clean context to prevent Braintrust span
+        # leaking from the main thread.  Normal requests preserve contextvars
+        # so Braintrust traces propagate correctly.
+        if is_load_test:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(run_agent)
+        else:
+            ctx = contextvars.copy_context()
+            executor = _create_traced_executor()
+            future = executor.submit(ctx.run, run_agent)
 
         # --- Stream progress events to the client ---
         while True:
