@@ -29,8 +29,8 @@
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
-  let panelWidth = $state(380);
-  let panelHeight = $state(520);
+  let panelWidth = $state(300);
+  let panelHeight = $state(430);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
   
