@@ -5,14 +5,16 @@
 # Automatically builds and pushes scorer files to Braintrust when merged to main.
 #
 # Structure:
-#   - _base.py: Shared template with extraction logic and handler
-#   - prompts/*.py: Individual scorer definitions (NAME, SLUG, DESCRIPTION, PROMPT)
-#   - build.py: Combines _base.py + prompts/* into built/*.py
+#   - llm_scorers/*.py: LLM-based scorers (NAME, SLUG, DESCRIPTION, PROMPT)
+#   - code_scorers/*.py: Code-based scorers (NAME, SLUG, DESCRIPTION, handler function)
+#   - templates/llm_scorers.py: Template for LLM scorers (OpenAI evaluation logic)
+#   - templates/code_scorers.py: Template for code scorers (minimal, just registration)
+#   - build.py: Combines templates + scorers into built/*.py
 #   - built/*.py: Generated self-contained files (git-ignored)
 #
 # Required secrets:
 #   - BRAINTRUST_API_KEY: API key for Braintrust authentication
-#   - OPENAI_API_KEY: API key for OpenAI (used by scorers at runtime)
+#   - OPENAI_API_KEY: API key for OpenAI (used by LLM scorers at runtime)
 # =============================================================================
 
 name: Push Scorers to Braintrust
@@ -22,8 +24,9 @@ on:
     branches:
       - main
     paths:
-      - "evals/scorers/_base.py"
-      - "evals/scorers/prompts/*.py"
+      - "evals/scorers/templates/*.py"
+      - "evals/scorers/llm_scorers/*.py"
+      - "evals/scorers/code_scorers/*.py"
       - "evals/scorers/build.py"
 
 jobs:
