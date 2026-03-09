@@ -5,5 +5,5 @@ services:
   app:
     build: .
     ports:
-      - "8001:8001"
+      - "8001"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
