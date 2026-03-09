@@ -905,7 +905,9 @@
         {/if}
 
         {#if messages.length === 0 && !isLoadingHistory}
-          {@render assistantBubble(getEmptyStateMessage(), false, null)}
+          <div class="empty-state">
+            {@render assistantBubble(getEmptyStateMessage(), false, null)}
+          </div>
         {/if}
 
         {#each messagesWithMarkers as item (item.key)}
@@ -1318,6 +1320,10 @@
 
   .message.assistant {
     align-self: flex-start;
+  }
+
+  .empty-state .message.assistant {
+    align-self: center;
   }
 
   .message.user .message-content {
