@@ -53,6 +53,7 @@
   let isClearing = $state(false);
   let isFirstTimeUser = $state(true);
   let isRestarted = $state(false);
+  let isNewSession = $state(false);
 
   // Menu state
   let showMenu = $state(false);
@@ -116,8 +117,9 @@
   // Initialize on mount
   $effect(() => {
     // Initialize session
-    const { sessionId: sid } = getOrCreateSession();
+    const { sessionId: sid, isNew } = getOrCreateSession();
     sessionId = sid;
+    isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
 
     // Restore UI state
@@ -693,7 +695,8 @@
   function getEmptyStateMessage() {
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
-    return newSessionMessage;
+    if (isNewSession) return newSessionMessage;
+    return welcomeMessage;  // Same session, empty (rare): generic prompt
   }
 
 </script>
