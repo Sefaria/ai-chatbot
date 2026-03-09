@@ -41,6 +41,7 @@ from ..auth import (
 from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
+from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .services import (
@@ -172,14 +173,20 @@ def chat_stream_v2(request):
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)
-                result_holder["response"] = asyncio.run(
-                    agent.send_message(
+
+                async def _send():
+                    return await agent.send_message(
                         messages=conversation,
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
                         context=msg_context,
                     )
-                )
+
+                if is_load_test:
+                    with suppress_tracing():
+                        result_holder["response"] = asyncio.run(_send())
+                else:
+                    result_holder["response"] = asyncio.run(_send())
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
                 result_holder["error"] = str(e)

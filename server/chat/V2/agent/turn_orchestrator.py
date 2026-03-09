@@ -6,7 +6,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-import braintrust
 from braintrust import current_span
 
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
@@ -59,7 +58,10 @@ class TurnOrchestrator:
         context: MessageContext,
     ) -> AgentResponse:
         start_time = time.time()
-        bt_span = current_span() if self.logging_enabled else braintrust.NOOP_SPAN
+        # The tracing guard (tracing_guard.py) ensures start_span returns
+        # NOOP_SPAN in load-test threads, so current_span() is safe to call
+        # unconditionally here.
+        bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
 
         last_user_message = next(

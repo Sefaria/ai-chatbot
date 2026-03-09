@@ -31,12 +31,12 @@ from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
 from .tool_runtime import ToolRuntime
 from .trace_logger import BraintrustTraceLogger
-from .tracing_runtime import ensure_braintrust_tracing
+from .tracing_guard import install_tracing_guard
 from .turn_orchestrator import TurnOrchestrator
 
 logger = logging.getLogger("chat.agent")
 
-# Must remain module-global so setup_claude_agent_sdk runs once per process.
+# Track whether setup_claude_agent_sdk has been called for this process.
 _BRAINTRUST_SETUP_DONE = False
 
 
@@ -122,16 +122,18 @@ class ClaudeAgentService:
         )
 
     def _setup_braintrust_tracing(self) -> None:
-        """Ensure Braintrust tracing is initialized for this request thread."""
+        """Ensure Braintrust tracing is initialized for this process.
+
+        Calls setup_claude_agent_sdk once to enable automatic SDK span tracing,
+        and installs the tracing guard so load-test threads can suppress spans.
+        """
         if not self.braintrust_logging_enabled:
             return
         global _BRAINTRUST_SETUP_DONE
-        _BRAINTRUST_SETUP_DONE = ensure_braintrust_tracing(
-            project=self.braintrust_project,
-            api_key=self.braintrust_api_key,
-            setup_done=_BRAINTRUST_SETUP_DONE,
-            setup_fn=setup_claude_agent_sdk,
-        )
+        if not _BRAINTRUST_SETUP_DONE:
+            setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
+            install_tracing_guard()
+            _BRAINTRUST_SETUP_DONE = True
 
     async def send_message(
         self,

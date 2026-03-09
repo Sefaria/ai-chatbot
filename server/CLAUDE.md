@@ -19,6 +19,7 @@ server/
 │       ├── utils.py             # Shared helpers (clients, config)
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
+│       │   ├── tracing_guard.py     # Thread-local Braintrust span suppression
 │       │   ├── sdk_options_builder.py # Claude SDK subprocess options
 │       │   ├── tool_executor.py     # Sefaria tool execution
 │       │   ├── tool_schemas.py      # Tool definitions
@@ -86,9 +87,15 @@ The `isLoadTest` boolean field on `POST /api/v2/chat/stream` enables a cost-opti
 | Behaviour | Normal (`false`) | Load test (`true`) |
 |-----------|------------------|--------------------|
 | Model | `AGENT_MODEL` (Sonnet) | `LOAD_TEST_MODEL` (Haiku) |
-| Braintrust tracing | Enabled | Disabled (noop — init_logger never called) |
+| Braintrust tracing | Full (SDK spans + manual spans) | Suppressed via `tracing_guard.py` |
 | SDK subprocess env | Includes `BRAINTRUST_API_KEY` | Omits Braintrust keys |
 | Thread executor | `TracedThreadPoolExecutor` | Plain `ThreadPoolExecutor` |
+| Span creation | `start_span` creates real spans | `start_span` returns `NOOP_SPAN` |
+
+`setup_claude_agent_sdk` patches the SDK globally (once per process). To prevent
+load-test spans from leaking, `tracing_guard.py` intercepts `start_span` with a
+thread-local flag — load-test threads run inside `suppress_tracing()` so every
+`start_span` call returns `NOOP_SPAN`.
 
 Run the load test script against Docker Compose:
 
