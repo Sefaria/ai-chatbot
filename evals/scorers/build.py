@@ -16,8 +16,8 @@ Usage:
     python build.py non_psak     # Build specific LLM scorer
     python build.py html_format  # Build specific code scorer
 
-Then push:
-    braintrust push built/*.py
+Then push the built files (one at a time):
+    braintrust push built/html_format.py
 """
 
 import sys
@@ -78,11 +78,12 @@ def build_code_scorer(scorer_file: Path) -> None:
         return
 
     # Extract the handler function source code
-    # Find where handler is defined and extract everything from there
+    # Match from "def handler" until the next top-level definition or end of file
+    # Uses negative lookahead to not stop at indented lines or blank lines
     handler_match = re.search(
-        r"^(def handler\(.+?)(?=\n(?:def |class |[A-Z_]+ =|$)|\Z)",
+        r"^(def handler\(.*\n(?:(?:[ \t]+.*|)\n)*)",
         content,
-        re.MULTILINE | re.DOTALL,
+        re.MULTILINE,
     )
     if not handler_match:
         print(f"  Skipping {scorer_file.name}: could not extract handler() function")
@@ -162,7 +163,8 @@ def main():
     for scorer_file in code_files:
         build_code_scorer(scorer_file)
 
-    print("\nDone. Push with: braintrust push evals/scorers/built/*.py")
+    print("\nDone. Push each file individually:")
+    print("  braintrust push built/<scorer_name>.py")
 
 
 if __name__ == "__main__":

@@ -25,10 +25,73 @@ class ScorerParams(BaseModel):
 
 
 # =============================================================================
+# Data Extraction (handles both direct args and trace spans)
+# =============================================================================
+
+
+async def extract_data(
+    input: Any, output: Any, metadata: dict[str, Any] | None, **kwargs
+) -> dict:
+    """Extract input/output from scorer inputs, handling trace spans for pushed scorers."""
+    extracted_input = input
+    extracted_output = output
+    extracted_metadata = metadata or {}
+
+    # If input/output are None, try to get from trace spans (pushed scorer scenario)
+    if input is None or output is None:
+        trace = kwargs.get("trace")
+        if trace:
+            try:
+                spans = await trace.get_spans()
+                if spans and len(spans) > 0:
+                    root = spans[0]
+
+                    if input is None:
+                        extracted_input = getattr(root, "input", None)
+
+                    if output is None:
+                        extracted_output = getattr(root, "output", None)
+
+                    span_metadata = getattr(root, "metadata", None)
+                    if span_metadata and isinstance(span_metadata, dict):
+                        extracted_metadata = {**extracted_metadata, **span_metadata}
+            except Exception:
+                pass  # Fall through with whatever we have
+
+    return {
+        "input": extracted_input,
+        "output": extracted_output,
+        "metadata": extracted_metadata,
+    }
+
+
+# =============================================================================
 # Handler (defined by scorer)
 # =============================================================================
 
 $HANDLER
+
+
+# =============================================================================
+# Wrapper (normalizes data before calling handler)
+# =============================================================================
+
+
+async def _wrapped_handler(
+    input: Any,
+    output: Any,
+    expected: Any = None,
+    metadata: dict[str, Any] = None,
+    **kwargs,
+):
+    """Wrapper that extracts data from trace spans if needed, then calls handler."""
+    data = await extract_data(input, output, metadata, **kwargs)
+    return handler(
+        input=data["input"],
+        output=data["output"],
+        expected=expected,
+        metadata=data["metadata"],
+    )
 
 
 # =============================================================================
@@ -41,7 +104,7 @@ project.scorers.create(
     name=NAME,
     slug=SLUG,
     description=DESCRIPTION,
-    handler=handler,
+    handler=_wrapped_handler,
     parameters=ScorerParams,
     if_exists="replace",
 )

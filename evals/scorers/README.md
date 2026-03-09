@@ -14,8 +14,9 @@ cp code_scorers/html_format.py code_scorers/my_scorer.py
 # Edit NAME, SLUG, DESCRIPTION, handler()
 
 # Build and push
-python build.py
-braintrust push built/*.py
+python build.py my_scorer           # Build specific scorer (just the name, no path/extension)
+python build.py                     # Or build all scorers
+braintrust push built/my_scorer.py  # Push built file (one at a time)
 ```
 
 ## Directory Structure

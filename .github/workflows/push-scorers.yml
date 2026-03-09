@@ -53,6 +53,7 @@ jobs:
         env:
           BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
         run: |
+          # braintrust push only accepts one file at a time
           for file in evals/scorers/built/*.py; do
             echo "Pushing: $file"
             braintrust push "$file"

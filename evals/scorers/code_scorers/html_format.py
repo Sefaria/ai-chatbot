@@ -4,7 +4,7 @@ from typing import Any
 import re
 
 NAME = "HTML Format"
-SLUG = "html-format-4f2a"
+SLUG = "html-format-dc7d"
 DESCRIPTION = "Validates response HTML structure, allowed tags, and length limits"
 
 
