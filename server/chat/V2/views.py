@@ -43,6 +43,7 @@ from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
+from .sentry import capture_exception
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -176,6 +177,12 @@ def chat_stream_v2(request):
                 )
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
+                capture_exception(
+                    e,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                )
                 result_holder["error"] = str(e)
             finally:
                 _flush_braintrust()
@@ -323,7 +330,7 @@ def chat_feedback_v2(request):
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason, 
+        feedback_metadata = {"feedback": score, "feedback_reason": feedback_reason,
                             "feedback_comment": comment, "session_id": data["sessionId"],
                             "user_id": data["userId"],
                             "message_id": data["messageId"],

@@ -94,6 +94,9 @@ pytest           # Run tests
 | `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
+| `SENTRY_DSN` | No | Enable Sentry error monitoring for Django + agent errors |
+| `SENTRY_TRACES_SAMPLE_RATE` | No | Sentry performance trace sampling rate (default `0.0`) |
+| `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
 
