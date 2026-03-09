@@ -56,6 +56,9 @@ def mock_client():
     client.search_in_dictionaries = AsyncMock(return_value={"entries": []})
     client.get_english_translations = AsyncMock(return_value={"translations": []})
     client.get_topic_details = AsyncMock(return_value={"topic": "shabbat"})
+    client.get_author_indexes = AsyncMock(
+        return_value={"author": {"slug": "rambam"}, "indexes": []}
+    )
     client.clarify_name_argument = AsyncMock(return_value={"suggestions": []})
     client.clarify_search_path_filter = AsyncMock(return_value="Tanakh/Torah/Genesis")
     client.get_text_or_category_shape = AsyncMock(return_value={"shape": []})
@@ -123,6 +126,16 @@ class TestToolDispatch:
                 {"topic_slug": "shabbat", "with_links": True, "with_refs": True},
                 "get_topic_details",
                 ("shabbat", True, True),
+            ),
+            (
+                "get_author_indexes",
+                {
+                    "author_slug": "rambam",
+                    "include_aggregations": True,
+                    "include_descriptions": True,
+                },
+                "get_author_indexes",
+                ("rambam", True, True),
             ),
             (
                 "clarify_name_argument",
@@ -254,6 +267,7 @@ class TestDescribeToolCall:
             ),
             ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
             ("get_current_calendar", {}, ["calendar"]),
+            ("get_author_indexes", {"author_slug": "rambam"}, ["works", "rambam"]),
             ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
             ("unknown_tool", {"arg": "value"}, ["Running tool", "unknown_tool"]),
         ],

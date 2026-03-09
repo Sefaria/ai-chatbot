@@ -130,6 +130,31 @@ TOOL_GET_TOPIC_DETAILS = {
     },
 }
 
+TOOL_GET_AUTHOR_INDEXES = {
+    "name": "get_author_indexes",
+    "description": "Retrieves the list of texts associated with a Sefaria author slug, with optional grouped works and descriptions.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "author_slug": {
+                "type": "string",
+                "description": 'Sefaria author topic slug (e.g. "rambam")',
+            },
+            "include_aggregations": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to include grouped works such as major collections.",
+            },
+            "include_descriptions": {
+                "type": "boolean",
+                "default": False,
+                "description": "Whether to include available English/Hebrew descriptions for each work.",
+            },
+        },
+        "required": ["author_slug"],
+    },
+}
+
 TOOL_CLARIFY_NAME_ARGUMENT = {
     "name": "clarify_name_argument",
     "description": "Validates and autocompletes text names, book titles, references, topic slugs, author names, and categories.",
@@ -209,6 +234,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,
     "get_english_translations": TOOL_GET_ENGLISH_TRANSLATIONS,
     "get_topic_details": TOOL_GET_TOPIC_DETAILS,
+    "get_author_indexes": TOOL_GET_AUTHOR_INDEXES,
     "clarify_name_argument": TOOL_CLARIFY_NAME_ARGUMENT,
     "clarify_search_path_filter": TOOL_CLARIFY_SEARCH_PATH_FILTER,
     "get_text_or_category_shape": TOOL_GET_TEXT_OR_CATEGORY_SHAPE,
