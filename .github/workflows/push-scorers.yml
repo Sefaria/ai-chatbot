@@ -1,0 +1,56 @@
+# =============================================================================
+# Push Scorers to Braintrust
+# =============================================================================
+#
+# Automatically builds and pushes scorer files to Braintrust when merged to main.
+#
+# Structure:
+#   - _base.py: Shared template with extraction logic and handler
+#   - prompts/*.py: Individual scorer definitions (NAME, SLUG, DESCRIPTION, PROMPT)
+#   - build.py: Combines _base.py + prompts/* into built/*.py
+#   - built/*.py: Generated self-contained files (git-ignored)
+#
+# Required secrets:
+#   - BRAINTRUST_API_KEY: API key for Braintrust authentication
+#   - OPENAI_API_KEY: API key for OpenAI (used by scorers at runtime)
+# =============================================================================
+
+name: Push Scorers to Braintrust
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "evals/scorers/_base.py"
+      - "evals/scorers/prompts/*.py"
+      - "evals/scorers/build.py"
+
+jobs:
+  push-scorers:
+    name: Build and Push Scorers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install braintrust pydantic openai
+
+      - name: Build scorers
+        run: python evals/scorers/build.py
+
+      - name: Push scorers to Braintrust
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+        run: |
+          for file in evals/scorers/built/*.py; do
+            echo "Pushing: $file"
+            braintrust push "$file"
+          done
