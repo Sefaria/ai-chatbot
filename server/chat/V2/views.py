@@ -44,6 +44,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
+from .sentry import capture_exception
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -189,6 +190,12 @@ def chat_stream_v2(request):
                     result_holder["response"] = asyncio.run(_send())
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
+                capture_exception(
+                    e,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                )
                 result_holder["error"] = str(e)
             finally:
                 if not is_load_test:

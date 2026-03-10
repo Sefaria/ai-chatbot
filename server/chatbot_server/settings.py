@@ -169,6 +169,37 @@ REST_FRAMEWORK = {
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 
+
+def _read_env_float(name: str, default: float) -> float:
+    """Read an environment variable as float; fall back to default on invalid values."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+# Optional Sentry error monitoring.
+# Enable by setting SENTRY_DSN in the server environment.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        environment=ENVIRONMENT,
+        release=os.environ.get("SENTRY_RELEASE"),
+        sample_rate=_read_env_float("SENTRY_SAMPLE_RATE", 0.0),
+        send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "false").lower() == "true",
+        traces_sample_rate=_read_env_float("SENTRY_TRACES_SAMPLE_RATE", 0.0),
+        profiles_sample_rate=_read_env_float("SENTRY_PROFILES_SAMPLE_RATE", 0.0),
+    )
+
 # Prompt slug defaults (Braintrust)
 # These slugs identify which Braintrust prompt to fetch for each service.
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
