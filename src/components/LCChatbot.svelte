@@ -6,6 +6,7 @@
   import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
+  import HeaderButton from './HeaderButton.svelte';
 
   // Props (attributes)
   let {
@@ -707,30 +708,34 @@
       <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
           {#if isModerator}
-            <button class="settings-btn" onclick={openSettings} aria-label="Open settings">
+            <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
-            </button>
+            </HeaderButton>
           {/if}
           <h2>Library Assistant
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
-          <button aria-label="Toggle docked/floating" class="panel-btn" onclick={(e) => { e.stopPropagation(); toggleMode(); }}>
+          <HeaderButton
+            className="panel-btn"
+            title={(mode === 'floating') ? "Dock assistant to side" : "Undock assistant"}
+            onClick={(e) => { e.stopPropagation(); toggleMode(); }}
+          >
             <img
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
               width="16"
               height="16"
             />
-          </button>
+          </HeaderButton>
           <div class="menu-container">
-            <button class="menu-btn" onclick={toggleMenu} aria-label="Open menu" aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title="More options" aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
-            </button>
+            </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
@@ -752,12 +757,12 @@
               </div>
             {/if}
           </div>
-          <button class="close-btn" onclick={closePanel} aria-label="Close chat">
+          <HeaderButton className="close-btn" onClick={closePanel} title="Close assistant">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
-          </button>
+          </HeaderButton>
         </div>
       </header>
 
@@ -1158,25 +1163,6 @@
     display: block;
   }
 
-  .settings-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    border: 1px solid var(--lc-border);
-    background: var(--lc-bg-tertiary);
-    color: var(--lc-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .settings-btn:hover {
-    background: var(--lc-bg-secondary);
-    color: var(--lc-text);
-  }
-
   .header-actions {
     display: flex;
     align-items: center;
@@ -1185,33 +1171,6 @@
 
   .menu-container {
     position: relative;
-  }
-
-  .menu-btn,
-  .panel-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px;
-    border: 0px;
-    background: transparent;
-    color: var(--lc-text-secondary);
-    cursor: pointer;
-    font-size: var(--lc-font-size-sm);
-    font-weight: 600;
-    font-family: var(--lc-font);
-    transition: all 0.15s ease;
-  }
-
-  .menu-btn:hover,
-  .panel-btn:hover,
-  .menu-btn:focus-visible,
-  .panel-btn:focus-visible,
-  .menu-btn:active,
-  .panel-btn:active {
-    background: var(--lc-bg-tertiary);
-    color: var(--lc-text);
-    border-color: var(--lc-border);
   }
 
   .menu-dropdown {
@@ -1257,25 +1216,6 @@
   .menu-item svg {
     flex-shrink: 0;
     color: var(--lc-text-secondary);
-  }
-
-  .close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: none;
-    border-radius: var(--lc-radius-sm);
-    cursor: pointer;
-    color: var(--lc-text-secondary);
-    transition: all 0.15s ease;
-  }
-
-  .close-btn:hover {
-    background: var(--lc-bg-tertiary);
-    color: var(--lc-text);
   }
 
   /* Message List */

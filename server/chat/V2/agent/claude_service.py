@@ -25,31 +25,19 @@ from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
-from .helpers import extract_refs as _extract_refs
-from .helpers import truncate as _truncate
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
 from .tool_runtime import ToolRuntime
 from .trace_logger import BraintrustTraceLogger
-from .tracing_runtime import ensure_braintrust_tracing
+from .tracing_guard import install_tracing_guard
 from .turn_orchestrator import TurnOrchestrator
 
 logger = logging.getLogger("chat.agent")
 
-# Must remain module-global so setup_claude_agent_sdk runs once per process.
+# Track whether setup_claude_agent_sdk has been called for this process.
 _BRAINTRUST_SETUP_DONE = False
-
-
-def extract_refs(tool_calls: list) -> list:
-    """Backward-compatible export for tests and call sites."""
-    return _extract_refs(tool_calls)
-
-
-def truncate(text: str, max_len: int) -> str:
-    """Backward-compatible export for tests and call sites."""
-    return _truncate(text, max_len)
 
 
 class ClaudeAgentService:
@@ -63,6 +51,7 @@ class ClaudeAgentService:
         max_tokens: int = 8000,
         temperature: float = 0.7,
         prompt_service: PromptService | None = None,
+        is_load_test: bool = False,
     ):
         if (
             ClaudeAgentOptions is None
@@ -79,6 +68,7 @@ class ClaudeAgentService:
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
+        self.braintrust_logging_enabled = not is_load_test
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -86,7 +76,9 @@ class ClaudeAgentService:
 
         from django.conf import settings as django_settings
 
-        self.model = model or django_settings.AGENT_MODEL
+        self.model = model or (
+            django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
+        )
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -105,6 +97,7 @@ class ClaudeAgentService:
             temperature=self.temperature,
             braintrust_api_key=self.braintrust_api_key,
             braintrust_project=self.braintrust_project,
+            braintrust_logging_enabled=self.braintrust_logging_enabled,
             mcp_server_name=self._mcp_server_name,
             logger=logger,
         )
@@ -125,17 +118,22 @@ class ClaudeAgentService:
             sdk_runner=sdk_runner,
             guardrail_gate=guardrail_gate,
             trace_logger=trace_logger,
+            logging_enabled=self.braintrust_logging_enabled,
         )
 
     def _setup_braintrust_tracing(self) -> None:
-        """Ensure Braintrust tracing is initialized for this request thread."""
+        """Ensure Braintrust tracing is initialized for this process.
+
+        Calls setup_claude_agent_sdk once to enable automatic SDK span tracing,
+        and installs the tracing guard so load-test threads can suppress spans.
+        """
+        if not self.braintrust_logging_enabled:
+            return
         global _BRAINTRUST_SETUP_DONE
-        _BRAINTRUST_SETUP_DONE = ensure_braintrust_tracing(
-            project=self.braintrust_project,
-            api_key=self.braintrust_api_key,
-            setup_done=_BRAINTRUST_SETUP_DONE,
-            setup_fn=setup_claude_agent_sdk,
-        )
+        if not _BRAINTRUST_SETUP_DONE:
+            setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
+            install_tracing_guard()
+            _BRAINTRUST_SETUP_DONE = True
 
     async def send_message(
         self,
@@ -147,7 +145,6 @@ class ClaudeAgentService:
         """Run one chat turn and return the final response payload."""
         context = context or MessageContext()
 
-        @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
             return await self._orchestrator.run_turn(
                 messages=messages,
@@ -156,6 +153,9 @@ class ClaudeAgentService:
                 context=context,
             )
 
+        if self.braintrust_logging_enabled:
+            run = braintrust.traced(name="chat-agent", type="task")(run)
+
         return await run()
 
     async def close(self) -> None:
@@ -163,7 +163,6 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-def get_agent_service() -> ClaudeAgentService:
+def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
     """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService()
-
+    return ClaudeAgentService(is_load_test=is_load_test)

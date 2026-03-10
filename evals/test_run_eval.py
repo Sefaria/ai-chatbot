@@ -44,6 +44,24 @@ class TestCreateScorer:
             result = scorer("test output")
             assert result == 0.0
 
+    def test_scorer_returns_zero_when_dict_missing_score_key(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"pass": True, "reason": "looks good"}
+            result = scorer("test output")
+            assert result == 0.0
+
+    def test_scorer_returns_raw_value_when_not_dict(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = 0.75
+            result = scorer("test output")
+            assert result == 0.75
+
 
 class TestChatbotClient:
     """Tests for ChatbotClient."""
