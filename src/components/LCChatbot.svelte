@@ -30,7 +30,7 @@
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
   let panelWidth = $state(300);
-  let panelHeight = $state(430);
+  let panelHeight = $state(456);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
   
@@ -1322,8 +1322,11 @@
     align-self: flex-start;
   }
 
-  .empty-state .message.assistant {
-    align-self: center;
+  .empty-state .message.assistant ul {
+    padding-inline-start: 20px;
+  }
+  .empty-state .message.assistant ul li {
+      margin-bottom: 5px;
   }
 
   .message.user .message-content {
