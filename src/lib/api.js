@@ -191,9 +191,6 @@ export async function sendMessageStream(
     const error = new Error(errorData?.message || `Chat request failed: ${response.status}`);
     error.status = response.status;
     error.code = errorData?.error;
-    if (error.code === 'turn_limit_reached') {
-      console.log('[lc-chatbot] [prompt-limit] API returned turn_limit_reached:', errorData);
-    }
     throw error;
   }
 
@@ -239,9 +236,6 @@ export async function sendMessageStream(
                 stats: data.stats,
                 session: data.session
               };
-              if (data.session) {
-                console.log('[lc-chatbot] [prompt-limit] API message event session:', data.session);
-              }
               if (callbacks.onMessage) {
                 callbacks.onMessage(finalMessage);
               }
@@ -356,10 +350,6 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
   }
   
   const data = await response.json();
-
-  if (data.session) {
-    console.log('[lc-chatbot] [prompt-limit] loadHistory session:', data.session);
-  }
 
   return {
     messages: data.messages || [],
