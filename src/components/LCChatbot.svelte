@@ -84,6 +84,26 @@
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
+  const DEFAULT_EMPTY_STATE_TITLE = 'Sefaria AI Experiment';
+
+  function getTestingVersionFromApiBaseUrl(url) {
+    if (!url) return '';
+
+    try {
+      const normalizedUrl =
+        url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+      const hostname = new URL(normalizedUrl).hostname;
+      const match = hostname.match(/^(\d+)\.ai-server\.coolifydev\.sefaria\.org$/i);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  let testingVersion = $derived(getTestingVersionFromApiBaseUrl(apiBaseUrl));
+  let emptyStateTitle = $derived(
+    testingVersion ? `You are testing version ${testingVersion}` : DEFAULT_EMPTY_STATE_TITLE
+  );
 
   // Size constraints
   const MIN_WIDTH = 320;
@@ -829,7 +849,7 @@
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
-            <p>Sefaria AI Experiment</p>
+            <p>{emptyStateTitle}</p>
           </div>
         {/if}
 
@@ -1802,4 +1822,3 @@ inset: 8px;
   }
 
 </style>
-
