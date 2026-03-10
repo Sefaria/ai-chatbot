@@ -27,6 +27,7 @@ services:
       DB_PASSWORD: chatbot_password
       DB_HOST: postgres
       DB_PORT: 5432
+      BRAINTRUST_TRACING_ENABLED: "false"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
     depends_on:
       postgres:

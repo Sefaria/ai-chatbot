@@ -22,7 +22,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
 from ..prompts import PromptService, get_prompt_service
-from ..utils import get_anthropic_client, get_braintrust_config
+from ..utils import get_anthropic_client, get_braintrust_config, is_braintrust_tracing_enabled
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
 from .sdk_options_builder import SDKOptionsBuilder
@@ -116,7 +116,9 @@ class ClaudeAgentService:
         )
 
     def _setup_braintrust_tracing(self) -> None:
-        """Ensure Braintrust tracing is initialized for this request thread."""
+        """Ensure Braintrust tracing is initialized for this process."""
+        if not is_braintrust_tracing_enabled():
+            return
         global _BRAINTRUST_SETUP_DONE
         _BRAINTRUST_SETUP_DONE = ensure_braintrust_tracing(
             project=self.braintrust_project,
@@ -135,7 +137,6 @@ class ClaudeAgentService:
         """Run one chat turn and return the final response payload."""
         context = context or MessageContext()
 
-        @braintrust.traced(name="chat-agent", type="task")
         async def run() -> AgentResponse:
             return await self._orchestrator.run_turn(
                 messages=messages,
@@ -143,6 +144,9 @@ class ClaudeAgentService:
                 on_progress=on_progress,
                 context=context,
             )
+
+        if is_braintrust_tracing_enabled():
+            run = braintrust.traced(name="chat-agent", type="task")(run)
 
         return await run()
 

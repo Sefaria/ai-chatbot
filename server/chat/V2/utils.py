@@ -37,6 +37,11 @@ def get_braintrust_config() -> BraintrustConfig:
     )
 
 
+def is_braintrust_tracing_enabled() -> bool:
+    """Check if Braintrust tracing is enabled via environment variable."""
+    return os.environ.get("BRAINTRUST_TRACING_ENABLED", "true").lower() != "false"
+
+
 def flush_braintrust() -> None:
     """Flush pending Braintrust spans so they're sent before the request ends."""
     braintrust.flush()
