@@ -48,7 +48,6 @@ from .services import (
     load_session_summary,
     save_user_message,
 )
-from .remote_config_client import get_max_prompts
 from .summarization import get_summary_service
 from .utils import flush_braintrust as _flush_braintrust
 from .utils import get_braintrust_config
@@ -56,11 +55,9 @@ from .utils import get_braintrust_config
 logger = logging.getLogger("chat")
 
 
-def build_session_info(session, max_prompts: int | None = None) -> dict:
+def build_session_info(session, max_prompts: int) -> dict:
     """Build session info dict for API response."""
     turn_count = session.turn_count or 0
-    if max_prompts is None:
-        max_prompts = get_max_prompts()
     return {
         "turnCount": turn_count,
         "maxTurns": max_prompts,
@@ -120,17 +117,9 @@ def chat_stream_v2(request):
     # Create or get session with ownership validation
     session, _ = create_or_get_session(data["sessionId"], actor)
 
-    # Enforce prompt limit from RemoteConfig
-    max_prompts = get_max_prompts()
+    max_prompts = data.get("maxPrompts", 0)
     turn_count = session.turn_count or 0
-    logger.info(
-        "[prompt-limit] chat_stream_v2 session=%s turn_count=%s max_prompts=%s",
-        data["sessionId"],
-        turn_count,
-        max_prompts,
-    )
     if max_prompts > 0 and turn_count >= max_prompts:
-        logger.info("[prompt-limit] Rejecting: limit reached (turn_count=%s >= max_prompts=%s)", turn_count, max_prompts)
         return Response(
             {
                 "error": "turn_limit_reached",
@@ -296,11 +285,6 @@ def chat_stream_v2(request):
         session.refresh_from_db()
 
         session_info = build_session_info(session, max_prompts)
-        logger.info(
-            "[prompt-limit] chat_stream_v2 success session=%s session_info=%s",
-            data["sessionId"],
-            session_info,
-        )
 
         final_data = {
             "messageId": response_message.message_id,

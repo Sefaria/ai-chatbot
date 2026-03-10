@@ -426,7 +426,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs);
+      }, promptSlugs, maxPrompts);
 
       // Update user message status
       messages = messages.map(m => 

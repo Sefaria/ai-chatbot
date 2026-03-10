@@ -20,6 +20,7 @@ import { generateMessageId } from './session.js';
  * @property {string} text
  * @property {MessageContext} context
  * @property {PromptSlugs} [promptSlugs]
+ * @property {number} [maxPrompts] - Max prompts limit (0 = unlimited)
  */
 
 /**
@@ -134,6 +135,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} text - Message text
  * @param {StreamCallbacks} callbacks - Streaming callbacks
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
+ * @param {number} [maxPrompts] - Max prompts limit (0 = unlimited)
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -142,7 +144,8 @@ export async function sendMessageStream(
   sessionId,
   text,
   callbacks = {},
-  promptSlugs = null
+  promptSlugs = null,
+  maxPrompts = undefined
 ) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
@@ -163,6 +166,9 @@ export async function sendMessageStream(
 
   if (promptSlugs) {
     payload.promptSlugs = promptSlugs;
+  }
+  if (maxPrompts !== undefined) {
+    payload.maxPrompts = maxPrompts;
   }
   
   const response = await fetch(`${apiBaseUrl}/chat/stream`, {

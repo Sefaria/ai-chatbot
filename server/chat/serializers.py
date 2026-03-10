@@ -31,6 +31,7 @@ class ChatRequestSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
+    maxPrompts = serializers.IntegerField(required=False, allow_null=True)
 
 
 class FeedbackRequestSerializer(serializers.Serializer):
