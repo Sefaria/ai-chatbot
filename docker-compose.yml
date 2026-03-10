@@ -1,37 +1,9 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: chatbot
-      POSTGRES_USER: chatbot
-      POSTGRES_PASSWORD: chatbot_password
-    ports:
-      - "5438:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatbot"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   app:
     build: .
     ports:
-      - "8001:8001"
-    environment:
-      DB_NAME: chatbot
-      DB_USER: chatbot
-      DB_PASSWORD: chatbot_password
-      DB_HOST: postgres
-      DB_PORT: 5432
+      - "8001"
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  postgres_data:
-

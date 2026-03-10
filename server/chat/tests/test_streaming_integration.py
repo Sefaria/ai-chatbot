@@ -483,12 +483,14 @@ class TestStreamingEndpointErrorHandling:
             "text": "This will fail",
         }
 
-        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+        with patch("chat.V2.views.capture_exception") as mock_capture:
+            response = client.post("/api/v2/chat/stream", data=request_data, format="json")
 
-        # Still returns 200 for SSE (error is in the stream)
-        assert response.status_code == 200
+            # Still returns 200 for SSE (error is in the stream)
+            assert response.status_code == 200
 
-        content = b"".join(response.streaming_content).decode("utf-8")
+            content = b"".join(response.streaming_content).decode("utf-8")
+            mock_capture.assert_called_once()
         assert "event: error" in content
 
     def test_missing_required_fields_returns_400(self, client):
