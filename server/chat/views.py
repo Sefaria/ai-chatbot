@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
+from django.conf import settings as django_settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -90,6 +91,7 @@ def history(request):
         session = ChatSession.objects.get(session_id=session_id)
         session_info = {
             "turnCount": session.turn_count or 0,
+            "maxPrompts": django_settings.MAX_PROMPTS,
             "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
         }
     except ChatSession.DoesNotExist:

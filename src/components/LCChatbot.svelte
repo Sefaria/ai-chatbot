@@ -15,7 +15,8 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500
+    'max-input-chars': maxInputChars = 500,
+    'max-prompts': maxPrompts = 0
   } = $props();
 
   // State
@@ -49,6 +50,23 @@
   let settingsError = $state('');
 
   let isClearing = $state(false);
+
+  // Turn limit state
+  let turnCount = $state(0);
+  let serverMaxPrompts = $state(null);
+  let backendLimitReached = $state(false);
+
+  let effectiveMaxPrompts = $derived.by(() => {
+    const propLimit = Number(maxPrompts);
+    if (propLimit > 0 && serverMaxPrompts !== null) return Math.min(propLimit, serverMaxPrompts);
+    if (propLimit > 0) return propLimit;
+    if (serverMaxPrompts !== null) return serverMaxPrompts;
+    return Infinity;
+  });
+
+  let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
+
+  const LIMIT_REACHED_MESSAGE = 'Conversation limit reached. Please start a new chat.';
 
   // Menu state
   let showMenu = $state(false);
@@ -239,6 +257,8 @@
     hasMoreHistory = false;
     currentProgress = null;
     toolHistory = [];
+    turnCount = 0;
+    backendLimitReached = false;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
@@ -308,6 +328,12 @@
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
 
+      if (result.session) {
+        turnCount = result.session.turnCount || 0;
+        if (result.session.maxPrompts !== undefined) {
+          serverMaxPrompts = result.session.maxPrompts;
+        }
+      }
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
@@ -354,7 +380,7 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    if (!text || isSending || !userId || !apiBaseUrl) return;
+    if (!text || isSending || limitReached || !userId || !apiBaseUrl) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -443,6 +469,13 @@
       saveMessagesToStorage();
       scrollToBottom();
 
+      // Update turn count from server response
+      if (response.session) {
+        turnCount = response.session.turnCount || 0;
+        if (response.session.maxPrompts !== undefined) {
+          serverMaxPrompts = response.session.maxPrompts;
+        }
+      }
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -453,6 +486,13 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
+
+      if (e.code === 'turn_limit_reached') {
+        backendLimitReached = true;
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        return;
+      }
 
       // Mark message as failed for other errors
       messages = messages.map(m =>
@@ -909,6 +949,14 @@
             </div>
           </div>
         {/if}
+
+        {#if limitReached}
+          <div class="message assistant limit-message">
+            <div class="message-content">
+              <p>{LIMIT_REACHED_MESSAGE}</p>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <!-- Input Footer -->
@@ -918,15 +966,15 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={maxInputChars}
-          placeholder="What are you learning today?"
+          placeholder={limitReached ? LIMIT_REACHED_MESSAGE : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
-          disabled={isSending}
+          disabled={isSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
+          disabled={!inputText.trim() || isSending || limitReached}
           aria-label="Send message"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1284,6 +1332,11 @@
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
     background: #fef2f2;
+  }
+
+  .message.limit-message .message-content {
+    font-style: italic;
+    color: var(--lc-text-secondary);
   }
 
   .message-meta {

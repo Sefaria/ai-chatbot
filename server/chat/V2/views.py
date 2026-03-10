@@ -62,6 +62,7 @@ def build_session_info(session) -> dict:
     turn_count = session.turn_count or 0
     return {
         "turnCount": turn_count,
+        "maxPrompts": settings.MAX_PROMPTS,
     }
 
 
@@ -122,6 +123,26 @@ def chat_stream_v2(request):
 
     # Create or get session with ownership validation
     session, _ = create_or_get_session(data["sessionId"], actor)
+
+    # Enforce turn limit
+    if (session.turn_count or 0) >= settings.MAX_PROMPTS:
+        return Response(
+            {
+                "error": "turn_limit_reached",
+                "message": "Conversation limit reached. Please start a new chat.",
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    # Enforce input length limit
+    if len(data["text"]) > settings.MAX_INPUT_CHARS:
+        return Response(
+            {
+                "error": "input_too_long",
+                "message": f"Message exceeds maximum length of {settings.MAX_INPUT_CHARS} characters.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
