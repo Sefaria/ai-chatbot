@@ -68,7 +68,11 @@ class ClaudeAgentService:
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
-        self.braintrust_logging_enabled = not is_load_test
+        from django.conf import settings as django_settings
+
+        self.braintrust_logging_enabled = (
+            django_settings.BRAINTRUST_LOGGING_ENABLED and not is_load_test
+        )
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):

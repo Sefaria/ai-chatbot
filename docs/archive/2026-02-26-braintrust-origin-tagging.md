@@ -8,7 +8,7 @@
 
 **Tech Stack:** Django, Braintrust Python SDK (`span.log(tags=..., metadata=...)`)
 
-**Status:** COMPLETE — All 8 tasks implemented and tested. Ready for deployment after sefaria-project sends `origin="sefaria-prod"`.
+**Status:** COMPLETE — All 8 tasks implemented and tested. Merged with main's agent refactor (claude_service.py split into focused modules) and load-test tracing guard. `tracing_runtime.py` removed (superseded by inline check in `claude_service.py`). Ready for deployment after sefaria-project sends `origin="sefaria-prod"`.
 
 ---
 
