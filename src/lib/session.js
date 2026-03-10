@@ -5,7 +5,7 @@
 import { getStorage, setStorage, STORAGE_KEYS } from './storage.js';
 
 // Session timeout in minutes
-const SESSION_TIMEOUT_MINUTES = 3;
+const SESSION_TIMEOUT_MINUTES = 30;
 
 /**
  * Generate a unique session ID
