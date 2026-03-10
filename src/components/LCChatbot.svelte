@@ -1322,11 +1322,11 @@
     align-self: flex-start;
   }
 
-  .empty-state .message.assistant ul {
+  .empty-state .message.assistant .message-content :global(ul) {
     padding-inline-start: 20px;
   }
-  .empty-state .message.assistant ul li {
-      margin-bottom: 5px;
+  .empty-state .message.assistant .message-content :global(ul li) {
+    margin-bottom: 5px;
   }
 
   .message.user .message-content {
