@@ -221,6 +221,7 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
 GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
+LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
 # Sefaria API Configuration (optional)

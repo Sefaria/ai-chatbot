@@ -21,6 +21,7 @@ class SDKOptionsBuilder:
         braintrust_api_key: str,
         braintrust_project: str,
         mcp_server_name: str,
+        braintrust_logging_enabled: bool = True,
         logger: logging.Logger | None = None,
     ):
         self.options_cls = options_cls
@@ -29,6 +30,7 @@ class SDKOptionsBuilder:
         self.temperature = temperature
         self.braintrust_api_key = braintrust_api_key
         self.braintrust_project = braintrust_project
+        self.braintrust_logging_enabled = braintrust_logging_enabled
         self.mcp_server_name = mcp_server_name
         self.logger = logger or logging.getLogger("chat.agent")
 
@@ -69,11 +71,13 @@ class SDKOptionsBuilder:
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
-            options_kwargs["env"] = {
+            env: dict[str, str] = {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-                "BRAINTRUST_API_KEY": self.braintrust_api_key,
-                "BRAINTRUST_PROJECT": self.braintrust_project,
             }
+            if self.braintrust_logging_enabled:
+                env["BRAINTRUST_API_KEY"] = self.braintrust_api_key
+                env["BRAINTRUST_PROJECT"] = self.braintrust_project
+            options_kwargs["env"] = env
         if debug_enabled:
             if self._supports_option("extra_args"):
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
@@ -86,4 +90,3 @@ class SDKOptionsBuilder:
             system_prompt_in_options = True
 
         return self.options_cls(**options_kwargs), system_prompt_in_options
-

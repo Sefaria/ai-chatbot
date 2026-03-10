@@ -5,5 +5,15 @@ services:
   app:
     build: .
     ports:
-      - "8001"
+      - "8001:8001"
+    env_file:
+      - server/.env
+    environment:
+      DB_NAME: chatbot
+      DB_USER: chatbot
+      DB_PASSWORD: chatbot_password
+      DB_HOST: postgres
+      DB_PORT: 5432
+      CHATBOT_USER_TOKEN_SECRET: secret
+      LOAD_TEST_MODEL: claude-haiku-4-5-20251001
     entrypoint: ["gunicorn", "chatbot_server.wsgi:application", "--bind", "0.0.0.0:8001", "--worker-class", "gthread", "--threads", "4"]
