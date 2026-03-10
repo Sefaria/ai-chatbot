@@ -970,6 +970,10 @@
             </div>
           </div>
         {/if}
+
+        {#if limitReached}
+          {@render assistantBubble("Conversation limit reached, please start a new chat.", false, null)}
+        {/if}
       </div>
 
       <!-- Input Footer -->
