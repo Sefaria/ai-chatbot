@@ -39,7 +39,9 @@ class DefaultGuardrailGate:
         )
 
         guardrail_span = bt_span.start_span(name="guardrail", type="task")
-        guardrail_result = await asyncio.to_thread(get_guardrail_service().check_message, enriched_message)
+        guardrail_result = await asyncio.to_thread(
+            get_guardrail_service().check_message, enriched_message
+        )
         guardrail_span.log(
             input={"message": enriched_message},
             output={"allowed": guardrail_result.allowed, "reason": guardrail_result.reason},
@@ -69,4 +71,3 @@ class DefaultGuardrailGate:
             latency_ms=latency_ms,
             trace_id=bt_span.id,
         )
-

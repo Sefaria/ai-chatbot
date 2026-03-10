@@ -86,4 +86,3 @@ class SDKOptionsBuilder:
             system_prompt_in_options = True
 
         return self.options_cls(**options_kwargs), system_prompt_in_options
-

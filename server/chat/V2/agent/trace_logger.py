@@ -73,4 +73,3 @@ class BraintrustTraceLogger:
             "tool_calls": tool_calls,
         }
         bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
-

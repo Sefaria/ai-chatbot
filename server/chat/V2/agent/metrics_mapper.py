@@ -84,4 +84,3 @@ def build_agent_response(
         cache_read_tokens=usage.cache_read_tokens,
         total_cost_usd=total_cost_usd,
     )
-

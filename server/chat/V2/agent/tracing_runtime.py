@@ -23,4 +23,3 @@ def ensure_braintrust_tracing(
         braintrust.init_logger(project=project, api_key=api_key)
 
     return setup_done
-
