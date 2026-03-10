@@ -84,7 +84,6 @@
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
-  const DEFAULT_EMPTY_STATE_TITLE = 'Sefaria AI Experiment';
 
   function getTestingVersionFromApiBaseUrl(url) {
     if (!url) return '';
