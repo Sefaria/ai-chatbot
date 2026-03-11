@@ -19,6 +19,8 @@ server/
 │       ├── utils.py             # Shared helpers (clients, config)
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
+│       │   ├── tracing_guard.py     # Thread-local Braintrust span suppression
+│       │   ├── sdk_options_builder.py # Claude SDK subprocess options
 │       │   ├── tool_executor.py     # Sefaria tool execution
 │       │   ├── tool_schemas.py      # Tool definitions
 │       │   └── sefaria_client.py    # Sefaria API client
@@ -34,8 +36,10 @@ server/
 │       │   └── session_service.py   # Session management
 │       └── summarization/
 │           └── summary_service.py   # Conversation summarization
-└── chatbot_server/
-    └── settings.py              # Django config
+├── chatbot_server/
+│   └── settings.py              # Django config
+└── loadtest/
+    └── load_test.py             # Concurrent SSE load test script
 ```
 
 ## Architecture
@@ -71,4 +75,44 @@ pytest                                    # Run tests
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
 | `BRAINTRUST_API_KEY` | Yes | Prompt management & tracing |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
+| `AGENT_MODEL` | No | Model for normal requests (default: claude-sonnet-4-5-20250929) |
+| `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
+| `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
+
+## Load Testing
+
+The `isLoadTest` boolean field on `POST /api/v2/chat/stream` enables a cost-optimised path:
+
+| Behaviour | Normal (`false`) | Load test (`true`) |
+|-----------|------------------|--------------------|
+| Model | `AGENT_MODEL` (Sonnet) | `LOAD_TEST_MODEL` (Haiku) |
+| Braintrust tracing | Full (SDK spans + manual spans) | Suppressed via `tracing_guard.py` |
+| SDK subprocess env | Includes `BRAINTRUST_API_KEY` | Omits Braintrust keys |
+| Thread executor | `TracedThreadPoolExecutor` | Plain `ThreadPoolExecutor` |
+| Span creation | `start_span` creates real spans | `start_span` returns `NOOP_SPAN` |
+
+`setup_claude_agent_sdk` patches the SDK globally (once per process). To prevent
+load-test spans from leaking, `tracing_guard.py` intercepts `start_span` with a
+thread-local flag — load-test threads run inside `suppress_tracing()` so every
+`start_span` call returns `NOOP_SPAN`.
+
+Run the load test script against Docker Compose:
+
+```bash
+# Start the stack (reads ANTHROPIC_API_KEY from server/.env)
+docker compose up --build
+
+# Run 5 concurrent users, 20 total requests
+cd server
+source venv/bin/activate
+python -m loadtest.load_test --url http://localhost:8001 --users 5 --requests 20
+
+# Single verbose request to inspect SSE events
+python -m loadtest.load_test --url http://localhost:8001 --users 1 --requests 1 --verbose
+
+# Normal (non-load-test) request for comparison
+python -m loadtest.load_test --url http://localhost:8001 --users 1 --requests 1 --no-load-test --timeout 300
+```
+
+The script auto-generates valid encrypted user tokens using `CHATBOT_USER_TOKEN_SECRET` (defaults to `secret`, matching the Docker Compose default).
