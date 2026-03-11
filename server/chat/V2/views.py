@@ -350,6 +350,10 @@ def chat_feedback_v2(request):
     comment = (data.get("comment") or "").strip()
 
     try:
+        # Log feedback in Braintrust's feedback system
+        # Update trace metadata so feedback appears in the same metadata blob in the UI
+        # (that blob is span metadata set at message-creation time)
+        # This allows us to easily view feedback metadata in the UI.
         if bt_logger is not None:
             feedback_metadata = {
                 "feedback": score,
