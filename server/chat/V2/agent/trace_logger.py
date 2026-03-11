@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..origin import PROD_ORIGINS
 from .contracts import MessageContext
 from .helpers import extract_refs
 
@@ -30,10 +31,11 @@ class BraintrustTraceLogger:
         if context.origin:
             span_metadata["origin"] = context.origin
 
+        is_prod = context.origin in PROD_ORIGINS if context.origin else False
         bt_span.log(
             input=span_input,
             metadata=span_metadata,
-            **{"tags": [context.origin]} if context.origin else {},
+            **({} if is_prod else {"tags": ["dev"]}),
         )
 
     def log_prompt_metadata(
