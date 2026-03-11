@@ -41,7 +41,7 @@ TOOL_GET_TEXT = {
 
 TOOL_TEXT_SEARCH = {
     "name": "text_search",
-    "description": "Searches across the entire Jewish library for passages containing specific terms. Hebrew/Aramaic searches are more reliable than English translations.",
+    "description": "Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. To search within an author's works, first retrieve the author's books, then search within those books. Hebrew/Aramaic searches are more reliable than English translations.",
     "input_schema": {
         "type": "object",
         "properties": {
