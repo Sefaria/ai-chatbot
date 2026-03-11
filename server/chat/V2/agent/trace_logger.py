@@ -31,9 +31,11 @@ class BraintrustTraceLogger:
         if context.origin:
             span_metadata["origin"] = context.origin
 
-        bt_span.log(input=span_input, metadata=span_metadata)
-        if not is_prod:
-            bt_span.log(tags=["dev"])
+        bt_span.log(
+            input=span_input,
+            metadata=span_metadata,
+            **({} if is_prod else {"tags": ["dev"]}),
+        )
 
     def log_prompt_metadata(
         self,
