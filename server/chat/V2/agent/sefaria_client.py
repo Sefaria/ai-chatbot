@@ -234,6 +234,20 @@ class SefariaClient:
         data = await self._get_json(f"api/v2/topics/{encoded_slug}", params)
         return self._optimize_topics_response(data)
 
+    async def get_author_indexes(
+        self,
+        author_slug: str,
+        include_aggregations: bool = False,
+        include_descriptions: bool = False,
+    ) -> dict[str, Any]:
+        """Get authored works for a Sefaria author slug."""
+        encoded_slug = quote(author_slug)
+        params = {
+            "include_aggregations": "1" if include_aggregations else None,
+            "include_descriptions": "1" if include_descriptions else None,
+        }
+        return await self._get_json(f"api/authors/{encoded_slug}/indexes", params)
+
     async def clarify_name_argument(
         self, name: str, limit: int | None = None, type_filter: str | None = None
     ) -> dict[str, Any]:

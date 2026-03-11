@@ -157,6 +157,44 @@ class TestGetTextReferenceEncoding:
             assert "בראשית" not in url  # Should be encoded
 
 
+class TestGetAuthorIndexes:
+    """Test get_author_indexes endpoint and query parameters."""
+
+    @pytest.mark.asyncio
+    async def test_author_indexes_without_optional_flags(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(
+            return_value={"author": {"slug": "rambam"}, "indexes": []}
+        )
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_indexes("rambam")
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+
+            assert "api/authors/rambam/indexes" in url
+            assert "include_aggregations" not in url
+            assert "include_descriptions" not in url
+
+    @pytest.mark.asyncio
+    async def test_author_indexes_with_optional_flags(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(
+            return_value={"author": {"slug": "rambam"}, "indexes": []}
+        )
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_indexes(
+                "rambam", include_aggregations=True, include_descriptions=True
+            )
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+
+            assert "api/authors/rambam/indexes" in url
+            assert "include_aggregations=1" in url
+            assert "include_descriptions=1" in url
+
+
 class TestOptimizeTextResponse:
     """Test _optimize_text_response method."""
 
