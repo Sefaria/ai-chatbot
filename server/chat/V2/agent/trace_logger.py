@@ -56,10 +56,11 @@ class BraintrustTraceLogger:
         )
 
     def log_error(self, *, bt_span: Any, exc: Exception, latency_ms: int) -> None:
+        error_str = str(exc)
         bt_span.log(
-            output=str(exc),
+            output=error_str,
             metrics={"latency_ms": latency_ms},
-            metadata={"status": "error", "error": str(exc)},
+            metadata={"status": "error", "error": error_str},
         )
 
     def log_success(
