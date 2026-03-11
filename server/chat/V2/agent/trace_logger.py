@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..origin import PROD_ORIGINS
+from ..origin import DEFAULT_ORIGIN, PROD_ORIGINS
 from .contracts import MessageContext
 from .helpers import extract_refs
 
@@ -35,7 +35,7 @@ class BraintrustTraceLogger:
         bt_span.log(
             input=span_input,
             metadata=span_metadata,
-            **({} if is_prod else {"tags": ["dev"]}),
+            **({} if is_prod else {"tags": [DEFAULT_ORIGIN]}),
         )
 
     def log_prompt_metadata(

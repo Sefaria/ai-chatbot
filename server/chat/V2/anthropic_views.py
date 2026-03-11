@@ -40,7 +40,7 @@ from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
-from .origin import resolve_origin
+from .origin import DEFAULT_ORIGIN, resolve_origin
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception
 from .services import create_or_get_session, load_session_summary, save_user_message
@@ -86,7 +86,7 @@ def to_anthropic_response(
     model: str,
     message_id: str,
     stats: dict,
-    origin: str = "dev",
+    origin: str = DEFAULT_ORIGIN,
 ) -> dict:
     """
     Transform our AgentResponse to Anthropic Messages API format.
