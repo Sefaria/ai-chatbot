@@ -18,7 +18,6 @@ class BraintrustTraceLogger:
         user_message: str,
         context: MessageContext,
         model: str,
-        is_prod: bool = False,
     ) -> None:
         span_input: dict[str, Any] = {"message": user_message}
         if context.page_url:
@@ -34,7 +33,7 @@ class BraintrustTraceLogger:
         bt_span.log(
             input=span_input,
             metadata=span_metadata,
-            **({} if is_prod else {"tags": ["dev"]}),
+            **{"tags": [context.origin]} if context.origin else {},
         )
 
     def log_prompt_metadata(

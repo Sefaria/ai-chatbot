@@ -133,6 +133,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} text - Message text
  * @param {StreamCallbacks} callbacks - Streaming callbacks
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
+ * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -153,7 +154,7 @@ export async function sendMessageStream(
     locale: navigator.language || 'en',
     clientVersion: CLIENT_VERSION
   };
-  if (origin) {
+  if (origin !== undefined && origin !== '') {
     context.origin = origin;
   }
 

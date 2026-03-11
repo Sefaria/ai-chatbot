@@ -693,3 +693,41 @@ class TestChatAnthropicHTTPIntegration:
         assert user_msg.flow == DEFAULT_ORIGIN
         assistant_msg = messages.filter(role="assistant").first()
         assert assistant_msg.content == "Shabbat is the Jewish day of rest."
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_x_origin_header_sets_context_origin(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+            HTTP_X_API_KEY=user_token,
+            HTTP_X_ORIGIN="eval",
+        )
+
+        assert response.status_code == 200
+        ctx = mock_agent_service.send_message.call_args.kwargs["context"]
+        assert ctx.origin == "eval"
+        assert response.data["metadata"]["origin"] == "eval"
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_missing_x_origin_header_defaults_to_dev(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+            HTTP_X_API_KEY=user_token,
+        )
+
+        assert response.status_code == 200
+        ctx = mock_agent_service.send_message.call_args.kwargs["context"]
+        assert ctx.origin == DEFAULT_ORIGIN

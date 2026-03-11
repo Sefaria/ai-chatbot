@@ -40,7 +40,7 @@ from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
-from .origin import resolve_origin
+from .origin import DEFAULT_ORIGIN, resolve_origin
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception
 from .services import create_or_get_session, load_session_summary, save_user_message
@@ -82,7 +82,11 @@ def extract_user_message(messages: list[dict]) -> str:
 
 
 def to_anthropic_response(
-    agent_response: AgentResponse, model: str, message_id: str, stats: dict, origin: str = ""
+    agent_response: AgentResponse,
+    model: str,
+    message_id: str,
+    stats: dict,
+    origin: str = DEFAULT_ORIGIN,
 ) -> dict:
     """
     Transform our AgentResponse to Anthropic Messages API format.
@@ -212,8 +216,9 @@ def chat_anthropic_v2(request):
     core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
     model = data.get("model") or settings.AGENT_MODEL
 
-    caller_origin = request.headers.get("X-Origin")
-    resolved_origin, _ = resolve_origin(caller_origin)
+    # Note: streaming endpoint reads origin from request body context field (via serializer).
+    caller_origin = (request.headers.get("X-Origin") or "")[:20]
+    resolved_origin = resolve_origin(caller_origin)
 
     # Session handling: X-Session-ID header for multi-turn, or ephemeral
     session_id = request.headers.get("X-Session-ID")
