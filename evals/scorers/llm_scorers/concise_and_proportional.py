@@ -1,9 +1,9 @@
-"""Concise & Proportional Scorer - evaluates whether response length matches question complexity."""
+"""Concise & Proportional Scorer - Checking if answers have an appropriate length. Skips scoring for non-relevant queries."""
 
 NAME = "Concise & Proportional"
 SLUG = "concise-and-proportional-81a9"
 DESCRIPTION = (
-    "Evaluates whether response length is appropriate for the question complexity"
+    "Checking if answers have an appropriate length. Skips scoring for non-relevant queries."
 )
 
 PROMPT = """You are evaluating whether an AI assistant's response length matches the question complexity.
@@ -27,7 +27,7 @@ FAIL if:
 - Superficial one-liner to a complex analytical question
 - Buries the answer in excessive disclaimers or repetition
 
-As a general rule, you want to be concise, so if the answer is simple, we don't need two or three paragraphs. One or two sentences and maybe a source will be enough.
+ As a general rule, you want to be concise, so if the answer is simple, we don't need two or three paragraphs. One or two sentences and maybe a source will be enough.
 
 Return ONLY the letter of your choice, followed by a summary containing your reasoning.
 (a) PASS - the response is appropriate for these criteria
