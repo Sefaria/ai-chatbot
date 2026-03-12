@@ -68,10 +68,10 @@ class RouterService:
             )
 
         if route == RouteType.OTHER:
-            rewritten = self._rewrite_message(user_message)
+            # rewritten = self._rewrite_message(user_message)
             return RouterResult(
-                route=RouteType.OTHER,
-                rewritten_message=rewritten,
+                route=RouteType.DISCOVERY,
+                # rewritten_message=rewritten,
             )
 
         # Discovery — use default core prompt (None means caller keeps its default)
