@@ -125,7 +125,7 @@
   let testingVersion = $derived(getTestingVersionFromApiBaseUrl(apiBaseUrl));
 
   // Size constraints
-  const MIN_WIDTH = 320;
+  const MIN_WIDTH = 300;
   const MIN_HEIGHT = 420;
   const MAX_WIDTH_RATIO = 0.9;
   const MAX_HEIGHT_RATIO = 0.9;
