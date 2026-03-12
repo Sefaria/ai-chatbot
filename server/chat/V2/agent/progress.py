@@ -26,4 +26,3 @@ class ProgressEmitter:
             self._on_progress(update)
         except Exception as exc:
             self._logger.warning(f"Progress callback error: {exc}")
-

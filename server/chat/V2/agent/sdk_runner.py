@@ -108,4 +108,3 @@ class ClaudeSDKRunner:
         if block_type == "text":
             return getattr(block, "text", "") or ""
         return getattr(block, "text", "") if hasattr(block, "text") else ""
-
