@@ -16,6 +16,7 @@
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
+    origin: originProp = '',
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
@@ -458,7 +459,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs);
+      }, promptSlugs, originProp);
 
       // Update user message status
       messages = messages.map(m => 

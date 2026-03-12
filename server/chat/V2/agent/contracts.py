@@ -30,11 +30,12 @@ class ConversationMessage:
 
 @dataclass
 class MessageContext:
-    """Sideband context injected into the system prompt (not part of messages)."""
+    """Per-request context passed through the agent layer for prompting and tracing."""
 
     summary_text: str | None = None
     page_url: str | None = None
     session_id: str | None = None
+    origin: str | None = None
 
 
 @dataclass

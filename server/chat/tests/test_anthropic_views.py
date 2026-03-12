@@ -9,11 +9,11 @@ from rest_framework.test import APIClient, APIRequestFactory
 from chat.tests.test_streaming_integration import create_test_token
 from chat.V2.agent import AgentResponse
 from chat.V2.anthropic_views import (
-    BRAINTRUST_ORIGIN,
     chat_anthropic_v2,
     extract_user_message,
     to_anthropic_response,
 )
+from chat.V2.origin import DEFAULT_ORIGIN
 
 
 class TestExtractUserMessage:
@@ -89,7 +89,9 @@ class TestToAnthropicResponse:
             latency_ms=100,
             trace_id="trace_123",
         )
-        result = to_anthropic_response(agent_response, "test-model", "msg_test123", default_stats)
+        result = to_anthropic_response(
+            agent_response, "test-model", "msg_test123", default_stats, origin=DEFAULT_ORIGIN
+        )
 
         assert result["type"] == "message"
         assert result["role"] == "assistant"
@@ -101,7 +103,7 @@ class TestToAnthropicResponse:
         assert result["content"][0]["type"] == "text"
         assert result["content"][0]["text"] == "This is the response"
         # Check metadata includes origin and trace_id
-        assert result["metadata"]["origin"] == BRAINTRUST_ORIGIN
+        assert result["metadata"]["origin"] == DEFAULT_ORIGIN
         assert result["metadata"]["trace_id"] == "trace_123"
 
     def test_response_with_tool_calls(self, default_stats):
@@ -256,7 +258,7 @@ class TestChatAnthropicEndpoint:
         assert len(response.data["content"]) == 2  # text + tool_use
         assert response.data["content"][0]["text"] == "Shabbat is the Jewish day of rest."
         # Check origin metadata
-        assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
+        assert response.data["metadata"]["origin"] == DEFAULT_ORIGIN
 
     @override_settings(
         CORE_PROMPT_SLUG="default-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key"
@@ -343,7 +345,7 @@ class TestChatAnthropicEndpoint:
         assert response.data["error"]["type"] == "api_error"
         assert response.data["error"]["message"] == "An internal error occurred."
         # Error response should also have metadata
-        assert response.data["metadata"]["origin"] == BRAINTRUST_ORIGIN
+        assert response.data["metadata"]["origin"] == DEFAULT_ORIGIN
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
@@ -440,7 +442,7 @@ class TestChatAnthropicEndpoint:
 
         session = ChatSession.objects.get(session_id="my-multi-turn-session")
         assert session.user_id == "test-user"
-        assert session.current_flow == BRAINTRUST_ORIGIN
+        assert session.current_flow == DEFAULT_ORIGIN
 
 
 @pytest.mark.django_db
@@ -596,7 +598,7 @@ class TestChatAnthropicHTTPIntegration:
         assert "output_tokens" in data["usage"]
         # Additional metadata
         assert "metadata" in data
-        assert data["metadata"]["origin"] == BRAINTRUST_ORIGIN
+        assert data["metadata"]["origin"] == DEFAULT_ORIGIN
 
     @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     @patch("chat.V2.anthropic_views.get_agent_service")
@@ -688,6 +690,44 @@ class TestChatAnthropicHTTPIntegration:
         assert messages.count() == 2  # User + Assistant
         user_msg = messages.filter(role="user").first()
         assert user_msg.content == "What is Shabbat?"
-        assert user_msg.flow == BRAINTRUST_ORIGIN
+        assert user_msg.flow == DEFAULT_ORIGIN
         assistant_msg = messages.filter(role="assistant").first()
         assert assistant_msg.content == "Shabbat is the Jewish day of rest."
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_x_origin_header_sets_context_origin(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+            HTTP_X_API_KEY=user_token,
+            HTTP_X_ORIGIN="eval",
+        )
+
+        assert response.status_code == 200
+        ctx = mock_agent_service.send_message.call_args.kwargs["context"]
+        assert ctx.origin == "eval"
+        assert response.data["metadata"]["origin"] == "eval"
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_missing_x_origin_header_defaults_to_dev(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+            HTTP_X_API_KEY=user_token,
+        )
+
+        assert response.status_code == 200
+        ctx = mock_agent_service.send_message.call_args.kwargs["context"]
+        assert ctx.origin == DEFAULT_ORIGIN

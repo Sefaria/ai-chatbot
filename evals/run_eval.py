@@ -86,6 +86,9 @@ class ChatbotClient:
             "text": message,
             "userId": USER_TOKEN,
             "timestamp": datetime.now().isoformat(),
+            "context": {
+                "origin": "eval",
+            },
         }
 
         final_response = None

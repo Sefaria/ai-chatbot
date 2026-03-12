@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..origin import DEFAULT_ORIGIN, PROD_ORIGINS
 from .contracts import MessageContext
 from .helpers import extract_refs
 
@@ -27,7 +28,15 @@ class BraintrustTraceLogger:
         span_metadata: dict[str, Any] = {"model": model}
         if context.session_id:
             span_metadata["session_id"] = context.session_id
-        bt_span.log(input=span_input, metadata=span_metadata)
+        if context.origin:
+            span_metadata["origin"] = context.origin
+
+        is_prod = context.origin in PROD_ORIGINS if context.origin else False
+        bt_span.log(
+            input=span_input,
+            metadata=span_metadata,
+            **({} if is_prod else {"tags": [DEFAULT_ORIGIN]}),
+        )
 
     def log_prompt_metadata(
         self,
@@ -48,10 +57,11 @@ class BraintrustTraceLogger:
         )
 
     def log_error(self, *, bt_span: Any, exc: Exception, latency_ms: int) -> None:
+        error_str = str(exc)
         bt_span.log(
-            output=str(exc),
+            output=error_str,
             metrics={"latency_ms": latency_ms},
-            metadata={"status": "error", "error": str(exc)},
+            metadata={"status": "error", "error": error_str},
         )
 
     def log_success(

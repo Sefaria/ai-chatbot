@@ -124,6 +124,7 @@ CORS_ALLOW_METHODS = [
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "sentry-trace",
     "baggage",
+    "x-origin",
 ]
 
 
@@ -168,6 +169,9 @@ REST_FRAMEWORK = {
 
 # Environment tag for logging
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+
+# Braintrust logging toggle — set to "false" to disable all tracing
+BRAINTRUST_LOGGING_ENABLED = os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true").lower() == "true"
 
 
 def _read_env_float(name: str, default: float) -> float:
