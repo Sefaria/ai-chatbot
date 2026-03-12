@@ -61,14 +61,14 @@ class ConversationSummary(models.Model):
 
     text = models.TextField(blank=True, default="")
     current_topic = models.CharField(max_length=255, blank=True, default="")
-    user_intent = models.CharField(max_length=100, blank=True, default="")
+    user_intent = models.TextField(blank=True, default="")
     flow = models.CharField(max_length=20, blank=True, default="")
 
     texts_referenced = models.JSONField(default=list)
     topics_discussed = models.JSONField(default=list)
     people_mentioned = models.JSONField(default=list)
 
-    halachic_domain = models.CharField(max_length=100, blank=True, default="")
+    halachic_domain = models.TextField(blank=True, default="")
     constraints = models.JSONField(default=list)
     safety_flags = models.JSONField(default=list)
 
