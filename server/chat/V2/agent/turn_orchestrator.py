@@ -38,6 +38,7 @@ class TurnOrchestrator:
         guardrail_gate: DefaultGuardrailGate,
         router: Router,
         trace_logger: BraintrustTraceLogger,
+        logging_enabled: bool = True,
     ):
         self.model = model
         self.mcp_server_name = mcp_server_name
@@ -49,6 +50,7 @@ class TurnOrchestrator:
         self.guardrail_gate = guardrail_gate
         self.router = router
         self.trace_logger = trace_logger
+        self.logging_enabled = logging_enabled
 
     async def run_turn(
         self,
@@ -59,6 +61,9 @@ class TurnOrchestrator:
         context: MessageContext,
     ) -> AgentResponse:
         start_time = time.time()
+        # The tracing guard (tracing_guard.py) ensures start_span returns
+        # NOOP_SPAN in load-test threads, so current_span() is safe to call
+        # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
 

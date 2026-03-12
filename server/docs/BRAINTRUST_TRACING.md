@@ -32,7 +32,9 @@ def _setup_braintrust_tracing(self) -> None:
     _BRAINTRUST_SETUP_DONE = True
 ```
 
-**Key design decision:** Uses a global flag `_BRAINTRUST_SETUP_DONE` (not thread-local) because `setup_claude_agent_sdk()` patches SDK classes globally. Calling it multiple times creates deeply nested duplicate spans.
+**Key design decisions:**
+- Uses a global flag `_BRAINTRUST_SETUP_DONE` (not thread-local) because `setup_claude_agent_sdk()` patches SDK classes globally. Calling it multiple times creates deeply nested duplicate spans.
+- `install_tracing_guard()` is called immediately after setup to intercept `start_span` with a thread-local check, allowing load-test threads to suppress all span creation (see [Load Test Tracing Guard](#load-test-tracing-guard)).
 
 ### Top-Level Span
 
@@ -158,11 +160,28 @@ Uses `braintrust.init_logger()` to log user feedback:
 | `BRAINTRUST_PROJECT` | `"On Site Agent"` | Project name in Braintrust |
 | `CORE_PROMPT_SLUG` | `"core-8fbc"` | Prompt ID for system prompt |
 
+## Load Test Tracing Guard
+
+**File:** `server/chat/V2/agent/tracing_guard.py`
+
+`setup_claude_agent_sdk` patches SDK classes **globally** — once per process, irreversible. To prevent load-test requests from generating Braintrust spans in a shared process:
+
+1. `install_tracing_guard()` monkey-patches `braintrust.logger.start_span` (and the SDK wrapper's copy) with a thread-local check
+2. Load-test threads wrap agent execution in `suppress_tracing()`, which sets a thread-local flag
+3. When the flag is set, every `start_span` call returns `NOOP_SPAN` instead of a real span
+4. Normal request threads are unaffected — they get full SDK span tracing
+
+```
+Normal thread:    start_span("Claude Agent") → real span → logged to Braintrust
+Load test thread: start_span("Claude Agent") → NOOP_SPAN → silently discarded
+```
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `server/chat/V2/agent/claude_service.py` | Main agent with @traced wrapper |
+| `server/chat/V2/agent/tracing_guard.py` | Thread-local span suppression for load tests |
 | `server/chat/V2/views.py` | Streaming endpoint with TracedThreadPoolExecutor |
 | `server/chat/V2/anthropic_views.py` | Anthropic endpoint with trace_id |
 | `server/chat/V2/logging/turn_logging_service.py` | DB logging of stats |

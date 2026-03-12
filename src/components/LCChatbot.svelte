@@ -15,7 +15,9 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500
+    'max-input-chars': maxInputChars = 500,
+    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
+    'interface-lang': interfaceLang = 'english'
   } = $props();
 
   // State
@@ -27,8 +29,8 @@
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
-  let panelWidth = $state(380);
-  let panelHeight = $state(520);
+  let panelWidth = $state(300);
+  let panelHeight = $state(456);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
   
@@ -49,6 +51,9 @@
   let settingsError = $state('');
 
   let isClearing = $state(false);
+  let isFirstTimeUser = $state(true);
+  let isRestarted = $state(false);
+  let isNewSession = $state(false);
 
   // Menu state
   let showMenu = $state(false);
@@ -59,6 +64,8 @@
   let feedbackType = $state(null); // FEEDBACK_UP | FEEDBACK_DOWN
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
+  const STATUS_FAILED = 'failed';
+
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
   const FEEDBACK_DOWN = 'down';
@@ -66,6 +73,24 @@
   const FEEDBACK_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
   const THUMBUP = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3457 6.439e-05C8.82494 0.00605952 9.29664 0.120247 9.72559 0.334049C10.1546 0.547943 10.53 0.856213 10.8232 1.23542C11.1165 1.61466 11.3208 2.05545 11.4199 2.52448C11.5187 2.9925 11.5096 3.47698 11.3955 3.94147L10.8975 6.00006H14.207C14.5695 6.00006 14.9277 6.08404 15.252 6.24616C15.576 6.4082 15.8577 6.64384 16.0752 6.93366C16.2926 7.22359 16.44 7.5605 16.5049 7.91706C16.5697 8.27354 16.5506 8.64049 16.4492 8.98835L14.7012 14.9883C14.5597 15.4733 14.2654 15.9001 13.8613 16.2032C13.4571 16.5063 12.9652 16.67 12.46 16.67H2.33496C1.71568 16.67 1.12149 16.4243 0.683594 15.9864C0.245697 15.5485 0 14.9543 0 14.335V8.33503C0 7.71574 0.245696 7.12156 0.683594 6.68366C1.12149 6.24576 1.71568 6.00006 2.33496 6.00006H4.4043C4.52801 6 4.64974 5.96566 4.75488 5.90045C4.86 5.83526 4.94496 5.74169 5 5.63092L7.58789 0.461002L7.64844 0.359439C7.80498 0.133378 8.0657 -0.00340299 8.3457 6.439e-05ZM6.49414 6.37604C6.30081 6.76418 6.0033 7.09086 5.63477 7.3194C5.56531 7.36247 5.49306 7.40024 5.41992 7.43561V15.0001H12.46C12.6038 15.0001 12.7443 14.9536 12.8594 14.8673C12.9743 14.781 13.0583 14.6595 13.0986 14.5215L14.8457 8.52155C14.8746 8.42244 14.8798 8.31746 14.8613 8.21589C14.8428 8.1144 14.8012 8.01813 14.7393 7.93561C14.6774 7.8532 14.5971 7.7864 14.5049 7.7403C14.4125 7.69413 14.3103 7.66999 14.207 7.66999H9.83496C9.57899 7.66999 9.33703 7.55274 9.17871 7.35163C9.0204 7.15029 8.96303 6.88665 9.02344 6.63776L9.77344 3.54792L9.77441 3.54499C9.82901 3.32384 9.83314 3.09306 9.78613 2.87018C9.73906 2.64723 9.6423 2.43718 9.50293 2.2569C9.36353 2.07661 9.18442 1.93085 8.98047 1.82917C8.92425 1.80114 8.86657 1.77666 8.80762 1.75592L6.49414 6.37604ZM1.66992 14.335C1.66992 14.5114 1.73955 14.681 1.86426 14.8057C1.98897 14.9304 2.15859 15.0001 2.33496 15.0001H3.75V7.66999H2.33496C2.15859 7.66999 1.98897 7.73961 1.86426 7.86432C1.73955 7.98903 1.66992 8.15866 1.66992 8.33503V14.335Z" fill="currentColor"/></svg>'
   const THUMBDOWN = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8716 2.33496C14.8716 2.15859 14.802 1.98897 14.6773 1.86426C14.5526 1.73968 14.3829 1.66992 14.2066 1.66992H12.7916V9H14.2066C14.3829 9 14.5526 8.93024 14.6773 8.80566C14.802 8.68095 14.8716 8.51133 14.8716 8.33496V2.33496ZM4.0816 1.66992C3.93795 1.67001 3.79812 1.71658 3.68316 1.80273C3.56816 1.88899 3.48424 2.01046 3.44391 2.14844L1.69586 8.14844C1.66695 8.24755 1.66177 8.35253 1.68023 8.4541C1.69872 8.55561 1.7404 8.65183 1.8023 8.73438C1.86414 8.81678 1.94456 8.88355 2.03668 8.92969C2.12902 8.97586 2.23129 9 2.33453 9H6.7066C6.96268 9 7.20551 9.11708 7.36383 9.31836C7.52214 9.51969 7.57853 9.78333 7.51812 10.0322L6.76812 13.1221V13.125C6.71352 13.3462 6.70938 13.5769 6.7564 13.7998C6.80348 14.0228 6.90021 14.2328 7.03961 14.4131C7.17892 14.5932 7.35734 14.7392 7.56109 14.8408C7.61711 14.8687 7.67521 14.8924 7.73394 14.9131L10.0474 10.2939C10.2407 9.90584 10.5384 9.57915 10.9068 9.35059C10.9763 9.30751 11.0485 9.26877 11.1216 9.2334V1.66992H4.0816ZM16.5416 8.33496C16.5416 8.95424 16.2959 9.54843 15.858 9.98633C15.4201 10.4241 14.8258 10.6699 14.2066 10.6699H12.1373C12.0137 10.67 11.8927 10.7045 11.7877 10.7695C11.6825 10.8347 11.5976 10.9283 11.5425 11.0391L8.95367 16.209C8.81047 16.4948 8.51653 16.6738 8.19683 16.6699C7.71735 16.664 7.24512 16.5499 6.81598 16.3359C6.3869 16.122 6.01161 15.8139 5.71832 15.4346C5.42511 15.0554 5.22171 14.6145 5.12262 14.1455C5.02356 13.6763 5.03111 13.1902 5.14605 12.7246L5.64508 10.6699H2.33453C1.97218 10.6699 1.61471 10.5858 1.29058 10.4238C0.966416 10.2617 0.683849 10.0263 0.466366 9.73633C0.248938 9.44642 0.102533 9.10945 0.0376551 8.75293C-0.0271694 8.39639 -0.00809404 8.02954 0.0933192 7.68164L1.84039 1.68164L1.90094 1.50195C2.05771 1.09146 2.32764 0.731974 2.68121 0.466797C3.08524 0.163841 3.57661 9.28572e-05 4.0816 0H14.2066C14.8258 0 15.4201 0.245831 15.858 0.683594C16.2959 1.12149 16.5416 1.71568 16.5416 2.33496V8.33496Z" fill="currentColor"/></svg>'
+
+  let welcomeMessages = $derived((() => { try { return JSON.parse(welcomeMessagesJson); } catch { return {}; } })());
+  let isHebrew = $derived(interfaceLang === 'hebrew');
+  let welcomeMessage = $derived(
+    isHebrew
+      ? (welcomeMessages.welcome_hebrew)
+      : (welcomeMessages.welcome_english)
+  );
+  let restartMessage = $derived(
+    isHebrew
+      ? (welcomeMessages.restart_hebrew)
+      : (welcomeMessages.restart_english)
+  );
+  let newSessionMessage = $derived(
+    isHebrew
+      ? (welcomeMessages.new_session_hebrew)
+      : (welcomeMessages.new_session_english)
+  );
 
   // Feedback issue options for dislikes
   const DISLIKE_REASONS = [
@@ -85,8 +110,24 @@
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
+  function getTestingVersionFromApiBaseUrl(url) {
+    if (!url) return '';
+
+    try {
+      const normalizedUrl =
+        url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+      const hostname = new URL(normalizedUrl).hostname;
+      const match = hostname.match(/^(\d+)\.ai-server\.coolifydev\.sefaria\.org$/i);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  let testingVersion = $derived(getTestingVersionFromApiBaseUrl(apiBaseUrl));
+
   // Size constraints
-  const MIN_WIDTH = 320;
+  const MIN_WIDTH = 300;
   const MIN_HEIGHT = 420;
   const MAX_WIDTH_RATIO = 0.9;
   const MAX_HEIGHT_RATIO = 0.9;
@@ -94,8 +135,10 @@
   // Initialize on mount
   $effect(() => {
     // Initialize session
-    const { sessionId: sid } = getOrCreateSession();
+    const { sessionId: sid, isNew } = getOrCreateSession();
     sessionId = sid;
+    isNewSession = isNew;
+    isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
@@ -443,6 +486,13 @@
       saveMessagesToStorage();
       scrollToBottom();
 
+      if (isFirstTimeUser) {
+        isFirstTimeUser = false;
+        setStorage(STORAGE_KEYS.HAS_USED, true);
+      }
+      if (isRestarted) {
+        isRestarted = false;
+      }
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
@@ -457,7 +507,7 @@
       // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
-          ? { ...m, status: 'failed' }
+          ? { ...m, status: STATUS_FAILED }
           : m
       );
       saveMessagesToStorage();
@@ -536,7 +586,7 @@
   }
 
   async function retryMessage(messageId) {
-    const failedMessage = messages.find(m => m.messageId === messageId && m.status === 'failed');
+    const failedMessage = messages.find(m => m.messageId === messageId && m.status === STATUS_FAILED);
     if (!failedMessage) return;
 
     // Remove the failed message and resend
@@ -656,7 +706,15 @@
 
   function handleRestartConvo() {
     closeMenu();
+    isRestarted = true;
     handleNewChat();
+  }
+
+  function getEmptyStateMessage() {
+    if (isFirstTimeUser) return welcomeMessage;
+    if (isRestarted) return restartMessage;
+    if (isNewSession) return newSessionMessage;
+    return welcomeMessage;
   }
 
 </script>
@@ -714,7 +772,7 @@
               </svg>
             </HeaderButton>
           {/if}
-          <h2>Library Assistant
+          <h2>Library Assistant {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
@@ -817,6 +875,46 @@
         aria-label="Chat messages"
         aria-live="polite"
       >
+        {#snippet assistantBubble(content, showFeedback, feedbackProps)}
+          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED}>
+            <div class="message-content">
+              {@html renderMarkdown(content)}
+            </div>
+            <div class="message-meta">
+              {#if feedbackProps?.status === STATUS_FAILED}
+                <button class="retry-btn" onclick={() => retryMessage(feedbackProps.messageId)}>
+                  Retry
+                </button>
+              {/if}
+              {#if showFeedback && feedbackProps}
+                <div class="feedback">
+                  <div class="feedback-buttons">
+                    <button
+                      class="feedback-btn"
+                      class:active={feedbackProps.feedback === FEEDBACK_UP}
+                      onclick={() => handleFeedback(feedbackProps.messageId, 1)}
+                      aria-label="Like response"
+                    >
+                      {@html THUMBUP}
+                    </button>
+                    <button
+                      class="feedback-btn"
+                      class:active={feedbackProps.feedback === FEEDBACK_DOWN}
+                      onclick={() => handleFeedback(feedbackProps.messageId, 0)}
+                      aria-label="Dislike response"
+                    >
+                      {@html THUMBDOWN}
+                    </button>
+                  </div>
+                  {#if feedbackProps.feedback}
+                    <p class="feedback-thanks">Thank you for your feedback!</p>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/snippet}
+
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
@@ -826,10 +924,7 @@
 
         {#if messages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
-            <p>Sefaria AI Experiment</p>
+            {@render assistantBubble(getEmptyStateMessage(), false, null)}
           </div>
         {/if}
 
@@ -838,45 +933,18 @@
             <div class="date-marker">
               <span>{item.date}</span>
             </div>
+          {:else if item.role === 'assistant'}
+            {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
           {:else}
-            <div class="message" class:user={item.role === 'user'} class:assistant={item.role === 'assistant'} class:failed={item.status === 'failed'}>
+            <div class="message user">
               <div class="message-content">
-                {#if item.role === 'assistant'}
-                  {@html renderMarkdown(item.content)}
-                {:else}
-                  <p>{item.content}</p>
-                {/if}
+                <p>{item.content}</p>
               </div>
               <div class="message-meta">
-                {#if item.status === 'failed'}
+                {#if item.status === STATUS_FAILED}
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
-                {/if}
-                {#if item.role === 'assistant' && item.status === 'sent' && item.traceId}
-                  <div class="feedback">
-                    <div class="feedback-buttons">
-                      <button
-                        class="feedback-btn"
-                        class:active={item.feedback === FEEDBACK_UP}
-                        onclick={() => handleFeedback(item.messageId, 1)}
-                        aria-label="Like response"
-                      >
-                        {@html THUMBUP}
-                      </button>
-                      <button
-                        class="feedback-btn"
-                        class:active={item.feedback === FEEDBACK_DOWN}
-                        onclick={() => handleFeedback(item.messageId, 0)}
-                        aria-label="Dislike response"
-                      >
-                        {@html THUMBDOWN}
-                      </button>
-                    </div>
-                    {#if item.feedback}
-                      <p class="feedback-thanks">Thank you for your feedback!</p>
-                    {/if}
-                  </div>
                 {/if}
               </div>
             </div>
@@ -1272,6 +1340,13 @@
     align-self: flex-start;
   }
 
+  .empty-state .message.assistant .message-content :global(ul) {
+    padding-inline-start: 20px;
+  }
+  .empty-state .message.assistant .message-content :global(ul li) {
+    margin-bottom: 5px;
+  }
+
   .message.user .message-content {
     padding: 12px 16px;
     border-radius: var(--lc-radius);
@@ -1371,21 +1446,6 @@
   75%  { content: '...'; }
   100% { content: ''; }
 }
-
-  /* Empty State */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--lc-text-muted);
-    gap: 12px;
-  }
-
-  .empty-state p {
-    font-size: var(--lc-font-size);
-  }
 
   /* Loading Indicator */
   .loading-indicator {
@@ -1802,4 +1862,3 @@ inset: 8px;
   }
 
 </style>
-
