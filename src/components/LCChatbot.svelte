@@ -16,7 +16,7 @@
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
-    'welcome-messages': welcomeMessagesJson = '{}',
+    'welcome-messages': welcomeMessagesJson = '{}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
 
