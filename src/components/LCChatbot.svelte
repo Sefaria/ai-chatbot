@@ -64,6 +64,8 @@
   let feedbackType = $state(null); // FEEDBACK_UP | FEEDBACK_DOWN
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
+  const STATUS_FAILED = 'failed';
+
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
   const FEEDBACK_DOWN = 'down';
@@ -505,7 +507,7 @@
       // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
-          ? { ...m, status: 'failed' }
+          ? { ...m, status: STATUS_FAILED }
           : m
       );
       saveMessagesToStorage();
@@ -584,7 +586,7 @@
   }
 
   async function retryMessage(messageId) {
-    const failedMessage = messages.find(m => m.messageId === messageId && m.status === 'failed');
+    const failedMessage = messages.find(m => m.messageId === messageId && m.status === STATUS_FAILED);
     if (!failedMessage) return;
 
     // Remove the failed message and resend
@@ -874,12 +876,12 @@
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
-          <div class="message assistant" class:failed={feedbackProps?.status === 'failed'}>
+          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED}>
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
             <div class="message-meta">
-              {#if feedbackProps?.status === 'failed'}
+              {#if feedbackProps?.status === STATUS_FAILED}
                 <button class="retry-btn" onclick={() => retryMessage(feedbackProps.messageId)}>
                   Retry
                 </button>
@@ -939,7 +941,7 @@
                 <p>{item.content}</p>
               </div>
               <div class="message-meta">
-                {#if item.status === 'failed'}
+                {#if item.status === STATUS_FAILED}
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
