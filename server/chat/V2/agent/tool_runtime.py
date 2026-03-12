@@ -139,9 +139,10 @@ class ToolRuntime:
         for key, schema in properties.items():
             if isinstance(schema, dict):
                 type_name = schema.get("type", "string")
-                simplified[key] = type_map.get(type_name, str) if isinstance(type_name, str) else str
+                simplified[key] = (
+                    type_map.get(type_name, str) if isinstance(type_name, str) else str
+                )
             else:
                 simplified[key] = str
 
         return simplified
-

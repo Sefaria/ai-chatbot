@@ -6,6 +6,7 @@ from typing import Any
 
 from django.conf import settings
 
+
 def capture_exception(exc: BaseException, **context: Any) -> None:
     """Capture an exception in Sentry with optional structured context."""
     if not settings.SENTRY_DSN:
