@@ -108,6 +108,22 @@
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
+  function getTestingVersionFromApiBaseUrl(url) {
+    if (!url) return '';
+
+    try {
+      const normalizedUrl =
+        url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+      const hostname = new URL(normalizedUrl).hostname;
+      const match = hostname.match(/^(\d+)\.ai-server\.coolifydev\.sefaria\.org$/i);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  let testingVersion = $derived(getTestingVersionFromApiBaseUrl(apiBaseUrl));
+
   // Size constraints
   const MIN_WIDTH = 320;
   const MIN_HEIGHT = 420;
@@ -754,7 +770,7 @@
               </svg>
             </HeaderButton>
           {/if}
-          <h2>Library Assistant
+          <h2>Library Assistant {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
@@ -1844,4 +1860,3 @@ inset: 8px;
   }
 
 </style>
-
