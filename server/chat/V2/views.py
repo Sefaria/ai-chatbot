@@ -43,6 +43,7 @@ from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
+from .origin import resolve_origin
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception
 from .services import (
@@ -72,6 +73,8 @@ _bt_logger = None
 
 def _get_bt_logger():
     """Lazy-init Braintrust logger so load-test-only processes never touch BT."""
+    if not settings.BRAINTRUST_LOGGING_ENABLED:
+        return None
     global _bt_logger
     if _bt_logger is None:
         _bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
@@ -168,6 +171,8 @@ def chat_stream_v2(request):
         summary_text=summary_text,
         page_url=page_url or None,
         session_id=data["sessionId"],
+        # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
+        origin=resolve_origin(context.get("origin")),
     )
 
     def generate_sse():
@@ -371,18 +376,19 @@ def chat_feedback_v2(request):
         # Update trace metadata so feedback appears in the same metadata blob in the UI
         # (that blob is span metadata set at message-creation time)
         # This allows us to easily view feedback metadata in the UI.
-        feedback_metadata = {
-            "feedback": score,
-            "feedback_reason": feedback_reason,
-            "feedback_comment": comment,
-            "session_id": data["sessionId"],
-            "user_id": data["userId"],
-            "message_id": data["messageId"],
-        }
-        try:
-            bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
-        except Exception as _e:
-            logger.debug("Could not update span metadata with feedback metadata: %s", _e)
+        if bt_logger is not None:
+            feedback_metadata = {
+                "feedback": score,
+                "feedback_reason": feedback_reason,
+                "feedback_comment": comment,
+                "session_id": data["sessionId"],
+                "user_id": data["userId"],
+                "message_id": data["messageId"],
+            }
+            try:
+                bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
+            except Exception as _e:
+                logger.debug("Could not update span metadata with feedback metadata: %s", _e)
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
         return Response(

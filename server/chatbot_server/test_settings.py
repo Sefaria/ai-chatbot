@@ -5,6 +5,8 @@ Imports base settings and overrides database to use SQLite in-memory.
 
 from .settings import *  # noqa: F401, F403
 
+BRAINTRUST_LOGGING_ENABLED = True
+
 # Override database to use SQLite in-memory for tests
 DATABASES = {
     "default": {
