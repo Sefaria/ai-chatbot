@@ -31,6 +31,8 @@ class BraintrustTraceLogger:
         if context.origin:
             span_metadata["origin"] = context.origin
 
+        # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
+        # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.
         is_prod = context.origin in PROD_ORIGINS if context.origin else False
         bt_span.log(
             input=span_input,
