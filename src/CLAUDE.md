@@ -39,7 +39,7 @@ npm run build    # Build bundle to dist/
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
-| `max-input-chars` | number | No | Max characters allowed in the textarea (default: 500) |
+| `max-input-chars` | number | No | Max characters allowed in the textarea (default: 10000) |
 | `max-prompts` | number | No | Max prompts per conversation before blocking (0 = use server default) |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
