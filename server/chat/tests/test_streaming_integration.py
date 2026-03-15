@@ -601,3 +601,79 @@ class TestStreamingEndpointOriginPropagation:
 
         ctx = mock_agent.send_message.call_args.kwargs["context"]
         assert ctx.origin == DEFAULT_ORIGIN
+
+
+@pytest.mark.django_db
+class TestStreamingEndpointIsStaffPropagation:
+    """Tests for is_staff field propagation through the streaming endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def mock_agent(self):
+        mock = MagicMock()
+        mock.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Response",
+                tool_calls=[],
+                latency_ms=100,
+                trace_id="trace_123",
+            )
+        )
+        return mock
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_is_staff_true_propagates_to_agent(self, mock_get_agent, client, secret, mock_agent):
+        """isStaff=true in context should propagate to MessageContext.is_staff."""
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_staff", secret),
+                "sessionId": "sess_staff_test",
+                "messageId": "msg_staff_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {"isStaff": True},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.is_staff is True
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_missing_is_staff_defaults_to_false(self, mock_get_agent, client, secret, mock_agent):
+        """Missing isStaff in context should default to False."""
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_nostaff", secret),
+                "sessionId": "sess_nostaff_test",
+                "messageId": "msg_nostaff_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.is_staff is False

@@ -152,6 +152,7 @@ def chat_stream_v2(request):
         session_id=data["sessionId"],
         # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
         origin=resolve_origin(context.get("origin")),
+        is_staff=context.get("isStaff", False),
     )
 
     def generate_sse():
