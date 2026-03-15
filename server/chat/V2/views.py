@@ -59,10 +59,10 @@ logger = logging.getLogger("chat")
 
 def build_session_info(session) -> dict:
     """Build session info dict for API response."""
-    turn_count = session.turn_count or 0
     return {
-        "turnCount": turn_count,
+        "turnCount": session.turn_count,
         "maxPrompts": settings.MAX_PROMPTS,
+        "maxInputChars": settings.MAX_INPUT_CHARS,
     }
 
 
@@ -125,7 +125,7 @@ def chat_stream_v2(request):
     session, _ = create_or_get_session(data["sessionId"], actor)
 
     # Enforce turn limit
-    if (session.turn_count or 0) >= settings.MAX_PROMPTS:
+    if session.turn_count >= settings.MAX_PROMPTS:
         return Response(
             {
                 "error": "turn_limit_reached",

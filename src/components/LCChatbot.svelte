@@ -15,8 +15,8 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500,
-    'max-prompts': maxPrompts = 0,
+    'max-input-chars': maxInputChars = Infinity,
+    'max-prompts': maxPrompts = Infinity,
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     'interface-lang': interfaceLang = 'english'
   } = $props();
@@ -58,16 +58,14 @@
 
   // Turn limit state
   let turnCount = $state(0);
-  let serverMaxPrompts = $state(null);
+  let serverMaxPrompts = $state(Infinity);
+  let serverMaxInputChars = $state(Infinity);
   let backendLimitReached = $state(false);
 
-  let effectiveMaxPrompts = $derived.by(() => {
-    const propLimit = Number(maxPrompts);
-    if (propLimit > 0 && serverMaxPrompts !== null) return Math.min(propLimit, serverMaxPrompts);
-    if (propLimit > 0) return propLimit;
-    if (serverMaxPrompts !== null) return serverMaxPrompts;
-    return Infinity;
-  });
+  // maxPrompts and maxInputChars are set in RemoteConfig but for security's sake, there are absolute maximums set server side
+  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the server-side values
+  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), serverMaxPrompts));
+  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), serverMaxInputChars));
 
   let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
 
@@ -198,6 +196,14 @@
     messages = savedMessages;
   });
 
+  // Sync turn limits from server on load (openPanel() won't run when the
+  // panel is restored as already-open from localStorage)
+  $effect(() => {
+    if (sessionId && apiBaseUrl && isOpen) {
+      syncSessionState();
+    }
+  });
+
   // Save draft on input change
   $effect(() => {
     if (inputText) {
@@ -266,10 +272,6 @@
       inputRef?.focus();
     }, 100);
 
-    // Always sync session state from server (for turn limit info)
-    if (sessionId && apiBaseUrl) {
-      syncSessionState();
-    }
   }
 
   function closePanel() {
@@ -372,10 +374,9 @@
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
 
       if (result.session) {
-        turnCount = result.session.turnCount || 0;
-        if (result.session.maxPrompts !== undefined) {
-          serverMaxPrompts = result.session.maxPrompts;
-        }
+        turnCount = result.session.turnCount ?? 0;
+        serverMaxPrompts = result.session.maxPrompts ?? Infinity;
+        serverMaxInputChars = result.session.maxInputChars ?? Infinity;
       }
 
       // Only load messages if we don't have any locally
@@ -514,10 +515,9 @@
 
       // Update turn count from server response
       if (response.session) {
-        turnCount = response.session.turnCount || 0;
-        if (response.session.maxPrompts !== undefined) {
-          serverMaxPrompts = response.session.maxPrompts;
-        }
+        turnCount = response.session.turnCount ?? 0;
+        serverMaxPrompts = response.session.maxPrompts ?? Infinity;
+        serverMaxInputChars = response.session.maxInputChars ?? Infinity;
       }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
@@ -1033,8 +1033,8 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={maxInputChars}
-          placeholder={limitReached ? LIMIT_REACHED_MESSAGE : "What are you learning today?"}
+          maxlength={effectiveMaxInputChars}
+          placeholder={limitReached ? "" : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
           disabled={isSending || limitReached}
