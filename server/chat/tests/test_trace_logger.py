@@ -21,10 +21,10 @@ class TestTraceLoggerOrigin:
         assert call_kwargs["tags"] == ["dev"]
 
     def test_prod_origin_logs_no_tag(self):
-        ctx = MessageContext(origin="sefaria-prod")
+        ctx = MessageContext(origin="sefaria-production")
         self.logger.log_input(bt_span=self.span, user_message="hi", context=ctx, model="test")
         call_kwargs = self.span.log.call_args[1]
-        assert call_kwargs["metadata"]["origin"] == "sefaria-prod"
+        assert call_kwargs["metadata"]["origin"] == "sefaria-production"
         assert "tags" not in call_kwargs
 
     def test_origin_always_in_metadata(self):
