@@ -48,20 +48,15 @@ class TestRouterService:
         assert result.core_prompt_id is None
         assert result.rewritten_message is None
 
-    def test_other_route_triggers_rewrite(self):
+    def test_other_route_returns_discovery(self):
         service = self._make_service()
-        # First call: classification returns "other"
-        # Second call: rewriter returns rewritten question
-        service.client.messages.create.side_effect = [
-            _make_anthropic_response('{"route": "other", "reason": "Vague message"}'),
-            _make_anthropic_response("What aspects of Jewish philosophy relate to your question?"),
-        ]
-        result = service.classify("I'm feeling lost")
-        assert result.route == RouteType.OTHER
-        assert result.core_prompt_id is None
-        assert (
-            result.rewritten_message == "What aspects of Jewish philosophy relate to your question?"
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '{"route": "other", "reason": "Vague message"}'
         )
+        result = service.classify("I'm feeling lost")
+        assert result.route == RouteType.DISCOVERY
+        assert result.core_prompt_id is None
+        assert result.rewritten_message is None
 
     def test_braintrust_down_fails_open(self):
         service = self._make_service()
@@ -86,16 +81,15 @@ class TestRouterService:
         assert result.route == RouteType.DISCOVERY
         assert result.core_prompt_id is None
 
-    def test_rewriter_failure_still_returns_other(self):
+    def test_other_route_no_rewrite_call(self):
         service = self._make_service()
-        # Classification succeeds, rewriter fails
-        service.client.messages.create.side_effect = [
-            _make_anthropic_response('{"route": "other", "reason": "Vague"}'),
-            Exception("Rewriter API error"),
-        ]
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '{"route": "other", "reason": "Vague"}'
+        )
         result = service.classify("hmm")
-        assert result.route == RouteType.OTHER
+        assert result.route == RouteType.DISCOVERY
         assert result.rewritten_message is None
+        assert service.client.messages.create.call_count == 1
 
     def test_markdown_code_fences_handled(self):
         service = self._make_service()
