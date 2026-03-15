@@ -135,7 +135,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {StreamCallbacks} callbacks - Streaming callbacks
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
- * @param {boolean} [isStaff] - Whether the user is a Sefaria staff member
+ * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(

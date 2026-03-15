@@ -42,7 +42,7 @@ npm run build    # Build bundle to dist/
 | `mode` | `"floating"` \| `"panel"` | No | Display mode |
 | `max-input-chars` | number | No | Max characters allowed in the textarea (default: 500) |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
-| `is-staff` | boolean | No | Sefaria staff flag — shows settings gear and logged to Braintrust metadata |
+| `is-moderator` | boolean | No | Staff flag — shows settings gear and logged to Braintrust metadata |
 | `interface-lang` | `"english"` \| `"hebrew"` | No | Interface language |
 | `welcome-messages` | JSON string | No | Localized welcome/restart messages |
 

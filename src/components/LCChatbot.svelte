@@ -16,7 +16,7 @@
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
     origin: originProp = '',
-    'is-staff': isStaffProp = false,
+    'is-moderator': isModerator = false,
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
@@ -459,7 +459,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isStaffProp);
+      }, promptSlugs, originProp, isModerator);
 
       // Update user message status
       messages = messages.map(m => 
@@ -765,7 +765,7 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
-          {#if isStaffProp}
+          {#if isModerator}
             <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"></circle>
