@@ -77,8 +77,25 @@ class RouterService:
         # Discovery — use default core prompt (None means caller keeps its default)
         return RouterResult(route=RouteType.DISCOVERY)
 
+    @staticmethod
+    def _deterministic_classify(user_message: str) -> RouteType | None:
+        """
+        Deterministic classification for testing/debugging without LLM calls.
+        Currently checks if the first three words contain "translate" to route to Translation.
+        """
+        import re
+
+        user_message_words = re.findall(r"\w+", user_message.lower())
+        first_three_words = " ".join(user_message_words[:3])
+        if re.search(r"\btranslate\b", first_three_words, re.IGNORECASE):
+            logger.info("Deterministic classification successful. Routing to Translation.")
+            return RouteType.TRANSLATION
+        return None
+
     def _classify_message(self, user_message: str) -> RouteType:
         """Call LLM to classify the message. Raises on failure."""
+        if deterministic_route := self._deterministic_classify(user_message):
+            return deterministic_route
         system_prompt = self._load_prompt(settings.ROUTER_PROMPT_SLUG)
 
         response = self.client.messages.create(
