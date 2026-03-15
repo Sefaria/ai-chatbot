@@ -519,6 +519,42 @@ class TestStreamingEndpointErrorHandling:
 
         assert response.status_code == 400
 
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens", MAX_INPUT_CHARS=50)
+    def test_input_too_long_returns_400_with_error_code(self, client, secret):
+        """Text exceeding MAX_INPUT_CHARS setting should return 400 with input_too_long error."""
+        request_data = {
+            "userId": create_test_token("user_inputlong", secret),
+            "sessionId": "sess_inputlong",
+            "messageId": "msg_inputlong",
+            "timestamp": timezone.now().isoformat(),
+            "text": "x" * 51,
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+
+        assert response.status_code == 400
+        assert response.data["error"] == "input_too_long"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens", MAX_PROMPTS=3)
+    def test_turn_limit_reached_returns_429(self, client, secret):
+        """Session at MAX_PROMPTS should return 429 with turn_limit_reached error."""
+        session = ChatSession.objects.create(
+            session_id="sess_maxturns", user_id="user_maxturns", turn_count=3
+        )
+
+        request_data = {
+            "userId": create_test_token("user_maxturns", secret),
+            "sessionId": session.session_id,
+            "messageId": "msg_maxturns",
+            "timestamp": timezone.now().isoformat(),
+            "text": "This should be rejected",
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+
+        assert response.status_code == 429
+        assert response.data["error"] == "turn_limit_reached"
+
 
 @pytest.mark.django_db
 class TestStreamingEndpointOriginPropagation:

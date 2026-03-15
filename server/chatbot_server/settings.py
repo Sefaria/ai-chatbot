@@ -232,6 +232,14 @@ SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
+# Chat Limits (secure server-side enforcement)
+# ============================================================================
+# These are hard ceilings enforced by the backend regardless of client props.
+# Sefaria's RemoteConfig may set lower values via lc-chatbot attributes.
+MAX_PROMPTS = int(os.environ.get("MAX_PROMPTS", 100))
+MAX_INPUT_CHARS = int(os.environ.get("MAX_INPUT_CHARS", 10000))
+
+# ============================================================================
 # Sefaria API Configuration (optional)
 # ============================================================================
 # - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)

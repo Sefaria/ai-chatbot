@@ -15,9 +15,10 @@
     'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500,
+    'max-input-chars': maxInputChars = 10000,
+    'max-prompts': maxPrompts = 100,
+    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     origin: originProp = '',
-    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
 
@@ -55,6 +56,21 @@
   let isFirstTimeUser = $state(true);
   let isRestarted = $state(false);
   let isNewSession = $state(false);
+
+  // Turn limit state
+  let turnCount = $state(0);
+  let serverMaxPrompts = $state(Infinity);
+  let serverMaxInputChars = $state(Infinity);
+  let backendLimitReached = $state(false);
+
+  // maxPrompts and maxInputChars are set in RemoteConfig but for security's sake, there are absolute maximums set server side
+  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the server-side values
+  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), serverMaxPrompts));
+  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), serverMaxInputChars));
+
+  let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
+
+  const LIMIT_REACHED_MESSAGE = 'Conversation limit reached. Please start a new chat.';
 
   // Menu state
   let showMenu = $state(false);
@@ -181,6 +197,13 @@
     messages = savedMessages;
   });
 
+  // Sync turn limits from server on load
+  $effect(() => {
+    if (sessionId && apiBaseUrl && isOpen) {
+      syncSessionState();
+    }
+  });
+
   // Save draft on input change
   $effect(() => {
     if (inputText) {
@@ -249,10 +272,6 @@
       inputRef?.focus();
     }, 100);
 
-    // Always sync session state from server (for turn limit info)
-    if (sessionId && apiBaseUrl) {
-      syncSessionState();
-    }
   }
 
   function closePanel() {
@@ -283,6 +302,8 @@
     hasMoreHistory = false;
     currentProgress = null;
     toolHistory = [];
+    turnCount = 0;
+    backendLimitReached = false;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
@@ -352,6 +373,11 @@
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
 
+      if (result.session) {
+        turnCount = result.session.turnCount ?? 0;
+        serverMaxPrompts = result.session.maxPrompts ?? Infinity;
+        serverMaxInputChars = result.session.maxInputChars ?? Infinity;
+      }
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
@@ -398,7 +424,7 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    if (!text || isSending || !userId || !apiBaseUrl) return;
+    if (!text || isSending || limitReached || !userId || !apiBaseUrl) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -487,6 +513,12 @@
       saveMessagesToStorage();
       scrollToBottom();
 
+      // Update turn count from server response
+      if (response.session) {
+        turnCount = response.session.turnCount ?? 0;
+        serverMaxPrompts = response.session.maxPrompts ?? Infinity;
+        serverMaxInputChars = response.session.maxInputChars ?? Infinity;
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -504,6 +536,13 @@
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
+
+      if (e.code === 'turn_limit_reached') {
+        backendLimitReached = true;
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        return;
+      }
 
       // Mark message as failed for other errors
       messages = messages.map(m =>
@@ -978,6 +1017,14 @@
             </div>
           </div>
         {/if}
+
+        {#if limitReached}
+          <div class="message assistant limit-message">
+            <div class="message-content">
+              <p>{LIMIT_REACHED_MESSAGE}</p>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <!-- Input Footer -->
@@ -986,16 +1033,16 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={maxInputChars}
-          placeholder="What are you learning today?"
+          maxlength={effectiveMaxInputChars}
+          placeholder={limitReached ? "" : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
-          disabled={isSending}
+          disabled={isSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
+          disabled={!inputText.trim() || isSending || limitReached}
           aria-label="Send message"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1360,6 +1407,11 @@
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
     background: #fef2f2;
+  }
+
+  .message.limit-message .message-content {
+    font-style: italic;
+    color: var(--lc-text-secondary);
   }
 
   .message-meta {
