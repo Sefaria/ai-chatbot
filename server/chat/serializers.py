@@ -13,6 +13,7 @@ class MessageContextSerializer(serializers.Serializer):
     pageUrl = serializers.URLField(required=False, allow_blank=True)
     locale = serializers.CharField(max_length=10, required=False, allow_blank=True)
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
 
 class PromptSlugsSerializer(serializers.Serializer):
@@ -31,17 +32,23 @@ class ChatRequestSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
+    isLoadTest = serializers.BooleanField(required=False, default=False)
 
 
 class FeedbackRequestSerializer(serializers.Serializer):
     """User feedback payload for Braintrust logging."""
 
+    SCORE_CHOICES = [("up", "Thumbs up"), ("down", "Thumbs down")]
+
     traceId = serializers.CharField(max_length=200)
-    score = serializers.FloatField(min_value=0.0, max_value=1.0)
+    score = serializers.ChoiceField(choices=SCORE_CHOICES)
+    userId = serializers.CharField(max_length=512)
+    sessionId = serializers.CharField(max_length=100)
+    messageId = serializers.CharField(max_length=100)
+
+    # non-required fields
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
-    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
-    sessionId = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    messageId = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    feedbackReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
 class AnthropicRequestSerializer(serializers.Serializer):

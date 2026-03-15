@@ -158,27 +158,43 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
             return "[unserializable]"
 
     descriptions = {
-        "text_search": lambda: f"Searching texts for {q(tool_input.get('query'))}"
-        + (f" in {q(tool_input.get('filters'))}" if tool_input.get("filters") else ""),
+        "text_search": lambda: (
+            f"Searching texts for {q(tool_input.get('query'))}"
+            + (f" in {q(tool_input.get('filters'))}" if tool_input.get("filters") else "")
+        ),
         "english_semantic_search": lambda: f"Semantic search for {q(tool_input.get('query'))}",
-        "search_in_book": lambda: f"Searching in {q(tool_input.get('book_name'))} for {q(tool_input.get('query'))}",
-        "search_in_dictionaries": lambda: f"Searching dictionaries for {q(tool_input.get('query'))}",
-        "get_text": lambda: f"Fetching text {q(tool_input.get('reference'))}"
-        + (
-            f" ({q(tool_input.get('version_language'))})"
-            if tool_input.get("version_language")
-            else ""
+        "search_in_book": lambda: (
+            f"Searching in {q(tool_input.get('book_name'))} for {q(tool_input.get('query'))}"
+        ),
+        "search_in_dictionaries": lambda: (
+            f"Searching dictionaries for {q(tool_input.get('query'))}"
+        ),
+        "get_text": lambda: (
+            f"Fetching text {q(tool_input.get('reference'))}"
+            + (
+                f" ({q(tool_input.get('version_language'))})"
+                if tool_input.get("version_language")
+                else ""
+            )
         ),
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
         "clarify_name_argument": lambda: f"Clarifying name {q(tool_input.get('name'))}",
-        "clarify_search_path_filter": lambda: f"Resolving book filter for {q(tool_input.get('book_name'))}",
+        "clarify_search_path_filter": lambda: (
+            f"Resolving book filter for {q(tool_input.get('book_name'))}"
+        ),
         "get_text_or_category_shape": lambda: f"Loading shape for {q(tool_input.get('name'))}",
-        "get_text_catalogue_info": lambda: f"Loading catalogue info for {q(tool_input.get('title'))}",
-        "get_available_manuscripts": lambda: f"Checking available manuscripts for {q(tool_input.get('reference'))}",
+        "get_text_catalogue_info": lambda: (
+            f"Loading catalogue info for {q(tool_input.get('title'))}"
+        ),
+        "get_available_manuscripts": lambda: (
+            f"Checking available manuscripts for {q(tool_input.get('reference'))}"
+        ),
         "get_manuscript_image": lambda: "Downloading manuscript image",
-        "get_english_translations": lambda: f"Getting English translations for {q(tool_input.get('reference'))}",
+        "get_english_translations": lambda: (
+            f"Getting English translations for {q(tool_input.get('reference'))}"
+        ),
     }
 
     if tool_name in descriptions:

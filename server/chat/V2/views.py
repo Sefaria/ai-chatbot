@@ -41,8 +41,11 @@ from ..auth import (
 from ..models import ChatMessage
 from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
+from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
+from .origin import resolve_origin
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
+from .sentry import capture_exception
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -63,11 +66,18 @@ def build_session_info(session) -> dict:
     }
 
 
-# Braintrust logger instance — used by chat_feedback_v2() to attach user
-# ratings to traces. Per-thread tracing setup is handled in claude_service.py.
-
 _bt_config = get_braintrust_config()
-_bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
+_bt_logger = None
+
+
+def _get_bt_logger():
+    """Lazy-init Braintrust logger so load-test-only processes never touch BT."""
+    if not settings.BRAINTRUST_LOGGING_ENABLED:
+        return None
+    global _bt_logger
+    if _bt_logger is None:
+        _bt_logger = braintrust.init_logger(project=_bt_config.project, api_key=_bt_config.api_key)
+    return _bt_logger
 
 
 def _create_traced_executor() -> concurrent.futures.Executor:
@@ -107,6 +117,7 @@ def chat_stream_v2(request):
         logger.warning(f"invalid userId token: {exc}")
         return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
 
+    is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
@@ -139,6 +150,8 @@ def chat_stream_v2(request):
         summary_text=summary_text,
         page_url=page_url or None,
         session_id=data["sessionId"],
+        # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
+        origin=resolve_origin(context.get("origin")),
     )
 
     def generate_sse():
@@ -165,27 +178,46 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service()
-                result_holder["response"] = asyncio.run(
-                    agent.send_message(
+                agent = get_agent_service(is_load_test=is_load_test)
+
+                async def _send():
+                    return await agent.send_message(
                         messages=conversation,
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
                         context=msg_context,
                     )
-                )
+
+                if is_load_test:
+                    with suppress_tracing():
+                        result_holder["response"] = asyncio.run(_send())
+                else:
+                    result_holder["response"] = asyncio.run(_send())
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
+                capture_exception(
+                    e,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                )
                 result_holder["error"] = str(e)
             finally:
-                _flush_braintrust()
+                if not is_load_test:
+                    _flush_braintrust()
                 # Sentinel: signals the main thread that the agent is done
                 progress_queue.put(None)
 
-        # Preserve contextvars (e.g. Braintrust trace context) into the thread
-        ctx = contextvars.copy_context()
-        executor = _create_traced_executor()
-        future = executor.submit(ctx.run, run_agent)
+        # For load tests, run in a clean context to prevent Braintrust span
+        # leaking from the main thread.  Normal requests preserve contextvars
+        # so Braintrust traces propagate correctly.
+        if is_load_test:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(run_agent)
+        else:
+            ctx = contextvars.copy_context()
+            executor = _create_traced_executor()
+            future = executor.submit(ctx.run, run_agent)
 
         # --- Stream progress events to the client ---
         while True:
@@ -312,35 +344,30 @@ def chat_feedback_v2(request):
         )
 
     data = serializer.validated_data
-    bt_logger = _bt_logger
+    bt_logger = _get_bt_logger()
 
-    metadata = {
-        "user_id": data.get("userId", ""),
-        "session_id": data.get("sessionId", ""),
-        "message_id": data.get("messageId", ""),
-    }
-    comment = (data.get("comment") or "").strip() or None
-    scores = {"user_rating": data["score"]}
+    feedback_reason = (data.get("feedbackReason") or "").strip()
+    score = data["score"]
+    comment = (data.get("comment") or "").strip()
 
     try:
-        if hasattr(bt_logger, "log_feedback"):
-            bt_logger.log_feedback(
-                id=data["traceId"],
-                scores=scores,
-                comment=comment,
-                metadata=metadata,
-            )
-        elif hasattr(bt_logger, "logFeedback"):
-            bt_logger.logFeedback(
-                {
-                    "id": data["traceId"],
-                    "scores": scores,
-                    "comment": comment,
-                    "metadata": metadata,
-                }
-            )
-        else:
-            raise AttributeError("Braintrust logger does not support feedback logging")
+        # Log feedback in Braintrust's feedback system
+        # Update trace metadata so feedback appears in the same metadata blob in the UI
+        # (that blob is span metadata set at message-creation time)
+        # This allows us to easily view feedback metadata in the UI.
+        if bt_logger is not None:
+            feedback_metadata = {
+                "feedback": score,
+                "feedback_reason": feedback_reason,
+                "feedback_comment": comment,
+                "session_id": data["sessionId"],
+                "user_id": data["userId"],
+                "message_id": data["messageId"],
+            }
+            try:
+                bt_logger.update_span(id=data["traceId"], metadata=feedback_metadata)
+            except Exception as _e:
+                logger.debug("Could not update span metadata with feedback metadata: %s", _e)
     except Exception as e:
         logger.error(f"❌ Failed to log feedback: {e}")
         return Response(

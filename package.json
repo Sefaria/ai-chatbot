@@ -2,7 +2,7 @@
   "name": "lc-chatbot",
   "version": "1.0.0",
   "type": "module",
-  "description": "Embeddable chatbot web component",
+  "description": "Embeddable Sefaria Library Assistant chatbot web component",
   "main": "dist/lc-chatbot.js",
   "files": [
     "dist"

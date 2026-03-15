@@ -67,4 +67,6 @@ See `docs/ARCHITECTURE.md` for detailed system design.
 
 Required: `ANTHROPIC_API_KEY`, `BRAINTRUST_API_KEY`
 
-Optional: `DB_*`
+Optional: `DB_*`, `AGENT_MODEL`, `LOAD_TEST_MODEL`, `CHATBOT_USER_TOKEN_SECRET`
+
+See `server/CLAUDE.md` for the full variable reference and load testing guide.

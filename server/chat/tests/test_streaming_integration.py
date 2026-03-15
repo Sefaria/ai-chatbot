@@ -483,12 +483,14 @@ class TestStreamingEndpointErrorHandling:
             "text": "This will fail",
         }
 
-        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+        with patch("chat.V2.views.capture_exception") as mock_capture:
+            response = client.post("/api/v2/chat/stream", data=request_data, format="json")
 
-        # Still returns 200 for SSE (error is in the stream)
-        assert response.status_code == 200
+            # Still returns 200 for SSE (error is in the stream)
+            assert response.status_code == 200
 
-        content = b"".join(response.streaming_content).decode("utf-8")
+            content = b"".join(response.streaming_content).decode("utf-8")
+            mock_capture.assert_called_once()
         assert "event: error" in content
 
     def test_missing_required_fields_returns_400(self, client):
@@ -516,3 +518,86 @@ class TestStreamingEndpointErrorHandling:
         response = client.post("/api/v2/chat/stream", data=request_data, format="json")
 
         assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestStreamingEndpointOriginPropagation:
+    """Tests for origin field propagation through the streaming endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        from rest_framework.test import APIClient
+
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def mock_agent(self):
+        mock = MagicMock()
+        mock.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Response",
+                tool_calls=[],
+                latency_ms=100,
+                trace_id="trace_123",
+            )
+        )
+        return mock
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_origin_from_context_propagates_to_agent(
+        self, mock_get_agent, client, secret, mock_agent
+    ):
+        """Origin in request body context should propagate to the agent MessageContext."""
+
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_origin", secret),
+                "sessionId": "sess_origin_test",
+                "messageId": "msg_origin_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {"origin": "eval"},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)  # consume to run the SSE generator
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.origin == "eval"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_missing_origin_defaults_to_dev(self, mock_get_agent, client, secret, mock_agent):
+        """Missing origin in context should default to DEFAULT_ORIGIN."""
+        from chat.V2.origin import DEFAULT_ORIGIN
+
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_noorigin", secret),
+                "sessionId": "sess_noorigin_test",
+                "messageId": "msg_noorigin_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.origin == DEFAULT_ORIGIN

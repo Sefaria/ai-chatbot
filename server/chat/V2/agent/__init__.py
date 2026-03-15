@@ -9,13 +9,10 @@ Exports:
 """
 
 from .claude_service import (
-    AgentProgressUpdate,
-    AgentResponse,
     ClaudeAgentService,
-    ConversationMessage,
-    MessageContext,
     get_agent_service,
 )
+from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
 from .tool_schemas import ALL_TOOLS, SEFARIA_TOOL_SCHEMAS, get_all_tools, get_tools_by_names
