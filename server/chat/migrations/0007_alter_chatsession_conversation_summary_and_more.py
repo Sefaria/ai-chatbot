@@ -4,35 +4,51 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chat', '0006_add_cost_usd'),
+        ("chat", "0006_add_cost_usd"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='chatsession',
-            name='conversation_summary',
-            field=models.TextField(blank=True, default='', help_text='Rolling summary of conversation for agent context'),
+            model_name="chatsession",
+            name="conversation_summary",
+            field=models.TextField(
+                blank=True,
+                default="",
+                help_text="Rolling summary of conversation for agent context",
+            ),
         ),
         migrations.AlterField(
-            model_name='chatsession',
-            name='current_flow',
-            field=models.CharField(blank=True, default='', help_text='Current conversation label (optional)', max_length=20),
+            model_name="chatsession",
+            name="current_flow",
+            field=models.CharField(
+                blank=True,
+                default="",
+                help_text="Current conversation label (optional)",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='conversationsummary',
-            name='halachic_domain',
-            field=models.TextField(blank=True, default=''),
+            model_name="conversationsummary",
+            name="halachic_domain",
+            field=models.TextField(blank=True, default=""),
         ),
         migrations.AlterField(
-            model_name='conversationsummary',
-            name='user_intent',
-            field=models.TextField(blank=True, default=''),
+            model_name="conversationsummary",
+            name="user_intent",
+            field=models.TextField(blank=True, default=""),
         ),
         migrations.AlterField(
-            model_name='routedecision',
-            name='flow',
-            field=models.CharField(choices=[('TRANSLATION', 'Translation'), ('DISCOVERY', 'Discovery'), ('DEEP_ENGAGEMENT', 'Deep Engagement'), ('REFUSE', 'Refuse/Guardrail')], max_length=20),
+            model_name="routedecision",
+            name="flow",
+            field=models.CharField(
+                choices=[
+                    ("TRANSLATION", "Translation"),
+                    ("DISCOVERY", "Discovery"),
+                    ("DEEP_ENGAGEMENT", "Deep Engagement"),
+                    ("REFUSE", "Refuse/Guardrail"),
+                ],
+                max_length=20,
+            ),
         ),
     ]

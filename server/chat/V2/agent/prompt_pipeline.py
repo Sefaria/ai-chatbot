@@ -43,4 +43,3 @@ def build_turn_prompt(
         full_prompt=full_prompt,
         summary_included=summary_included,
     )
-

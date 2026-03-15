@@ -25,6 +25,7 @@ from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
+from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .sefaria_client import SefariaClient
@@ -117,6 +118,7 @@ class ClaudeAgentService:
             options_builder=options_builder,
             sdk_runner=sdk_runner,
             guardrail_gate=guardrail_gate,
+            router=Router(logger=logger),
             trace_logger=trace_logger,
             logging_enabled=self.braintrust_logging_enabled,
         )
