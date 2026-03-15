@@ -10,6 +10,7 @@ import { generateMessageId } from './session.js';
  * @property {string} locale - User locale
  * @property {string} clientVersion - Widget version
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
+ * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
  */
 
 /**
@@ -134,6 +135,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {StreamCallbacks} callbacks - Streaming callbacks
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
+ * @param {boolean} [isStaff] - Whether the user is a Sefaria staff member
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -143,7 +145,8 @@ export async function sendMessageStream(
   text,
   callbacks = {},
   promptSlugs = null,
-  origin = ''
+  origin = '',
+  isStaff = false
 ) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
@@ -156,6 +159,9 @@ export async function sendMessageStream(
   };
   if (origin !== undefined && origin !== '') {
     context.origin = origin;
+  }
+  if (isStaff) {
+    context.isStaff = true;
   }
 
   /** @type {SendMessagePayload} */
