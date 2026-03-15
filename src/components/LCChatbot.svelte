@@ -12,7 +12,6 @@
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
-    'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
@@ -766,7 +765,7 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
-          {#if isModerator}
+          {#if isStaffProp}
             <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"></circle>
