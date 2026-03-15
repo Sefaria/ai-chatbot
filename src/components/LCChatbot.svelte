@@ -197,8 +197,7 @@
     messages = savedMessages;
   });
 
-  // Sync turn limits from server on load (openPanel() won't run when the
-  // panel is restored as already-open from localStorage)
+  // Sync turn limits from server on load
   $effect(() => {
     if (sessionId && apiBaseUrl && isOpen) {
       syncSessionState();
