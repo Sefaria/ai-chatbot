@@ -1,0 +1,30 @@
+name: Crowdin Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/locales/en.json"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Sync with Crowdin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload sources & download translations
+        uses: crowdin/github-action@v2
+        with:
+          upload_sources: true
+          upload_translations: false
+          download_translations: true
+          push_translations: true
+          create_pull_request: false
+          localization_branch_name: l10n_crowdin
+          commit_message: "chore: sync translations from Crowdin"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}

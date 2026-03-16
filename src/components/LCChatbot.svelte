@@ -7,6 +7,7 @@
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
+  import { t } from '../lib/i18n.js';
 
   // Props (attributes)
   let {
@@ -56,6 +57,21 @@
   let isRestarted = $state(false);
   let isNewSession = $state(false);
 
+  // Turn limit state
+  let turnCount = $state(0);
+  let serverMaxPrompts = $state(Infinity);
+  let serverMaxInputChars = $state(Infinity);
+  let backendLimitReached = $state(false);
+
+  // maxPrompts and maxInputChars are set in RemoteConfig but for security's sake, there are absolute maximums set server side
+  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the server-side values
+  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), serverMaxPrompts));
+  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), serverMaxInputChars));
+
+  let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
+
+  let LIMIT_REACHED_MESSAGE = $derived(t(interfaceLang, 'limit_reached'));
+
   // Menu state
   let showMenu = $state(false);
   // Feedback modal state
@@ -94,14 +110,14 @@
   );
 
   // Feedback issue options for dislikes
-  const DISLIKE_REASONS = [
-    { value: 'inaccurate', label: 'Incorrect or misleading' },
-    { value: 'disrespectful', label: 'Inappropriate tone' },
-    { value: 'unhelpful', label: 'Not helpful or unclear' },
-    { value: 'overly_definitive', label: 'Overly definitive' },
-    { value: 'tech_issue', label: 'Technical issue' },
-    { value: 'other', label: 'Other' }
-  ];
+  let DISLIKE_REASONS = $derived([
+    { value: 'inaccurate', label: t(interfaceLang, 'reason_inaccurate') },
+    { value: 'disrespectful', label: t(interfaceLang, 'reason_disrespectful') },
+    { value: 'unhelpful', label: t(interfaceLang, 'reason_unhelpful') },
+    { value: 'overly_definitive', label: t(interfaceLang, 'reason_overly_definitive') },
+    { value: 'tech_issue', label: t(interfaceLang, 'reason_tech_issue') },
+    { value: 'other', label: t(interfaceLang, 'reason_other') }
+  ]);
 
   // Refs
   let messageListRef = $state(null);
@@ -304,7 +320,7 @@
         };
         settingsLoaded = true;
       } catch (e) {
-        settingsError = e.message || 'Failed to load settings.';
+        settingsError = e.message || t(interfaceLang, 'failed_to_load_settings');
       } finally {
         isLoadingSettings = false;
       }
@@ -326,7 +342,7 @@
   async function resetSettings() {
     settingsError = '';
     if (!apiBaseUrl) {
-      settingsError = 'API base URL is missing.';
+      settingsError = t(interfaceLang, 'api_base_url_missing');
       return;
     }
 
@@ -340,7 +356,7 @@
       setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
       settingsLoaded = true;
     } catch (e) {
-      settingsError = e.message || 'Failed to reset settings.';
+      settingsError = e.message || t(interfaceLang, 'failed_to_reset_settings');
     } finally {
       isLoadingSettings = false;
     }
@@ -433,7 +449,7 @@
           if (progress?.type === 'status') {
             displayText = progress.text;
           } else if (progress?.type === 'tool_start') {
-            displayText = progress.description || `Running ${progress.toolName}`;
+            displayText = progress.description || `${t(interfaceLang, 'running_tool')} ${progress.toolName}`;
           }
           displayText = displayText.replace(/…|\.\.\./, '');
           currentProgress = {...progress, displayText};
@@ -728,11 +744,11 @@
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
+    <button class="lc-chatbot-trigger" onclick={openPanel} aria-label={t(interfaceLang, 'open_chat')}>
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
       </svg>
-      <span class="trigger-label">Library Assistant</span>
+      <span class="trigger-label">{t(interfaceLang, 'library_assistant')}</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -741,7 +757,7 @@
       class:resizing={isResizing}
       style="width: {panelWidth}px; height: {panelHeight}px;"
       role="dialog"
-      aria-label="Chat window"
+      aria-label={t(interfaceLang, 'chat_window')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
@@ -766,21 +782,21 @@
       <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
         <div class="header-left">
           {#if isModerator}
-            <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
+            <HeaderButton className="settings-btn" onClick={openSettings} title={t(interfaceLang, 'open_settings')}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
             </HeaderButton>
           {/if}
-          <h2>Library Assistant {#if testingVersion}(V{testingVersion}){/if}
+          <h2>{t(interfaceLang, 'library_assistant')} {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
           <HeaderButton
             className="panel-btn"
-            title={(mode === 'floating') ? "Dock assistant to side" : "Undock assistant"}
+            title={(mode === 'floating') ? t(interfaceLang, 'dock_assistant') : t(interfaceLang, 'undock_assistant')}
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
@@ -791,31 +807,31 @@
             />
           </HeaderButton>
           <div class="menu-container">
-            <HeaderButton className="menu-btn" onClick={toggleMenu} title="More options" aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title={t(interfaceLang, 'more_options')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={t(interfaceLang, 'restart_conversation')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
-                  Restart conversation
+                  {t(interfaceLang, 'restart_conversation')}
                 </button>
-                <a class="menu-item" aria-label="Give feedback" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={t(interfaceLang, 'give_feedback')} href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
-                  Give feedback
+                  {t(interfaceLang, 'give_feedback')}
                 </a>
-                <a class="menu-item" aria-label="Get help" href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={t(interfaceLang, 'help')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  Help
+                  {t(interfaceLang, 'help')}
                 </a>
-                <a class="menu-item" aria-label="Opt-out" href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={t(interfaceLang, 'opt_out_in_settings')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  Opt-out in Settings
+                  {t(interfaceLang, 'opt_out_in_settings')}
                 </a>
               </div>
             {/if}
           </div>
-          <HeaderButton className="close-btn" onClick={closePanel} title="Close assistant">
+          <HeaderButton className="close-btn" onClick={closePanel} title={t(interfaceLang, 'close_assistant')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -827,14 +843,14 @@
       {#if showSettings}
         <div class="settings-panel">
           <div class="settings-header">
-            <button class="settings-back" onclick={closeSettings} aria-label="Back to chat">
-              ← Back
+            <button class="settings-back" onclick={closeSettings} aria-label={t(interfaceLang, 'back_to_chat')}>
+              {t(interfaceLang, 'back')}
             </button>
-            <div class="settings-title">Agent Settings</div>
+            <div class="settings-title">{t(interfaceLang, 'agent_settings')}</div>
           </div>
 
           {#if isLoadingSettings}
-            <div class="settings-loading">Loading defaults...</div>
+            <div class="settings-loading">{t(interfaceLang, 'loading_defaults')}</div>
           {/if}
 
           {#if settingsError}
@@ -843,7 +859,7 @@
 
           <div class="settings-fields">
             <label class="settings-field">
-              <span>Core prompt slug</span>
+              <span>{t(interfaceLang, 'core_prompt_slug')}</span>
               <input
                 type="text"
                 bind:value={promptSlugs.corePromptSlug}
@@ -855,14 +871,14 @@
 
           <div class="settings-actions">
             <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
-              Save
+              {t(interfaceLang, 'save')}
             </button>
             <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
-              Reset to defaults
+              {t(interfaceLang, 'reset_to_defaults')}
             </button>
           </div>
 
-          <p class="settings-note">Changes apply to new messages.</p>
+          <p class="settings-note">{t(interfaceLang, 'settings_note')}</p>
         </div>
       {:else}
       <!-- Message List -->
@@ -873,7 +889,7 @@
         onscroll={handleScroll}
         onclick={handleMessageLinkClick}
         role="log"
-        aria-label="Chat messages"
+        aria-label={t(interfaceLang, 'chat_messages')}
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
@@ -884,7 +900,7 @@
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
                 <button class="retry-btn" onclick={() => retryMessage(feedbackProps.messageId)}>
-                  Retry
+                  {t(interfaceLang, 'retry')}
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
@@ -894,7 +910,7 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label="Like response"
+                      aria-label={t(interfaceLang, 'like_response')}
                     >
                       {@html THUMBUP}
                     </button>
@@ -902,13 +918,13 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label="Dislike response"
+                      aria-label={t(interfaceLang, 'dislike_response')}
                     >
                       {@html THUMBDOWN}
                     </button>
                   </div>
                   {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">Thank you for your feedback!</p>
+                    <p class="feedback-thanks">{t(interfaceLang, 'feedback_thanks')}</p>
                   {/if}
                 </div>
               {/if}
@@ -919,7 +935,7 @@
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
-            <span>Loading messages...</span>
+            <span>{t(interfaceLang, 'loading_messages')}</span>
           </div>
         {/if}
 
@@ -944,7 +960,7 @@
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
                   <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
-                    Retry
+                    {t(interfaceLang, 'retry')}
                   </button>
                 {/if}
               </div>
@@ -968,11 +984,11 @@
                       <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     {/if}
                   </svg>
-                  <span>{currentProgress.isError ? 'Tool error' : 'Done'}</span>
+                  <span>{currentProgress.isError ? t(interfaceLang, 'tool_error') : t(interfaceLang, 'done')}</span>
                 </div>
               {:else}
                 <div class="status-text">
-                  <p>{currentProgress?.displayText || "Thinking"}<span class="dots"></span></p>
+                  <p>{currentProgress?.displayText || t(interfaceLang, 'thinking')}<span class="dots"></span></p>
                 </div>
               {/if}
             </div>
@@ -986,17 +1002,17 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={maxInputChars}
-          placeholder="What are you learning today?"
-          aria-label="Prompt input"
+          maxlength={effectiveMaxInputChars}
+          placeholder={limitReached ? "" : t(interfaceLang, 'input_placeholder')}
+          aria-label={t(interfaceLang, 'prompt_input')}
           rows="1"
           disabled={isSending}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
-          aria-label="Send message"
+          disabled={!inputText.trim() || isSending || limitReached}
+          aria-label={t(interfaceLang, 'send_message')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -1012,18 +1028,18 @@
         <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">Want to add more detail? (optional)</h3>
-            <p class="feedback-modal-subtitle">Your feedback helps us improve.</p>
+            <h3 class="feedback-modal-title">{t(interfaceLang, 'feedback_modal_title')}</h3>
+            <p class="feedback-modal-subtitle">{t(interfaceLang, 'feedback_modal_subtitle')}</p>
             {#if feedbackType === FEEDBACK_DOWN}
               <div class="feedback-modal-field">
-                <label for="select" class="feedback-modal-select-label">What was the issue?</label>
+                <label for="select" class="feedback-modal-select-label">{t(interfaceLang, 'what_was_the_issue')}</label>
                 <select
                   id="select"
                   class="feedback-modal-select"
                   class:is-placeholder={!feedbackReason}
                   bind:value={feedbackReason}
                 >
-                  <option value="" disabled>Select Issue</option>
+                  <option value="" disabled>{t(interfaceLang, 'select_issue')}</option>
                   {#each DISLIKE_REASONS as issue}
                     <option value={issue.value}>{issue.label}</option>
                   {/each}
@@ -1033,7 +1049,7 @@
             <textarea
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === FEEDBACK_DOWN ? 'More details' : "Anything you'd like to add?"}
+              placeholder={feedbackType === FEEDBACK_DOWN ? t(interfaceLang, 'more_details') : t(interfaceLang, 'feedback_placeholder_like')}
             />
             <div class="feedback-modal-actions">
               <button
@@ -1041,10 +1057,10 @@
                 onclick={() => submitFeedback(true)}
                 disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
               >
-                Submit
+                {t(interfaceLang, 'submit')}
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
-                Skip
+                {t(interfaceLang, 'skip')}
               </button>
             </div>
           </div>
