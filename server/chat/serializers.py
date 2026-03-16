@@ -14,6 +14,7 @@ class MessageContextSerializer(serializers.Serializer):
     locale = serializers.CharField(max_length=10, required=False, allow_blank=True)
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
     origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    isStaff = serializers.BooleanField(required=False, default=False)
 
 
 class PromptSlugsSerializer(serializers.Serializer):
