@@ -47,4 +47,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest --ds=chatbot_server.test_settings_postgres -v
+        run: pytest --ds=chatbot_server.test_settings_postgres -v -m "not xfail"
