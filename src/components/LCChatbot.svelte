@@ -4,6 +4,7 @@
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
   import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
+  import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -389,12 +390,23 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + sessionId, messages);
   }
 
-  function scrollToBottom() {
-    setTimeout(() => {
-      if (messageListRef) {
-        messageListRef.scrollTop = messageListRef.scrollHeight;
-      }
-    }, 50);
+  async function scrollToBottom() {
+    await tick();
+    if (messageListRef) {
+      messageListRef.scrollTop = messageListRef.scrollHeight;
+    }
+  }
+
+  async function scrollToResponseStart() {
+    await tick();
+    if (!messageListRef) return;
+    const responseMsgs = messageListRef.querySelectorAll('.message.assistant:has(.message-content)');
+    const lastResponse = responseMsgs[responseMsgs.length - 1];
+    if (lastResponse) {
+      const containerRect = messageListRef.getBoundingClientRect();
+      const msgRect = lastResponse.getBoundingClientRect();
+      messageListRef.scrollTop += msgRect.top - containerRect.top;
+    }
   }
 
   async function handleSend() {
@@ -454,8 +466,6 @@
                 : t
             );
           }
-          
-          scrollToBottom();
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -486,7 +496,7 @@
 
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
-      scrollToBottom();
+      scrollToResponseStart();
 
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
