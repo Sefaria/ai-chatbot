@@ -58,6 +58,7 @@
 
   // Menu state
   let showMenu = $state(false);
+  let menuContainer = $state(null);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -698,12 +699,25 @@
     showMenu = false;
   }
 
-  function handleClick(e) {
-    // Close menu when clicking outside
-    if (showMenu && !e.target.closest('.menu-container')) {
-      closeMenu();
+  $effect(() => {
+    if (!showMenu) return;
+
+    function handleClickOutside(e) {
+      if (!e.composedPath().includes(menuContainer)) {
+        closeMenu();
+      }
     }
-  }
+
+    // Defer so the click that opened the menu doesn't immediately trigger close
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  });
 
   function handleRestartConvo() {
     closeMenu();
@@ -761,9 +775,8 @@
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
+      <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
           {#if isModerator}
             <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
@@ -790,7 +803,7 @@
               height="16"
             />
           </HeaderButton>
-          <div class="menu-container">
+          <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title="More options" aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
