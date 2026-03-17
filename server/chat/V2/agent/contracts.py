@@ -36,6 +36,8 @@ class MessageContext:
     page_url: str | None = None
     session_id: str | None = None
     origin: str | None = None
+    is_staff: bool = False
+    user_id: str | None = None
 
 
 @dataclass

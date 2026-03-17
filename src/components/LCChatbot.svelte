@@ -12,11 +12,11 @@
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
-    'is-moderator': isModerator = false,
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
     origin: originProp = '',
+    'is-moderator': isModerator = false,
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
@@ -58,6 +58,7 @@
 
   // Menu state
   let showMenu = $state(false);
+  let menuContainer = $state(null);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -459,7 +460,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp);
+      }, promptSlugs, originProp, isModerator);
 
       // Update user message status
       messages = messages.map(m => 
@@ -698,12 +699,25 @@
     showMenu = false;
   }
 
-  function handleClick(e) {
-    // Close menu when clicking outside
-    if (showMenu && !e.target.closest('.menu-container')) {
-      closeMenu();
+  $effect(() => {
+    if (!showMenu) return;
+
+    function handleClickOutside(e) {
+      if (!e.composedPath().includes(menuContainer)) {
+        closeMenu();
+      }
     }
-  }
+
+    // Defer so the click that opened the menu doesn't immediately trigger close
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  });
 
   function handleRestartConvo() {
     closeMenu();
@@ -761,9 +775,8 @@
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
+      <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
           {#if isModerator}
             <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
@@ -790,7 +803,7 @@
               height="16"
             />
           </HeaderButton>
-          <div class="menu-container">
+          <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title="More options" aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
@@ -804,7 +817,7 @@
                   {@html FEEDBACK_ICON}
                   Give feedback
                 </a>
-                <a class="menu-item" aria-label="Get help" href="https://voices.sefaria.org/sheets/710765" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label="Get help" href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   Help
                 </a>
