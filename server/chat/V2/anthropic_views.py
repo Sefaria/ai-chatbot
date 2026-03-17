@@ -247,8 +247,13 @@ def chat_anthropic_v2(request):
         flow=resolved_origin,
     )
 
+    is_staff = request.headers.get("X-Is-Staff", "").lower() == "true"
+
     msg_context = MessageContext(
-        summary_text=summary_text or None, session_id=session_id, origin=resolved_origin
+        summary_text=summary_text or None,
+        session_id=session_id,
+        origin=resolved_origin,
+        is_staff=is_staff,
     )
 
     try:
