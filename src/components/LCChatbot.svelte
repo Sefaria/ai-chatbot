@@ -400,8 +400,8 @@
   async function scrollToResponseStart() {
     await tick();
     if (!messageListRef) return;
-    const responseMsgs = messageListRef.querySelectorAll('.message.assistant:has(.message-content)');
-    const lastResponse = responseMsgs[responseMsgs.length - 1];
+    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
+    const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
     if (lastResponse) {
       const containerRect = messageListRef.getBoundingClientRect();
       const msgRect = lastResponse.getBoundingClientRect();
