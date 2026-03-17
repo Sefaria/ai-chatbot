@@ -677,3 +677,32 @@ class TestStreamingEndpointIsStaffPropagation:
 
         ctx = mock_agent.send_message.call_args.kwargs["context"]
         assert ctx.is_staff is False
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_user_token_and_user_id_propagate_to_agent_context(
+        self, mock_get_agent, client, secret, mock_agent
+    ):
+        """The agent context should retain both user_id and the encrypted user token."""
+        user_token = create_test_token("186013", secret)
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": user_token,
+                "sessionId": "sess_user_context_test",
+                "messageId": "msg_user_context_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.user_id == "186013"
+        assert ctx.encrypted_user_token == user_token

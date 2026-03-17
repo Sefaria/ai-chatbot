@@ -194,6 +194,40 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
     },
 }
 
+TOOL_SEARCH_USER_SOURCE_SHEETS = {
+    "name": "search_user_source_sheets",
+    "description": "Searches the authenticated user's own Sefaria source sheets by title, summary, tags, and topics. Use this when the user refers to 'my source sheet', 'my sheets', or wants to reuse an idea or workflow from one of their sheets. This tool automatically uses the authenticated user's stored session token; never ask the user for a user ID or token.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Words or phrase to match against the user's source sheet titles, summaries, tags, and topics. Omit to list recent sheets.",
+            },
+            "limit": {
+                "type": "integer",
+                "default": 10,
+                "description": "Maximum number of matching sheets to return.",
+            },
+        },
+    },
+}
+
+TOOL_GET_SOURCE_SHEET = {
+    "name": "get_source_sheet",
+    "description": "Retrieves the contents of a Sefaria source sheet by sheet ID. Use this after identifying a relevant sheet, especially when the user refers to one of their own sheets. This tool automatically includes the retained session token when available so unlisted user sheets can be read.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sheet_id": {
+                "type": "integer",
+                "description": "The numeric Sefaria sheet ID to load.",
+            }
+        },
+        "required": ["sheet_id"],
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -215,6 +249,8 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_text_catalogue_info": TOOL_GET_TEXT_CATALOGUE_INFO,
     "get_available_manuscripts": TOOL_GET_AVAILABLE_MANUSCRIPTS,
     "get_manuscript_image": TOOL_GET_MANUSCRIPT_IMAGE,
+    "search_user_source_sheets": TOOL_SEARCH_USER_SOURCE_SHEETS,
+    "get_source_sheet": TOOL_GET_SOURCE_SHEET,
 }
 
 # ============================================================================

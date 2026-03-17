@@ -105,6 +105,7 @@ class TurnOrchestrator:
         tools = get_all_tools()
         sdk_tools = self.tool_runtime.build_sdk_tools(
             tool_schemas=tools,
+            context=context,
             emit=emitter.emit,
             tool_calls_list=tool_calls_list,
         )

@@ -254,6 +254,8 @@ def chat_anthropic_v2(request):
         session_id=session_id,
         origin=resolved_origin,
         is_staff=is_staff,
+        user_id=actor.user_id,
+        encrypted_user_token=actor.encrypted_token,
     )
 
     try:

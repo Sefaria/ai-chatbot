@@ -1,6 +1,6 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -342,3 +342,133 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
+class TestSearchUserSourceSheets:
+    """Test authenticated source sheet search."""
+
+    @pytest.mark.asyncio
+    async def test_requires_authenticated_user_session(self, client):
+        with pytest.raises(ValueError, match="requires authenticated user context"):
+            await client.search_user_source_sheets("shabbat")
+
+    @pytest.mark.asyncio
+    async def test_calls_sheet_api_with_x_session_id(self, client):
+        response = Mock()
+        response.json.return_value = {
+            "sheets": [
+                {
+                    "id": 702510,
+                    "title": "Sabbath prohibitions",
+                    "summary": "Theory about melacha",
+                    "sheetUrl": "/sheets/702510",
+                    "tags": ["Shabbat"],
+                    "topics": [{"asTyped": "שבת", "slug": "shabbat", "he": "שבת", "en": "Shabbat"}],
+                }
+            ]
+        }
+        response.raise_for_status = Mock()
+        mock_client = Mock()
+        mock_client.get = AsyncMock(return_value=response)
+
+        client.set_user_session("186013", "encrypted-token")
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.search_user_source_sheets("prohibitions", limit=5)
+
+        mock_client.get.assert_called_once()
+        call_args = mock_client.get.call_args
+        assert call_args.args[0] == "https://www.sefaria.org/api/sheets/user/186013/date/0/0"
+        assert call_args.kwargs["headers"]["X-Session-ID"] == "encrypted-token"
+        assert result["total_matches"] == 1
+        assert result["sheets"][0]["matched_fields"] == ["title"]
+
+    @pytest.mark.asyncio
+    async def test_filters_across_title_summary_tags_and_topics(self, client):
+        client.set_user_session("186013", "encrypted-token")
+        sheets = [
+            {
+                "id": 1,
+                "title": "Hilchot Shabbat",
+                "summary": "A structured learning workflow",
+                "sheetUrl": "/sheets/1",
+                "tags": ["halacha"],
+                "topics": [],
+            },
+            {
+                "id": 2,
+                "title": "Pesach Notes",
+                "summary": "Festival prep",
+                "sheetUrl": "/sheets/2",
+                "tags": [],
+                "topics": [{"asTyped": "Shabbat", "slug": "shabbat", "he": "שבת", "en": "Shabbat"}],
+            },
+        ]
+
+        with patch.object(client, "_get_json", AsyncMock(return_value={"sheets": sheets})):
+            result = await client.search_user_source_sheets("shabbat workflow", limit=10)
+
+        assert result["total_matches"] == 2
+        assert result["sheets"][0]["id"] == 1
+        assert set(result["sheets"][0]["matched_fields"]) == {"title", "summary"}
+        assert result["sheets"][1]["id"] == 2
+
+
+class TestGetSourceSheet:
+    """Test loading and normalizing a source sheet."""
+
+    @pytest.mark.asyncio
+    async def test_calls_sheet_endpoint_with_retained_session_token(self, client):
+        response = Mock()
+        response.json.return_value = {
+            "_id": "696c836aad417adc76f0f9e6",
+            "id": 702510,
+            "status": "unlisted",
+            "title": "מבחן",
+            "sources": [
+                {"outsideText": "<p>שלום וברכה</p>", "node": 2},
+                {
+                    "ref": "Genesis 3:1",
+                    "heRef": "בראשית ג׳:א׳",
+                    "text": {
+                        "en": "<p><small>(1)</small> Now the serpent was here.</p>",
+                        "he": "<p><small>(א)</small> וְהַנָּחָשׁ הָיָה עָרוּם.</p>",
+                    },
+                    "node": 10,
+                },
+            ],
+        }
+        response.raise_for_status = Mock()
+        mock_client = Mock()
+        mock_client.get = AsyncMock(return_value=response)
+
+        client.set_user_session("186013", "encrypted-token")
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.get_source_sheet(702510)
+
+        mock_client.get.assert_called_once()
+        call_args = mock_client.get.call_args
+        assert call_args.args[0] == "https://www.sefaria.org/api/sheets/702510"
+        assert call_args.kwargs["headers"]["X-Session-ID"] == "encrypted-token"
+        assert result["title"] == "מבחן"
+        assert result["source_count"] == 2
+        assert result["sources"][0]["outsideText"] == "שלום וברכה"
+        assert result["sources"][1]["ref"] == "Genesis 3:1"
+        assert "Now the serpent was here." in result["sources"][1]["text"]["en"]
+
+    @pytest.mark.asyncio
+    async def test_works_without_retained_session_token(self, client):
+        with patch.object(
+            client,
+            "_get_json",
+            AsyncMock(return_value={"title": "Public Sheet", "status": "public", "sources": []}),
+        ) as mock_get_json:
+            result = await client.get_source_sheet(123)
+
+        mock_get_json.assert_awaited_once_with(
+            "api/sheets/123",
+            headers={"Accept": "application/json"},
+        )
+        assert result["title"] == "Public Sheet"
+        assert result["source_count"] == 0

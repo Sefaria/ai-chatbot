@@ -62,6 +62,9 @@ def mock_client():
     client.get_text_catalogue_info = AsyncMock(return_value={"info": {}})
     client.get_available_manuscripts = AsyncMock(return_value={"manuscripts": []})
     client.get_manuscript_image = AsyncMock(return_value={"image_url": "http://..."})
+    client.set_user_session = Mock()
+    client.search_user_source_sheets = AsyncMock(return_value={"sheets": []})
+    client.get_source_sheet = AsyncMock(return_value={"sources": []})
     return client
 
 
@@ -157,6 +160,13 @@ class TestToolDispatch:
                 "get_manuscript_image",
                 ("http://example.com/image.jpg", "Leningrad Codex"),
             ),
+            (
+                "search_user_source_sheets",
+                {"query": "Sabbath prohibitions", "limit": 5},
+                "search_user_source_sheets",
+                ("Sabbath prohibitions", 5),
+            ),
+            ("get_source_sheet", {"sheet_id": 702510}, "get_source_sheet", (702510,)),
         ],
     )
     async def test_dispatch(
@@ -171,6 +181,15 @@ class TestToolDispatch:
         result = await executor.execute("clarify_search_path_filter", {"book_name": "Genesis"})
         mock_client.clarify_search_path_filter.assert_called_once_with("Genesis")
         assert "filter_path" in result.content[0]["text"]
+
+    def test_set_message_context_sets_client_user_session(self, executor, mock_client):
+        from chat.V2.agent import MessageContext
+
+        context = MessageContext(user_id="186013", encrypted_user_token="encrypted-token")
+
+        executor.set_message_context(context)
+
+        mock_client.set_user_session.assert_called_once_with("186013", "encrypted-token")
 
 
 class TestErrorHandling:
@@ -237,6 +256,12 @@ class TestDescribeToolCall:
                 {"reference": "Genesis 1:1", "version_language": "he"},
                 ["Genesis 1:1", "he"],
             ),
+            (
+                "search_user_source_sheets",
+                {"query": "halacha workflow"},
+                ["user's source sheets", "halacha workflow"],
+            ),
+            ("get_source_sheet", {"sheet_id": 702510}, ["source sheet", "702510"]),
             (
                 "english_semantic_search",
                 {"query": "meaning of life"},
