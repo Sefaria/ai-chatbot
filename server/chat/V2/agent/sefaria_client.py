@@ -28,7 +28,7 @@ import httpx
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
+DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org")
 
 # In k8s, the AI service may be available via service discovery env vars.
 VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST")
