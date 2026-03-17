@@ -87,7 +87,7 @@ class RouterService:
 
         user_message_words = re.findall(r"\w+", user_message.lower())
         first_three_words = " ".join(user_message_words[:3])
-        if re.search(r"\btranslate\b", first_three_words, re.IGNORECASE):
+        if re.search(r"\btranslat(e|ion)\b", first_three_words, re.IGNORECASE):
             logger.info("Deterministic classification successful. Routing to Translation.")
             return RouteType.TRANSLATION
         return None
