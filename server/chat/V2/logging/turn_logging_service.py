@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
 
 from ...auth import Actor
@@ -53,69 +54,72 @@ class TurnLoggingService:
         model_name: str,
         summary_text: str,
     ) -> TurnLoggingResult:
-        response_message = ChatMessage.objects.create(
-            message_id=ChatMessage.generate_message_id(),
-            session_id=user_message.session_id,
-            user_id=user_message.user_id,
-            turn_id=user_message.turn_id,
-            role=ChatMessage.Role.ASSISTANT,
-            content=agent_response.content,
-            latency_ms=latency_ms,
-            llm_calls=agent_response.llm_calls,
-            tool_calls_count=len(agent_response.tool_calls),
-            tool_calls_data=agent_response.tool_calls,
-            model_name=model_name,
-            status=ChatMessage.Status.SUCCESS,
-            input_tokens=agent_response.input_tokens,
-            output_tokens=agent_response.output_tokens,
-            cache_creation_tokens=agent_response.cache_creation_tokens,
-            cache_read_tokens=agent_response.cache_read_tokens,
-            total_cost_usd=agent_response.total_cost_usd,
-        )
-
-        user_message.response_message = response_message
-        user_message.latency_ms = latency_ms
-        user_message.save(update_fields=["response_message", "latency_ms"])
-
-        session.message_count = ChatMessage.objects.filter(
-            session_id=user_message.session_id
-        ).count()
-        session.turn_count = (session.turn_count or 0) + 1
-        session.conversation_summary = summary_text
-        session.summary_updated_at = timezone.now()
-        session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
-        if agent_response.input_tokens is not None:
-            total_prompt = (
-                agent_response.input_tokens
-                + (agent_response.cache_read_tokens or 0)
-                + (agent_response.cache_creation_tokens or 0)
-            )
-            session.total_input_tokens = (session.total_input_tokens or 0) + total_prompt
-        if agent_response.output_tokens:
-            session.total_output_tokens = (
-                session.total_output_tokens or 0
-            ) + agent_response.output_tokens
-        if agent_response.total_cost_usd is not None:
-            from decimal import Decimal
-
-            session.total_cost_usd = (session.total_cost_usd or Decimal(0)) + Decimal(
-                str(agent_response.total_cost_usd)
-            )
-        session.save(
-            update_fields=[
-                "message_count",
-                "turn_count",
-                "last_activity",
-                "conversation_summary",
-                "summary_updated_at",
-                "total_tool_calls",
-                "total_input_tokens",
-                "total_output_tokens",
-                "total_cost_usd",
-            ]
-        )
-
         stats = self.build_stats(agent_response=agent_response, latency_ms=latency_ms)
+        with transaction.atomic():
+            response_message = ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
+                session_id=user_message.session_id,
+                user_id=user_message.user_id,
+                turn_id=user_message.turn_id,
+                role=ChatMessage.Role.ASSISTANT,
+                content=agent_response.content,
+                latency_ms=latency_ms,
+                llm_calls=agent_response.llm_calls,
+                tool_calls_count=len(agent_response.tool_calls),
+                tool_calls_data=agent_response.tool_calls,
+                model_name=model_name,
+                status=ChatMessage.Status.SUCCESS,
+                input_tokens=agent_response.input_tokens,
+                output_tokens=agent_response.output_tokens,
+                cache_creation_tokens=agent_response.cache_creation_tokens,
+                cache_read_tokens=agent_response.cache_read_tokens,
+                total_cost_usd=agent_response.total_cost_usd,
+            )
+
+            user_message.response_message = response_message
+            user_message.latency_ms = latency_ms
+            user_message.save(update_fields=["response_message", "latency_ms"])
+
+            session.message_count = ChatMessage.objects.filter(
+                session_id=user_message.session_id
+            ).count()
+            session.turn_count = (session.turn_count or 0) + 1
+            session.conversation_summary = summary_text
+            session.summary_updated_at = timezone.now()
+            session.total_tool_calls = (session.total_tool_calls or 0) + len(
+                agent_response.tool_calls
+            )
+            if agent_response.input_tokens is not None:
+                total_prompt = (
+                    agent_response.input_tokens
+                    + (agent_response.cache_read_tokens or 0)
+                    + (agent_response.cache_creation_tokens or 0)
+                )
+                session.total_input_tokens = (session.total_input_tokens or 0) + total_prompt
+            if agent_response.output_tokens:
+                session.total_output_tokens = (
+                    session.total_output_tokens or 0
+                ) + agent_response.output_tokens
+            if agent_response.total_cost_usd is not None:
+                from decimal import Decimal
+
+                session.total_cost_usd = (session.total_cost_usd or Decimal(0)) + Decimal(
+                    str(agent_response.total_cost_usd)
+                )
+            session.save(
+                update_fields=[
+                    "message_count",
+                    "turn_count",
+                    "last_activity",
+                    "conversation_summary",
+                    "summary_updated_at",
+                    "total_tool_calls",
+                    "total_input_tokens",
+                    "total_output_tokens",
+                    "total_cost_usd",
+                ]
+            )
+
         return TurnLoggingResult(response_message=response_message, stats=stats)
 
     @staticmethod

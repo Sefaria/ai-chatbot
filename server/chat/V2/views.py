@@ -20,14 +20,17 @@ Also includes:
 import asyncio
 import concurrent.futures
 import contextvars
+from dataclasses import dataclass
 import json
 import logging
 import queue
 import time
+from typing import Any
 
 import braintrust
 from django.conf import settings
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -66,6 +69,16 @@ def build_session_info(session) -> dict:
     }
 
 
+@dataclass
+class StreamSuccessResult:
+    """Normalized response metadata for the final SSE message event."""
+
+    message_id: str
+    timestamp: str
+    stats: dict[str, Any]
+    session_info: dict[str, Any]
+
+
 _bt_config = get_braintrust_config()
 _bt_logger = None
 
@@ -88,6 +101,89 @@ def _create_traced_executor() -> concurrent.futures.Executor:
     as children of the request-level span.
     """
     return braintrust.TracedThreadPoolExecutor(max_workers=1)
+
+
+def _capture_stream_success_exception(
+    *,
+    exc: Exception,
+    message: str,
+    endpoint: str,
+    session_id: str,
+    turn_id: str,
+) -> None:
+    """Log and capture non-fatal post-agent failures."""
+    logger.exception(message)
+    capture_exception(
+        exc,
+        endpoint=endpoint,
+        session_id=session_id,
+        turn_id=turn_id,
+    )
+
+
+def _finalize_stream_success(
+    *,
+    session,
+    user_message,
+    agent_response,
+    latency_ms: int,
+    summary_text: str,
+    new_user_message: str,
+    session_id: str,
+    turn_id: str,
+) -> StreamSuccessResult:
+    """Persist best-effort post-agent state without risking SSE delivery."""
+    logging_service = get_turn_logging_service()
+    fallback_result = StreamSuccessResult(
+        message_id=ChatMessage.generate_message_id(),
+        timestamp=timezone.now().isoformat(),
+        stats=logging_service.build_stats(agent_response=agent_response, latency_ms=latency_ms),
+        session_info=build_session_info(session),
+    )
+    effective_summary_text = summary_text or ""
+
+    try:
+        summary_service = get_summary_service()
+        new_summary = summary_service.update_summary(
+            session=session,
+            new_user_message=new_user_message,
+            new_assistant_response=agent_response.content,
+        )
+        effective_summary_text = new_summary.to_prompt_text()
+    except Exception as exc:
+        _capture_stream_success_exception(
+            exc=exc,
+            message="Summary update failed after agent success",
+            endpoint="chat_stream_v2_summary",
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+
+    try:
+        logging_result = logging_service.finalize_success(
+            session=session,
+            user_message=user_message,
+            agent_response=agent_response,
+            latency_ms=latency_ms,
+            model_name=agent_response.model or "unknown",
+            summary_text=effective_summary_text,
+        )
+    except Exception as exc:
+        _capture_stream_success_exception(
+            exc=exc,
+            message="Turn persistence failed after agent success",
+            endpoint="chat_stream_v2_finalize",
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        return fallback_result
+
+    return StreamSuccessResult(
+        message_id=logging_result.response_message.message_id,
+        timestamp=logging_result.response_message.server_timestamp.isoformat(),
+        stats=logging_result.stats,
+        session_info=build_session_info(session),
+    )
 
 
 @api_view(["POST"])
@@ -284,36 +380,26 @@ def chat_stream_v2(request):
 
         # --- Success path: update summary, persist turn, yield final event ---
         agent_response = result_holder["response"]
-
-        summary_service = get_summary_service()
-        new_summary = summary_service.update_summary(
-            session=session,
-            new_user_message=data["text"],
-            new_assistant_response=agent_response.content,
-        )
-        logging_service = get_turn_logging_service()
-        logging_result = logging_service.finalize_success(
+        success_result = _finalize_stream_success(
             session=session,
             user_message=user_message,
             agent_response=agent_response,
             latency_ms=latency_ms,
-            model_name=agent_response.model or "unknown",
-            summary_text=new_summary.to_prompt_text(),
+            summary_text=summary_text,
+            new_user_message=data["text"],
+            session_id=data["sessionId"],
+            turn_id=turn_id,
         )
 
-        response_message = logging_result.response_message
-
-        session.refresh_from_db()
-
         final_data = {
-            "messageId": response_message.message_id,
+            "messageId": success_result.message_id,
             "sessionId": data["sessionId"],
-            "timestamp": response_message.server_timestamp.isoformat(),
+            "timestamp": success_result.timestamp,
             "markdown": agent_response.content,
             "traceId": agent_response.trace_id,
             "toolCalls": agent_response.tool_calls,
-            "session": build_session_info(session),
-            "stats": logging_result.stats,
+            "session": success_result.session_info,
+            "stats": success_result.stats,
         }
 
         yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
