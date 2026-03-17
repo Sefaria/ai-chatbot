@@ -246,7 +246,15 @@ class SefariaClient:
             "include_aggregations": "1" if include_aggregations else None,
             "include_descriptions": "1" if include_descriptions else None,
         }
-        return await self._get_json(f"api/authors/{encoded_slug}/indexes", params)
+        try:
+            return await self._get_json(f"api/authors/{encoded_slug}/indexes", params)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return {
+                    "error": f"Author slug '{author_slug}' was not found.",
+                    "suggestion": "Use clarify_name_argument to find the correct author slug, then try get_author_indexes again.",
+                }
+            raise
 
     async def clarify_name_argument(
         self, name: str, limit: int | None = None, type_filter: str | None = None

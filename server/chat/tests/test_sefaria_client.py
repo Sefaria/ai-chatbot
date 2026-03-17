@@ -194,6 +194,26 @@ class TestGetAuthorIndexes:
             assert "include_aggregations=1" in url
             assert "include_descriptions=1" in url
 
+    @pytest.mark.asyncio
+    async def test_author_indexes_returns_helpful_message_on_404(self, client):
+        """When author slug is missing, should return a recoverable error payload."""
+        import httpx
+
+        mock_request = httpx.Request("GET", "https://www.sefaria.org/api/authors/missing/indexes")
+        mock_response = httpx.Response(404, request=mock_request)
+
+        with patch.object(
+            client,
+            "_get_json",
+            side_effect=httpx.HTTPStatusError(
+                "Not Found", request=mock_request, response=mock_response
+            ),
+        ):
+            result = await client.get_author_indexes("missing")
+
+        assert "not found" in result.get("error", "").lower()
+        assert "clarify_name_argument" in result.get("suggestion", "")
+
 
 class TestOptimizeTextResponse:
     """Test _optimize_text_response method."""
