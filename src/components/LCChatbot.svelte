@@ -676,13 +676,27 @@
     const anchor = e.target?.closest?.('a');
     if (!anchor) return;
 
-    const sefariaPath = anchor.getAttribute('href');
-    if (!sefariaPath) return;
+    const href = anchor.getAttribute('href');
+    if (!href) return;
 
     e.preventDefault();
 
-    const path = sefariaPath;
-    console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(href, window.location.href);
+    } catch {
+      return;
+    }
+
+    const sheetMatch = resolvedUrl.pathname.match(/^\/sheets\/([^/?#]+)\/?$/);
+    if (sheetMatch) {
+      const rebasedSheetUrl = `${window.location.origin}/sheets/${sheetMatch[1]}`;
+      window.open(rebasedSheetUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
+    console.log('[lc-chatbot] Link clicked:', href);
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
       detail: {
         url: path,
