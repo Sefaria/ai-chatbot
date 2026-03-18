@@ -101,12 +101,12 @@ class TestCaching:
 
     def test_invalidate_cache_all(self, service_short_ttl: PromptService) -> None:
         service_short_ttl._cache["prompt_a:v1"] = {
-            "prompt": "a",
+            "prompt_obj": MagicMock(),
             "version": "v1",
             "timestamp": time.time(),
         }
         service_short_ttl._cache["prompt_b:v1"] = {
-            "prompt": "b",
+            "prompt_obj": MagicMock(),
             "version": "v1",
             "timestamp": time.time(),
         }
@@ -115,12 +115,12 @@ class TestCaching:
 
     def test_invalidate_cache_specific(self, service_short_ttl: PromptService) -> None:
         service_short_ttl._cache["prompt_a:v1"] = {
-            "prompt": "a",
+            "prompt_obj": MagicMock(),
             "version": "v1",
             "timestamp": time.time(),
         }
         service_short_ttl._cache["prompt_b:v1"] = {
-            "prompt": "b",
+            "prompt_obj": MagicMock(),
             "version": "v1",
             "timestamp": time.time(),
         }
@@ -132,28 +132,28 @@ class TestCaching:
 class TestBraintrustIntegration:
     """Test Braintrust prompt fetching (mocked)."""
 
-    def test_fetch_from_braintrust_success(self, mock_braintrust: MagicMock) -> None:
+    def test_fetch_prompt_object_success(self, mock_braintrust: MagicMock) -> None:
         svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         svc.project_name = "test-project"
-        prompt_text, version = svc._fetch_from_braintrust("test_slug", "stable")
-        assert prompt_text == "Braintrust prompt content"
+        prompt_obj, version = svc._fetch_prompt_object("test_slug", "stable")
+        assert prompt_obj is not None
         assert version == "bt_v1"
 
-    def test_fetch_from_braintrust_not_found(self, mock_braintrust: MagicMock) -> None:
+    def test_fetch_prompt_object_not_found(self, mock_braintrust: MagicMock) -> None:
         mock_braintrust.load_prompt.return_value = None
         svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
-        prompt_text, version = svc._fetch_from_braintrust("missing_slug", "stable")
-        assert prompt_text is None
+        prompt_obj, version = svc._fetch_prompt_object("missing_slug", "stable")
+        assert prompt_obj is None
         assert version == ""
 
-    def test_fetch_from_braintrust_error_propagates(self, mock_braintrust: MagicMock) -> None:
+    def test_fetch_prompt_object_error_propagates(self, mock_braintrust: MagicMock) -> None:
         mock_braintrust.load_prompt.side_effect = Exception("API Error")
         svc = PromptService(api_key="test-key")
         svc._braintrust_client = mock_braintrust
         with pytest.raises(Exception, match="API Error"):
-            svc._fetch_from_braintrust("test_slug", "stable")
+            svc._fetch_prompt_object("test_slug", "stable")
 
     def test_empty_fetch_raises(self, mock_braintrust: MagicMock) -> None:
         """When Braintrust returns empty prompt, raises RuntimeError."""
@@ -182,6 +182,27 @@ class TestPromptExtraction:
         }
         text = service._extract_prompt_text(mock_prompt)
         assert text == "System prompt here"
+
+    def test_build_vars_passed_to_build(self, service: PromptService) -> None:
+        """Template variables are forwarded to prompt.build()."""
+        mock_prompt = MagicMock()
+        mock_prompt.build.return_value = {
+            "messages": [{"role": "system", "content": "Rendered with var"}]
+        }
+        service._extract_prompt_text(mock_prompt, response_format="format text")
+        mock_prompt.build.assert_called_once_with(response_format="format text")
+
+
+class TestBuildVarsIntegration:
+    """Test build_vars flow through get_core_prompt."""
+
+    def test_get_core_prompt_passes_build_vars(self, service: PromptService) -> None:
+        """build_vars are forwarded through to prompt.build()."""
+        prompt = service.get_core_prompt(build_vars={"response_format": "Use markdown"})
+        assert prompt.text == "Braintrust prompt content"
+        # Verify build was called with the vars
+        mock_prompt = service._braintrust_client.load_prompt.return_value
+        mock_prompt.build.assert_called_with(response_format="Use markdown")
 
 
 class TestGetPromptService:
