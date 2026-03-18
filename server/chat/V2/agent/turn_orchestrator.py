@@ -95,18 +95,19 @@ class TurnOrchestrator:
         if router_prompt_id:
             core_prompt_id = router_prompt_id
 
-        core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
-        core_prompt_text = core_prompt.text
-
-        # append the response format instructions to the core prompt so it's available for any agent response generation
+        # Fetch the response-format prompt and pass it as a template variable.
+        # Braintrust prompts that include {{response_format}} will get it substituted.
         response_format = self.prompt_service.get_core_prompt(
             prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG
         )
-        core_prompt_text = f"{core_prompt_text}\n\n{response_format.text}"
+        core_prompt = self.prompt_service.get_core_prompt(
+            prompt_id=core_prompt_id,
+            build_vars={"response_format": response_format.text},
+        )
 
         prompt_result = build_turn_prompt(
             messages=messages,
-            core_prompt=core_prompt_text,
+            core_prompt=core_prompt.text,
             context=context,
         )
 
