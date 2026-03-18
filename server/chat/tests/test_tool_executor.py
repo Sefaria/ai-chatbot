@@ -65,6 +65,7 @@ def mock_client():
     client.set_user_session = Mock()
     client.search_user_source_sheets = AsyncMock(return_value={"sheets": []})
     client.get_source_sheet = AsyncMock(return_value={"sources": []})
+    client.create_source_sheet = AsyncMock(return_value={"id": 715437, "sources": []})
     return client
 
 
@@ -167,6 +168,16 @@ class TestToolDispatch:
                 ("Sabbath prohibitions", 5),
             ),
             ("get_source_sheet", {"sheet_id": 702510}, "get_source_sheet", (702510,)),
+            (
+                "create_source_sheet",
+                {
+                    "title": "Bereshit",
+                    "summary": "A starter sheet",
+                    "sources": [{"outsideText": "<p>hi there</p>", "node": 1}],
+                },
+                "create_source_sheet",
+                ("Bereshit", "A starter sheet", [{"outsideText": "<p>hi there</p>", "node": 1}]),
+            ),
         ],
     )
     async def test_dispatch(
@@ -262,6 +273,11 @@ class TestDescribeToolCall:
                 ["user's source sheets", "halacha workflow"],
             ),
             ("get_source_sheet", {"sheet_id": 702510}, ["source sheet", "702510"]),
+            (
+                "create_source_sheet",
+                {"title": "Bereshit"},
+                ["Creating source sheet", "Bereshit"],
+            ),
             (
                 "english_semantic_search",
                 {"query": "meaning of life"},

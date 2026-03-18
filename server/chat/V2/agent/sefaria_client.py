@@ -16,6 +16,7 @@ from API responses before they're sent back to Claude, keeping token usage low.
 import asyncio
 import base64
 import html
+import json
 import os
 import re
 from datetime import datetime
@@ -23,6 +24,8 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 import httpx
+
+from .source_sheet_serializer import prepare_source_sheet_sources, serialize_source_sheet_payload
 
 # ---------------------------------------------------------------------------
 # Base URL configuration — supports both public Sefaria and local k8s service
@@ -357,6 +360,26 @@ class SefariaClient:
         data = await self._get_json(f"api/sheets/{encoded_sheet_id}", headers=headers)
         return self._optimize_source_sheet_response(data)
 
+    async def create_source_sheet(
+        self, title: str, summary: str, sources: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Create a new authenticated source sheet."""
+        _, session_token = self._require_user_session("create_source_sheet")
+        payload = serialize_source_sheet_payload(
+            title=title,
+            summary=summary,
+            sources=await self._hydrate_source_sheet_sources(sources),
+        )
+        data = await self._post_form_json(
+            "api/sheets/",
+            data={"json": json.dumps(payload, ensure_ascii=False)},
+            headers={
+                "Accept": "application/json",
+                "X-Session-ID": session_token,
+            },
+        )
+        return self._optimize_source_sheet_response(data)
+
     # -------------------------------------------------------------------
     # Low-level HTTP helpers
     # -------------------------------------------------------------------
@@ -412,6 +435,19 @@ class SefariaClient:
 
         client = await self._get_client()
         response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+    async def _post_form_json(
+        self,
+        endpoint: str,
+        data: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        """POST form-encoded data to the main Sefaria API and parse JSON response."""
+        url = f"{self.base_url}/{endpoint}"
+        client = await self._get_client()
+        response = await client.post(url, data=data, headers=headers)
         response.raise_for_status()
         return response.json()
 
@@ -577,17 +613,106 @@ class SefariaClient:
             "title": data.get("title", ""),
             "status": data.get("status", ""),
             "summary": data.get("summary", ""),
+            "sheetUrl": self._build_sheet_url(data.get("id")),
             "owner": data.get("owner"),
             "ownerName": data.get("ownerName", ""),
             "source_count": len(optimized_sources),
             "sources": optimized_sources,
         }
 
-    def _require_user_session(self) -> tuple[str, str]:
+    def _build_sheet_url(self, sheet_id: Any) -> str:
+        """Build an absolute source sheet URL when a numeric sheet id is available."""
+        if sheet_id is None:
+            return ""
+        return f"/sheets/{sheet_id}"
+
+    async def _hydrate_source_sheet_sources(
+        self, sources: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Fill in source text HTML for ref sources before sheet creation."""
+        normalized_sources = prepare_source_sheet_sources(sources)
+        ref_indices = [index for index, source in enumerate(normalized_sources) if source.get("ref")]
+        if not ref_indices:
+            return normalized_sources
+
+        ref_payloads = await asyncio.gather(
+            *[self.get_text(normalized_sources[index]["ref"], "both") for index in ref_indices]
+        )
+
+        for index, ref_payload in zip(ref_indices, ref_payloads):
+            normalized_sources[index]["text"] = self._build_sheet_text_block(ref_payload)
+
+        return normalized_sources
+
+    def _build_sheet_text_block(self, payload: dict[str, Any]) -> dict[str, str]:
+        """Convert a get_text response into the bilingual HTML saved on sheets."""
+        english_text = self._extract_sheet_language_text(payload, "en")
+        hebrew_text = self._extract_sheet_language_text(payload, "he")
+        return {
+            "en": self._render_sheet_html(english_text),
+            "he": self._render_sheet_html(hebrew_text),
+        }
+
+    def _extract_sheet_language_text(self, payload: dict[str, Any], language: str) -> Any:
+        """Pick the best available language payload from get_text output."""
+        language_matches = {
+            "en": ("english",),
+            "he": ("hebrew", "source"),
+        }
+
+        versions = payload.get("versions")
+        if isinstance(versions, list):
+            for version in versions:
+                language_name = str(version.get("languageFamilyName", "")).casefold()
+                if any(match in language_name for match in language_matches[language]):
+                    return version.get("text")
+
+        return payload.get("text") if language == "en" else payload.get("he")
+
+    def _render_sheet_html(self, text_value: Any) -> str:
+        """Render text data from /api/v3/texts into simple sheet-safe HTML."""
+        segments = self._flatten_text_segments(text_value)
+        if not segments:
+            return "..."
+
+        rendered_segments = [self._normalize_sheet_segment_html(segment) for segment in segments]
+        joined_segments = " ".join(segment for segment in rendered_segments if segment).strip()
+        return f"<p>{joined_segments}</p>" if joined_segments else "..."
+
+    def _flatten_text_segments(self, value: Any) -> list[str]:
+        """Flatten nested arrays returned by /texts into a linear list of strings."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            flattened: list[str] = []
+            for item in value:
+                flattened.extend(self._flatten_text_segments(item))
+            return flattened
+        if isinstance(value, dict):
+            flattened: list[str] = []
+            for key in ("text", "he", "en"):
+                if key in value:
+                    flattened.extend(self._flatten_text_segments(value[key]))
+            return flattened
+        return [str(value)]
+
+    @staticmethod
+    def _normalize_sheet_segment_html(segment: str) -> str:
+        """Preserve trusted HTML segments when present; otherwise escape text."""
+        stripped_segment = segment.strip()
+        if not stripped_segment:
+            return ""
+        if re.search(r"<[^>]+>", stripped_segment):
+            return stripped_segment
+        return html.escape(stripped_segment)
+
+    def _require_user_session(self, operation: str = "this action") -> tuple[str, str]:
         """Return authenticated user session context required by private user endpoints."""
         if not self._user_id or not self._session_token:
             raise ValueError(
-                "search_user_source_sheets requires authenticated user context with a retained session token"
+                f"{operation} requires authenticated user context with a retained session token"
             )
         return self._user_id, self._session_token
 

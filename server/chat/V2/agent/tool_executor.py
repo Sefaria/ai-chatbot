@@ -128,6 +128,13 @@ class SefariaToolExecutor:
         elif tool_name == "get_source_sheet":
             return await self.client.get_source_sheet(input_data["sheet_id"])
 
+        elif tool_name == "create_source_sheet":
+            return await self.client.create_source_sheet(
+                input_data["title"],
+                input_data.get("summary", ""),
+                input_data["sources"],
+            )
+
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -213,6 +220,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
             + (f" for {q(tool_input.get('query'))}" if tool_input.get("query") else "")
         ),
         "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
+        "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
     }
 
     if tool_name in descriptions:

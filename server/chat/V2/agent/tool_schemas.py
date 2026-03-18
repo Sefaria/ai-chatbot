@@ -228,6 +228,39 @@ TOOL_GET_SOURCE_SHEET = {
     },
 }
 
+TOOL_CREATE_SOURCE_SHEET = {
+    "name": "create_source_sheet",
+    "description": "Creates a new authenticated Sefaria source sheet. Provide the sheet title, summary, and an ordered list of sources. Ref sources should include both ref and heRef; the tool will fetch the English and Hebrew text and serialize the final sheet payload automatically.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "The source sheet title.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "A short summary for the sheet.",
+                "default": "",
+            },
+            "sources": {
+                "type": "array",
+                "description": "Ordered list of sheet sources. Each item should contain either outsideText, or ref plus heRef.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "outsideText": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "heRef": {"type": "string"},
+                        "node": {"type": "integer"},
+                    },
+                },
+            },
+        },
+        "required": ["title", "sources"],
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -251,6 +284,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_manuscript_image": TOOL_GET_MANUSCRIPT_IMAGE,
     "search_user_source_sheets": TOOL_SEARCH_USER_SOURCE_SHEETS,
     "get_source_sheet": TOOL_GET_SOURCE_SHEET,
+    "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
 }
 
 # ============================================================================
