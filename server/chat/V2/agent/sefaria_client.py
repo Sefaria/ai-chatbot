@@ -247,7 +247,8 @@ class SefariaClient:
             "include_descriptions": "1" if include_descriptions else None,
         }
         try:
-            return await self._get_json(f"api/authors/{encoded_slug}/indexes", params)
+            data = await self._get_json(f"api/authors/{encoded_slug}/indexes", params)
+            return self._optimize_author_indexes_response(data)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return {
@@ -495,6 +496,20 @@ class SefariaClient:
             "compDate",
             "era",
             "authors",
+        }
+
+        return {k: v for k, v in data.items() if k in essential_fields}
+
+    def _optimize_author_indexes_response(self, data: Any) -> dict[str, Any]:
+        """Preserve the main payload shape for now; placeholder for future trimming."""
+        if not isinstance(data, dict):
+            return data
+
+        essential_fields = {
+            "author",
+            "indexes",
+            "total",
+            "aggregations",
         }
 
         return {k: v for k, v in data.items() if k in essential_fields}
