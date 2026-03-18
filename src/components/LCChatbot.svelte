@@ -8,14 +8,17 @@
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
 
+  const MAX_PROMPTS = 100;
+  const MAX_INPUT_CHARS = 10000;
+
   // Props (attributes)
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 10000,
-    'max-prompts': maxPrompts = 100,
+    'max-input-chars': maxInputChars = MAX_INPUT_CHARS,
+    'max-prompts': maxPrompts = MAX_PROMPTS,
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     origin: originProp = '',
     'is-moderator': isModerator = false,
@@ -59,8 +62,8 @@
 
   // Turn limit state
   let turnCount = $state(0);
-  let serverMaxPrompts = $state(Infinity);
-  let serverMaxInputChars = $state(Infinity);
+  let serverMaxPrompts = $state(MAX_PROMPTS);
+  let serverMaxInputChars = $state(MAX_INPUT_CHARS);
   let backendLimitReached = $state(false);
 
   // maxPrompts and maxInputChars are set in RemoteConfig but for security's sake, there are absolute maximums set server side
