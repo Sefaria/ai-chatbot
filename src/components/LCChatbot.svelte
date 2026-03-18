@@ -198,9 +198,12 @@
     messages = savedMessages;
   });
 
-  // Sync turn limits from server on load
   $effect(() => {
     if (sessionId && apiBaseUrl && isOpen) {
+      if (chatJustRestarted) {
+        chatJustRestarted = false;
+        return;
+      }
       syncSessionState();
     }
   });
@@ -425,7 +428,9 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    if (!text || isSending || limitReached || !userId || !apiBaseUrl) return;
+    const isConfigured = userId && apiBaseUrl;
+    const isReadyToSend = text && !isSending && !limitReached;
+    if (!isConfigured || !isReadyToSend) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -1047,7 +1052,7 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : "What are you learning today?"}
+          placeholder={!limitReached && "What are you learning today?"} //only show placeholder if limit hasn't been reached yet
           aria-label="Prompt input"
           rows="1"
           disabled={isSending || limitReached}
