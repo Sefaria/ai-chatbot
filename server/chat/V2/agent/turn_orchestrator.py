@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from braintrust import current_span
+from django.conf import settings
 
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
@@ -94,7 +95,16 @@ class TurnOrchestrator:
         if router_prompt_id:
             core_prompt_id = router_prompt_id
 
-        core_prompt = self.prompt_service.get_core_prompt(prompt_id=core_prompt_id)
+        # Fetch the response-format prompt and pass it as a template variable.
+        # Braintrust prompts that include {{response_format}} will get it substituted.
+        response_format = self.prompt_service.get_core_prompt(
+            prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG
+        )
+        core_prompt = self.prompt_service.get_core_prompt(
+            prompt_id=core_prompt_id,
+            build_vars={"response_format": response_format.text},
+        )
+
         prompt_result = build_turn_prompt(
             messages=messages,
             core_prompt=core_prompt.text,

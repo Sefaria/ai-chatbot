@@ -76,6 +76,7 @@ class PromptService:
         self,
         prompt_id: str | None = None,
         version: str = "stable",
+        build_vars: dict[str, str] | None = None,
     ) -> CorePrompt:
         """
         Get the core system prompt.
@@ -83,19 +84,24 @@ class PromptService:
         Args:
             prompt_id: Braintrust slug for core prompt (default: settings.CORE_PROMPT_SLUG)
             version: Prompt version to fetch
+            build_vars: Template variables to substitute in the prompt (e.g. {"response_format": "..."})
 
         Returns:
             CorePrompt with text and metadata
         """
         prompt_id = prompt_id or settings.CORE_PROMPT_SLUG
-        prompt_text, actual_version = self._get_prompt(prompt_id, version)
+        prompt_obj, actual_version = self._get_prompt_object(prompt_id, version)
+        prompt_text = self._extract_prompt_text(prompt_obj, **(build_vars or {}))
+        if not prompt_text:
+            raise RuntimeError(f"Prompt '{prompt_id}' returned empty from Braintrust")
         return CorePrompt(text=prompt_text, prompt_id=prompt_id, version=actual_version)
 
-    def _get_prompt(self, prompt_id: str, version: str) -> tuple[str, str]:
+    def _get_prompt_object(self, prompt_id: str, version: str) -> tuple[Any, str]:
         """
-        Get a prompt by ID with caching.
+        Get a Braintrust prompt object by ID with caching.
 
-        Returns (prompt_text, version_used)
+        Returns (prompt_object, version_used). The raw prompt object is cached
+        so that callers can build it with different template variables.
         """
         cache_key = f"{prompt_id}:{version}"
 
@@ -103,25 +109,25 @@ class PromptService:
             cached = self._cache.get(cache_key)
             if cached and time.time() - cached["timestamp"] < self.cache_ttl:
                 logger.debug("Prompt cache hit: %s (version=%s)", prompt_id, cached["version"])
-                return cached["prompt"], cached["version"]
+                return cached["prompt_obj"], cached["version"]
 
         try:
             fetch_start = time.time()
-            prompt_text, actual_version = self._fetch_from_braintrust(prompt_id, version)
+            prompt_obj, actual_version = self._fetch_prompt_object(prompt_id, version)
             fetch_ms = int((time.time() - fetch_start) * 1000)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to fetch prompt '{prompt_id}' from Braintrust: {exc}"
             ) from exc
 
-        if not prompt_text:
+        if prompt_obj is None:
             raise RuntimeError(
                 f"Prompt '{prompt_id}' returned empty from Braintrust ({fetch_ms}ms)"
             )
 
         with self._cache_lock:
             self._cache[cache_key] = {
-                "prompt": prompt_text,
+                "prompt_obj": prompt_obj,
                 "version": actual_version,
                 "timestamp": time.time(),
             }
@@ -131,13 +137,13 @@ class PromptService:
             actual_version,
             fetch_ms,
         )
-        return prompt_text, actual_version
+        return prompt_obj, actual_version
 
-    def _fetch_from_braintrust(self, prompt_id: str, version: str) -> tuple[str | None, str]:
+    def _fetch_prompt_object(self, prompt_id: str, version: str) -> tuple[Any | None, str]:
         """
-        Fetch a prompt from Braintrust.
+        Fetch a prompt object from Braintrust.
 
-        Returns (prompt_text, version) or (None, "") if not found.
+        Returns (prompt_object, version) or (None, "") if not found.
         Raises on network/API errors (caller handles).
         """
         prompt = self._braintrust_client.load_prompt(
@@ -150,14 +156,9 @@ class PromptService:
             return None, ""
 
         actual_version = getattr(prompt, "version", version) or version
-        prompt_text = self._extract_prompt_text(prompt)
+        return prompt, str(actual_version)
 
-        if prompt_text:
-            return prompt_text, str(actual_version)
-
-        return None, ""
-
-    def _extract_prompt_text(self, prompt) -> str | None:
+    def _extract_prompt_text(self, prompt, **build_vars) -> str | None:
         """Extract prompt text from a Braintrust Prompt object.
 
         Braintrust prompts can be structured in several ways depending on the
@@ -173,7 +174,7 @@ class PromptService:
         """
         try:
             if hasattr(prompt, "build"):
-                built = prompt.build()
+                built = prompt.build(**build_vars)
                 if isinstance(built, dict):
                     messages = built.get("messages", [])
                     if messages:
