@@ -1055,7 +1055,7 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={!limitReached && "What are you learning today?"} //only show placeholder if limit hasn't been reached yet
+          placeholder={!limitReached && "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
           disabled={isSending || limitReached}
