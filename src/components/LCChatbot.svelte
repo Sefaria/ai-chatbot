@@ -896,7 +896,7 @@
             </div>
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" onclick={() => retryMessage(feedbackProps.messageId)}>
+                <button class="retry-btn" aria-label="Retry" onclick={() => retryMessage(feedbackProps.messageId)}>
                   Retry
                 </button>
               {/if}
@@ -956,7 +956,7 @@
               </div>
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
+                  <button class="retry-btn" aria-label="Retry" onclick={() => retryMessage(item.messageId)}>
                     Retry
                   </button>
                 {/if}
