@@ -8,8 +8,8 @@
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
 
-  const MAX_PROMPTS = 100;
-  const MAX_INPUT_CHARS = 10000;
+  const DEFAULT_MAX_PROMPTS = 100;
+  const DEFAULT_MAX_INPUT_CHARS = 10000;
 
   // Props (attributes)
   let {
@@ -17,8 +17,8 @@
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = false,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = MAX_INPUT_CHARS,
-    'max-prompts': maxPrompts = MAX_PROMPTS,
+    'max-input-chars': maxInputChars = DEFAULT_MAX_INPUT_CHARS,
+    'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     origin: originProp = '',
     'is-moderator': isModerator = false,
@@ -62,8 +62,8 @@
 
   // Turn limit state
   let turnCount = $state(0);
-  let serverMaxPrompts = $state(MAX_PROMPTS);
-  let serverMaxInputChars = $state(MAX_INPUT_CHARS);
+  let serverMaxPrompts = $state(DEFAULT_MAX_PROMPTS);
+  let serverMaxInputChars = $state(DEFAULT_MAX_INPUT_CHARS);
   let backendLimitReached = $state(false);
   let chatJustRestarted = $state(false);
 
@@ -383,8 +383,8 @@
 
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
-        serverMaxPrompts = result.session.maxPrompts ?? MAX_PROMPTS;
-        serverMaxInputChars = result.session.maxInputChars ?? MAX_INPUT_CHARS;
+        serverMaxPrompts = result.session.maxPrompts ?? DEFAULT_MAX_PROMPTS;
+        serverMaxInputChars = result.session.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
       }
 
       // Only load messages if we don't have any locally
@@ -526,8 +526,8 @@
       // Update turn count from server response
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
-        serverMaxPrompts = response.session.maxPrompts ?? MAX_PROMPTS;
-        serverMaxInputChars = response.session.maxInputChars ?? MAX_INPUT_CHARS;
+        serverMaxPrompts = response.session.maxPrompts ?? DEFAULT_MAX_PROMPTS;
+        serverMaxInputChars = response.session.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
       }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
