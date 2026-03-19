@@ -30,16 +30,15 @@ jobs:
           wget -nv -nc -O yq https://github.com/mikefarah/yq/releases/download/v4.20.2/yq_linux_amd64
           chmod +x yq
           echo "$PWD" >> $GITHUB_PATH
-      - uses: cycjimmy/semantic-release-action@v4
+      - uses: cycjimmy/semantic-release-action@v6
         id: semantic
         with:
           working_directory: ./
-          semantic_version: 18.0.1
           extra_plugins: |
-            conventional-changelog-conventionalcommits@6.1.0
-            @semantic-release/exec@6.0.3
-            @semantic-release/git@10.0.1
-            @semantic-release/commit-analyzer@9.0.2
+            conventional-changelog-conventionalcommits
+            @semantic-release/exec
+            @semantic-release/git
+            @semantic-release/commit-analyzer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: check version was generated
