@@ -1441,7 +1441,7 @@
     padding: 0;
     font: inherit;
     font-style: italic;
-    color: var(--lc-sefaria-blue);
+    color: blue;
     text-decoration: underline;
     cursor: pointer;
   }
