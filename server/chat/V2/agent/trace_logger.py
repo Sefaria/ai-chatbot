@@ -52,6 +52,7 @@ class BraintrustTraceLogger:
         core_prompt_version: str,
         system_prompt_in_options: bool,
         summary_included: bool,
+        route: str,
     ) -> None:
         bt_span.log(
             metadata={
@@ -59,6 +60,7 @@ class BraintrustTraceLogger:
                 "core_prompt_version": core_prompt_version,
                 "core_prompt_in_options": system_prompt_in_options,
                 "summary_included": summary_included,
+                "route": route,
             }
         )
 

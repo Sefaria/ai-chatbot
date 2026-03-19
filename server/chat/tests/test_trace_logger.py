@@ -50,3 +50,30 @@ class TestTraceLoggerOrigin:
         self.logger.log_input(bt_span=self.span, user_message="hi", context=ctx, model="test")
         call_kwargs = self.span.log.call_args[1]
         assert "user_id" not in call_kwargs["metadata"]
+
+
+class TestTraceLoggerPromptMetadata:
+    """Test that log_prompt_metadata includes route."""
+
+    def setup_method(self):
+        self.logger = BraintrustTraceLogger()
+        self.span = MagicMock()
+
+    def _call(self, route="discovery"):
+        self.logger.log_prompt_metadata(
+            bt_span=self.span,
+            core_prompt_id="prompt-slug",
+            core_prompt_version="abc123",
+            system_prompt_in_options=True,
+            summary_included=False,
+            route=route,
+        )
+        return self.span.log.call_args[1]
+
+    def test_route_logged_in_metadata(self):
+        call_kwargs = self._call(route="translation")
+        assert call_kwargs["metadata"]["route"] == "translation"
+
+    def test_route_discovery_logged(self):
+        call_kwargs = self._call(route="discovery")
+        assert call_kwargs["metadata"]["route"] == "discovery"
