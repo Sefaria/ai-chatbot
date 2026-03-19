@@ -73,8 +73,6 @@
 
   let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
 
-  const LIMIT_REACHED_MESSAGE = 'Conversation limit reached. Please start a new chat.';
-
   // Menu state
   let showMenu = $state(false);
   let menuContainer = $state(null);
@@ -1042,7 +1040,10 @@
         {#if limitReached}
           <div class="message assistant limit-message">
             <div class="message-content">
-              <p>{LIMIT_REACHED_MESSAGE}</p>
+              <p>
+                Conversation limit reached. Please
+                <button type="button" class="link-like" onclick={handleRestartConvo}>start a new chat</button>.
+              </p>
             </div>
           </div>
         {/if}
@@ -1055,7 +1056,7 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={!limitReached && "What are you learning today?"}
+          placeholder={limitReached ? "" : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
           disabled={isSending || limitReached}
@@ -1433,6 +1434,16 @@
   .message.limit-message .message-content {
     font-style: italic;
     color: var(--lc-text-secondary);
+  }
+  .message.limit-message .message-content .link-like {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-style: italic;
+    color: var(--lc-sefaria-blue);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .message-meta {
