@@ -137,16 +137,6 @@ def chat_stream_v2(request):
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    # Enforce input length limit
-    if len(data["text"]) > settings.MAX_INPUT_CHARS:
-        return Response(
-            {
-                "error": "input_too_long",
-                "message": f"Message exceeds maximum length of {settings.MAX_INPUT_CHARS} characters.",
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
 
