@@ -127,15 +127,6 @@ def chat_stream_v2(request):
     # Create or get session with ownership validation
     session, _ = create_or_get_session(data["sessionId"], actor)
 
-    # Enforce turn limit
-    if session.turn_count >= settings.MAX_PROMPTS:
-        return Response(
-            {
-                "error": "Conversation limit reached. Please start a new chat.",
-            },
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
-
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
 

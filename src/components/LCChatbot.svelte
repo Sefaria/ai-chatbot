@@ -547,13 +547,6 @@
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
 
-      if (e.status === 429) {
-        backendLimitReached = true;
-        messages = messages.filter(m => m.messageId !== userMessage.messageId);
-        saveMessagesToStorage();
-        return;
-      }
-
       // Mark message as failed for other errors
       messages = messages.map(m =>
         m.messageId === userMessage.messageId
