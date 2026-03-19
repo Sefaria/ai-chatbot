@@ -89,7 +89,7 @@ class TurnOrchestrator:
         if guardrail_response:
             return guardrail_response
 
-        router_prompt_id, messages = await self.router.run_router(
+        router_prompt_id, route, messages = await self.router.run_router(
             bt_span, last_user_message, messages
         )
         if router_prompt_id:
@@ -138,6 +138,7 @@ class TurnOrchestrator:
             core_prompt_version=core_prompt.version,
             system_prompt_in_options=system_prompt_in_options,
             summary_included=prompt_result.summary_included,
+            route=route,
         )
 
         # Avoid sending the full prompt text if it's already included in the options
