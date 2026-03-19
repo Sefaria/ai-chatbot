@@ -10,7 +10,7 @@ from typing import Any
 from ..guardrail import get_guardrail_service
 from ..prompts.prompt_fragments import (
     GUARDRAIL_MALFORMED_REASON,
-    GUARDRAIL_REJECTION_MESSAGE,
+    GUARDRAIL_REJECTION_FALLBACK,
     GUARDRAIL_REJECTION_WITH_REASON,
     GUARDRAIL_UNAVAILABLE_REASON,
     build_prompt,
@@ -58,7 +58,7 @@ class DefaultGuardrailGate:
         if reason and reason not in internal_reasons:
             rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
         else:
-            rejection = GUARDRAIL_REJECTION_MESSAGE
+            rejection = GUARDRAIL_REJECTION_FALLBACK
 
         latency_ms = int((time.time() - start_time) * 1000)
         bt_span.log(
