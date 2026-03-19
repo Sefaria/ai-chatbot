@@ -131,8 +131,7 @@ def chat_stream_v2(request):
     if session.turn_count >= settings.MAX_PROMPTS:
         return Response(
             {
-                "error": "turn_limit_reached",
-                "message": "Conversation limit reached. Please start a new chat.",
+                "error": "Conversation limit reached. Please start a new chat.",
             },
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
