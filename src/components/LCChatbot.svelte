@@ -65,6 +65,7 @@
   let serverMaxPrompts = $state(MAX_PROMPTS);
   let serverMaxInputChars = $state(MAX_INPUT_CHARS);
   let backendLimitReached = $state(false);
+  let chatJustRestarted = $state(false);
 
   // maxPrompts and maxInputChars are set in RemoteConfig but for security's sake, there are absolute maximums set server side
   // We want to use the minimum of the two values, thus allowing RemoteConfig to override the server-side values
@@ -199,6 +200,7 @@
     messages = savedMessages;
   });
 
+  // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
     if (sessionId && apiBaseUrl && isOpen) {
       if (chatJustRestarted) {
@@ -300,6 +302,7 @@
     if (isSending) return;
 
     const { sessionId: newSessionId } = getOrCreateSession(true);
+    chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
     messages = [];
     inputText = '';
