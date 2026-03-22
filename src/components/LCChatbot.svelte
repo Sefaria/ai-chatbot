@@ -4,6 +4,7 @@
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
   import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
+  import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -13,7 +14,7 @@
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
-    'default-open': defaultOpen = false,
+    'default-open': defaultOpen = true,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
     origin: originProp = '',
@@ -74,6 +75,7 @@
 
   // Menu state
   let showMenu = $state(false);
+  let menuContainer = $state(null);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -159,11 +161,7 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    if (savedUI?.isOpen !== undefined && defaultOpen === false) {
-      isOpen = savedUI.isOpen;
-    } else if (defaultOpen) {
-      isOpen = true;
-    }
+    isOpen = savedUI?.isOpen ?? defaultOpen;
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -404,12 +402,23 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + sessionId, messages);
   }
 
-  function scrollToBottom() {
-    setTimeout(() => {
-      if (messageListRef) {
-        messageListRef.scrollTop = messageListRef.scrollHeight;
-      }
-    }, 50);
+  async function scrollToBottom() {
+    await tick();
+    if (messageListRef) {
+      messageListRef.scrollTop = messageListRef.scrollHeight;
+    }
+  }
+
+  async function scrollToResponseStart() {
+    await tick();
+    if (!messageListRef) return;
+    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
+    const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
+    if (lastResponse) {
+      const containerRect = messageListRef.getBoundingClientRect();
+      const msgRect = lastResponse.getBoundingClientRect();
+      messageListRef.scrollTop += msgRect.top - containerRect.top;
+    }
   }
 
   async function handleSend() {
@@ -469,8 +478,6 @@
                 : t
             );
           }
-          
-          scrollToBottom();
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -501,7 +508,7 @@
 
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
-      scrollToBottom();
+      scrollToResponseStart();
 
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
@@ -714,12 +721,25 @@
     showMenu = false;
   }
 
-  function handleClick(e) {
-    // Close menu when clicking outside
-    if (showMenu && !e.target.closest('.menu-container')) {
-      closeMenu();
+  $effect(() => {
+    if (!showMenu) return;
+
+    function handleClickOutside(e) {
+      if (!e.composedPath().includes(menuContainer)) {
+        closeMenu();
+      }
     }
-  }
+
+    // Defer so the click that opened the menu doesn't immediately trigger close
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  });
 
   function handleRestartConvo() {
     closeMenu();
@@ -777,9 +797,8 @@
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
       <!-- Header -->
-      <header class="lc-chatbot-header" role="banner" onclick={handleClick}>
+      <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
           {#if isModerator}
             <HeaderButton className="settings-btn" onClick={openSettings} title={t(interfaceLang, 'open_settings')}>
@@ -806,7 +825,7 @@
               height="16"
             />
           </HeaderButton>
-          <div class="menu-container">
+          <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={t(interfaceLang, 'more_options')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
@@ -899,7 +918,7 @@
             </div>
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" onclick={() => retryMessage(feedbackProps.messageId)}>
+                <button class="retry-btn" aria-label="Retry" onclick={() => retryMessage(feedbackProps.messageId)}>
                   {t(interfaceLang, 'retry')}
                 </button>
               {/if}
@@ -959,7 +978,7 @@
               </div>
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" onclick={() => retryMessage(item.messageId)}>
+                  <button class="retry-btn" aria-label="Retry" onclick={() => retryMessage(item.messageId)}>
                     {t(interfaceLang, 'retry')}
                   </button>
                 {/if}

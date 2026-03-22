@@ -32,6 +32,8 @@ class BraintrustTraceLogger:
             span_metadata["origin"] = context.origin
         if context.is_staff:
             span_metadata["is_staff"] = True
+        if context.user_id:
+            span_metadata["user_id"] = context.user_id
 
         # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
         # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.
@@ -50,6 +52,7 @@ class BraintrustTraceLogger:
         core_prompt_version: str,
         system_prompt_in_options: bool,
         summary_included: bool,
+        route: str,
     ) -> None:
         bt_span.log(
             metadata={
@@ -57,6 +60,7 @@ class BraintrustTraceLogger:
                 "core_prompt_version": core_prompt_version,
                 "core_prompt_in_options": system_prompt_in_options,
                 "summary_included": summary_included,
+                "route": route,
             }
         )
 
