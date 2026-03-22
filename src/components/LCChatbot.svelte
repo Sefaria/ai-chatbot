@@ -60,9 +60,7 @@
   let isRestarted = $state(false);
   let isNewSession = $state(false);
 
-  // Turn limit state
   let turnCount = $state(0);
-  let backendLimitReached = $state(false);
   let chatJustRestarted = $state(false);
 
   // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are default absolute maximums
@@ -70,7 +68,7 @@
   let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), DEFAULT_MAX_PROMPTS));
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
-  let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
+  let limitReached = $derived(turnCount >= effectiveMaxPrompts);
 
   // Menu state
   let showMenu = $state(false);
@@ -309,7 +307,6 @@
     currentProgress = null;
     toolHistory = [];
     turnCount = 0;
-    backendLimitReached = false;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
@@ -1031,8 +1028,10 @@
           <div class="message assistant limit-message">
             <div class="message-content">
               <p>
-                Conversation limit reached. Please
-                <button type="button" class="link-like" onclick={handleRestartConvo}>start a new chat</button>.
+                The conversation has reached its limit. 
+              </p>
+              <p>
+                 <button aria-label="Max turns restart" type="button" class="link-like" onclick={handleRestartConvo}>Start a new chat to keep exploring.</button>
               </p>
             </div>
           </div>
@@ -1422,7 +1421,6 @@
   }
 
   .message.limit-message .message-content {
-    font-style: italic;
     color: var(--lc-text-secondary);
   }
   .message.limit-message .message-content .link-like {
@@ -1430,7 +1428,7 @@
     border: none;
     padding: 0;
     font: inherit;
-    font-style: italic;
+    font-weight: bold;
     color: blue;
     text-decoration: underline;
     cursor: pointer;
