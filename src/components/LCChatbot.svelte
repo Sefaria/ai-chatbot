@@ -131,9 +131,9 @@
 
   // Size constraints
   const MIN_WIDTH = 300;
-  const MIN_HEIGHT = 420;
-  const MAX_WIDTH_RATIO = 0.9;
-  const MAX_HEIGHT_RATIO = 0.9;
+  const MIN_HEIGHT = 456;
+  const MAX_WIDTH = 640;
+  const MAX_HEIGHT_RATIO = 0.8;
 
   // Initialize on mount
   $effect(() => {
@@ -159,8 +159,9 @@
     // Restore size
     const savedSize = getStorage(STORAGE_KEYS.SIZE, null);
     if (savedSize) {
-      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, window.innerWidth * MAX_WIDTH_RATIO));
-      panelHeight = Math.max(MIN_HEIGHT, Math.min(savedSize.height, window.innerHeight * MAX_HEIGHT_RATIO));
+      const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
+      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, MAX_WIDTH));
+      panelHeight = Math.max(MIN_HEIGHT, Math.min(savedSize.height, maxHeight));
     }
 
     // Restore draft
@@ -629,12 +630,11 @@
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
 
-      const maxWidth = window.innerWidth * MAX_WIDTH_RATIO;
       const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
 
       if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
-        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
+        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, MAX_WIDTH));
       }
 
       if (allowVertical) {
@@ -1196,6 +1196,13 @@
     box-shadow: var(--lc-shadow);
     overflow: hidden;
     position: relative;
+  }
+
+  .lc-chatbot-container.mode-floating .lc-chatbot-panel {
+    min-width: 300px;
+    max-width: 640px;
+    min-height: 456px;
+    max-height: 80vh;
   }
 
   .lc-chatbot-panel.resizing {
