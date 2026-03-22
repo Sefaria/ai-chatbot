@@ -144,11 +144,7 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    if (savedUI?.isOpen !== undefined) {
-      isOpen = savedUI.isOpen;
-    } else if (defaultOpen) {
-      isOpen = true;
-    }
+    isOpen = savedUI?.isOpen ?? defaultOpen;
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
