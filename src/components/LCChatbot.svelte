@@ -1429,7 +1429,7 @@
     padding: 0;
     font: inherit;
     font-weight: bold;
-    color: blue;
+    color: var(--lc-sefaria-blue);
     text-decoration: underline;
     cursor: pointer;
   }
