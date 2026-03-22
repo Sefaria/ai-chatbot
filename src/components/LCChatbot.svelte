@@ -62,15 +62,13 @@
 
   // Turn limit state
   let turnCount = $state(0);
-  let serverMaxPrompts = $state(DEFAULT_MAX_PROMPTS);
-  let serverMaxInputChars = $state(DEFAULT_MAX_INPUT_CHARS);
   let backendLimitReached = $state(false);
   let chatJustRestarted = $state(false);
 
-  // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are absolute maximums set in ai-chatbot server settings
-  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the server-side values
-  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), serverMaxPrompts));
-  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), serverMaxInputChars));
+  // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are default absolute maximums
+  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the hardcoded defaults
+  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), DEFAULT_MAX_PROMPTS));
+  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(backendLimitReached || turnCount >= effectiveMaxPrompts);
 
@@ -383,8 +381,6 @@
 
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
-        serverMaxPrompts = result.session.maxPrompts ?? DEFAULT_MAX_PROMPTS;
-        serverMaxInputChars = result.session.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
       }
 
       // Only load messages if we don't have any locally
@@ -526,8 +522,6 @@
       // Update turn count from server response
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
-        serverMaxPrompts = response.session.maxPrompts ?? DEFAULT_MAX_PROMPTS;
-        serverMaxInputChars = response.session.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
       }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;

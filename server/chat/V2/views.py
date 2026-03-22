@@ -62,8 +62,6 @@ def build_session_info(session) -> dict:
     """Build session info dict for API response."""
     return {
         "turnCount": session.turn_count or 0,
-        "maxPrompts": settings.MAX_PROMPTS,
-        "maxInputChars": settings.MAX_INPUT_CHARS,
     }
 
 
