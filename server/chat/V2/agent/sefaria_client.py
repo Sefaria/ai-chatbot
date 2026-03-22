@@ -234,6 +234,13 @@ class SefariaClient:
         data = await self._get_json(f"api/v2/topics/{encoded_slug}", params)
         return self._optimize_topics_response(data)
 
+    async def get_library_index(self) -> list[dict[str, Any]]:
+        """Get the full library index tree from Sefaria."""
+        data = await self._get_json("api/index")
+        if not isinstance(data, list):
+            raise ValueError("Expected api/index to return a top-level list")
+        return data
+
     async def get_author_indexes(
         self,
         author_slug: str,

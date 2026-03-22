@@ -130,31 +130,6 @@ TOOL_GET_TOPIC_DETAILS = {
     },
 }
 
-TOOL_GET_AUTHOR_INDEXES = {
-    "name": "get_author_indexes",
-    "description": "Retrieves the list of texts associated with a Sefaria author slug, with optional grouped works and descriptions.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "author_slug": {
-                "type": "string",
-                "description": 'Sefaria author topic slug (e.g. "rambam")',
-            },
-            "include_aggregations": {
-                "type": "boolean",
-                "default": False,
-                "description": "Whether to include grouped works such as major collections.",
-            },
-            "include_descriptions": {
-                "type": "boolean",
-                "default": False,
-                "description": "Whether to include available English/Hebrew descriptions for each work.",
-            },
-        },
-        "required": ["author_slug"],
-    },
-}
-
 TOOL_CLARIFY_NAME_ARGUMENT = {
     "name": "clarify_name_argument",
     "description": "Validates and autocompletes text names, book titles, references, topic slugs, author names, and categories.",
@@ -169,33 +144,103 @@ TOOL_CLARIFY_NAME_ARGUMENT = {
     },
 }
 
-TOOL_CLARIFY_SEARCH_PATH_FILTER = {
-    "name": "clarify_search_path_filter",
-    "description": "Converts a book name into a proper search filter path.",
+TOOL_CATALOG_GET_NODE = {
+    "name": "catalog_get_node",
+    "description": "Retrieves one catalog node from the cached library index by path, title, or Hebrew title.",
     "input_schema": {
         "type": "object",
-        "properties": {"book_name": {"type": "string"}},
-        "required": ["book_name"],
+        "properties": {
+            "identifier": {"type": "string"},
+            "identifier_type": {
+                "type": "string",
+                "enum": ["path", "title", "he_title", "id"],
+                "default": "path",
+            },
+            "child_limit": {"type": "number", "default": 20},
+        },
+        "required": ["identifier"],
     },
 }
 
-TOOL_GET_TEXT_OR_CATEGORY_SHAPE = {
-    "name": "get_text_or_category_shape",
-    "description": "Retrieves the hierarchical structure and organization of texts or categories.",
+TOOL_CATALOG_GET_CHILDREN = {
+    "name": "catalog_get_children",
+    "description": "Lists direct children of a catalog category path from the cached library index.",
     "input_schema": {
         "type": "object",
-        "properties": {"name": {"type": "string"}},
-        "required": ["name"],
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": 'Slash-delimited category path (e.g. "Tanakh/Torah")',
+            },
+            "child_type": {
+                "type": "string",
+                "enum": ["all", "category", "book"],
+                "default": "all",
+            },
+            "limit": {"type": "number", "default": 50},
+            "offset": {"type": "number", "default": 0},
+        },
+        "required": ["path"],
     },
 }
 
-TOOL_GET_TEXT_CATALOGUE_INFO = {
-    "name": "get_text_catalogue_info",
-    "description": "Retrieves the bibliographic and structural information (index) for a text or work.",
+TOOL_CATALOG_SEARCH = {
+    "name": "catalog_search",
+    "description": "Performs lexical search over cached catalog metadata including titles, Hebrew titles, descriptions, categories, and creator metadata.",
     "input_schema": {
         "type": "object",
-        "properties": {"title": {"type": "string"}},
-        "required": ["title"],
+        "properties": {
+            "query": {"type": "string"},
+            "node_type": {
+                "type": "string",
+                "enum": ["any", "category", "book"],
+                "default": "any",
+            },
+            "category_path": {"type": "string"},
+            "limit": {"type": "number", "default": 10},
+        },
+        "required": ["query"],
+    },
+}
+
+TOOL_CATALOG_QUERY = {
+    "name": "catalog_query",
+    "description": "Runs structured filters against the cached library catalog. Use this for metadata lookup such as works by creator, titles within categories, or books matching descriptive fields.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "node_type": {
+                "type": "string",
+                "enum": ["any", "category", "book"],
+                "default": "any",
+            },
+            "filters": {
+                "type": "object",
+                "properties": {
+                    "path_prefix": {"type": "string"},
+                    "title": {"type": "string"},
+                    "he_title": {"type": "string"},
+                    "title_contains": {"type": "string"},
+                    "he_title_contains": {"type": "string"},
+                    "description_contains": {"type": "string"},
+                    "creator": {"type": "string"},
+                    "creator_contains": {"type": "string"},
+                    "category": {"type": "string"},
+                    "primary_category": {"type": "string"},
+                    "corpus": {"type": "string"},
+                    "dependence": {"type": "string"},
+                    "commentator": {"type": "string"},
+                    "collective_title": {"type": "string"},
+                    "base_text_title": {"type": "string"},
+                    "has_field": {"type": "string"},
+                    "hidden": {"type": "boolean"},
+                    "is_collection": {"type": "boolean"},
+                },
+            },
+            "select": {"type": "array", "items": {"type": "string"}},
+            "limit": {"type": "number", "default": 20},
+            "offset": {"type": "number", "default": 0},
+        },
     },
 }
 
@@ -234,11 +279,11 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,
     "get_english_translations": TOOL_GET_ENGLISH_TRANSLATIONS,
     "get_topic_details": TOOL_GET_TOPIC_DETAILS,
-    "get_author_indexes": TOOL_GET_AUTHOR_INDEXES,
     "clarify_name_argument": TOOL_CLARIFY_NAME_ARGUMENT,
-    "clarify_search_path_filter": TOOL_CLARIFY_SEARCH_PATH_FILTER,
-    "get_text_or_category_shape": TOOL_GET_TEXT_OR_CATEGORY_SHAPE,
-    "get_text_catalogue_info": TOOL_GET_TEXT_CATALOGUE_INFO,
+    "catalog_get_node": TOOL_CATALOG_GET_NODE,
+    "catalog_get_children": TOOL_CATALOG_GET_CHILDREN,
+    "catalog_search": TOOL_CATALOG_SEARCH,
+    "catalog_query": TOOL_CATALOG_QUERY,
     "get_available_manuscripts": TOOL_GET_AVAILABLE_MANUSCRIPTS,
     "get_manuscript_image": TOOL_GET_MANUSCRIPT_IMAGE,
 }
