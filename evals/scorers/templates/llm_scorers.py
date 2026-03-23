@@ -35,6 +35,26 @@ class ScorerParams(BaseModel):
 # =============================================================================
 
 
+def _extract_response_from_output(root_output: Any) -> str:
+    """Extract response string from various output formats."""
+    if not root_output:
+        return ""
+    if isinstance(root_output, dict):
+        return root_output.get("content", "")
+    if isinstance(root_output, list):
+        for item in root_output:
+            if not isinstance(item, dict) or "content" not in item:
+                continue
+            content = item["content"]
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                for c in content:
+                    if isinstance(c, dict) and "text" in c:
+                        return c["text"]
+    return ""
+
+
 async def extract_data(
     input: Any, output: Any, metadata: dict[str, Any] | None, **kwargs
 ) -> dict:
@@ -54,14 +74,13 @@ async def extract_data(
         query = input
 
     if output and isinstance(output, dict):
-        if "content" in output:
-            content = output["content"]
-            if isinstance(content, dict) and "text" in content:
-                response = content["text"]
-            elif isinstance(content, str):
-                response = content
-            else:
-                response = str(content)
+        content = output.get("content")
+        if isinstance(content, dict):
+            response = content.get("text", str(content))
+        elif isinstance(content, str):
+            response = content
+        elif content is not None:
+            response = str(content)
         else:
             response = str(output)
     elif output and isinstance(output, str):
@@ -105,21 +124,7 @@ async def extract_data(
 
                     if not response:
                         root_output = getattr(root, "output", None)
-                        if root_output and isinstance(root_output, dict):
-                            if "content" in root_output:
-                                response = root_output["content"]
-                        elif root_output and isinstance(root_output, list):
-                            for item in root_output:
-                                if isinstance(item, dict) and "content" in item:
-                                    content = item["content"]
-                                    if isinstance(content, list):
-                                        for c in content:
-                                            if isinstance(c, dict) and "text" in c:
-                                                response = c["text"]
-                                                break
-                                    elif isinstance(content, str):
-                                        response = content
-                                    break
+                        response = _extract_response_from_output(root_output)
             except Exception as e:
                 error = f"Trace error: {e}"
 

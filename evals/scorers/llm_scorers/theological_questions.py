@@ -2,9 +2,7 @@
 
 NAME = "Theological questions"
 SLUG = "theological-questions-ab7a"
-DESCRIPTION = (
-    "Evaluates whether responses appropriately handle profound theological questions. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates whether responses appropriately handle profound theological questions. Skips scoring for non-relevant queries."
 
 PROMPT = """You are evaluating whether an AI assistant for a Jewish library appropriately handles profound theological questions.
 

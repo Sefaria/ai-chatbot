@@ -2,9 +2,7 @@
 
 NAME = "Concise & Proportional"
 SLUG = "concise-and-proportional-81a9"
-DESCRIPTION = (
-    "Checking if answers have an appropriate length. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Checking if answers have an appropriate length. Skips scoring for non-relevant queries."
 
 PROMPT = """You are evaluating whether an AI assistant's response length matches the question complexity.
 

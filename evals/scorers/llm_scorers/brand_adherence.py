@@ -2,9 +2,7 @@
 
 NAME = "Brand Adherence"
 SLUG = "brand-adherence-98e5"
-DESCRIPTION = (
-    "Evaluates whether responses adhere to Sefaria's brand voice, tone, and style guidelines. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates whether responses adhere to Sefaria's brand voice, tone, and style guidelines. Skips scoring for non-relevant queries."
 
 PROMPT = """You are evaluating whether an AI assistant for the Sefaria Jewish library appropriately adheres to Sefaria's brand voice, tone, and style guidelines.
 

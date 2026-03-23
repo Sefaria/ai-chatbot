@@ -2,9 +2,7 @@
 
 NAME = "Translations_Scorer"
 SLUG = "sefaria-translation-scorer"
-DESCRIPTION = (
-    "Translation Scorer. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Translation Scorer. Skips scoring for non-relevant queries."
 
 PROMPT = """First, determine if this query is a request to translate a Jewish text, define a Hebrew/Aramaic phrase from a Jewish text, or ask "what does [text] mean?".
 

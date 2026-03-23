@@ -22,6 +22,7 @@ Then push the built files (one at a time):
 
 import sys
 import re
+import ast
 from pathlib import Path
 
 SCORERS_DIR = Path(__file__).parent
@@ -31,15 +32,29 @@ TEMPLATES_DIR = SCORERS_DIR / "templates"
 BUILT_DIR = SCORERS_DIR / "built"
 
 
+def extract_constants(file_path: Path, keys: list[str]) -> dict:
+    """Extract string constants from a Python file using AST (no exec)."""
+    tree = ast.parse(file_path.read_text())
+    result = {}
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in keys:
+                try:
+                    result[target.id] = ast.literal_eval(node.value)
+                except (ValueError, TypeError):
+                    pass
+    return result
+
+
 def build_llm_scorer(scorer_file: Path) -> None:
     """Build an LLM-based scorer that uses a prompt for evaluation."""
-    namespace = {}
-    exec(scorer_file.read_text(), namespace)
+    constants = extract_constants(scorer_file, ["NAME", "SLUG", "DESCRIPTION", "PROMPT"])
 
-    name = namespace.get("NAME")
-    slug = namespace.get("SLUG")
-    description = namespace.get("DESCRIPTION")
-    prompt = namespace.get("PROMPT")
+    name = constants.get("NAME")
+    slug = constants.get("SLUG")
+    description = constants.get("DESCRIPTION")
+    prompt = constants.get("PROMPT")
 
     if not all([name, slug, description, prompt]):
         print(
@@ -62,34 +77,41 @@ def build_llm_scorer(scorer_file: Path) -> None:
 def build_code_scorer(scorer_file: Path) -> None:
     """Build a code-based scorer that uses custom logic for evaluation."""
     content = scorer_file.read_text()
-    namespace = {}
-    exec(content, namespace)
+    constants = extract_constants(scorer_file, ["NAME", "SLUG", "DESCRIPTION"])
 
-    name = namespace.get("NAME")
-    slug = namespace.get("SLUG")
-    description = namespace.get("DESCRIPTION")
+    name = constants.get("NAME")
+    slug = constants.get("SLUG")
+    description = constants.get("DESCRIPTION")
 
     if not all([name, slug, description]):
         print(f"  Skipping {scorer_file.name}: missing NAME, SLUG, or DESCRIPTION")
         return
 
-    if "handler" not in namespace:
+    if "def handler(" not in content:
         print(f"  Skipping {scorer_file.name}: missing handler() function")
         return
 
-    # Extract the handler function source code
-    # Match from "def handler" until the next top-level definition or end of file
-    # Uses negative lookahead to not stop at indented lines or blank lines
-    handler_match = re.search(
-        r"^(def handler\(.*\n(?:(?:[ \t]+.*|)\n)*)",
-        content,
-        re.MULTILINE,
-    )
-    if not handler_match:
+    # Extract the handler function using AST to find its boundaries
+    tree = ast.parse(content)
+    handler_start = None
+    handler_end = None
+
+    for i, node in enumerate(tree.body):
+        if isinstance(node, ast.FunctionDef) and node.name == "handler":
+            handler_start = node.lineno - 1
+            # Find the end by looking at the next node or end of file
+            if i + 1 < len(tree.body):
+                handler_end = tree.body[i + 1].lineno - 1
+            else:
+                handler_end = len(content.splitlines())
+            break
+
+    if handler_start is None:
         print(f"  Skipping {scorer_file.name}: could not extract handler() function")
         return
 
-    handler_code = handler_match.group(1).rstrip()
+    lines = content.splitlines()
+    handler_code = "\n".join(lines[handler_start:handler_end]).rstrip()
 
     # Extract any imports that the handler needs
     # Filter out imports already in the template (typing.Any, braintrust, pydantic)
@@ -122,6 +144,14 @@ def build_code_scorer(scorer_file: Path) -> None:
 
     output_file = BUILT_DIR / scorer_file.name
     output_file.write_text(output)
+
+    # Validate the built file is syntactically valid
+    try:
+        ast.parse(output)
+    except SyntaxError as e:
+        print(f"  ERROR: Built file {output_file.name} has syntax error: {e}")
+        return
+
     print(f"  Built (code): {output_file.name}")
 
 

@@ -2,9 +2,7 @@
 
 NAME = "Invalid/Missing Reference Scorer"
 SLUG = "invalidmissing-reference-scorer-b7ce"
-DESCRIPTION = (
-    "Evaluates whether responses handle invalid, missing, or malformed references appropriately without hallucinating. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates whether responses handle invalid, missing, or malformed references appropriately without hallucinating. Skips scoring for non-relevant queries."
 
 PROMPT = """You are evaluating whether an AI assistant for a Jewish library handles invalid, missing, or malformed references appropriately without hallucinating content.
 

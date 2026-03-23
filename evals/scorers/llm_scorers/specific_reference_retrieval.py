@@ -2,9 +2,7 @@
 
 NAME = "Specific Reference Retrieval"
 SLUG = "specific-reference-retrieval-e8c4"
-DESCRIPTION = (
-    "Evaluates whether the AI correctly retrieves and displays the specific text reference requested. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates whether the AI correctly retrieves and displays the specific text reference requested. Skips scoring for non-relevant queries."
 
 PROMPT = """First, determine if this query requests a specific Jewish text reference (e.g., "Show me Genesis 1:1", "Get me Berakhot 2a", "What does Rashi say on Exodus 3:14?").
 

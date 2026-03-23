@@ -1,13 +1,19 @@
-"""Sefaria Link are Valid Scorer - validates all Sefaria links in responses."""
+"""Sefaria Links Are Valid Scorer - validates all Sefaria links in responses."""
 
 from typing import Any
+from urllib.parse import quote, unquote
 import re
 import json
 import requests
 
-NAME = "Sefaria Link are Valid"
-SLUG = "link-are-valid-06b8"
-DESCRIPTION = "1 if all Sefaria links are valid. 0 if there are any non valid Sefaria links"
+NAME = "Sefaria Links Are Valid"
+SLUG = "links-are-valid-06b8"
+
+# Max URLs to validate to avoid long runtimes on responses with many links
+MAX_URLS_TO_VALIDATE = 20
+DESCRIPTION = (
+    "1 if all Sefaria links are valid. 0 if there are any non valid Sefaria links"
+)
 
 # Prefer href extraction when HTML is present
 _HREF_URL_RE = re.compile(r'href=["\'](https?://[^"\']+)["\']', flags=re.IGNORECASE)
@@ -15,88 +21,63 @@ _HREF_URL_RE = re.compile(r'href=["\'](https?://[^"\']+)["\']', flags=re.IGNOREC
 _PLAIN_URL_RE = re.compile(r'https?://[^\s"<>]+', flags=re.IGNORECASE)
 
 
-def _maybe_json_unescape(s: str) -> str:
+def _maybe_json_unescape(text: str) -> str:
     """
     If output is a JSON-encoded string (common when model output is serialized),
     decode it so sequences like \\\" become ".
     """
-    if not isinstance(s, str):
-        return str(s)
-    t = s.strip()
-    if len(t) >= 2 and t[0] == '"' and t[-1] == '"':
+    if not isinstance(text, str):
+        return str(text)
+    stripped = text.strip()
+    # Check if the string looks like a JSON-encoded string (starts and ends with quotes)
+    if len(stripped) >= 2 and stripped[0] == '"' and stripped[-1] == '"':
         try:
-            return json.loads(t)
+            return json.loads(stripped)
         except Exception:
-            return s
-    return s
+            return text
+    return text
 
 
 def _strip_trailing_punct(url: str) -> str:
     url = url.rstrip("\\")
-    return url.rstrip(').,;:!?]}>\"\'`')
+    return url.rstrip(").,;:!?]}>\"'`")
 
 
 def _split_url(url: str):
     """
-    Minimal URL split: returns (scheme, host, path)
+    Minimal URL split: returns (scheme, host, path).
+    Uses regex to extract URL components without external dependencies.
     """
-    m = re.match(r"^(https?)://([^/]+)(/[^?#]*)?.*$", url.strip(), flags=re.IGNORECASE)
-    if not m:
+    match = re.match(r"^(https?)://([^/]+)(/[^?#]*)?.*$", url.strip(), flags=re.IGNORECASE)
+    if not match:
         return None, None, None
-    scheme = (m.group(1) or "https").lower()
-    host = (m.group(2) or "").lower()
-    path = m.group(3) or "/"
+    scheme = (match.group(1) or "https").lower()
+    host = (match.group(2) or "").lower()
+    path = match.group(3) or "/"
     return scheme, host, path
 
 
 def _is_sefaria_host(host: str | None) -> bool:
     if not host:
         return False
-    h = host.lower()
-    return (
-        h == "sefaria.org"
-        or h.endswith(".sefaria.org")
-        or h == "sefaria.org.il"
-        or h.endswith(".sefaria.org.il")
+    host_lower = host.lower()
+    is_sefaria = (
+        host_lower == "sefaria.org"
+        or host_lower.endswith(".sefaria.org")
+        or host_lower == "sefaria.org.il"
+        or host_lower.endswith(".sefaria.org.il")
     )
+    return is_sefaria
 
 
-def _quote(s: str) -> str:
-    """
-    Minimal UTF-8 percent-encoder for URL path segments.
-    Encodes all non-unreserved chars, using UTF-8 bytes (important for Hebrew, etc).
-    """
-    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
-    out: list[str] = []
-    for ch in s:
-        if ch in safe:
-            out.append(ch)
-        else:
-            for b in ch.encode("utf-8"):
-                out.append(f"%{b:02X}")
-    return "".join(out)
+def _quote_path(path: str) -> str:
+    """Percent-encode a URL path segment, encoding all non-unreserved chars."""
+    return quote(path, safe="")
 
 
-def _unquote(s: str) -> str:
-    """
-    Minimal percent-decoder (UTF-8 aware).
-    """
-    bs = bytearray()
-    i = 0
-    while i < len(s):
-        if s[i] == "%" and i + 2 < len(s):
-            try:
-                bs.append(int(s[i + 1 : i + 3], 16))
-                i += 3
-                continue
-            except ValueError:
-                pass
-        bs.extend(s[i].encode("utf-8"))
-        i += 1
-    try:
-        return bs.decode("utf-8")
-    except Exception:
-        return bs.decode("utf-8", errors="replace")
+def _unquote_path(path: str) -> str:
+    """Percent-decode a URL path segment."""
+    return unquote(path, encoding="utf-8", errors="replace")
 
 
 def _has_content(value: Any) -> bool:
@@ -125,7 +106,7 @@ def _extract_tref_from_url(url: str) -> str | None:
     if not scheme or not _is_sefaria_host(host):
         return None
 
-    p = _unquote(path).strip("/")
+    p = _unquote_path(path).strip("/")
     if not p:
         return None
 
@@ -191,9 +172,9 @@ def _validate_tref_as_existing_text_ref(
     - If it's a TOC/schema node (is_node), validate by GET page exists.
     - Otherwise require /api/texts to return no error and contain content.
     """
-    tref = _unquote(tref)
+    tref = _unquote_path(tref)
 
-    name_url = f"{base_host}/api/name/{_quote(tref)}"
+    name_url = f"{base_host}/api/name/{_quote_path(tref)}"
     name_res = session.get(name_url, timeout=timeout)
     if name_res.status_code != 200:
         return False, f"/api/name status {name_res.status_code}"
@@ -202,15 +183,17 @@ def _validate_tref_as_existing_text_ref(
     if not name_data.get("is_ref"):
         return False, "not a ref per /api/name"
 
-    normalized_ref = _unquote(name_data.get("url") or name_data.get("ref") or tref)
+    normalized_ref = _unquote_path(name_data.get("url") or name_data.get("ref") or tref)
 
     # Node refs often have no /api/texts representation; validate by GET page exists
     if name_data.get("is_node"):
-        page_url = f"{base_host}/{_quote(normalized_ref)}"
-        ok, reason = _validate_nontext_page_exists(session=session, url=page_url, timeout=timeout)
+        page_url = f"{base_host}/{_quote_path(normalized_ref)}"
+        ok, reason = _validate_nontext_page_exists(
+            session=session, url=page_url, timeout=timeout
+        )
         return ok, f"node ref; page check: {reason}"
 
-    texts_url = f"{base_host}/api/texts/{_quote(normalized_ref)}"
+    texts_url = f"{base_host}/api/texts/{_quote_path(normalized_ref)}"
     texts_res = session.get(
         texts_url,
         params={"context": 0, "pad": 0, "commentary": 0},
@@ -306,6 +289,10 @@ def handler(
     # Drop strict-prefix garbage URLs (Cohen's-style truncations)
     urls = _drop_prefix_urls(urls)
 
+    # Limit URLs to validate to avoid long runtimes
+    truncated = len(urls) > MAX_URLS_TO_VALIDATE
+    urls = urls[:MAX_URLS_TO_VALIDATE]
+
     if not urls:
         return {
             "score": 1.0,
@@ -324,7 +311,9 @@ def handler(
     with requests.Session() as session:
         for url in urls:
             scheme, host, _ = _split_url(url)
-            base_host = f"{scheme}://{host}" if scheme and host else "https://www.sefaria.org"
+            base_host = (
+                f"{scheme}://{host}" if scheme and host else "https://www.sefaria.org"
+            )
 
             tref = _extract_tref_from_url(url)
             try:
@@ -352,6 +341,9 @@ def handler(
                 validation_details[url] = f"exception: {type(e).__name__}"
 
     if invalid_urls:
+        reason = f"Found {len(invalid_urls)} invalid Sefaria link(s)"
+        if truncated:
+            reason += f" (validated first {MAX_URLS_TO_VALIDATE} URLs)"
         return {
             "score": 0.0,
             "name": NAME,
@@ -361,10 +353,14 @@ def handler(
                 "nontext_urls": nontext_urls,
                 "invalid_urls": invalid_urls,
                 "validation_details": validation_details,
-                "reason": f"Found {len(invalid_urls)} invalid Sefaria link(s)",
+                "truncated": truncated,
+                "reason": reason,
             },
         }
 
+    reason = f"All {len(urls)} Sefaria link(s) are valid"
+    if truncated:
+        reason += f" (validated first {MAX_URLS_TO_VALIDATE} URLs)"
     return {
         "score": 1.0,
         "name": NAME,
@@ -373,6 +369,7 @@ def handler(
             "text_urls": text_urls,
             "nontext_urls": nontext_urls,
             "validation_details": validation_details,
-            "reason": f"All {len(urls)} Sefaria link(s) are valid",
+            "truncated": truncated,
+            "reason": reason,
         },
     }

@@ -2,9 +2,7 @@
 
 NAME = "Sensitive Jewish Questions"
 SLUG = "sensitive-jewish-questions-20a7"
-DESCRIPTION = (
-    "Evaluates responses to sensitive Jewish issues (agunot, mamzerut, conversion, LGBTQ, intermarriage, apostasy). Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates responses to sensitive Jewish issues (agunot, mamzerut, conversion, LGBTQ, intermarriage, apostasy). Skips scoring for non-relevant queries."
 
 PROMPT = """First, determine if this query is relevant to ANY sensitive Jewish issue (For example - agunot, mamzerut, conversion validity, LGBTQ identity, intermarriage, apostasy, or similar deeply personal halakhic/identity matters or anything else which might be sensitive).
 

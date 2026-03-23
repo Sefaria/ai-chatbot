@@ -2,9 +2,7 @@
 
 NAME = "Sefaria Sources Check"
 SLUG = "sefaria-sources-check-5967"
-DESCRIPTION = (
-    "Two-tier scorer: LLM classifies response type, then regex validates Sefaria links are present when sources are required"
-)
+DESCRIPTION = "Two-tier scorer: LLM classifies response type, then regex validates Sefaria links are present when sources are required"
 
 PROMPT = """You are classifying the type of response an AI assistant should provide.
 

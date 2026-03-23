@@ -2,9 +2,7 @@
 
 NAME = "Teaser Not Spoiler"
 SLUG = "teaser-not-spoiler-7e2c"
-DESCRIPTION = (
-    "Evaluates whether responses entice users to read source texts rather than replacing them. Skips scoring for non-relevant queries."
-)
+DESCRIPTION = "Evaluates whether responses entice users to read source texts rather than replacing them. Skips scoring for non-relevant queries."
 
 PROMPT = """You are evaluating whether an AI assistant for a Jewish library entices users to read source texts rather than replacing the need to read them.
 
