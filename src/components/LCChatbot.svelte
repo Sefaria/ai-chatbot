@@ -1378,6 +1378,10 @@
     margin-bottom: 5px;
   }
 
+  .message-content {
+    max-width: 560px;
+  }
+
   .message.user .message-content {
     padding: 12px 16px;
     border-radius: var(--lc-radius);
