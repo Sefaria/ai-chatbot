@@ -1194,20 +1194,6 @@
     position: relative;
   }
 
-  .lc-chatbot-container.mode-floating {
-    --lc-floating-min-width: 300px;
-    --lc-floating-max-width: 640px;
-    --lc-floating-min-height: 456px;
-    --lc-floating-max-height: 80vh;
-  }
-
-  .lc-chatbot-container.mode-floating .lc-chatbot-panel {
-    min-width: var(--lc-floating-min-width);
-    max-width: var(--lc-floating-max-width);
-    min-height: var(--lc-floating-min-height);
-    max-height: var(--lc-floating-max-height);
-  }
-
   .lc-chatbot-panel.resizing {
     user-select: none;
   }
