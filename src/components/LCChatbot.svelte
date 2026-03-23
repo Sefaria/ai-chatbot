@@ -782,14 +782,6 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          {#if isModerator}
-            <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-            </HeaderButton>
-          {/if}
           <h2>Library Assistant {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
@@ -813,6 +805,15 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
+                {#if isModerator}
+                  <button class="menu-item" aria-label="Open settings" onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Settings
+                  </button>
+                {/if}
                 <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
@@ -1077,11 +1078,11 @@
     --lc-primary: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
-    --lc-bg-secondary: #f8fafc;
+    --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
     --lc-text-secondary: #64748b;
-    --lc-text-muted: #94a3b8;
+    --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
     --lc-user-bg: #18345D;
     --lc-user-text: #ffffff;
@@ -1271,6 +1272,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-inline-start: 15px;
   }
 
   .menu-container {
@@ -1377,6 +1379,10 @@
     align-self: flex-start;
   }
 
+  .empty-state .message.assistant .message-content,
+  .empty-state .message.assistant .message-content :global(a) {
+    color: #575757;
+  }
   .empty-state .message.assistant .message-content :global(ul) {
     padding-inline-start: 20px;
   }
@@ -1513,7 +1519,7 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 16px 16px 16px 18px;
     background: var(--lc-bg);
     border-top: 1px solid var(--lc-border);
   }
