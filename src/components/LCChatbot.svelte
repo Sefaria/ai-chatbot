@@ -748,9 +748,9 @@
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
+    <button aria-label="Open Library Assistant" class="lc-chatbot-trigger" onclick={openPanel}>
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">Library Assistant</span>
+      <span class="trigger-label">LIBRARY ASSISTANT</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -1180,7 +1180,12 @@
   }
 
   .trigger-label {
-    font-weight: 600;
+    font-weight: 400;
+    color: var(--lc-user-text);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    line-height: 18px; 
+    letter-spacing: 0.24px;
     max-width: 0;
     overflow: hidden;
     opacity: 0;
