@@ -749,9 +749,7 @@
   {#if !isOpen}
     <!-- Floating Button -->
     <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-      </svg>
+      <img src="{staticIconsBaseUrl}/logo.svg"/>
       <span class="trigger-label">Library Assistant</span>
     </button>
   {:else}
@@ -1156,7 +1154,7 @@
   .lc-chatbot-trigger {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     padding: 12px 20px;
     background: var(--lc-primary);
     color: white;
@@ -1170,17 +1168,31 @@
     transition: all 0.2s ease;
   }
 
-  .lc-chatbot-trigger:hover {
-    background: var(--lc-primary-hover);
-    transform: scale(1.02);
+  .lc-chatbot-trigger:hover,
+  .lc-chatbot-trigger:focus,
+  .lc-chatbot-trigger:active {
+    gap: 8px;
   }
 
+
   .lc-chatbot-trigger:active {
-    transform: scale(0.98);
+    background: #0B1A2D;
   }
 
   .trigger-label {
     font-weight: 600;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    white-space: nowrap;
+    transition: max-width 0.2s ease, opacity 0.2s ease;
+  }
+
+  .lc-chatbot-trigger:hover .trigger-label,
+  .lc-chatbot-trigger:focus .trigger-label,
+  .lc-chatbot-trigger:active .trigger-label {
+    max-width: 12em;
+    opacity: 1;
   }
 
   /* Chat Panel */
