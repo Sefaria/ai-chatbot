@@ -13,7 +13,7 @@
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
-    'default-open': defaultOpen = false,
+    'default-open': defaultOpen = true,
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = 500,
     origin: originProp = '',
@@ -145,11 +145,7 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    if (savedUI?.isOpen !== undefined && defaultOpen === false) {
-      isOpen = savedUI.isOpen;
-    } else if (defaultOpen) {
-      isOpen = true;
-    }
+    isOpen = savedUI?.isOpen ?? defaultOpen;
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
