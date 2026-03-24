@@ -9,16 +9,20 @@
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
 
+  const DEFAULT_MAX_PROMPTS = 100;
+  const DEFAULT_MAX_INPUT_CHARS = 10000;
+
   // Props (attributes)
   let {
     'user-id': userId = '',
     'api-base-url': apiBaseUrl = '',
     'default-open': defaultOpen = true,
     mode: modeProp = 'floating',
-    'max-input-chars': maxInputChars = 500,
+    'max-input-chars': maxInputChars = DEFAULT_MAX_INPUT_CHARS,
+    'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
+    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     origin: originProp = '',
     'is-moderator': isModerator = false,
-    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', // keys are 'welcome_english', 'welcome_hebrew', 'restart_english', 'restart_hebrew', 'new_session_english' and 'new_session_hebrew', but this list can be easily changed
     'interface-lang': interfaceLang = 'english'
   } = $props();
 
@@ -56,6 +60,16 @@
   let isFirstTimeUser = $state(true);
   let isRestarted = $state(false);
   let isNewSession = $state(false);
+
+  let turnCount = $state(0);
+  let chatJustRestarted = $state(false);
+
+  // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are default absolute maximums
+  // We want to use the minimum of the two values, thus allowing RemoteConfig to override the hardcoded defaults
+  let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), DEFAULT_MAX_PROMPTS));
+  let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
+
+  let limitReached = $derived(turnCount >= effectiveMaxPrompts);
 
   // Menu state
   let showMenu = $state(false);
@@ -179,6 +193,17 @@
     messages = savedMessages;
   });
 
+  // Sync turn limits from server when panel opens (skip when chat was just restarted)
+  $effect(() => {
+    if (sessionId && apiBaseUrl && isOpen) {
+      if (chatJustRestarted) {
+        chatJustRestarted = false;
+        return;
+      }
+      syncSessionState();
+    }
+  });
+
   // Save draft on input change
   $effect(() => {
     if (inputText) {
@@ -247,10 +272,6 @@
       inputRef?.focus();
     }, 100);
 
-    // Always sync session state from server (for turn limit info)
-    if (sessionId && apiBaseUrl) {
-      syncSessionState();
-    }
   }
 
   function closePanel() {
@@ -274,6 +295,7 @@
     if (isSending) return;
 
     const { sessionId: newSessionId } = getOrCreateSession(true);
+    chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
     messages = [];
     inputText = '';
@@ -281,6 +303,7 @@
     hasMoreHistory = false;
     currentProgress = null;
     toolHistory = [];
+    turnCount = 0;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
@@ -350,6 +373,9 @@
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
 
+      if (result.session) {
+        turnCount = result.session.turnCount ?? 0;
+      }
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
@@ -407,7 +433,9 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    if (!text || isSending || !userId || !apiBaseUrl) return;
+    const isConfigured = userId && apiBaseUrl;
+    const isReadyToSend = text && !isSending && !limitReached;
+    if (!isConfigured || !isReadyToSend) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -494,6 +522,10 @@
       saveMessagesToStorage();
       scrollToResponseStart();
 
+      // Update turn count from server response
+      if (response.session) {
+        turnCount = response.session.turnCount ?? 0;
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -997,6 +1029,19 @@
             </div>
           </div>
         {/if}
+
+        {#if limitReached}
+          <div class="message assistant limit-message">
+            <div class="message-content">
+              <p>
+                The conversation has reached its limit. 
+              </p>
+              <p>
+                 <button aria-label="Max turns restart" type="button" class="link-like" onclick={handleRestartConvo}>Start a new chat to keep exploring.</button>
+              </p>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <!-- Input Footer -->
@@ -1005,16 +1050,16 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={maxInputChars}
-          placeholder="What are you learning today?"
+          maxlength={effectiveMaxInputChars}
+          placeholder={limitReached ? "" : "What are you learning today?"}
           aria-label="Prompt input"
           rows="1"
-          disabled={isSending}
+          disabled={isSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending}
+          disabled={!inputText.trim() || isSending || limitReached}
           aria-label="Send message"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1379,6 +1424,20 @@
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
     background: #fef2f2;
+  }
+
+  .message.limit-message .message-content {
+    color: var(--lc-text-secondary);
+  }
+  .message.limit-message .message-content .link-like {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: bold;
+    color: var(--lc-sefaria-blue);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .message-meta {
