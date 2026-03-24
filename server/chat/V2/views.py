@@ -39,13 +39,18 @@ from ..auth import (
     authenticate_request,
 )
 from ..models import ChatMessage
-from ..serializers import ChatRequestSerializer, FeedbackRequestSerializer
+from ..serializers import (
+    ChatRequestSerializer,
+    ClientStreamEventSerializer,
+    FeedbackRequestSerializer,
+    RecoveryRequestSerializer,
+)
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
-from .sentry import capture_exception
+from .sentry import capture_exception, capture_message
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -63,6 +68,50 @@ def build_session_info(session) -> dict:
     return {
         "turnCount": session.turn_count or 0,
     }
+
+
+def _compute_turn_count(session_id: str) -> int:
+    """Count completed turns directly from message linkage."""
+    return ChatMessage.objects.filter(
+        session_id=session_id,
+        role=ChatMessage.Role.USER,
+        response_message__isnull=False,
+    ).count()
+
+
+def _build_response_payload(
+    *,
+    response_message: ChatMessage,
+    session_id: str,
+    turn_count: int,
+    stats: dict,
+    trace_id: str | None = None,
+    recovered: bool = False,
+) -> dict:
+    return {
+        "messageId": response_message.message_id,
+        "sessionId": session_id,
+        "timestamp": response_message.server_timestamp.isoformat(),
+        "markdown": response_message.content,
+        "traceId": trace_id,
+        "toolCalls": response_message.tool_calls_data or [],
+        "session": {"turnCount": turn_count},
+        "stats": stats,
+        "recovered": recovered,
+        "status": response_message.status,
+    }
+
+
+def _authenticate_actor_or_response(request, data):
+    """Authenticate a request payload or return an error Response."""
+    try:
+        return authenticate_request(request, data)
+    except UserTokenExpired:
+        logger.warning("expired userId token")
+        return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
+    except (InvalidUserToken, AuthenticationRequired) as exc:
+        logger.warning(f"invalid userId token: {exc}")
+        return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 _bt_config = get_braintrust_config()
@@ -107,14 +156,9 @@ def chat_stream_v2(request):
 
     data = serializer.validated_data
 
-    try:
-        actor = authenticate_request(request, data)
-    except UserTokenExpired:
-        logger.warning("expired userId token")
-        return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
-    except (InvalidUserToken, AuthenticationRequired) as exc:
-        logger.warning(f"invalid userId token: {exc}")
-        return Response({"error": "invalid_userId"}, status=status.HTTP_401_UNAUTHORIZED)
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
 
     is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
@@ -141,6 +185,7 @@ def chat_stream_v2(request):
         turn_id=turn_id,
         content=data["text"],
         client_timestamp=data["timestamp"],
+        page_url=page_url,
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
     )
@@ -171,6 +216,8 @@ def chat_stream_v2(request):
         """
         progress_queue = queue.Queue()
         result_holder = {"response": None, "error": None}
+        assistant_persisted = False
+        final_event_sent = False
 
         def on_progress(update: AgentProgressUpdate):
             progress_queue.put(update)
@@ -220,108 +267,312 @@ def chat_stream_v2(request):
             executor = _create_traced_executor()
             future = executor.submit(ctx.run, run_agent)
 
-        # --- Stream progress events to the client ---
-        while True:
-            try:
-                update = progress_queue.get(timeout=60)
-
-                # None sentinel means the agent thread finished
-                if update is None:
-                    break
-
-                # Build the SSE payload, including optional tool-call fields
-                event_data = {
-                    "type": update.type,
-                    "text": update.text,
-                }
-
-                if update.tool_name:
-                    event_data["toolName"] = update.tool_name
-                if update.tool_input:
-                    event_data["toolInput"] = update.tool_input
-                if update.description:
-                    event_data["description"] = update.description
-                if update.is_error is not None:
-                    event_data["isError"] = update.is_error
-                if update.output_preview:
-                    event_data["outputPreview"] = update.output_preview
-
-                yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
-
-            except queue.Empty:
-                # No update in 60s — send a keepalive to prevent
-                # proxies/load-balancers from closing the connection
-                yield ": keepalive\n\n"
-
-        # --- Agent finished — clean up the thread ---
         try:
-            future.result(timeout=5)
-        except Exception:
-            pass
-        executor.shutdown(wait=False)
+            # --- Stream progress events to the client ---
+            while True:
+                try:
+                    update = progress_queue.get(timeout=60)
 
-        latency_ms = int((time.time() - start_time) * 1000)
+                    # None sentinel means the agent thread finished
+                    if update is None:
+                        break
 
-        # --- Error path: persist an error message and notify client ---
-        if result_holder["error"]:
-            logger.error(f"Agent error: {result_holder['error']}")
+                    # Build the SSE payload, including optional tool-call fields
+                    event_data = {
+                        "type": update.type,
+                        "text": update.text,
+                    }
 
+                    if update.tool_name:
+                        event_data["toolName"] = update.tool_name
+                    if update.tool_input:
+                        event_data["toolInput"] = update.tool_input
+                    if update.description:
+                        event_data["description"] = update.description
+                    if update.is_error is not None:
+                        event_data["isError"] = update.is_error
+                    if update.output_preview:
+                        event_data["outputPreview"] = update.output_preview
+
+                    yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+
+                except queue.Empty:
+                    # No update in 60s — send a keepalive to prevent
+                    # proxies/load-balancers from closing the connection
+                    yield ": keepalive\n\n"
+
+            # --- Agent finished — clean up the thread ---
+            try:
+                future.result(timeout=5)
+            except Exception:
+                pass
+            executor.shutdown(wait=False)
+
+            latency_ms = int((time.time() - start_time) * 1000)
             logging_service = get_turn_logging_service()
-            error_msg = logging_service.record_error_message(
-                session_id=data["sessionId"],
-                actor=actor,
-                turn_id=turn_id,
-                latency_ms=latency_ms,
-                error_text=ERROR_FALLBACK_MESSAGE,
+
+            # --- Error path: persist an error message and notify client ---
+            if result_holder["error"]:
+                logger.error(f"Agent error: {result_holder['error']}")
+
+                error_msg = logging_service.record_error_message(
+                    session_id=data["sessionId"],
+                    actor=actor,
+                    turn_id=turn_id,
+                    latency_ms=latency_ms,
+                    error_text=ERROR_FALLBACK_MESSAGE,
+                )
+
+                user_message.response_message = error_msg
+                user_message.save(update_fields=["response_message"])
+                assistant_persisted = True
+
+                logger.info(
+                    "Assistant row persisted after agent error",
+                    extra={
+                        "session_id": data["sessionId"],
+                        "turn_id": turn_id,
+                        "response_message_id": error_msg.message_id,
+                    },
+                )
+
+                yield f"event: error\ndata: {json.dumps({'error': INTERNAL_ERROR_MESSAGE})}\n\n"
+                final_event_sent = True
+                logger.info(
+                    "Final SSE error sent",
+                    extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                )
+                return
+
+            # --- Success path: persist first, then do non-fatal session/summary work ---
+            agent_response = result_holder["response"]
+            logger.info(
+                "Agent completed",
+                extra={
+                    "session_id": data["sessionId"],
+                    "turn_id": turn_id,
+                    "trace_id": agent_response.trace_id,
+                },
             )
 
-            user_message.response_message = error_msg
-            user_message.save(update_fields=["response_message"])
+            logging_result = logging_service.persist_assistant_response(
+                user_message=user_message,
+                agent_response=agent_response,
+                latency_ms=latency_ms,
+                model_name=agent_response.model or "unknown",
+            )
+            response_message = logging_result.response_message
+            assistant_persisted = True
 
-            yield f"event: error\ndata: {json.dumps({'error': INTERNAL_ERROR_MESSAGE})}\n\n"
-            return
+            logger.info(
+                "Assistant row persisted",
+                extra={
+                    "session_id": data["sessionId"],
+                    "turn_id": turn_id,
+                    "response_message_id": response_message.message_id,
+                },
+            )
 
-        # --- Success path: update summary, persist turn, yield final event ---
-        agent_response = result_holder["response"]
+            summary_text = session.conversation_summary or ""
+            try:
+                summary_service = get_summary_service()
+                new_summary = summary_service.update_summary(
+                    session=session,
+                    new_user_message=data["text"],
+                    new_assistant_response=agent_response.content,
+                )
+                summary_text = new_summary.to_prompt_text()
+            except Exception as exc:
+                logger.exception("Summary update failed after agent success")
+                capture_exception(
+                    exc,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                    phase="summary_after_success",
+                    response_message_id=response_message.message_id,
+                )
 
-        summary_service = get_summary_service()
-        new_summary = summary_service.update_summary(
-            session=session,
-            new_user_message=data["text"],
-            new_assistant_response=agent_response.content,
-        )
-        logging_service = get_turn_logging_service()
-        logging_result = logging_service.finalize_success(
-            session=session,
-            user_message=user_message,
-            agent_response=agent_response,
-            latency_ms=latency_ms,
-            model_name=agent_response.model or "unknown",
-            summary_text=new_summary.to_prompt_text(),
-        )
+            try:
+                logging_service.update_session_success(
+                    session=session,
+                    user_message=user_message,
+                    agent_response=agent_response,
+                    summary_text=summary_text,
+                )
+                session.refresh_from_db()
+            except Exception as exc:
+                logger.exception("Session update failed after assistant persist")
+                capture_exception(
+                    exc,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                    phase="session_update_after_success",
+                    response_message_id=response_message.message_id,
+                )
 
-        response_message = logging_result.response_message
+            final_data = _build_response_payload(
+                response_message=response_message,
+                session_id=data["sessionId"],
+                turn_count=_compute_turn_count(data["sessionId"]),
+                trace_id=agent_response.trace_id,
+                stats=logging_result.stats,
+            )
 
-        session.refresh_from_db()
+            if context.get("forceStreamBreakBeforeFinal", False):
+                test_exc = RuntimeError("Forced stream break before final SSE for testing")
+                logger.error(
+                    "Forcing stream break before final SSE for testing",
+                    extra={
+                        "session_id": data["sessionId"],
+                        "turn_id": turn_id,
+                        "response_message_id": response_message.message_id,
+                    },
+                )
+                capture_exception(
+                    test_exc,
+                    endpoint="chat_stream_v2",
+                    session_id=data["sessionId"],
+                    turn_id=turn_id,
+                    phase="forced_break_before_final_sse",
+                    response_message_id=response_message.message_id,
+                )
+                raise test_exc
 
-        final_data = {
-            "messageId": response_message.message_id,
-            "sessionId": data["sessionId"],
-            "timestamp": response_message.server_timestamp.isoformat(),
-            "markdown": agent_response.content,
-            "traceId": agent_response.trace_id,
-            "toolCalls": agent_response.tool_calls,
-            "session": build_session_info(session),
-            "stats": logging_result.stats,
-        }
-
-        yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
+            yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
+            final_event_sent = True
+            logger.info(
+                "Final SSE sent",
+                extra={
+                    "session_id": data["sessionId"],
+                    "turn_id": turn_id,
+                    "response_message_id": response_message.message_id,
+                },
+            )
+        except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+            if not final_event_sent:
+                logger.warning(
+                    "Client disconnected before final send",
+                    extra={
+                        "session_id": data["sessionId"],
+                        "turn_id": turn_id,
+                        "assistant_persisted": assistant_persisted,
+                        "agent_completed": result_holder["response"] is not None,
+                    },
+                )
+            raise
 
     response = StreamingHttpResponse(generate_sse(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
 
     return response
+
+
+@api_view(["POST"])
+def chat_recover_v2(request):
+    """Recover a response that may have been persisted after stream failure."""
+    serializer = RecoveryRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Invalid request", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
+
+    user_message = (
+        ChatMessage.objects.select_related("response_message")
+        .filter(
+            message_id=data["messageId"],
+            session_id=data["sessionId"],
+            user_id=actor.user_id,
+            role=ChatMessage.Role.USER,
+        )
+        .first()
+    )
+    if user_message is None:
+        return Response({"status": "pending"})
+
+    response_message = user_message.response_message
+    if response_message is None and user_message.turn_id:
+        response_message = (
+            ChatMessage.objects.filter(
+                session_id=user_message.session_id,
+                turn_id=user_message.turn_id,
+                role=ChatMessage.Role.ASSISTANT,
+            )
+            .order_by("-server_timestamp")
+            .first()
+        )
+        if response_message is not None:
+            user_message.response_message = response_message
+            user_message.save(update_fields=["response_message"])
+
+    if response_message is None:
+        return Response({"status": "pending"})
+
+    stats = get_turn_logging_service().build_stats_from_message(response_message)
+    payload = _build_response_payload(
+        response_message=response_message,
+        session_id=user_message.session_id,
+        turn_count=_compute_turn_count(user_message.session_id),
+        stats=stats,
+        recovered=True,
+    )
+    recovery_status = (
+        "failed" if response_message.status == ChatMessage.Status.FAILED else "complete"
+    )
+
+    return Response(
+        {
+            "status": recovery_status,
+            "message": payload,
+            "error": response_message.content
+            if response_message.status == ChatMessage.Status.FAILED
+            else "",
+        }
+    )
+
+
+@api_view(["POST"])
+def chat_client_event_v2(request):
+    """Ingest browser-side stream telemetry into server logs and Sentry."""
+    serializer = ClientStreamEventSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Invalid request", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
+
+    context = data.get("context") or {}
+    log_payload = {
+        "session_id": data["sessionId"],
+        "message_id": data["messageId"],
+        "user_id": actor.user_id,
+        "event": data["event"],
+        "error": data.get("error", ""),
+        "page_url": context.get("pageUrl", ""),
+        "client_version": context.get("clientVersion", ""),
+        "locale": context.get("locale", ""),
+    }
+    logger.warning("Client stream telemetry", extra=log_payload)
+    capture_message(
+        f"client_stream:{data['event']}",
+        level="warning",
+        endpoint="chat_stream_v2_client",
+        **log_payload,
+    )
+    return Response({"success": True})
 
 
 @api_view(["GET"])
