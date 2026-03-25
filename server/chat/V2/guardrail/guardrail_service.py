@@ -71,7 +71,7 @@ class GuardrailService:
                             "properties": {
                                 "decision": {
                                     "type": "string",
-                                    "description": "ALLOW or BLOCK",
+                                    "enum": ["ALLOW", "BLOCK"],
                                 },
                                 "reason": {
                                     "type": "string",
