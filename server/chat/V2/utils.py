@@ -43,16 +43,8 @@ def flush_braintrust() -> None:
 
 
 def strip_markdown_fences(text: str) -> str:
-    """Extract content from within markdown code fences, ignoring any text outside.
-
-    If the text contains ```...```, returns only what's inside the first fenced block.
-    This handles cases where the LLM appends commentary after the closing fence.
-    If no fences are found, returns the original text stripped.
-    """
-    match = re.search(r"```(?:\w+)?\n?(.*?)```", text, flags=re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return text.strip()
+    """Remove markdown code fences (```json ... ``` or ``` ... ```) from text."""
+    return re.sub(r"```(?:\w+)?\n?(.*?)```", r"\1", text, flags=re.DOTALL).strip()
 
 
 def make_singleton(factory: Callable[[], T]) -> tuple[Callable[[], T], Callable[[], None]]:

@@ -207,9 +207,7 @@ if SENTRY_DSN:
 # Prompt slug defaults (Braintrust)
 # These slugs identify which Braintrust prompt to fetch for each service.
 CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
-GUARDRAIL_PROMPT_SLUG = os.environ.get(
-    "GUARDRAIL_PROMPT_SLUG", "feat-guardrail-reduce-strictness-5bc9"
-)
+GUARDRAIL_PROMPT_SLUG = "feat-guardrail-reduce-strictness-5bc9"  # Hardcoded during prompt migration — revert after updating canonical guardrail-checker in Braintrust
 ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "router-classifier")
 REWRITER_PROMPT_SLUG = os.environ.get("REWRITER_PROMPT_SLUG", "question-rewriter")
 TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation")
