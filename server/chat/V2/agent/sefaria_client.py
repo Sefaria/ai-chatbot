@@ -116,9 +116,8 @@ class SefariaClient:
     ) -> list[dict[str, Any]] | dict[str, Any]:
         """Search across the Jewish library.
 
-        Uses Sefaria's Elasticsearch wrapper. If no results are found with
-        the requested filters, retries without filters as a fallback (so the
-        agent still gets useful results even if the filter path was wrong).
+        Uses Sefaria's Elasticsearch wrapper. Searches remain scoped to the
+        requested filters; if no results are found, a no-results payload is returned.
         """
         data = await self._search(query, filters, size)
         results = self._format_search_results(data, filters)
@@ -126,17 +125,23 @@ class SefariaClient:
         if results:
             return results
 
-        # Fallback: retry without filters (the filter path may have been wrong)
         if filters:
-            fallback_data = await self._search(query, None, size)
-            fallback_results = self._format_search_results(fallback_data, None, filters)
-            if fallback_results:
-                return fallback_results
+            filter_summary = ", ".join(filters)
+            suggestion = (
+                "No texts found matching this query within the requested book or filter scope "
+                f"({filter_summary}). Consider using different keywords, a nearby title, or a broader "
+                "search term. If searching in Hebrew, try the exact phrase from the source text."
+            )
+        else:
+            suggestion = (
+                "No texts found matching this query. Consider using different keywords or trying a "
+                "broader search term. If searching in Hebrew, try the exact phrase from the source text."
+            )
 
         return {
             "no_results": True,
             "query": query,
-            "suggestion": "No texts found matching this query. Consider using different keywords or trying a broader search term. If searching in Hebrew, try the exact phrase from the source text.",
+            "suggestion": suggestion,
         }
 
     async def get_current_calendar(self) -> dict[str, Any]:

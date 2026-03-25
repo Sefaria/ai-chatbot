@@ -370,6 +370,29 @@ class TestTextSearch:
         assert "suggestion" in result
 
     @pytest.mark.asyncio
+    async def test_filtered_search_does_not_fallback_to_unfiltered_results(self, client):
+        """Filtered searches should stay scoped and return no_results when empty."""
+
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"hits": {"hits": [], "total": {"value": 0}}}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.text_search("beginning", ["Tanakh/Torah/Genesis"])
+
+        assert isinstance(result, dict)
+        assert result.get("no_results") is True
+        assert "within the requested book or filter scope" in result["suggestion"]
+        assert "Tanakh/Torah/Genesis" in result["suggestion"]
+        mock_client.post.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_returns_results_when_found(self, client):
         """When search finds results, should return the results list."""
 
