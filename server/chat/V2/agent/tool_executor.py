@@ -99,6 +99,10 @@ class SefariaToolExecutor:
                 input_data["name"], input_data.get("limit"), input_data.get("type_filter")
             )
 
+        elif tool_name == "clarify_search_path_filter":
+            filter_path = await self.client.clarify_search_path_filter(input_data["book_name"])
+            return {"filter_path": filter_path}
+
         elif tool_name == "catalog_get_node":
             return await self.catalog_service.get_node(
                 input_data["identifier"],
@@ -205,6 +209,9 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
         "clarify_name_argument": lambda: f"Clarifying name {q(tool_input.get('name'))}",
+        "clarify_search_path_filter": lambda: (
+            f"Resolving book filter for {q(tool_input.get('book_name'))}"
+        ),
         "catalog_get_node": lambda: f"Loading catalog node for {q(tool_input.get('identifier'))}",
         "catalog_get_children": lambda: f"Loading catalog children for {q(tool_input.get('path'))}",
         "catalog_search": lambda: f"Searching catalog for {q(tool_input.get('query'))}",

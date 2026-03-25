@@ -144,6 +144,16 @@ TOOL_CLARIFY_NAME_ARGUMENT = {
     },
 }
 
+TOOL_CLARIFY_SEARCH_PATH_FILTER = {
+    "name": "clarify_search_path_filter",
+    "description": "Converts a book name into the exact backend search filter path used for scoped text search.",
+    "input_schema": {
+        "type": "object",
+        "properties": {"book_name": {"type": "string"}},
+        "required": ["book_name"],
+    },
+}
+
 TOOL_CATALOG_GET_NODE = {
     "name": "catalog_get_node",
     "description": "Retrieves one catalog node from the cached library index by path, title, or Hebrew title.",
@@ -284,6 +294,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_english_translations": TOOL_GET_ENGLISH_TRANSLATIONS,
     "get_topic_details": TOOL_GET_TOPIC_DETAILS,
     "clarify_name_argument": TOOL_CLARIFY_NAME_ARGUMENT,
+    "clarify_search_path_filter": TOOL_CLARIFY_SEARCH_PATH_FILTER,
     "catalog_get_node": TOOL_CATALOG_GET_NODE,
     "catalog_get_children": TOOL_CATALOG_GET_CHILDREN,
     "catalog_search": TOOL_CATALOG_SEARCH,

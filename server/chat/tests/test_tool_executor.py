@@ -57,6 +57,7 @@ def mock_client():
     client.get_english_translations = AsyncMock(return_value={"translations": []})
     client.get_topic_details = AsyncMock(return_value={"topic": "shabbat"})
     client.clarify_name_argument = AsyncMock(return_value={"suggestions": []})
+    client.clarify_search_path_filter = AsyncMock(return_value="Tanakh/Torah/Genesis")
     client.get_library_index = AsyncMock(return_value=[])
     client.get_available_manuscripts = AsyncMock(return_value={"manuscripts": []})
     client.get_manuscript_image = AsyncMock(return_value={"image_url": "http://..."})
@@ -129,6 +130,12 @@ class TestToolDispatch:
                 ("rashi", 5, "Person"),
             ),
             (
+                "clarify_search_path_filter",
+                {"book_name": "Genesis"},
+                "clarify_search_path_filter",
+                ("Genesis",),
+            ),
+            (
                 "get_available_manuscripts",
                 {"reference": "Genesis 1:1"},
                 "get_available_manuscripts",
@@ -163,6 +170,13 @@ class TestToolDispatch:
             "Tanakh/Torah", identifier_type="path", child_limit=5
         )
         assert result.is_error is False
+
+    @pytest.mark.asyncio
+    async def test_clarify_search_path_filter_wraps_filter_path(self, executor):
+        result = await executor.execute("clarify_search_path_filter", {"book_name": "Genesis"})
+        executor.client.clarify_search_path_filter.assert_called_once_with("Genesis")
+        assert result.is_error is False
+        assert '"filter_path": "Tanakh/Torah/Genesis"' in result.content[0]["text"]
 
     @pytest.mark.asyncio
     async def test_catalog_get_children_dispatches_to_catalog_service(self, executor):
@@ -293,6 +307,11 @@ class TestDescribeToolCall:
             ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
             ("get_current_calendar", {}, ["calendar"]),
             ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
+            (
+                "clarify_search_path_filter",
+                {"book_name": "Genesis"},
+                ["Resolving book filter", "Genesis"],
+            ),
             (
                 "catalog_get_node",
                 {"identifier": "Tanakh/Torah"},
