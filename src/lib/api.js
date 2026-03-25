@@ -55,6 +55,7 @@ import { generateMessageId } from './session.js';
  */
 
 const CLIENT_VERSION = '1.0.0';
+const STREAM_RECOVERY_TIMEOUT_MS = 60_000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -114,7 +115,7 @@ async function reportClientStreamEvent(
 }
 
 async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
     try {
