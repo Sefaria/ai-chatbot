@@ -811,3 +811,67 @@ class TestStreamingEndpointRecovery:
 
         user_msg.refresh_from_db()
         assert user_msg.response_message_id == assistant_msg.id
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_reports_running_when_heartbeat_is_fresh(self, client, secret):
+        """Recovery should expose a live running state while heartbeat is fresh."""
+        session = ChatSession.objects.create(session_id="sess_running", user_id="user_running")
+        ChatMessage.objects.create(
+            message_id="msg_running",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_running",
+            role=ChatMessage.Role.USER,
+            content="Still running",
+            processing_state=ChatMessage.ProcessingState.RUNNING,
+            processing_started_at=timezone.now() - timedelta(seconds=5),
+            processing_heartbeat_at=timezone.now() - timedelta(seconds=2),
+        )
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_running", secret),
+                "sessionId": "sess_running",
+                "messageId": "msg_running",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "running"
+        assert response.data["requestFound"] is True
+        assert response.data["heartbeatTimeoutMs"] == 90000
+        assert response.data["heartbeatAgeMs"] < response.data["heartbeatTimeoutMs"]
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_reports_stale_when_heartbeat_expires(self, client, secret):
+        """Recovery should stop polling once the server-side heartbeat is stale."""
+        session = ChatSession.objects.create(session_id="sess_stale", user_id="user_stale")
+        ChatMessage.objects.create(
+            message_id="msg_stale",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_stale",
+            role=ChatMessage.Role.USER,
+            content="Went stale",
+            processing_state=ChatMessage.ProcessingState.RUNNING,
+            processing_started_at=timezone.now() - timedelta(minutes=3),
+            processing_heartbeat_at=timezone.now() - timedelta(minutes=2),
+        )
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_stale", secret),
+                "sessionId": "sess_stale",
+                "messageId": "msg_stale",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "stale"
+        assert response.data["requestFound"] is True
+        assert response.data["heartbeatTimeoutMs"] == 90000
+        assert response.data["heartbeatAgeMs"] >= response.data["heartbeatTimeoutMs"]

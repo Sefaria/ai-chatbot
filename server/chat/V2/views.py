@@ -28,6 +28,7 @@ import time
 import braintrust
 from django.conf import settings
 from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -62,6 +63,9 @@ from .utils import get_braintrust_config
 
 logger = logging.getLogger("chat")
 
+STREAM_KEEPALIVE_INTERVAL_SECONDS = 60
+STREAM_HEARTBEAT_TIMEOUT_MS = 90_000
+
 
 def build_session_info(session) -> dict:
     """Build session info dict for API response."""
@@ -77,6 +81,78 @@ def _compute_turn_count(session_id: str) -> int:
         role=ChatMessage.Role.USER,
         response_message__isnull=False,
     ).count()
+
+
+def _mark_turn_started(user_message_id: int) -> None:
+    now = timezone.now()
+    ChatMessage.objects.filter(id=user_message_id).update(
+        processing_state=ChatMessage.ProcessingState.STARTED,
+        processing_started_at=now,
+        processing_heartbeat_at=now,
+        processing_finished_at=None,
+        processing_error="",
+    )
+
+
+def _mark_turn_running(user_message_id: int) -> None:
+    ChatMessage.objects.filter(id=user_message_id).update(
+        processing_state=ChatMessage.ProcessingState.RUNNING,
+        processing_heartbeat_at=timezone.now(),
+        processing_error="",
+    )
+
+
+def _mark_turn_heartbeat(user_message_id: int) -> None:
+    ChatMessage.objects.filter(
+        id=user_message_id,
+        processing_state__in=[
+            ChatMessage.ProcessingState.STARTED,
+            ChatMessage.ProcessingState.RUNNING,
+        ],
+    ).update(
+        processing_state=ChatMessage.ProcessingState.RUNNING,
+        processing_heartbeat_at=timezone.now(),
+    )
+
+
+def _mark_turn_completed(user_message_id: int) -> None:
+    now = timezone.now()
+    ChatMessage.objects.filter(id=user_message_id).update(
+        processing_state=ChatMessage.ProcessingState.COMPLETED,
+        processing_heartbeat_at=now,
+        processing_finished_at=now,
+        processing_error="",
+    )
+
+
+def _mark_turn_failed(user_message_id: int, error: str = "") -> None:
+    now = timezone.now()
+    ChatMessage.objects.filter(id=user_message_id).update(
+        processing_state=ChatMessage.ProcessingState.FAILED,
+        processing_heartbeat_at=now,
+        processing_finished_at=now,
+        processing_error=error or "",
+    )
+
+
+def _build_recovery_status_payload(user_message: ChatMessage) -> dict:
+    heartbeat_at = user_message.processing_heartbeat_at or user_message.processing_started_at
+    payload = {
+        "requestFound": True,
+        "processingState": user_message.processing_state or "",
+        "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
+    }
+    if heartbeat_at is not None:
+        heartbeat_age_ms = max(int((timezone.now() - heartbeat_at).total_seconds() * 1000), 0)
+        payload["lastHeartbeatAt"] = heartbeat_at.isoformat()
+        payload["heartbeatAgeMs"] = heartbeat_age_ms
+        payload["status"] = (
+            "stale" if heartbeat_age_ms >= STREAM_HEARTBEAT_TIMEOUT_MS else "running"
+        )
+        return payload
+
+    payload["status"] = "pending"
+    return payload
 
 
 def _build_response_payload(
@@ -189,6 +265,7 @@ def chat_stream_v2(request):
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
     )
+    _mark_turn_started(user_message.id)
 
     msg_context = MessageContext(
         summary_text=summary_text,
@@ -220,11 +297,13 @@ def chat_stream_v2(request):
         final_event_sent = False
 
         def on_progress(update: AgentProgressUpdate):
+            _mark_turn_heartbeat(user_message.id)
             progress_queue.put(update)
 
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
             try:
+                _mark_turn_running(user_message.id)
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)
 
@@ -271,7 +350,7 @@ def chat_stream_v2(request):
             # --- Stream progress events to the client ---
             while True:
                 try:
-                    update = progress_queue.get(timeout=60)
+                    update = progress_queue.get(timeout=STREAM_KEEPALIVE_INTERVAL_SECONDS)
 
                     # None sentinel means the agent thread finished
                     if update is None:
@@ -299,6 +378,7 @@ def chat_stream_v2(request):
                 except queue.Empty:
                     # No update in 60s — send a keepalive to prevent
                     # proxies/load-balancers from closing the connection
+                    _mark_turn_heartbeat(user_message.id)
                     yield ": keepalive\n\n"
 
             # --- Agent finished — clean up the thread ---
@@ -326,6 +406,7 @@ def chat_stream_v2(request):
                 user_message.response_message = error_msg
                 user_message.save(update_fields=["response_message"])
                 assistant_persisted = True
+                _mark_turn_failed(user_message.id, result_holder["error"])
 
                 logger.info(
                     "Assistant row persisted after agent error",
@@ -363,6 +444,7 @@ def chat_stream_v2(request):
             )
             response_message = logging_result.response_message
             assistant_persisted = True
+            _mark_turn_completed(user_message.id)
 
             logger.info(
                 "Assistant row persisted",
@@ -496,7 +578,13 @@ def chat_recover_v2(request):
         .first()
     )
     if user_message is None:
-        return Response({"status": "pending"})
+        return Response(
+            {
+                "status": "pending",
+                "requestFound": False,
+                "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
+            }
+        )
 
     response_message = user_message.response_message
     if response_message is None and user_message.turn_id:
@@ -514,7 +602,29 @@ def chat_recover_v2(request):
             user_message.save(update_fields=["response_message"])
 
     if response_message is None:
-        return Response({"status": "pending"})
+        if user_message.processing_state in (
+            ChatMessage.ProcessingState.STARTED,
+            ChatMessage.ProcessingState.RUNNING,
+        ):
+            return Response(_build_recovery_status_payload(user_message))
+        if user_message.processing_state == ChatMessage.ProcessingState.FAILED:
+            return Response(
+                {
+                    "status": "failed",
+                    "requestFound": True,
+                    "processingState": user_message.processing_state,
+                    "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
+                    "error": user_message.processing_error or "",
+                }
+            )
+        return Response(
+            {
+                "status": "pending",
+                "requestFound": True,
+                "processingState": user_message.processing_state or "",
+                "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
+            }
+        )
 
     stats = get_turn_logging_service().build_stats_from_message(response_message)
     payload = _build_response_payload(
@@ -531,10 +641,13 @@ def chat_recover_v2(request):
     return Response(
         {
             "status": recovery_status,
+            "requestFound": True,
             "message": payload,
             "error": response_message.content
             if response_message.status == ChatMessage.Status.FAILED
             else "",
+            "processingState": user_message.processing_state or "",
+            "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
         }
     )
 

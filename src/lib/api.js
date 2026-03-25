@@ -55,7 +55,7 @@ import { generateMessageId } from './session.js';
  */
 
 const CLIENT_VERSION = '1.0.0';
-const STREAM_RECOVERY_TIMEOUT_MS = 60_000;
+const STREAM_RECOVERY_TIMEOUT_MS = 20_000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -115,9 +115,11 @@ async function reportClientStreamEvent(
 }
 
 async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
-  const deadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
+  const fallbackDeadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
+  let heartbeatDeadline = null;
+  let timeoutReason = 'recovery_timeout';
 
-  while (Date.now() < deadline) {
+  while (true) {
     try {
       const response = await fetch(`${apiBaseUrl}/v2/chat/recover`, {
         method: 'POST',
@@ -136,9 +138,26 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
         if (data.status === 'complete' || data.status === 'failed') {
           return data;
         }
+        if (
+          typeof data.heartbeatTimeoutMs === 'number' &&
+          typeof data.heartbeatAgeMs === 'number'
+        ) {
+          heartbeatDeadline =
+            Date.now() + Math.max(data.heartbeatTimeoutMs - data.heartbeatAgeMs, 0);
+        }
+        if (data.status === 'stale') {
+          timeoutReason = 'heartbeat_stale';
+          break;
+        }
       }
     } catch {
-      // Keep polling until the deadline.
+      // Keep polling until the relevant deadline expires.
+    }
+
+    const activeDeadline = heartbeatDeadline ?? fallbackDeadline;
+    if (Date.now() >= activeDeadline) {
+      timeoutReason = heartbeatDeadline ? 'heartbeat_timeout' : 'recovery_timeout';
+      break;
     }
 
     await sleep(1000);
@@ -149,6 +168,7 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
     sessionId,
     messageId,
     event: 'stream_recovery_timeout',
+    error: timeoutReason,
     context
   });
 
