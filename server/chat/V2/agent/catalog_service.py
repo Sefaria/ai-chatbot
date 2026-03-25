@@ -5,9 +5,11 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from threading import Lock
-from typing import Any
+from typing import Any, TypeAlias
 
 from .sefaria_client import SefariaClient
+
+AuthorRecord: TypeAlias = dict[str, str]
 
 
 class CatalogService:
@@ -285,7 +287,8 @@ class CatalogService:
             title = node["title"]
             current_path = [*path, title]
             node_id = "/".join(current_path)
-            creators = self._extract_creators(node)
+            authors = self._extract_authors(node)
+            creators = self._extract_creators(node, authors)
             compiled_node = {
                 "id": node_id,
                 "type": "book",
@@ -315,6 +318,7 @@ class CatalogService:
                 "parent_id": parent_id,
                 "children": [],
                 "raw": node,
+                "authors": authors,
                 "creators": creators,
             }
             nodes_by_id[node_id] = compiled_node
@@ -340,7 +344,39 @@ class CatalogService:
         return "category" in node and "title" not in node
 
     @staticmethod
-    def _extract_creators(node: dict[str, Any]) -> list[str]:
+    def _extract_authors(node: dict[str, Any]) -> list[AuthorRecord]:
+        authors = node.get("authors")
+        if not isinstance(authors, list):
+            return []
+
+        normalized_authors: list[AuthorRecord] = []
+        seen: set[tuple[str, str, str]] = set()
+        for author in authors:
+            if not isinstance(author, dict):
+                continue
+
+            normalized_author = {
+                "en": str(author.get("en") or "").strip(),
+                "he": str(author.get("he") or "").strip(),
+                "slug": str(author.get("slug") or "").strip(),
+            }
+            if not any(normalized_author.values()):
+                continue
+
+            dedupe_key = (
+                normalized_author["en"].casefold(),
+                normalized_author["he"].casefold(),
+                normalized_author["slug"].casefold(),
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized_authors.append(normalized_author)
+
+        return normalized_authors
+
+    @staticmethod
+    def _extract_creators(node: dict[str, Any], authors: list[AuthorRecord]) -> list[str]:
         creators: list[str] = []
         for key in [
             "author",
@@ -353,11 +389,11 @@ class CatalogService:
             if isinstance(value, str) and value.strip():
                 creators.append(value.strip())
 
-        authors = node.get("authors")
-        if isinstance(authors, list):
-            creators.extend(str(author).strip() for author in authors if str(author).strip())
-        elif isinstance(authors, str) and authors.strip():
-            creators.append(authors.strip())
+        for author in authors:
+            for key in ["en", "he", "slug"]:
+                value = author.get(key)
+                if value:
+                    creators.append(value)
 
         seen = set()
         deduped: list[str] = []
@@ -419,6 +455,8 @@ class CatalogService:
         }
         if node["type"] == "book":
             summary["categories"] = node.get("categories", [])
+            if node.get("authors"):
+                summary["authors"] = node["authors"]
             if node.get("creators"):
                 summary["creators"] = node["creators"]
         return summary
@@ -439,6 +477,7 @@ class CatalogService:
             "primary_category",
             "corpus",
             "dependence",
+            "authors",
             "creators",
             "commentator",
             "collectiveTitle",
@@ -469,6 +508,7 @@ class CatalogService:
             ("corpus", node.get("corpus"), 3),
             ("commentator", node.get("commentator"), 6),
             ("collectiveTitle", node.get("collectiveTitle"), 6),
+            ("authors", self._flatten_authors(node.get("authors", [])), 6),
             ("creators", node.get("creators"), 6),
             ("categories", node.get("categories"), 4),
             ("base_text_titles", node.get("base_text_titles"), 4),
@@ -499,6 +539,15 @@ class CatalogService:
     @staticmethod
     def _matches_node_type(node: dict[str, Any], node_type: str) -> bool:
         return node_type == "any" or node["type"] == node_type
+
+    @staticmethod
+    def _flatten_authors(authors: list[AuthorRecord]) -> list[str]:
+        values: list[str] = []
+        for author in authors:
+            values.extend(
+                value for value in [author.get("en"), author.get("he"), author.get("slug")] if value
+            )
+        return values
 
     def _matches_filters(self, node: dict[str, Any], filters: dict[str, Any]) -> bool:
         if not filters:
@@ -535,6 +584,7 @@ class CatalogService:
                 ]
                 if part
             ),
+            "author_name_contains": " ".join(self._flatten_authors(node.get("authors", []))),
             "creator_contains": " ".join(node.get("creators", [])),
         }
         for filter_name, value in contains_fields.items():
@@ -559,6 +609,21 @@ class CatalogService:
                 self._normalize_text(item) for item in node.get("creators", [])
             }:
                 return False
+
+        author_values = node.get("authors", [])
+        author_match_fields = {
+            "author_en": "en",
+            "author_he": "he",
+            "author_slug": "slug",
+        }
+        for filter_name, field_name in author_match_fields.items():
+            if expected := filters.get(filter_name):
+                if self._normalize_text(expected) not in {
+                    self._normalize_text(author.get(field_name))
+                    for author in author_values
+                    if author.get(field_name)
+                }:
+                    return False
 
         if has_field := filters.get("has_field"):
             value = node.get(has_field)

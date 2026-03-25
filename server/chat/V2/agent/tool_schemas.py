@@ -186,7 +186,7 @@ TOOL_CATALOG_GET_CHILDREN = {
 
 TOOL_CATALOG_SEARCH = {
     "name": "catalog_search",
-    "description": "Performs lexical search over cached catalog metadata including titles, Hebrew titles, descriptions, categories, and creator metadata.",
+    "description": "Performs lexical search over cached catalog metadata including titles, Hebrew titles, descriptions, categories, and author metadata from the api/index payload.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -223,6 +223,10 @@ TOOL_CATALOG_QUERY = {
                     "title_contains": {"type": "string"},
                     "he_title_contains": {"type": "string"},
                     "description_contains": {"type": "string"},
+                    "author_en": {"type": "string"},
+                    "author_he": {"type": "string"},
+                    "author_slug": {"type": "string"},
+                    "author_name_contains": {"type": "string"},
                     "creator": {"type": "string"},
                     "creator_contains": {"type": "string"},
                     "category": {"type": "string"},

@@ -236,7 +236,7 @@ class SefariaClient:
 
     async def get_library_index(self) -> list[dict[str, Any]]:
         """Get the full library index tree from Sefaria."""
-        data = await self._get_json("api/index")
+        data = await self._get_json("api/index", {"include_authors": "1"})
         if not isinstance(data, list):
             raise ValueError("Expected api/index to return a top-level list")
         return data

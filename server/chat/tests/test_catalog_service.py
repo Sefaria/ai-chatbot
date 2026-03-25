@@ -35,6 +35,13 @@ def sample_catalog():
                             "enShortDesc": "Creation and the patriarchs",
                             "heShortDesc": "בריאה והאבות",
                             "order": 1,
+                            "authors": [
+                                {
+                                    "en": "Moses",
+                                    "he": "משה",
+                                    "slug": "moses",
+                                }
+                            ],
                         },
                         {
                             "title": "Rashi on Genesis",
@@ -48,6 +55,13 @@ def sample_catalog():
                             "base_text_order": 1,
                             "enShortDesc": "Classic medieval commentary",
                             "heShortDesc": "פירוש קלאסי",
+                            "authors": [
+                                {
+                                    "en": "Rashi",
+                                    "he": 'רש"י',
+                                    "slug": "rashi",
+                                }
+                            ],
                         },
                         {
                             "title": "Nechama Leibowitz",
@@ -123,7 +137,24 @@ async def test_catalog_search_matches_creator_and_description(service):
     assert result["results"]
     top = result["results"][0]
     assert top["node"]["title"] == "Rashi on Genesis"
-    assert "creators" in top["matched_fields"]
+    assert "authors" in top["matched_fields"]
+
+
+@pytest.mark.asyncio
+async def test_catalog_get_node_preserves_author_schema(service):
+    result = await service.get_node("Genesis", identifier_type="title")
+
+    assert result["found"] is True
+    assert result["node"]["authors"] == [{"en": "Moses", "he": "משה", "slug": "moses"}]
+
+
+@pytest.mark.asyncio
+async def test_catalog_search_matches_hebrew_author_name(service):
+    result = await service.search('רש"י', node_type="book")
+
+    assert result["results"]
+    assert result["results"][0]["node"]["title"] == "Rashi on Genesis"
+    assert "authors" in result["results"][0]["matched_fields"]
 
 
 @pytest.mark.asyncio
@@ -137,6 +168,19 @@ async def test_catalog_query_filters_by_creator_and_base_text(service):
     assert result["total_matches"] == 1
     assert result["results"][0]["title"] == "Rashi on Genesis"
     assert result["results"][0]["base_text_titles"] == ["Genesis"]
+
+
+@pytest.mark.asyncio
+async def test_catalog_query_filters_by_author_slug_and_selects_authors(service):
+    result = await service.query(
+        node_type="book",
+        filters={"author_slug": "rashi"},
+        select=["title", "authors"],
+    )
+
+    assert result["total_matches"] == 1
+    assert result["results"][0]["title"] == "Rashi on Genesis"
+    assert result["results"][0]["authors"] == [{"en": "Rashi", "he": 'רש"י', "slug": "rashi"}]
 
 
 @pytest.mark.asyncio
