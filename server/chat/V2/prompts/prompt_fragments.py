@@ -16,7 +16,6 @@ since it targets a different model.
 # ERROR_FALLBACK_MESSAGE — shown when the agent crashes (DB-persisted as the response)
 # INTERNAL_ERROR_MESSAGE — sent to the client via SSE/API error events (less detail)
 # GUARDRAIL_REJECTION_FALLBACK — fallback when guardrail can't run (service down, malformed response)
-# GUARDRAIL_REJECTION_WITH_REASON — used when guardrail provides a reason (the reason IS the response)
 
 ERROR_FALLBACK_MESSAGE = "I'm sorry, I encountered an error processing your request."
 
@@ -25,7 +24,6 @@ INTERNAL_ERROR_MESSAGE = "An internal error occurred."
 GUARDRAIL_REJECTION_FALLBACK = (
     "I'm sorry, I wasn't able to process your message. Please try again in a moment."
 )
-GUARDRAIL_REJECTION_WITH_REASON = "{reason}"
 
 # Internal reasons logged when the guardrail can't run or returns bad data.
 # Not user-facing — used in GuardrailResult.reason for debugging / tracing.

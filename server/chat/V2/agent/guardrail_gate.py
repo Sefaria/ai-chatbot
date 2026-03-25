@@ -11,7 +11,6 @@ from ..guardrail import get_guardrail_service
 from ..prompts.prompt_fragments import (
     GUARDRAIL_MALFORMED_REASON,
     GUARDRAIL_REJECTION_FALLBACK,
-    GUARDRAIL_REJECTION_WITH_REASON,
     GUARDRAIL_UNAVAILABLE_REASON,
     build_prompt,
 )
@@ -56,7 +55,7 @@ class DefaultGuardrailGate:
         internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
         reason = guardrail_result.reason
         if reason and reason not in internal_reasons:
-            rejection = GUARDRAIL_REJECTION_WITH_REASON.format(reason=reason)
+            rejection = reason
         else:
             rejection = GUARDRAIL_REJECTION_FALLBACK
 
