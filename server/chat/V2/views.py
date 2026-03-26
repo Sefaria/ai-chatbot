@@ -24,9 +24,11 @@ import json
 import logging
 import queue
 import time
+from urllib.parse import urlsplit
 
 import braintrust
 from django.conf import settings
+from django.core.cache import cache
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -65,6 +67,9 @@ logger = logging.getLogger("chat")
 
 STREAM_KEEPALIVE_INTERVAL_SECONDS = 60
 STREAM_HEARTBEAT_TIMEOUT_MS = 90_000
+STREAM_PROGRESS_QUEUE_MAXSIZE = 100
+CLIENT_STREAM_EVENT_RATE_LIMIT = 30
+CLIENT_STREAM_EVENT_WINDOW_SECONDS = 60
 
 
 def build_session_info(session) -> dict:
@@ -80,6 +85,7 @@ def _compute_turn_count(session_id: str) -> int:
         session_id=session_id,
         role=ChatMessage.Role.USER,
         response_message__isnull=False,
+        response_message__status=ChatMessage.Status.SUCCESS,
     ).count()
 
 
@@ -176,6 +182,30 @@ def _build_response_payload(
         "recovered": recovered,
         "status": response_message.status,
     }
+
+
+def _is_stream_break_test_enabled() -> bool:
+    return bool(getattr(settings, "CHAT_STREAM_BREAK_TESTING_ENABLED", settings.DEBUG))
+
+
+def _sanitize_page_url(page_url: str) -> str:
+    if not page_url:
+        return ""
+    parsed = urlsplit(page_url)
+    return parsed.path or ""
+
+
+def _is_client_event_rate_limited(user_id: str) -> bool:
+    bucket = int(time.time() // CLIENT_STREAM_EVENT_WINDOW_SECONDS)
+    cache_key = f"chat_client_event:{user_id}:{bucket}"
+    if cache.add(cache_key, 1, timeout=CLIENT_STREAM_EVENT_WINDOW_SECONDS + 5):
+        return False
+    try:
+        count = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=CLIENT_STREAM_EVENT_WINDOW_SECONDS + 5)
+        return False
+    return count > CLIENT_STREAM_EVENT_RATE_LIMIT
 
 
 def _authenticate_actor_or_response(request, data):
@@ -291,19 +321,26 @@ def chat_stream_v2(request):
           4. On error  → log, persist error message, yield error event
           5. On success → update summary, persist messages, yield final event
         """
-        progress_queue = queue.Queue()
+        progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
         result_holder = {"response": None, "error": None}
         assistant_persisted = False
         final_event_sent = False
+        stream_closed = False
 
         def on_progress(update: AgentProgressUpdate):
-            _mark_turn_heartbeat(user_message.id)
-            progress_queue.put(update)
+            if stream_closed:
+                return
+            try:
+                progress_queue.put(update, timeout=0.1)
+            except queue.Full:
+                logger.warning(
+                    "Dropping stream progress update after queue saturation",
+                    extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                )
 
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
             try:
-                _mark_turn_running(user_message.id)
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)
 
@@ -333,17 +370,24 @@ def chat_stream_v2(request):
                 if not is_load_test:
                     _flush_braintrust()
                 # Sentinel: signals the main thread that the agent is done
-                progress_queue.put(None)
+                while not stream_closed:
+                    try:
+                        progress_queue.put(None, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
 
         # For load tests, run in a clean context to prevent Braintrust span
         # leaking from the main thread.  Normal requests preserve contextvars
         # so Braintrust traces propagate correctly.
         if is_load_test:
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            _mark_turn_running(user_message.id)
             future = executor.submit(run_agent)
         else:
             ctx = contextvars.copy_context()
             executor = _create_traced_executor()
+            _mark_turn_running(user_message.id)
             future = executor.submit(ctx.run, run_agent)
 
         try:
@@ -373,6 +417,7 @@ def chat_stream_v2(request):
                     if update.output_preview:
                         event_data["outputPreview"] = update.output_preview
 
+                    _mark_turn_heartbeat(user_message.id)
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
@@ -380,13 +425,6 @@ def chat_stream_v2(request):
                     # proxies/load-balancers from closing the connection
                     _mark_turn_heartbeat(user_message.id)
                     yield ": keepalive\n\n"
-
-            # --- Agent finished — clean up the thread ---
-            try:
-                future.result(timeout=5)
-            except Exception:
-                pass
-            executor.shutdown(wait=False)
 
             latency_ms = int((time.time() - start_time) * 1000)
             logging_service = get_turn_logging_service()
@@ -455,7 +493,7 @@ def chat_stream_v2(request):
                 },
             )
 
-            summary_text = session.conversation_summary or ""
+            summary_text = None
             try:
                 summary_service = get_summary_service()
                 new_summary = summary_service.update_summary(
@@ -502,7 +540,7 @@ def chat_stream_v2(request):
                 stats=logging_result.stats,
             )
 
-            if context.get("forceStreamBreakBeforeFinal", False):
+            if context.get("forceStreamBreakBeforeFinal", False) and _is_stream_break_test_enabled():
                 test_exc = RuntimeError("Forced stream break before final SSE for testing")
                 logger.error(
                     "Forcing stream break before final SSE for testing",
@@ -544,6 +582,16 @@ def chat_stream_v2(request):
                     },
                 )
             raise
+        finally:
+            stream_closed = True
+            if not future.done():
+                future.cancel()
+            elif future.done():
+                try:
+                    future.result(timeout=0)
+                except Exception:
+                    pass
+            executor.shutdown(wait=False)
 
     response = StreamingHttpResponse(generate_sse(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
@@ -668,13 +716,16 @@ def chat_client_event_v2(request):
         return actor
 
     context = data.get("context") or {}
+    if _is_client_event_rate_limited(actor.user_id):
+        return Response({"success": True, "sampled": False})
+
     log_payload = {
         "session_id": data["sessionId"],
         "message_id": data["messageId"],
         "user_id": actor.user_id,
         "event": data["event"],
         "error": data.get("error", ""),
-        "page_url": context.get("pageUrl", ""),
+        "page_url": _sanitize_page_url(context.get("pageUrl", "")),
         "client_version": context.get("clientVersion", ""),
         "locale": context.get("locale", ""),
     }

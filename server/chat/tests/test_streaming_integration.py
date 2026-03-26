@@ -726,7 +726,9 @@ class TestStreamingEndpointRecovery:
         assert "Recovered despite summary failure" in content
         mock_capture.assert_called_once()
 
+        session = ChatSession.objects.get(session_id="sess_summary_fail")
         user_msg = ChatMessage.objects.get(message_id="msg_summary_fail")
+        assert session.summary_updated_at is None
         assert user_msg.response_message is not None
         assert user_msg.response_message.content == "Recovered despite summary failure"
 
@@ -875,3 +877,74 @@ class TestStreamingEndpointRecovery:
         assert response.data["requestFound"] is True
         assert response.data["heartbeatTimeoutMs"] == 90000
         assert response.data["heartbeatAgeMs"] >= response.data["heartbeatTimeoutMs"]
+
+
+@pytest.mark.django_db
+class TestChatClientEventV2:
+    """Tests for the client telemetry ingestion endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.capture_message")
+    def test_valid_event_emits_telemetry(self, mock_capture_message, client, secret):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": create_test_token("user_event_ok", secret),
+                "sessionId": "sess_event_ok",
+                "messageId": "msg_event_ok",
+                "timestamp": timezone.now().isoformat(),
+                "event": "stream_missing_final_message",
+                "context": {
+                    "pageUrl": "https://www.sefaria.org/topics/shabbat?tab=sources",
+                    "clientVersion": "1.0.0",
+                    "locale": "en-US",
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data == {"success": True}
+        mock_capture_message.assert_called_once()
+        assert mock_capture_message.call_args.kwargs["page_url"] == "/topics/shabbat"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_invalid_token_is_rejected(self, client):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": "not-a-valid-token",
+                "sessionId": "sess_event_invalid_auth",
+                "messageId": "msg_event_invalid_auth",
+                "timestamp": timezone.now().isoformat(),
+                "event": "stream_missing_final_message",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 401
+        assert response.data["error"] == "invalid_userId"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_missing_required_field_returns_validation_error(self, client, secret):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": create_test_token("user_event_invalid", secret),
+                "sessionId": "sess_event_invalid",
+                "messageId": "msg_event_invalid",
+                "timestamp": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert response.data["error"] == "Invalid request"

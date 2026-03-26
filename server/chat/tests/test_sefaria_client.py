@@ -1,5 +1,6 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,7 +36,16 @@ class TestSefariaClientInit:
     """Test SefariaClient initialization."""
 
     def test_default_base_url(self):
-        client = SefariaClient()
+        with patch.dict(
+            os.environ,
+            {
+                "SEFARIA_API_BASE_URL": "",
+                "VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST": "",
+                "VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT": "",
+                "SEFARIA_AI_BASE_URL": "",
+            },
+        ):
+            client = SefariaClient()
         assert client.base_url == "https://www.sefaria.org"
 
     def test_custom_base_url(self):

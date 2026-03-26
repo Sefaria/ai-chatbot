@@ -11,6 +11,7 @@ import { generateMessageId } from './session.js';
  * @property {string} clientVersion - Widget version
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
+ * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
 /**
