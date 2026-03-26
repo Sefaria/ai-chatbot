@@ -107,12 +107,17 @@ class TestGuardrailService:
         assert result.allowed is False
         assert result.reason == "Not about Jewish texts"
 
-    def test_decision_format_with_code_fences(self):
-        """Handles response wrapped in markdown code fences."""
+    def test_code_fences_fail_closed(self):
+        """With output_config json_schema, code fences should not occur.
+
+        If they somehow do, the parser treats it as malformed JSON (fail closed)
+        rather than silently stripping fences — structured outputs guarantee
+        clean JSON, so fences indicate an unexpected response format.
+        """
         service = self._make_service()
         service.client.messages.create.return_value = _make_anthropic_response(
             '```json\n{"decision": "ALLOW", "reason": "On-topic question"}\n```'
         )
         result = service.check_message("What is Shabbat?")
-        assert result.allowed is True
-        assert result.reason == "On-topic question"
+        assert result.allowed is False
+        assert "malformed" in result.reason.lower()
