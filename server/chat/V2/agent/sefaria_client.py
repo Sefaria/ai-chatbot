@@ -292,8 +292,10 @@ class SefariaClient:
             response = await client.get(url)
             if response.status_code != 200:
                 return None
-            text = response.text.strip()
-            return text if text else None
+            data = response.json()
+            if isinstance(data, str):
+                return data.strip() or None
+            return None
         except Exception:
             return None
 

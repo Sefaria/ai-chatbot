@@ -215,6 +215,26 @@ class TestGetAuthorIndexes:
         assert "clarify_name_argument" in result.get("suggestion", "")
 
 
+class TestClarifySearchPathFilter:
+    """Test clarify_search_path_filter parsing."""
+
+    @pytest.mark.asyncio
+    async def test_parses_json_string_response_without_embedded_quotes(self, client):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return "Chasidut/Breslov/Likutei Moharan"
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.clarify_search_path_filter("Likutei Moharan")
+
+        assert result == "Chasidut/Breslov/Likutei Moharan"
+
+
 class TestOptimizeTextResponse:
     """Test _optimize_text_response method."""
 
@@ -423,3 +443,25 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
+class TestSearchInBook:
+    """Test search_in_book scoped path resolution."""
+
+    @pytest.mark.asyncio
+    async def test_search_in_book_uses_unquoted_filter_path(self, client):
+        with (
+            patch.object(
+                client,
+                "clarify_search_path_filter",
+                AsyncMock(return_value="Chasidut/Breslov/Likutei Moharan"),
+            ),
+            patch.object(
+                client,
+                "text_search",
+                AsyncMock(return_value={"results": []}),
+            ) as mock_text_search,
+        ):
+            await client.search_in_book("פרעה", "Likutei Moharan", 10)
+
+        mock_text_search.assert_awaited_once_with("פרעה", ["Chasidut/Breslov/Likutei Moharan"], 10)
