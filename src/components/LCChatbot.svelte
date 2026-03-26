@@ -1078,6 +1078,7 @@
     --lc-primary: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
+    --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
@@ -1205,7 +1206,7 @@
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;
-    background: var(--lc-bg);
+    background: var(--lc-body-bg);
     border-radius: var(--lc-radius);
     box-shadow: var(--lc-shadow);
     overflow: hidden;
@@ -1242,7 +1243,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    background: var(--lc-bg-secondary);
+    background: #FAFAFA;
     border-bottom: 1px solid var(--lc-border);
   }
 
@@ -1332,7 +1333,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    background: var(--lc-bg-secondary);
   }
 
   /* Date Markers */
@@ -1393,6 +1393,7 @@
   .message.user .message-content {
     padding: 12px 16px;
     border-radius: var(--lc-radius);
+    font-size: var(--lc-font-size);
     word-wrap: break-word;
     background: var(--lc-user-bg);
     color: var(--lc-user-text);
@@ -1520,7 +1521,7 @@
     align-items: flex-end;
     gap: 8px;
     padding: 16px 16px 16px 18px;
-    background: var(--lc-bg);
+    background: transparent;
     border-top: 1px solid var(--lc-border);
   }
 
@@ -1587,7 +1588,7 @@
     padding: 16px 20px 20px;
     overflow: auto;
     flex: 1;
-    background: var(--lc-bg);
+    background: transparent;
   }
 
   .settings-header {
@@ -1877,11 +1878,11 @@ inset: 8px;
 
   .message-content :global(.response-section) {
     font-weight: 600;
-    line-height: 18px;
+    line-height: 20px;
   }
 
   .message-content :global(.response-list) {
-    line-height: 18px;
+    line-height: 20px;
   }
 
   .message-content :global(.response-link) {
