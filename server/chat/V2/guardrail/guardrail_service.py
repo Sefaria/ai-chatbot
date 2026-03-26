@@ -55,34 +55,14 @@ class GuardrailService:
         try:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
             # temperature=0.0 for deterministic decisions.
-            # output_config with json_schema guarantees valid JSON output,
-            # eliminating code fences, extra commentary, and wasted tokens.
+            # GUARDRAIL_OUTPUT_CONFIG (json_schema) guarantees valid JSON output.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
                 temperature=0.0,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
-                output_config={
-                    "format": {
-                        "type": "json_schema",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "decision": {
-                                    "type": "string",
-                                    "enum": ["ALLOW", "BLOCK"],
-                                },
-                                "reason": {
-                                    "type": "string",
-                                    "description": "Brief note for ALLOW, or a complete user-facing message for BLOCK",
-                                },
-                            },
-                            "required": ["decision", "reason"],
-                            "additionalProperties": False,
-                        },
-                    }
-                },
+                output_config=settings.GUARDRAIL_OUTPUT_CONFIG,
             )
             return self._parse_response(response)
         except Exception as exc:

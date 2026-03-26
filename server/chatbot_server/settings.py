@@ -228,6 +228,26 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # (guardrail classification, summarization). Override via env vars.
 AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
 GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
+GUARDRAIL_OUTPUT_CONFIG = {
+    "format": {
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": ["ALLOW", "BLOCK"],
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief note for ALLOW, or a complete user-facing message for BLOCK",
+                },
+            },
+            "required": ["decision", "reason"],
+            "additionalProperties": False,
+        },
+    }
+}
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "claude-haiku-4-5-20251001")
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
