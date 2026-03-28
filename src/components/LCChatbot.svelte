@@ -784,7 +784,13 @@
       } else {
         htmlParts.push(`<div><p><strong>${label}:</strong></p>${renderMarkdown(msg.content)}</div>`);
       }
-      plainParts.push(`${label}:\n${msg.content}`);
+      if (msg.role === 'user') {
+        plainParts.push(`${label}:\n${msg.content}`);
+      } else {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = renderMarkdown(msg.content);
+        plainParts.push(`${label}:\n${tmp.textContent}`);
+      }
     }
 
     const html = `<div style="font-family: sans-serif; font-size: 14px;">${htmlParts.join('<br>')}</div>`;
