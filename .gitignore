@@ -59,6 +59,9 @@ server/media/
 server/*.log
 server/**/migrations/*.pyc
 
+# Claude Code
+.claude/.mcp.json
+
 # IDE and editors
 .vscode/
 .idea/
