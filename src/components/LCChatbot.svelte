@@ -77,7 +77,7 @@
   let copyConfirmed = $state(false);
 
   // Abort controller for stop button
-  let abortController = $state(null);
+
 
   // Feedback modal state
   let showFeedbackModal = $state(false);
@@ -464,8 +464,6 @@
     saveMessagesToStorage();
     scrollToBottom();
 
-    const controller = new AbortController();
-    abortController = controller;
     isSending = true;
     currentProgress = null;
     toolHistory = [];
@@ -576,12 +574,7 @@
       isSending = false;
       currentProgress = null;
       toolHistory = [];
-      abortController = null;
     }
-  }
-
-  function handleStop() {
-    abortController?.abort();
   }
 
   function handleKeydown(e) {
@@ -1140,20 +1133,14 @@
         ></textarea>
         <button
           class="send-btn"
-          onclick={isSending ? handleStop : handleSend}
-          disabled={!isSending && (!inputText.trim() || limitReached)}
-          aria-label={isSending ? "Stop generating" : "Send message"}
+          onclick={handleSend}
+          disabled={!inputText.trim() || isSending || limitReached}
+          aria-label="Send message"
         >
-          {#if isSending}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <rect x="4" y="4" width="16" height="16" rx="2"/>
-            </svg>
-          {:else}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          {/if}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
         </button>
       </footer>
       {/if}
