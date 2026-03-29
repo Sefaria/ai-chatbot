@@ -76,6 +76,9 @@
   let menuContainer = $state(null);
   let copyConfirmed = $state(false);
 
+  // Abort controller for stop button
+  let abortController = $state(null);
+
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -466,6 +469,9 @@
     toolHistory = [];
     updateSessionActivity(sessionId);
 
+    const controller = new AbortController();
+    abortController = controller;
+
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
@@ -497,7 +503,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator);
+      }, promptSlugs, originProp, isModerator, controller.signal);
 
       // Update user message status
       messages = messages.map(m =>
@@ -545,26 +551,38 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
-
-      // Mark message as failed for other errors
-      messages = messages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
-      saveMessagesToStorage();
-
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
+      if (e.name === 'AbortError') {
+        // User stopped — keep the user message as sent, just don't add a response
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: 'sent' }
+            : m
+        );
+        saveMessagesToStorage();
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+        saveMessagesToStorage();
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
     } finally {
       isSending = false;
       currentProgress = null;
       toolHistory = [];
+      abortController = null;
     }
+  }
+
+  function handleStop() {
+    abortController?.abort();
   }
 
   function handleKeydown(e) {
@@ -1121,17 +1139,29 @@
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if isSending}
+          <button
+            class="send-btn"
+            onclick={handleStop}
+            aria-label="Stop generating"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+          </button>
+        {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || limitReached}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
       {/if}
 
