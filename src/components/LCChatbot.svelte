@@ -804,12 +804,14 @@
         })
       ]);
       copyConfirmed = true;
-      setTimeout(() => { copyConfirmed = false; }, 2000);
+      setTimeout(() => {
+        closeMenu();
+        copyConfirmed = false;
+      }, 800);
     } catch (e) {
       console.warn('[lc-chatbot] Copy failed:', e);
+      closeMenu();
     }
-
-    closeMenu();
   }
 
   function getEmptyStateMessage() {
@@ -901,11 +903,18 @@
                   Restart conversation
                 </button>
                 <button class="menu-item" aria-label="Copy messages" onclick={copyMessages} disabled={messages.length === 0} role="menuitem">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  {copyConfirmed ? 'Copied!' : 'Copy messages'}
+                  {#if copyConfirmed}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Copied!
+                  {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy messages
+                  {/if}
                 </button>
                 <a class="menu-item" aria-label="Give feedback" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
