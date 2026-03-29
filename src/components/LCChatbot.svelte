@@ -464,13 +464,12 @@
     saveMessagesToStorage();
     scrollToBottom();
 
+    const controller = new AbortController();
+    abortController = controller;
     isSending = true;
     currentProgress = null;
     toolHistory = [];
     updateSessionActivity(sessionId);
-
-    const controller = new AbortController();
-    abortController = controller;
 
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
@@ -1139,29 +1138,23 @@
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
-        {#if isSending}
-          <button
-            class="send-btn"
-            onclick={handleStop}
-            aria-label="Stop generating"
-          >
+        <button
+          class="send-btn"
+          onclick={isSending ? handleStop : handleSend}
+          disabled={!isSending && (!inputText.trim() || limitReached)}
+          aria-label={isSending ? "Stop generating" : "Send message"}
+        >
+          {#if isSending}
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
               <rect x="4" y="4" width="16" height="16" rx="2"/>
             </svg>
-          </button>
-        {:else}
-          <button
-            class="send-btn"
-            onclick={handleSend}
-            disabled={!inputText.trim() || limitReached}
-            aria-label="Send message"
-          >
+          {:else}
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
             </svg>
-          </button>
-        {/if}
+          {/if}
+        </button>
       </footer>
       {/if}
 
