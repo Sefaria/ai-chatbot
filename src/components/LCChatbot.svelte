@@ -1134,7 +1134,7 @@
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
-    --lc-error: #ef4444;
+    --lc-error: #C03522;
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-text: #999;
@@ -1427,7 +1427,8 @@
 
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
-    background: #fef2f2;
+    background: #F9EBE9;
+    color: var(--lc-error);
   }
 
   .message.limit-message .message-content {
@@ -1921,6 +1922,7 @@ inset: 8px;
   }
 
   .message-content :global(.response-list) {
+    padding-inline-start: 20px;
     line-height: 18px;
   }
 
