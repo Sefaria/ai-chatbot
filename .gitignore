@@ -12,6 +12,7 @@ dist/
 build/
 *.tsbuildinfo
 .vite/
+evals/scorers/built/
 
 # Environment variables
 .env
@@ -57,6 +58,9 @@ server/staticfiles/
 server/media/
 server/*.log
 server/**/migrations/*.pyc
+
+# Claude Code
+.claude/.mcp.json
 
 # IDE and editors
 .vscode/

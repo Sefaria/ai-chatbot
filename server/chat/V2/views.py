@@ -60,9 +60,8 @@ logger = logging.getLogger("chat")
 
 def build_session_info(session) -> dict:
     """Build session info dict for API response."""
-    turn_count = session.turn_count or 0
     return {
-        "turnCount": turn_count,
+        "turnCount": session.turn_count or 0,
     }
 
 
