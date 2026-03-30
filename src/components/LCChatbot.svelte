@@ -1288,7 +1288,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    background: #FAFAFA;
+    background: var(--lc-bg-secondary);
     border-bottom: 1px solid var(--lc-border);
   }
 
