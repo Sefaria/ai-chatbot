@@ -780,11 +780,9 @@
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button class="lc-chatbot-trigger" onclick={openPanel} aria-label="Open chat">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-      </svg>
-      <span class="trigger-label">Library Assistant</span>
+    <button aria-label="Open Library Assistant" class="lc-chatbot-trigger" onclick={openPanel}>
+      <img src="{staticIconsBaseUrl}/logo.svg"/>
+      <span class="trigger-label">LIBRARY ASSISTANT</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -816,14 +814,6 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          {#if isModerator}
-            <HeaderButton className="settings-btn" onClick={openSettings} title="Open settings">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-            </HeaderButton>
-          {/if}
           <h2>Library Assistant {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
@@ -847,6 +837,15 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
+                {#if isModerator}
+                  <button class="menu-item" aria-label="Open settings" onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Settings
+                  </button>
+                {/if}
                 <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
@@ -1124,11 +1123,12 @@
     --lc-primary: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
-    --lc-bg-secondary: #f8fafc;
+    --lc-body-bg: #F9FAFB;
+    --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
     --lc-text-secondary: #64748b;
-    --lc-text-muted: #94a3b8;
+    --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
     --lc-user-bg: #18345D;
     --lc-user-text: #ffffff;
@@ -1201,7 +1201,7 @@
   .lc-chatbot-trigger {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     padding: 12px 20px;
     background: var(--lc-primary);
     color: white;
@@ -1215,24 +1215,43 @@
     transition: all 0.2s ease;
   }
 
-  .lc-chatbot-trigger:hover {
-    background: var(--lc-primary-hover);
-    transform: scale(1.02);
+  .lc-chatbot-trigger:hover,
+  .lc-chatbot-trigger:focus,
+  .lc-chatbot-trigger:active {
+    gap: 8px;
   }
 
+
   .lc-chatbot-trigger:active {
-    transform: scale(0.98);
+    background: #0B1A2D;
   }
 
   .trigger-label {
-    font-weight: 600;
+    font-weight: 400;
+    color: var(--lc-user-text);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    line-height: 18px; 
+    letter-spacing: 0.24px;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    white-space: nowrap;
+    transition: max-width 0.2s ease, opacity 0.2s ease;
+  }
+
+  .lc-chatbot-trigger:hover .trigger-label,
+  .lc-chatbot-trigger:focus .trigger-label,
+  .lc-chatbot-trigger:active .trigger-label {
+    max-width: 12em;
+    opacity: 1;
   }
 
   /* Chat Panel */
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;
-    background: var(--lc-bg);
+    background: var(--lc-body-bg);
     border-radius: var(--lc-radius);
     box-shadow: var(--lc-shadow);
     overflow: hidden;
@@ -1299,6 +1318,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-inline-start: 15px;
   }
 
   .menu-container {
@@ -1358,7 +1378,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    background: var(--lc-bg-secondary);
   }
 
   /* Date Markers */
@@ -1405,6 +1424,10 @@
     align-self: flex-start;
   }
 
+  .empty-state .message.assistant .message-content,
+  .empty-state .message.assistant .message-content :global(a) {
+    color: #575757;
+  }
   .empty-state .message.assistant .message-content :global(ul) {
     padding-inline-start: 20px;
   }
@@ -1419,6 +1442,7 @@
   .message.user .message-content {
     padding: 12px 16px;
     border-radius: var(--lc-radius);
+    font-size: var(--lc-font-size);
     word-wrap: break-word;
     background: var(--lc-user-bg);
     color: var(--lc-user-text);
@@ -1559,8 +1583,8 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    padding: 12px 16px;
-    background: var(--lc-bg);
+    padding: 16px 16px 16px 18px;
+    background: transparent;
     border-top: 1px solid var(--lc-border);
   }
 
@@ -1627,7 +1651,7 @@
     padding: 16px 20px 20px;
     overflow: auto;
     flex: 1;
-    background: var(--lc-bg);
+    background: transparent;
   }
 
   .settings-header {
@@ -1917,11 +1941,11 @@ inset: 8px;
 
   .message-content :global(.response-section) {
     font-weight: 600;
-    line-height: 18px;
+    line-height: 20px;
   }
 
   .message-content :global(.response-list) {
-    line-height: 18px;
+    line-height: 20px;
   }
 
   .message-content :global(.response-link) {
