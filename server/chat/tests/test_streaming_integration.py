@@ -493,6 +493,101 @@ class TestStreamingEndpointErrorHandling:
             mock_capture.assert_called_once()
         assert "event: error" in content
 
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.capture_exception")
+    @patch("chat.V2.views.get_summary_service")
+    @patch("chat.V2.views.get_agent_service")
+    def test_summary_update_failure_still_returns_message_event(
+        self,
+        mock_get_agent,
+        mock_get_summary_service,
+        mock_capture,
+        client,
+        secret,
+    ):
+        """Summary update failures should not abort the final SSE message."""
+        mock_agent = MagicMock()
+        mock_agent.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Recovered after summary failure",
+                tool_calls=[],
+                latency_ms=100,
+                trace_id="trace_summary_failure",
+            )
+        )
+        mock_get_agent.return_value = mock_agent
+
+        mock_summary_service = MagicMock()
+        mock_summary_service.update_summary.side_effect = Exception("summary db error")
+        mock_get_summary_service.return_value = mock_summary_service
+
+        request_data = {
+            "userId": create_test_token("user_summary_fail", secret),
+            "sessionId": "sess_summary_fail",
+            "messageId": "msg_summary_fail",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Still deliver the answer",
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+        assert response.status_code == 200
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        assert "event: message" in content
+        assert "event: error" not in content
+        assert "Recovered after summary failure" in content
+        mock_capture.assert_called_once()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.capture_exception")
+    @patch("chat.V2.views.get_turn_logging_service")
+    @patch("chat.V2.views.get_agent_service")
+    def test_finalize_success_failure_still_returns_message_event(
+        self,
+        mock_get_agent,
+        mock_get_turn_logging_service,
+        mock_capture,
+        client,
+        secret,
+    ):
+        """Persistence failures after agent success should still deliver a message."""
+        mock_agent = MagicMock()
+        mock_agent.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Recovered after persistence failure",
+                tool_calls=[],
+                latency_ms=100,
+                trace_id="trace_finalize_failure",
+            )
+        )
+        mock_get_agent.return_value = mock_agent
+
+        mock_logging_service = MagicMock()
+        mock_logging_service.build_stats.return_value = {
+            "llmCalls": None,
+            "toolCalls": 0,
+            "latencyMs": 100,
+        }
+        mock_logging_service.finalize_success.side_effect = Exception("finalize failed")
+        mock_get_turn_logging_service.return_value = mock_logging_service
+
+        request_data = {
+            "userId": create_test_token("user_finalize_fail", secret),
+            "sessionId": "sess_finalize_fail",
+            "messageId": "msg_finalize_fail",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Still deliver the answer",
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+        assert response.status_code == 200
+
+        content = b"".join(response.streaming_content).decode("utf-8")
+        assert "event: message" in content
+        assert "event: error" not in content
+        assert "Recovered after persistence failure" in content
+        mock_capture.assert_called_once()
+
     def test_missing_required_fields_returns_400(self, client):
         """Missing required fields should return 400."""
         response = client.post(
