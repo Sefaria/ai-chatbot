@@ -146,7 +146,8 @@ export async function sendMessageStream(
   callbacks = {},
   promptSlugs = null,
   origin = '',
-  isStaff = false
+  isStaff = false,
+  signal = null
 ) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
@@ -183,7 +184,8 @@ export async function sendMessageStream(
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal
   });
 
   if (!response.ok) {

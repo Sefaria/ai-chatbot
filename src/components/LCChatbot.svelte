@@ -20,7 +20,7 @@
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = DEFAULT_MAX_INPUT_CHARS,
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
-    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
+    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}',
     origin: originProp = '',
     'is-moderator': isModerator = false,
     'interface-lang': interfaceLang = 'english'
@@ -39,7 +39,7 @@
   let panelHeight = $state(456);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
-  
+
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
@@ -74,6 +74,11 @@
   // Menu state
   let showMenu = $state(false);
   let menuContainer = $state(null);
+  let copyConfirmed = $state(false);
+
+  // Abort controller for stop button
+
+
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -392,7 +397,7 @@
 
   async function loadMoreHistory() {
     if (isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
-    
+
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
 
@@ -485,8 +490,8 @@
               startTime: Date.now()
             }];
           } else if (progress.type === 'tool_end') {
-            toolHistory = toolHistory.map((t, i) => 
-              i === toolHistory.length - 1 
+            toolHistory = toolHistory.map((t, i) =>
+              i === toolHistory.length - 1
                 ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
                 : t
             );
@@ -495,11 +500,11 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator);
+      }, promptSlugs, originProp, isModerator, controller.signal);
 
       // Update user message status
-      messages = messages.map(m => 
-        m.messageId === userMessage.messageId 
+      messages = messages.map(m =>
+        m.messageId === userMessage.messageId
           ? { ...m, status: 'sent' }
           : m
       );
@@ -543,21 +548,28 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
-
-      // Mark message as failed for other errors
-      messages = messages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
-      saveMessagesToStorage();
-
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
+      if (e.name === 'AbortError') {
+        // User stopped — keep the user message as sent, just don't add a response
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: 'sent' }
+            : m
+        );
+        saveMessagesToStorage();
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+        saveMessagesToStorage();
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
     } finally {
       isSending = false;
       currentProgress = null;
@@ -642,7 +654,7 @@
 
     // In docked mode, only allow horizontal resize (e/w)
     const allowHorizontal = edge.includes('w') || edge.includes('e');
-    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked'; 
+    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked';
 
     if (!allowHorizontal && !allowVertical) return;
 
@@ -763,6 +775,55 @@
     handleNewChat();
   }
 
+  async function copyMessages() {
+    const validMessages = messages.filter(m => m.status !== STATUS_FAILED);
+    if (validMessages.length === 0) return;
+
+    const htmlParts = [];
+    const plainParts = [];
+
+    for (const msg of validMessages) {
+      const label = msg.role === 'user' ? 'User' : 'Library Assistant';
+      if (msg.role === 'user') {
+        const escaped = msg.content
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br>');
+        htmlParts.push(`<div><p><strong>${label}:</strong></p><p>${escaped}</p></div>`);
+      } else {
+        htmlParts.push(`<div><p><strong>${label}:</strong></p>${renderMarkdown(msg.content)}</div>`);
+      }
+      if (msg.role === 'user') {
+        plainParts.push(`${label}:\n${msg.content}`);
+      } else {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = renderMarkdown(msg.content);
+        plainParts.push(`${label}:\n${tmp.textContent}`);
+      }
+    }
+
+    const html = `<div style="font-family: sans-serif; font-size: 14px;">${htmlParts.join('<br>')}</div>`;
+    const plain = plainParts.join('\n\n');
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' })
+        })
+      ]);
+      copyConfirmed = true;
+      setTimeout(() => {
+        closeMenu();
+        copyConfirmed = false;
+      }, 800);
+    } catch (e) {
+      console.warn('[lc-chatbot] Copy failed:', e);
+      closeMenu();
+    }
+  }
+
   function getEmptyStateMessage() {
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
@@ -786,7 +847,7 @@
     </button>
   {:else}
     <!-- Chat Panel -->
-    <div 
+    <div
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       style="width: {panelWidth}px; height: {panelHeight}px;"
@@ -849,6 +910,20 @@
                 <button class="menu-item" aria-label="Restart convo" onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   Restart conversation
+                </button>
+                <button class="menu-item" aria-label="Copy messages" onclick={copyMessages} disabled={messages.length === 0} role="menuitem">
+                  {#if copyConfirmed}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Copied!
+                  {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy messages
+                  {/if}
                 </button>
                 <a class="menu-item" aria-label="Give feedback" href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
@@ -1033,7 +1108,7 @@
           <div class="message assistant limit-message">
             <div class="message-content">
               <p>
-                The conversation has reached its limit. 
+                The conversation has reached its limit.
               </p>
               <p>
                  <button aria-label="Max turns restart" type="button" class="link-like" onclick={handleRestartConvo}>Start a new chat to keep exploring.</button>
