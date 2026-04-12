@@ -43,15 +43,13 @@ class TurnLoggingService:
             **actor.to_db_fields(),
         )
 
-    def finalize_success(
+    def persist_assistant_response(
         self,
         *,
-        session: ChatSession,
         user_message: ChatMessage,
         agent_response: AgentResponse,
         latency_ms: int,
         model_name: str,
-        summary_text: str,
     ) -> TurnLoggingResult:
         response_message = ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
@@ -77,12 +75,31 @@ class TurnLoggingService:
         user_message.latency_ms = latency_ms
         user_message.save(update_fields=["response_message", "latency_ms"])
 
+        stats = self.build_stats(agent_response=agent_response, latency_ms=latency_ms)
+        return TurnLoggingResult(response_message=response_message, stats=stats)
+
+    def update_session_success(
+        self,
+        *,
+        session: ChatSession,
+        user_message: ChatMessage,
+        agent_response: AgentResponse,
+        summary_text: str | None,
+    ) -> None:
+        update_fields = [
+            "message_count",
+            "turn_count",
+            "last_activity",
+            "total_tool_calls",
+            "total_input_tokens",
+            "total_output_tokens",
+            "total_cost_usd",
+        ]
+
         session.message_count = ChatMessage.objects.filter(
             session_id=user_message.session_id
         ).count()
         session.turn_count = (session.turn_count or 0) + 1
-        session.conversation_summary = summary_text
-        session.summary_updated_at = timezone.now()
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
         if agent_response.input_tokens is not None:
             total_prompt = (
@@ -101,22 +118,37 @@ class TurnLoggingService:
             session.total_cost_usd = (session.total_cost_usd or Decimal(0)) + Decimal(
                 str(agent_response.total_cost_usd)
             )
-        session.save(
-            update_fields=[
-                "message_count",
-                "turn_count",
-                "last_activity",
-                "conversation_summary",
-                "summary_updated_at",
-                "total_tool_calls",
-                "total_input_tokens",
-                "total_output_tokens",
-                "total_cost_usd",
-            ]
+        if summary_text is not None:
+            session.conversation_summary = summary_text
+            session.summary_updated_at = timezone.now()
+            update_fields.extend(["conversation_summary", "summary_updated_at"])
+        session.save(update_fields=update_fields)
+
+    def finalize_success(
+        self,
+        *,
+        session: ChatSession,
+        user_message: ChatMessage,
+        agent_response: AgentResponse,
+        latency_ms: int,
+        model_name: str,
+        summary_text: str,
+    ) -> TurnLoggingResult:
+        result = self.persist_assistant_response(
+            user_message=user_message,
+            agent_response=agent_response,
+            latency_ms=latency_ms,
+            model_name=model_name,
         )
 
-        stats = self.build_stats(agent_response=agent_response, latency_ms=latency_ms)
-        return TurnLoggingResult(response_message=response_message, stats=stats)
+        self.update_session_success(
+            session=session,
+            user_message=user_message,
+            agent_response=agent_response,
+            summary_text=summary_text,
+        )
+
+        return result
 
     @staticmethod
     def build_stats(*, agent_response: AgentResponse, latency_ms: int) -> dict[str, Any]:
@@ -141,6 +173,29 @@ class TurnLoggingService:
             stats["cacheCreationTokens"] = agent_response.cache_creation_tokens
         if agent_response.total_cost_usd is not None:
             stats["totalCostUsd"] = agent_response.total_cost_usd
+        return stats
+
+    @staticmethod
+    def build_stats_from_message(message: ChatMessage) -> dict[str, Any]:
+        stats: dict[str, Any] = {
+            "llmCalls": message.llm_calls,
+            "toolCalls": message.tool_calls_count or len(message.tool_calls_data or []),
+            "latencyMs": message.latency_ms,
+        }
+        if message.input_tokens is not None:
+            stats["inputTokens"] = (
+                message.input_tokens
+                + (message.cache_read_tokens or 0)
+                + (message.cache_creation_tokens or 0)
+            )
+        if message.output_tokens is not None:
+            stats["outputTokens"] = message.output_tokens
+        if message.cache_read_tokens is not None:
+            stats["cacheReadTokens"] = message.cache_read_tokens
+        if message.cache_creation_tokens is not None:
+            stats["cacheCreationTokens"] = message.cache_creation_tokens
+        if message.total_cost_usd is not None:
+            stats["totalCostUsd"] = float(message.total_cost_usd)
         return stats
 
 
