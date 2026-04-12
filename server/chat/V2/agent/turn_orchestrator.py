@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -10,7 +9,7 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..pricing import compute_cost
+from ..pricing import init_cost_accumulator
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
@@ -23,8 +22,6 @@ from .sdk_runner import ClaudeSDKRunner
 from .tool_runtime import ToolRuntime
 from .tool_schemas import get_all_tools
 from .trace_logger import BraintrustTraceLogger
-
-logger = logging.getLogger("chat.agent")
 
 
 class TurnOrchestrator:
@@ -71,6 +68,7 @@ class TurnOrchestrator:
         # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
+        cost_accumulator = init_cost_accumulator()
 
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -84,40 +82,19 @@ class TurnOrchestrator:
             model=self.model,
         )
 
-        auxiliary_cost = 0.0
-
-        guardrail_gate_result = await self.guardrail_gate.run_guardrail(
+        guardrail_response = await self.guardrail_gate.run_guardrail(
             bt_span=bt_span,
             user_message=last_user_message,
             context=context,
             start_time=start_time,
         )
-        guardrail_cost = compute_cost(
-            guardrail_gate_result.model,
-            guardrail_gate_result.input_tokens,
-            guardrail_gate_result.output_tokens,
-        )
-        if guardrail_cost:
-            auxiliary_cost += guardrail_cost
-        elif guardrail_gate_result.input_tokens > 0:
-            logger.warning(f"No pricing for guardrail model: {guardrail_gate_result.model}")
+        if guardrail_response:
+            guardrail_response.total_cost_usd = cost_accumulator.total or None
+            return guardrail_response
 
-        if guardrail_gate_result.blocked_response:
-            guardrail_gate_result.blocked_response.total_cost_usd = auxiliary_cost or None
-            return guardrail_gate_result.blocked_response
-
-        router_prompt_id, route, messages, router_usage = await self.router.run_router(
+        router_prompt_id, route, messages = await self.router.run_router(
             bt_span, last_user_message, messages
         )
-        router_cost = compute_cost(
-            router_usage["model"],
-            router_usage["input_tokens"],
-            router_usage["output_tokens"],
-        )
-        if router_cost:
-            auxiliary_cost += router_cost
-        elif router_usage["input_tokens"] > 0:
-            logger.warning(f"No pricing for router model: {router_usage['model']}")
 
         if router_prompt_id:
             core_prompt_id = router_prompt_id
@@ -206,9 +183,9 @@ class TurnOrchestrator:
 
         total_cost_usd = sdk_result.total_cost_usd
         if total_cost_usd is not None:
-            total_cost_usd += auxiliary_cost
-        elif auxiliary_cost > 0:
-            total_cost_usd = auxiliary_cost
+            total_cost_usd += cost_accumulator.total
+        elif cost_accumulator.total > 0:
+            total_cost_usd = cost_accumulator.total
 
         return build_agent_response(
             content=output,

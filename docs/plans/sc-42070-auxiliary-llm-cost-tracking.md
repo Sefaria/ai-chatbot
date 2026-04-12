@@ -39,29 +39,23 @@ Each auxiliary service already gets an Anthropic API response with `usage.input_
 
 Branch `fix/add-gaurdrail-llm-call-log` (PR #42) covers guardrail only. The codebase has been heavily refactored since — none of its changes apply cleanly. Reusable ideas: the `_sum_costs` helper pattern and `parse_guardrail_response` extraction.
 
-## Implementation plan
+## Implementation
 
-### Step 1: Add a pricing utility ✅
+### Pricing data ✅
 
-Created `server/chat/V2/pricing.py` with `MODEL_PRICING` dict (Haiku + Sonnet) and `compute_cost(model, input_tokens, output_tokens)` helper that returns USD or None for unknown models.
+`server/chat/V2/model_pricing.json` — auto-generated from LiteLLM's open-source pricing data (Anthropic + OpenAI models, ~150 entries). Updated weekly via `.github/workflows/update-pricing.yaml` which auto-PRs on changes.
 
-### Step 2: Return token usage from each auxiliary service ✅
+`server/scripts/update_pricing.py` — standalone script to fetch and filter the LiteLLM JSON. Used by the GitHub Action and can be run manually.
 
-- `GuardrailResult` — added `input_tokens`, `output_tokens`, `model` fields. Set from `response.usage` in `check_message()`.
-- `RouterResult` — added the same fields. `_classify_message()` now returns a tuple with usage. Deterministic classification returns zero usage.
-- `ConversationSummary` — added non-persisted `llm_input_tokens`, `llm_output_tokens`, `llm_model` attributes set after LLM call. Fallback paths set zeros.
+### Cost accumulation ✅
 
-### Step 3: Compute auxiliary costs in the orchestrator ✅
+`CostAccumulator` in `server/chat/V2/pricing.py` — collects auxiliary LLM costs during a turn via a `contextvars.ContextVar`. Each service calls `get_cost_accumulator().add(model, input_tokens, output_tokens)` after its API call. The orchestrator initializes the accumulator at turn start and reads `accumulator.total` at the end to combine with the SDK cost.
 
-- `GuardrailGateResult` dataclass wraps `blocked_response` + usage fields, replacing the old `AgentResponse | None` return.
-- `Router.run_router()` now returns a 4-tuple including a usage dict.
-- `turn_orchestrator.py` accumulates `auxiliary_cost` from guardrail + router, combines with `sdk_result.total_cost_usd`.
-- Summary cost computed in `views.py` and added to `agent_response.total_cost_usd` before persistence.
+- **Guardrail + Router**: Use the accumulator via ContextVar (visible across `asyncio.to_thread` boundaries since the mutable object reference is shared).
+- **Summary**: Runs in the main thread outside the ContextVar scope, so uses explicit `compute_cost()` in `views.py`.
 
-### Step 4: Update logging and persistence ✅
+No changes to service return types (`GuardrailResult`, `RouterResult`) — they stay clean. No DB schema changes — `total_cost_usd` just becomes more accurate.
 
-No schema changes needed — `total_cost_usd` just becomes a more accurate number. The existing path (`AgentResponse.total_cost_usd` → `TurnLoggingService` → DB) handles it transparently.
+### Step 5: Optional observability improvement — deferred
 
-### Step 5: Optional observability improvement
-
-Wrap the shared Anthropic client in `get_anthropic_client()` with `braintrust.wrap_anthropic()` so auxiliary LLM calls automatically get Braintrust spans with token metrics. This is independent of cost tracking but improves visibility. **Deferred — not required for cost accuracy.**
+Wrap the shared Anthropic client with `braintrust.wrap_anthropic()` for auxiliary call visibility in Braintrust traces. Independent of cost tracking.

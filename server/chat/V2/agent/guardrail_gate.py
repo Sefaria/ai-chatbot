@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
 from typing import Any
 
 from ..guardrail import get_guardrail_service
@@ -16,16 +15,6 @@ from ..prompts.prompt_fragments import (
     build_prompt,
 )
 from .contracts import AgentResponse, MessageContext
-
-
-@dataclass
-class GuardrailGateResult:
-    """Result of the guardrail gate check."""
-
-    blocked_response: AgentResponse | None
-    input_tokens: int = 0
-    output_tokens: int = 0
-    model: str = ""
 
 
 class DefaultGuardrailGate:
@@ -41,7 +30,7 @@ class DefaultGuardrailGate:
         user_message: str,
         context: MessageContext,
         start_time: float,
-    ) -> GuardrailGateResult:
+    ) -> AgentResponse | None:
         enriched_message, _ = build_prompt(
             user_message,
             summary_text=context.summary_text,
@@ -59,14 +48,8 @@ class DefaultGuardrailGate:
         )
         guardrail_span.end()
 
-        usage = {
-            "input_tokens": guardrail_result.input_tokens,
-            "output_tokens": guardrail_result.output_tokens,
-            "model": guardrail_result.model,
-        }
-
         if guardrail_result.allowed:
-            return GuardrailGateResult(blocked_response=None, **usage)
+            return None
 
         self.logger.info(f"Guardrail blocked message: {guardrail_result.reason}")
         internal_reasons = {GUARDRAIL_UNAVAILABLE_REASON, GUARDRAIL_MALFORMED_REASON}
@@ -81,12 +64,9 @@ class DefaultGuardrailGate:
             output={"content": rejection, "guardrail_blocked": True},
             metrics={"latency_ms": latency_ms},
         )
-        return GuardrailGateResult(
-            blocked_response=AgentResponse(
-                content=rejection,
-                tool_calls=[],
-                latency_ms=latency_ms,
-                trace_id=bt_span.id,
-            ),
-            **usage,
+        return AgentResponse(
+            content=rejection,
+            tool_calls=[],
+            latency_ms=latency_ms,
+            trace_id=bt_span.id,
         )

@@ -16,12 +16,11 @@ import logging
 import os
 from typing import Any
 
-import anthropic
 from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
-from ..utils import make_singleton, strip_markdown_fences
+from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
 
@@ -74,7 +73,7 @@ class SummaryService:
         self.use_llm = use_llm and bool(self.api_key)
 
         if self.use_llm:
-            self.client = anthropic.Anthropic(api_key=self.api_key)
+            self.client = get_anthropic_client(self.api_key)
         else:
             self.client = None
 

@@ -13,13 +13,12 @@ class Router:
 
     async def run_router(
         self, bt_span, user_message: str, messages: list[ConversationMessage]
-    ) -> tuple[str | None, str, list[ConversationMessage], dict]:
+    ) -> tuple[str | None, str, list[ConversationMessage]]:
         """Run the router to classify the message and select the appropriate prompt.
 
-        Returns (core_prompt_id_override, route, possibly_updated_messages, usage_dict).
-        Fails open: errors default to (None, "discovery", original_messages, zero_usage).
+        Returns (core_prompt_id_override, route, possibly_updated_messages).
+        Fails open: errors default to (None, "discovery", original_messages).
         """
-        zero_usage = {"input_tokens": 0, "output_tokens": 0, "model": ""}
         router_span = bt_span.start_span(name="router", type="task")
         try:
             router_result = await asyncio.to_thread(get_router_service().classify, user_message)
@@ -43,18 +42,13 @@ class Router:
                         break
                 messages = updated
 
-            usage = {
-                "input_tokens": router_result.input_tokens,
-                "output_tokens": router_result.output_tokens,
-                "model": router_result.model,
-            }
-            return router_result.core_prompt_id, router_result.route.value, messages, usage
+            return router_result.core_prompt_id, router_result.route.value, messages
         except Exception as exc:
             self.logger.error(f"Router failed, defaulting to Discovery: {exc}")
             router_span.log(
                 input={"message": user_message},
                 output={"route": "discovery", "error": str(exc)},
             )
-            return None, "discovery", messages, zero_usage
+            return None, "discovery", messages
         finally:
             router_span.end()
