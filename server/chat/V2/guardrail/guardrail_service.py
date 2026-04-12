@@ -13,7 +13,7 @@ from django.conf import settings
 
 from ..prompts import get_prompt_service
 from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
-from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
+from ..utils import get_anthropic_client, make_singleton
 
 logger = logging.getLogger("chat.guardrail")
 
@@ -55,12 +55,14 @@ class GuardrailService:
         try:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
             # temperature=0.0 for deterministic decisions.
+            # GUARDRAIL_OUTPUT_CONFIG (json_schema) guarantees valid JSON output.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
                 temperature=0.0,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
+                output_config=settings.GUARDRAIL_OUTPUT_CONFIG,
             )
             return self._parse_response(response)
         except Exception as exc:
@@ -76,18 +78,16 @@ class GuardrailService:
         """Parse LLM response JSON. Fail closed on malformed output.
 
         Expected format: {decision: "ALLOW"/"BLOCK", reason: "..."}
-        Response may be wrapped in markdown code fences (```json ... ```).
+        With output_config json_schema, the response is guaranteed valid JSON —
+        no code fences or extra commentary to strip.
         Only an explicit "ALLOW" passes — any other decision value is a block.
-        This is intentional: typos, unexpected values, or new decision types
-        should all fail closed rather than accidentally letting messages through.
         """
         try:
-            text = strip_markdown_fences(response.content[0].text)
-            data = json.loads(text)
+            data = json.loads(response.content[0].text)
 
             decision = data.get("decision", "")
             if not decision:
-                logger.warning(f"Guardrail: missing 'decision' field: {text[:200]}")
+                logger.warning(f"Guardrail: missing 'decision' field: {data}")
                 return GuardrailResult(allowed=False, reason=GUARDRAIL_MALFORMED_REASON)
 
             # Only explicit "ALLOW" passes — everything else is a block.

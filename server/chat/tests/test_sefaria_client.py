@@ -158,6 +158,64 @@ class TestGetTextReferenceEncoding:
             assert "בראשית" not in url  # Should be encoded
 
 
+class TestGetAuthorIndexes:
+    """Test get_author_indexes endpoint and query parameters."""
+
+    @pytest.mark.asyncio
+    async def test_author_indexes_without_optional_flags(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(
+            return_value={"author": {"slug": "rambam"}, "indexes": []}
+        )
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_indexes("rambam")
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+
+            assert "api/authors/rambam/indexes" in url
+            assert "include_aggregations" not in url
+            assert "include_descriptions" not in url
+
+    @pytest.mark.asyncio
+    async def test_author_indexes_with_optional_flags(self, client, mock_http_client):
+        mock_http_client.get.return_value.json = AsyncMock(
+            return_value={"author": {"slug": "rambam"}, "indexes": []}
+        )
+
+        with patch.object(client, "_get_client", return_value=mock_http_client):
+            await client.get_author_indexes(
+                "rambam", include_aggregations=True, include_descriptions=True
+            )
+
+            call_args = mock_http_client.get.call_args
+            url = call_args[0][0]
+
+            assert "api/authors/rambam/indexes" in url
+            assert "include_aggregations=1" in url
+            assert "include_descriptions=1" in url
+
+    @pytest.mark.asyncio
+    async def test_author_indexes_returns_helpful_message_on_404(self, client):
+        """When author slug is missing, should return a recoverable error payload."""
+        import httpx
+
+        mock_request = httpx.Request("GET", "https://www.sefaria.org/api/authors/missing/indexes")
+        mock_response = httpx.Response(404, request=mock_request)
+
+        with patch.object(
+            client,
+            "_get_json",
+            side_effect=httpx.HTTPStatusError(
+                "Not Found", request=mock_request, response=mock_response
+            ),
+        ):
+            result = await client.get_author_indexes("missing")
+
+        assert "not found" in result.get("error", "").lower()
+        assert "clarify_name_argument" in result.get("suggestion", "")
+
+
 class TestOptimizeTextResponse:
     """Test _optimize_text_response method."""
 

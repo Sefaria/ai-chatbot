@@ -97,6 +97,13 @@ class SefariaToolExecutor:
                 input_data.get("with_refs", False),
             )
 
+        elif tool_name == "get_author_indexes":
+            return await self.client.get_author_indexes(
+                input_data["author_slug"],
+                input_data.get("include_aggregations", False),
+                input_data.get("include_descriptions", False),
+            )
+
         elif tool_name == "clarify_name_argument":
             return await self.client.clarify_name_argument(
                 input_data["name"], input_data.get("limit"), input_data.get("type_filter")
@@ -199,6 +206,9 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         ),
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
+        "get_author_indexes": lambda: (
+            f"Loading works for author {q(tool_input.get('author_slug'))}"
+        ),
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
         "clarify_name_argument": lambda: f"Clarifying name {q(tool_input.get('name'))}",
         "clarify_search_path_filter": lambda: (

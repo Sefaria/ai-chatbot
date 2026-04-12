@@ -12,6 +12,7 @@ dist/
 build/
 *.tsbuildinfo
 .vite/
+evals/scorers/built/
 
 # Environment variables
 .env
