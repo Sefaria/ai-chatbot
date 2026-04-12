@@ -5,12 +5,16 @@ from unittest.mock import MagicMock
 from chat.V2.router.router_service import RouterService, RouteType
 
 
-def _make_anthropic_response(text: str):
+def _make_anthropic_response(text: str, input_tokens: int = 10, output_tokens: int = 5):
     """Build a mock Anthropic Messages response."""
     block = MagicMock()
     block.text = text
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
     response = MagicMock()
     response.content = [block]
+    response.usage = usage
     return response
 
 
@@ -115,6 +119,34 @@ class TestRouterService:
         )
         result = service.classify("Hello")
         assert result.route == RouteType.DISCOVERY
+
+    def test_usage_tracking(self):
+        """classify captures token usage from the API response."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '{"route": "discovery", "reason": "On-topic"}',
+            input_tokens=30,
+            output_tokens=12,
+        )
+        result = service.classify("What is Shabbat?")
+        assert result.input_tokens == 30
+        assert result.output_tokens == 12
+        assert result.model == "claude-haiku-4-5-20251001"
+
+    def test_deterministic_classify_zero_usage(self):
+        """Deterministic classification (no LLM call) reports zero tokens."""
+        service = self._make_service()
+        result = service.classify("Translate Genesis 1:1")
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+
+    def test_error_returns_zero_usage(self):
+        """On failure, classify returns zero usage (fail open)."""
+        service = self._make_service()
+        service.client.messages.create.side_effect = Exception("API error")
+        result = service.classify("Hello")
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
 
     def test_case_insensitive_route(self):
         service = self._make_service()

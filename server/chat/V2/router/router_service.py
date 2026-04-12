@@ -35,6 +35,9 @@ class RouterResult:
     route: RouteType
     core_prompt_id: str | None = None
     rewritten_message: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model: str = ""
 
 
 class RouterService:
@@ -56,15 +59,22 @@ class RouterService:
         On any failure, returns Discovery route (fail open).
         """
         try:
-            route = self._classify_message(user_message)
+            route, input_tokens, output_tokens = self._classify_message(user_message)
         except Exception as exc:
             logger.error(f"Router: classification failed: {exc}")
             return RouterResult(route=RouteType.DISCOVERY)
+
+        usage_fields = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "model": settings.ROUTER_MODEL,
+        }
 
         if route == RouteType.TRANSLATION:
             return RouterResult(
                 route=RouteType.TRANSLATION,
                 core_prompt_id=settings.TRANSLATION_PROMPT_SLUG,
+                **usage_fields,
             )
 
         if route == RouteType.OTHER:
@@ -72,10 +82,11 @@ class RouterService:
             return RouterResult(
                 route=RouteType.DISCOVERY,
                 # rewritten_message=rewritten,
+                **usage_fields,
             )
 
         # Discovery — use default core prompt (None means caller keeps its default)
-        return RouterResult(route=RouteType.DISCOVERY)
+        return RouterResult(route=RouteType.DISCOVERY, **usage_fields)
 
     @staticmethod
     def _deterministic_classify(user_message: str) -> RouteType | None:
@@ -92,10 +103,13 @@ class RouterService:
             return RouteType.TRANSLATION
         return None
 
-    def _classify_message(self, user_message: str) -> RouteType:
-        """Call LLM to classify the message. Raises on failure."""
+    def _classify_message(self, user_message: str) -> tuple[RouteType, int, int]:
+        """Call LLM to classify the message. Raises on failure.
+
+        Returns (route, input_tokens, output_tokens).
+        """
         if deterministic_route := self._deterministic_classify(user_message):
-            return deterministic_route
+            return deterministic_route, 0, 0
         system_prompt = self._load_prompt(settings.ROUTER_PROMPT_SLUG)
 
         response = self.client.messages.create(
@@ -106,7 +120,8 @@ class RouterService:
             messages=[{"role": "user", "content": user_message}],
         )
 
-        return self._parse_classification(response)
+        route = self._parse_classification(response)
+        return route, response.usage.input_tokens, response.usage.output_tokens
 
     def _rewrite_message(self, user_message: str) -> str | None:
         """Rewrite a message into a Discovery-style question. Returns None on failure."""

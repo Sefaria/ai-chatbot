@@ -24,6 +24,9 @@ class GuardrailResult:
 
     allowed: bool
     reason: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model: str = ""
 
 
 class GuardrailService:
@@ -64,7 +67,11 @@ class GuardrailService:
                 messages=[{"role": "user", "content": user_message}],
                 output_config=settings.GUARDRAIL_OUTPUT_CONFIG,
             )
-            return self._parse_response(response)
+            result = self._parse_response(response)
+            result.input_tokens = response.usage.input_tokens
+            result.output_tokens = response.usage.output_tokens
+            result.model = settings.GUARDRAIL_MODEL
+            return result
         except Exception as exc:
             logger.error(f"Guardrail: LLM call failed: {exc}")
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)

@@ -290,6 +290,23 @@ def chat_stream_v2(request):
             new_user_message=data["text"],
             new_assistant_response=agent_response.content,
         )
+
+        # Add summary LLM cost to the agent response total.
+        summary_tokens = getattr(new_summary, "llm_input_tokens", 0)
+        if summary_tokens > 0:
+            from .pricing import compute_cost
+
+            summary_cost = compute_cost(
+                new_summary.llm_model,
+                new_summary.llm_input_tokens,
+                new_summary.llm_output_tokens,
+            )
+            if summary_cost:
+                if agent_response.total_cost_usd is not None:
+                    agent_response.total_cost_usd += summary_cost
+                else:
+                    agent_response.total_cost_usd = summary_cost
+
         logging_service = get_turn_logging_service()
         logging_result = logging_service.finalize_success(
             session=session,

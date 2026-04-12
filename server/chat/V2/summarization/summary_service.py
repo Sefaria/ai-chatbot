@@ -143,17 +143,26 @@ class SummaryService:
 
             # Parse JSON response
             response_text = response.content[0].text
+            usage_info = {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "model": self.model,
+            }
 
             import json
 
             try:
                 data = json.loads(strip_markdown_fences(response_text))
 
-                return self._apply_summary_data(
+                summary = self._apply_summary_data(
                     session=session,
                     current_summary=current_summary,
                     data=data,
                 )
+                summary.llm_input_tokens = usage_info["input_tokens"]
+                summary.llm_output_tokens = usage_info["output_tokens"]
+                summary.llm_model = usage_info["model"]
+                return summary
 
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
@@ -195,6 +204,10 @@ class SummaryService:
             summary.people_mentioned = current_summary.people_mentioned[-5:]
 
         summary.save()
+        # No LLM call — zero usage.
+        summary.llm_input_tokens = 0
+        summary.llm_output_tokens = 0
+        summary.llm_model = ""
         return summary
 
     def _apply_summary_data(

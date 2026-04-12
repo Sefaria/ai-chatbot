@@ -5,12 +5,16 @@ from unittest.mock import MagicMock
 from chat.V2.guardrail.guardrail_service import GuardrailService
 
 
-def _make_anthropic_response(text: str):
+def _make_anthropic_response(text: str, input_tokens: int = 10, output_tokens: int = 5):
     """Build a mock Anthropic Messages response."""
     block = MagicMock()
     block.text = text
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
     response = MagicMock()
     response.content = [block]
+    response.usage = usage
     return response
 
 
@@ -106,6 +110,17 @@ class TestGuardrailService:
         result = service.check_message("How do I hack a website?")
         assert result.allowed is False
         assert result.reason == "Not about Jewish texts"
+
+    def test_usage_tracking(self):
+        """check_message captures token usage from the API response."""
+        service = self._make_service()
+        service.client.messages.create.return_value = _make_anthropic_response(
+            '{"decision": "ALLOW", "reason": ""}', input_tokens=42, output_tokens=7
+        )
+        result = service.check_message("What is Shabbat?")
+        assert result.input_tokens == 42
+        assert result.output_tokens == 7
+        assert result.model == "claude-haiku-4-5-20251001"
 
     def test_code_fences_fail_closed(self):
         """With output_config json_schema, code fences should not occur.
