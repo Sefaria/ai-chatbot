@@ -16,6 +16,7 @@ class SDKOptionsBuilder:
         options_cls: type,
         model: str,
         max_tokens: int,
+        max_turns: int,
         braintrust_api_key: str,
         braintrust_project: str,
         mcp_server_name: str,
@@ -25,6 +26,7 @@ class SDKOptionsBuilder:
         self.options_cls = options_cls
         self.model = model
         self.max_tokens = max_tokens
+        self.max_turns = max_turns
         self.braintrust_api_key = braintrust_api_key
         self.braintrust_project = braintrust_project
         self.braintrust_logging_enabled = braintrust_logging_enabled
@@ -54,6 +56,7 @@ class SDKOptionsBuilder:
             mcp_servers={self.mcp_server_name: mcp_server},
             allowed_tools=allowed_tools,
             max_tokens=self.max_tokens,
+            max_turns=self.max_turns,
             temperature=0,
             continue_conversation=False,
             system_prompt=system_prompt,

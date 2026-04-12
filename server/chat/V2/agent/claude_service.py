@@ -49,6 +49,7 @@ class ClaudeAgentService:
         api_key: str | None = None,
         model: str | None = None,
         max_tokens: int = 8000,
+        max_turns: int = 10,
         prompt_service: PromptService | None = None,
         is_load_test: bool = False,
     ):
@@ -82,6 +83,7 @@ class ClaudeAgentService:
             django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
         )
         self.max_tokens = max_tokens
+        self.max_turns = max_turns
 
         self.sefaria_client = SefariaClient()
         self.tool_executor = SefariaToolExecutor(self.sefaria_client)
@@ -94,6 +96,7 @@ class ClaudeAgentService:
             options_cls=ClaudeAgentOptions,
             model=self.model,
             max_tokens=self.max_tokens,
+            max_turns=self.max_turns,
             braintrust_api_key=self.braintrust_api_key,
             braintrust_project=self.braintrust_project,
             braintrust_logging_enabled=self.braintrust_logging_enabled,

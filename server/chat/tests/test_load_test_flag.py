@@ -168,6 +168,7 @@ class TestSDKOptionsBuilderBraintrustGating:
             options_cls=mock_cls,
             model="claude-test",
             max_tokens=1000,
+            max_turns=10,
             braintrust_api_key="real-bt-key",
             braintrust_project="my-project",
             braintrust_logging_enabled=braintrust_logging_enabled,

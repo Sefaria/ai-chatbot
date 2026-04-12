@@ -50,6 +50,10 @@ Cleanup commits on this branch are a side effect, not the goal.
 
 4. **Removed `inspect` import** — no longer needed after introspection removal.
 
+5. **Wired `max_turns=10`** — the old `max_iterations` param was never connected to anything.
+   Now passed through as `max_turns` to `ClaudeAgentOptions`, which caps the SDK's agentic loop
+   at 10 turns (tool calls + responses). Prevents runaway loops and bounds cost/latency.
+
 ## Still To Investigate (Phase 1 sections 3-4)
 
 - Hooks for guardrails (vs current pre-agent LLM judge pattern)
