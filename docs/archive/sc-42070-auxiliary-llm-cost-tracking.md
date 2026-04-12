@@ -35,10 +35,6 @@ Confirmed by reading the Braintrust SDK source (`wrappers/anthropic.py`, `_anthr
 **Option C: Manual cost aggregation — chosen.**
 Each auxiliary service already gets an Anthropic API response with `usage.input_tokens` and `usage.output_tokens`. Extract those, compute cost via a small pricing dict, and aggregate into `total_cost_usd`. The pricing table concern is minor in practice: only 2-3 cheap models are used for auxiliary calls, price changes are infrequent, and the SDK still handles the expensive main call accurately.
 
-### WIP reference
-
-Branch `fix/add-gaurdrail-llm-call-log` (PR #42) covers guardrail only. The codebase has been heavily refactored since — none of its changes apply cleanly. Reusable ideas: the `_sum_costs` helper pattern and `parse_guardrail_response` extraction.
-
 ## Implementation
 
 ### Pricing data ✅
@@ -56,6 +52,6 @@ Branch `fix/add-gaurdrail-llm-call-log` (PR #42) covers guardrail only. The code
 
 No changes to service return types (`GuardrailResult`, `RouterResult`) — they stay clean. No DB schema changes — `total_cost_usd` just becomes more accurate.
 
-### Step 5: Optional observability improvement — deferred
+### Deferred: Braintrust observability
 
 Wrap the shared Anthropic client with `braintrust.wrap_anthropic()` for auxiliary call visibility in Braintrust traces. Independent of cost tracking.
