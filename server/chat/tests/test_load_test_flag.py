@@ -168,7 +168,6 @@ class TestSDKOptionsBuilderBraintrustGating:
             options_cls=mock_cls,
             model="claude-test",
             max_tokens=1000,
-            temperature=0.5,
             braintrust_api_key="real-bt-key",
             braintrust_project="my-project",
             braintrust_logging_enabled=braintrust_logging_enabled,
@@ -178,9 +177,8 @@ class TestSDKOptionsBuilderBraintrustGating:
 
     def test_braintrust_keys_absent_from_env_when_disabled(self):
         builder = self._make_builder(braintrust_logging_enabled=False)
-        with patch.object(builder, "_supports_option", return_value=True):
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "anthro-key"}):
-                builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "anthro-key"}):
+            builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
         env = builder.options_cls.call_args[1].get("env", {})
         assert "BRAINTRUST_API_KEY" not in env
         assert "BRAINTRUST_PROJECT" not in env
@@ -188,9 +186,8 @@ class TestSDKOptionsBuilderBraintrustGating:
 
     def test_braintrust_keys_present_in_env_when_enabled(self):
         builder = self._make_builder(braintrust_logging_enabled=True)
-        with patch.object(builder, "_supports_option", return_value=True):
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "anthro-key"}):
-                builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "anthro-key"}):
+            builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
         env = builder.options_cls.call_args[1].get("env", {})
         assert env.get("BRAINTRUST_API_KEY") == "real-bt-key"
         assert env.get("BRAINTRUST_PROJECT") == "my-project"
