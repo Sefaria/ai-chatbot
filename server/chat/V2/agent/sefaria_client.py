@@ -855,7 +855,7 @@ class SefariaClient:
             return ""
         text = re.sub(r"<[^>]+>", " ", value)
         return re.sub(r"\s+", " ", html.unescape(text)).strip()
-=======
+
     def _optimize_author_indexes_response(self, data: Any) -> dict[str, Any]:
         """Preserve the main payload shape for now; placeholder for future trimming."""
         if not isinstance(data, dict):
