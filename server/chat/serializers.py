@@ -15,6 +15,7 @@ class MessageContextSerializer(serializers.Serializer):
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
     origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
     isStaff = serializers.BooleanField(required=False, default=False)
+    forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
 
 
 class PromptSlugsSerializer(serializers.Serializer):
@@ -50,6 +51,26 @@ class FeedbackRequestSerializer(serializers.Serializer):
     # non-required fields
     comment = serializers.CharField(max_length=2000, required=False, allow_blank=True)
     feedbackReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
+
+
+class RecoveryRequestSerializer(serializers.Serializer):
+    """Lookup request for a streamed response that may have been persisted already."""
+
+    userId = serializers.CharField(max_length=512)
+    sessionId = serializers.CharField(max_length=100)
+    messageId = serializers.CharField(max_length=100)
+
+
+class ClientStreamEventSerializer(serializers.Serializer):
+    """Browser-side telemetry for stream failures and recoveries."""
+
+    userId = serializers.CharField(max_length=512)
+    sessionId = serializers.CharField(max_length=100)
+    messageId = serializers.CharField(max_length=100)
+    timestamp = serializers.DateTimeField()
+    event = serializers.CharField(max_length=100)
+    error = serializers.CharField(max_length=2000, required=False, allow_blank=True)
+    context = MessageContextSerializer(required=False)
 
 
 class AnthropicRequestSerializer(serializers.Serializer):

@@ -495,7 +495,10 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator);
+      }, promptSlugs, originProp, isModerator, {
+        messageId: userMessage.messageId,
+        timestamp: userMessage.timestamp
+      });
 
       // Update user message status
       messages = messages.map(m => 
