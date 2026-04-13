@@ -9,7 +9,6 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..pricing import init_cost_accumulator
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
@@ -68,7 +67,6 @@ class TurnOrchestrator:
         # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
-        cost_accumulator = init_cost_accumulator()
 
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -89,13 +87,11 @@ class TurnOrchestrator:
             start_time=start_time,
         )
         if guardrail_response:
-            guardrail_response.total_cost_usd = cost_accumulator.total or None
             return guardrail_response
 
         router_prompt_id, route, messages = await self.router.run_router(
             bt_span, last_user_message, messages
         )
-
         if router_prompt_id:
             core_prompt_id = router_prompt_id
 
@@ -181,12 +177,6 @@ class TurnOrchestrator:
             metrics=metrics,
         )
 
-        total_cost_usd = sdk_result.total_cost_usd
-        if total_cost_usd is not None:
-            total_cost_usd += cost_accumulator.total
-        elif cost_accumulator.total > 0:
-            total_cost_usd = cost_accumulator.total
-
         return build_agent_response(
             content=output,
             tool_calls=tool_calls_list,
@@ -195,5 +185,5 @@ class TurnOrchestrator:
             trace_id=trace_id,
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
-            total_cost_usd=total_cost_usd,
+            total_cost_usd=sdk_result.total_cost_usd,
         )

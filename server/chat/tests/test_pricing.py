@@ -5,6 +5,7 @@ from chat.V2.pricing import (
     compute_cost,
     get_cost_accumulator,
     init_cost_accumulator,
+    reset_cost_accumulator,
 )
 
 
@@ -53,8 +54,13 @@ class TestCostAccumulator:
         assert acc.total == first * 2
 
     def test_context_var_lifecycle(self):
+        # Reset first — other tests (or prior requests on a reused WSGI thread)
+        # may have left a stale accumulator on the ContextVar.
+        reset_cost_accumulator()
         assert get_cost_accumulator() is None
         acc = init_cost_accumulator()
         assert get_cost_accumulator() is acc
         acc.add("claude-haiku-4-5-20251001", input_tokens=500, output_tokens=50)
         assert get_cost_accumulator().total == acc.total
+        reset_cost_accumulator()
+        assert get_cost_accumulator() is None

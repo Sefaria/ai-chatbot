@@ -61,10 +61,19 @@ class CostAccumulator:
 
 
 def init_cost_accumulator() -> CostAccumulator:
-    """Create a fresh accumulator and store it in the current context."""
+    """Create a fresh accumulator and store it in the current context.
+
+    Pair with reset_cost_accumulator() in a try/finally to avoid leaking the
+    reference across requests on reused worker threads.
+    """
     acc = CostAccumulator()
     _cost_accumulator_var.set(acc)
     return acc
+
+
+def reset_cost_accumulator() -> None:
+    """Clear the accumulator from the current context."""
+    _cost_accumulator_var.set(None)
 
 
 def get_cost_accumulator() -> CostAccumulator | None:

@@ -12,7 +12,7 @@ OUTPUT_PATH = Path(__file__).resolve().parent.parent / "chat" / "V2" / "model_pr
 
 
 def fetch_and_filter() -> dict:
-    with urllib.request.urlopen(LITELLM_URL) as resp:
+    with urllib.request.urlopen(LITELLM_URL, timeout=30) as resp:
         data = json.loads(resp.read())
 
     filtered = {}

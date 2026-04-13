@@ -20,6 +20,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
+from ..pricing import get_cost_accumulator
 from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
@@ -142,26 +143,25 @@ class SummaryService:
 
             # Parse JSON response
             response_text = response.content[0].text
-            usage_info = {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-                "model": self.model,
-            }
+
+            accumulator = get_cost_accumulator()
+            if accumulator:
+                accumulator.add(
+                    self.model,
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                )
 
             import json
 
             try:
                 data = json.loads(strip_markdown_fences(response_text))
 
-                summary = self._apply_summary_data(
+                return self._apply_summary_data(
                     session=session,
                     current_summary=current_summary,
                     data=data,
                 )
-                summary.llm_input_tokens = usage_info["input_tokens"]
-                summary.llm_output_tokens = usage_info["output_tokens"]
-                summary.llm_model = usage_info["model"]
-                return summary
 
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
@@ -203,10 +203,6 @@ class SummaryService:
             summary.people_mentioned = current_summary.people_mentioned[-5:]
 
         summary.save()
-        # No LLM call — zero usage.
-        summary.llm_input_tokens = 0
-        summary.llm_output_tokens = 0
-        summary.llm_model = ""
         return summary
 
     def _apply_summary_data(
