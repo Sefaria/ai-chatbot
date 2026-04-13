@@ -23,10 +23,17 @@ def fetch_and_filter() -> dict:
         output_cost = info.get("output_cost_per_token")
         if input_cost is None or output_cost is None:
             continue
-        filtered[model_name] = {
+        entry = {
             "input_cost_per_token": input_cost,
             "output_cost_per_token": output_cost,
         }
+        cache_creation = info.get("cache_creation_input_token_cost")
+        if cache_creation is not None:
+            entry["cache_creation_input_token_cost"] = cache_creation
+        cache_read = info.get("cache_read_input_token_cost")
+        if cache_read is not None:
+            entry["cache_read_input_token_cost"] = cache_read
+        filtered[model_name] = entry
     return filtered
 
 

@@ -21,16 +21,25 @@ def compute_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cache_creation_tokens: int = 0,
+    cache_read_tokens: int = 0,
 ) -> float | None:
     """Compute USD cost from token counts and model name.
+
+    `input_tokens` is the non-cached input count (Anthropic reports cached
+    tokens separately in `cache_creation_input_tokens` / `cache_read_input_tokens`).
+    Cache token costs contribute 0 if the pricing entry lacks cache fields.
 
     Returns None if the model isn't in the pricing table.
     """
     pricing = _MODEL_PRICING.get(model)
     if pricing is None:
         return None
-    return (input_tokens * pricing["input_cost_per_token"]) + (
-        output_tokens * pricing["output_cost_per_token"]
+    return (
+        (input_tokens * pricing["input_cost_per_token"])
+        + (output_tokens * pricing["output_cost_per_token"])
+        + (cache_creation_tokens * pricing.get("cache_creation_input_token_cost", 0))
+        + (cache_read_tokens * pricing.get("cache_read_input_token_cost", 0))
     )
 
 
@@ -48,8 +57,21 @@ class CostAccumulator:
     def __init__(self) -> None:
         self._total: float = 0.0
 
-    def add(self, model: str, input_tokens: int, output_tokens: int) -> None:
-        cost = compute_cost(model, input_tokens, output_tokens)
+    def add(
+        self,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_creation_tokens: int = 0,
+        cache_read_tokens: int = 0,
+    ) -> None:
+        cost = compute_cost(
+            model,
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens,
+            cache_read_tokens,
+        )
         if cost is not None:
             self._total += cost
         elif input_tokens > 0:

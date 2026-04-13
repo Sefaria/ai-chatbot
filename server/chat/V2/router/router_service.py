@@ -115,6 +115,9 @@ class RouterService:
                 settings.ROUTER_MODEL,
                 response.usage.input_tokens,
                 response.usage.output_tokens,
+                cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0)
+                or 0,
+                cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             )
 
         return route

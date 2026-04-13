@@ -30,6 +30,29 @@ class TestComputeCost:
         cost = compute_cost("claude-haiku-4-5-20251001", input_tokens=0, output_tokens=0)
         assert cost == 0.0
 
+    def test_cache_tokens_included(self):
+        cost = compute_cost(
+            "claude-haiku-4-5-20251001",
+            input_tokens=1000,
+            output_tokens=100,
+            cache_creation_tokens=500,
+            cache_read_tokens=2000,
+        )
+        # Haiku: input $1.00/M, output $5.00/M, cache write $1.25/M, cache read $0.10/M
+        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
+        assert abs(cost - expected) < 1e-12
+
+    def test_cache_tokens_default_to_zero(self):
+        without = compute_cost("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
+        with_zero_cache = compute_cost(
+            "claude-haiku-4-5-20251001",
+            input_tokens=1000,
+            output_tokens=100,
+            cache_creation_tokens=0,
+            cache_read_tokens=0,
+        )
+        assert without == with_zero_cache
+
 
 class TestCostAccumulator:
     def test_starts_at_zero(self):
@@ -45,6 +68,18 @@ class TestCostAccumulator:
         acc = CostAccumulator()
         acc.add("unknown-model", input_tokens=1000, output_tokens=100)
         assert acc.total == 0.0
+
+    def test_add_with_cache_tokens(self):
+        acc = CostAccumulator()
+        acc.add(
+            "claude-haiku-4-5-20251001",
+            input_tokens=1000,
+            output_tokens=100,
+            cache_creation_tokens=500,
+            cache_read_tokens=2000,
+        )
+        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
+        assert abs(acc.total - expected) < 1e-12
 
     def test_accumulates_multiple_calls(self):
         acc = CostAccumulator()
