@@ -3,7 +3,6 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
-from chat.V2.agent.contracts import AgentResponse, MessageContext
 from chat.V2.agent.guardrail_gate import DefaultGuardrailGate
 from chat.V2.guardrail.guardrail_service import GuardrailResult
 from chat.V2.prompts.prompt_fragments import (
@@ -14,6 +13,8 @@ from chat.V2.prompts.prompt_fragments import (
 
 
 def _make_context():
+    from chat.V2.agent.contracts import MessageContext
+
     return MessageContext()
 
 
@@ -31,7 +32,7 @@ def _run(coro):
 class TestGuardrailGateRejection:
     """Test that run_guardrail maps guardrail results to correct user-facing messages."""
 
-    def _run_gate(self, guardrail_result: GuardrailResult) -> AgentResponse | None:
+    def _run_gate(self, guardrail_result: GuardrailResult) -> MagicMock | None:
         gate = DefaultGuardrailGate()
         bt_span = _make_bt_span()
         with patch("chat.V2.agent.guardrail_gate.get_guardrail_service") as mock_get_service:
