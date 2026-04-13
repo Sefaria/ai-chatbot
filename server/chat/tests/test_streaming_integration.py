@@ -705,3 +705,275 @@ class TestStreamingEndpointIsStaffPropagation:
         ctx = mock_agent.send_message.call_args.kwargs["context"]
         assert ctx.user_id == "186013"
         assert ctx.encrypted_user_token == user_token
+
+
+@pytest.mark.django_db
+class TestStreamingEndpointRecovery:
+    """Tests for persisted-response recovery after stream interruption."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_summary_failure_does_not_block_final_message(self, client, secret):
+        """Assistant response should still stream when summary update fails."""
+        mock_agent = MagicMock()
+        mock_agent.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Recovered despite summary failure",
+                tool_calls=[],
+                latency_ms=80,
+                trace_id="trace_summary_fail",
+            )
+        )
+
+        request_data = {
+            "userId": create_test_token("user_summary_fail", secret),
+            "sessionId": "sess_summary_fail",
+            "messageId": "msg_summary_fail",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Hello",
+        }
+
+        with patch("chat.V2.views.get_agent_service", return_value=mock_agent):
+            with patch("chat.V2.views.get_summary_service") as mock_summary_service:
+                with patch("chat.V2.views.capture_exception") as mock_capture:
+                    mock_summary_service.return_value.update_summary.side_effect = Exception(
+                        "summary db error"
+                    )
+
+                    response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+                    content = b"".join(response.streaming_content).decode("utf-8")
+
+        assert response.status_code == 200
+        assert "event: message" in content
+        assert "Recovered despite summary failure" in content
+        mock_capture.assert_called_once()
+
+        session = ChatSession.objects.get(session_id="sess_summary_fail")
+        user_msg = ChatMessage.objects.get(message_id="msg_summary_fail")
+        assert session.summary_updated_at is None
+        assert user_msg.response_message is not None
+        assert user_msg.response_message.content == "Recovered despite summary failure"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_returns_linked_response(self, client, secret):
+        """Recovery endpoint should return an already linked assistant response."""
+        session = ChatSession.objects.create(session_id="sess_recover", user_id="user_recover")
+        user_msg = ChatMessage.objects.create(
+            message_id="msg_recover",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_recover",
+            role=ChatMessage.Role.USER,
+            content="Recover me",
+        )
+        assistant_msg = ChatMessage.objects.create(
+            message_id="msg_recover_assistant",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_recover",
+            role=ChatMessage.Role.ASSISTANT,
+            content="Recovered response",
+            latency_ms=123,
+            tool_calls_count=0,
+            status=ChatMessage.Status.SUCCESS,
+        )
+        user_msg.response_message = assistant_msg
+        user_msg.save(update_fields=["response_message"])
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_recover", secret),
+                "sessionId": "sess_recover",
+                "messageId": "msg_recover",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "complete"
+        assert response.data["message"]["markdown"] == "Recovered response"
+        assert response.data["message"]["recovered"] is True
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_links_response_by_turn(self, client, secret):
+        """Recovery endpoint should repair linkage when assistant row exists by turn."""
+        session = ChatSession.objects.create(session_id="sess_turn_recover", user_id="user_turn")
+        user_msg = ChatMessage.objects.create(
+            message_id="msg_turn_recover",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_turn_recover",
+            role=ChatMessage.Role.USER,
+            content="Recover by turn",
+        )
+        assistant_msg = ChatMessage.objects.create(
+            message_id="msg_turn_assistant",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_turn_recover",
+            role=ChatMessage.Role.ASSISTANT,
+            content="Recovered by turn",
+            latency_ms=77,
+            tool_calls_count=0,
+            status=ChatMessage.Status.SUCCESS,
+        )
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_turn", secret),
+                "sessionId": "sess_turn_recover",
+                "messageId": "msg_turn_recover",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "complete"
+        assert response.data["message"]["messageId"] == assistant_msg.message_id
+
+        user_msg.refresh_from_db()
+        assert user_msg.response_message_id == assistant_msg.id
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_reports_running_when_heartbeat_is_fresh(self, client, secret):
+        """Recovery should expose a live running state while heartbeat is fresh."""
+        session = ChatSession.objects.create(session_id="sess_running", user_id="user_running")
+        ChatMessage.objects.create(
+            message_id="msg_running",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_running",
+            role=ChatMessage.Role.USER,
+            content="Still running",
+            processing_state=ChatMessage.ProcessingState.RUNNING,
+            processing_started_at=timezone.now() - timedelta(seconds=5),
+            processing_heartbeat_at=timezone.now() - timedelta(seconds=2),
+        )
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_running", secret),
+                "sessionId": "sess_running",
+                "messageId": "msg_running",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "running"
+        assert response.data["requestFound"] is True
+        assert response.data["heartbeatTimeoutMs"] == 90000
+        assert response.data["heartbeatAgeMs"] < response.data["heartbeatTimeoutMs"]
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_recovery_endpoint_reports_stale_when_heartbeat_expires(self, client, secret):
+        """Recovery should stop polling once the server-side heartbeat is stale."""
+        session = ChatSession.objects.create(session_id="sess_stale", user_id="user_stale")
+        ChatMessage.objects.create(
+            message_id="msg_stale",
+            session_id=session.session_id,
+            user_id=session.user_id,
+            turn_id="turn_stale",
+            role=ChatMessage.Role.USER,
+            content="Went stale",
+            processing_state=ChatMessage.ProcessingState.RUNNING,
+            processing_started_at=timezone.now() - timedelta(minutes=3),
+            processing_heartbeat_at=timezone.now() - timedelta(minutes=2),
+        )
+
+        response = client.post(
+            "/api/v2/chat/recover",
+            data={
+                "userId": create_test_token("user_stale", secret),
+                "sessionId": "sess_stale",
+                "messageId": "msg_stale",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == "stale"
+        assert response.data["requestFound"] is True
+        assert response.data["heartbeatTimeoutMs"] == 90000
+        assert response.data["heartbeatAgeMs"] >= response.data["heartbeatTimeoutMs"]
+
+
+@pytest.mark.django_db
+class TestChatClientEventV2:
+    """Tests for the client telemetry ingestion endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.capture_message")
+    def test_valid_event_emits_telemetry(self, mock_capture_message, client, secret):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": create_test_token("user_event_ok", secret),
+                "sessionId": "sess_event_ok",
+                "messageId": "msg_event_ok",
+                "timestamp": timezone.now().isoformat(),
+                "event": "stream_missing_final_message",
+                "context": {
+                    "pageUrl": "https://www.sefaria.org/topics/shabbat?tab=sources",
+                    "clientVersion": "1.0.0",
+                    "locale": "en-US",
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data == {"success": True}
+        mock_capture_message.assert_called_once()
+        assert mock_capture_message.call_args.kwargs["page_url"] == "/topics/shabbat"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_invalid_token_is_rejected(self, client):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": "not-a-valid-token",
+                "sessionId": "sess_event_invalid_auth",
+                "messageId": "msg_event_invalid_auth",
+                "timestamp": timezone.now().isoformat(),
+                "event": "stream_missing_final_message",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 401
+        assert response.data["error"] == "invalid_userId"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_missing_required_field_returns_validation_error(self, client, secret):
+        response = client.post(
+            "/api/v2/chat/client-event",
+            data={
+                "userId": create_test_token("user_event_invalid", secret),
+                "sessionId": "sess_event_invalid",
+                "messageId": "msg_event_invalid",
+                "timestamp": timezone.now().isoformat(),
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert response.data["error"] == "Invalid request"

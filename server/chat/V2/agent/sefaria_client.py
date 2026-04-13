@@ -31,18 +31,23 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org")
+DEFAULT_SEFARIA_BASE_URL = os.environ.get(
+    "SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org"
+)
 
-# In k8s, the AI service may be available via service discovery env vars.
-VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST")
-VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT")
+def _get_default_sefaria_base_url() -> str:
+    return os.environ.get("SEFARIA_API_BASE_URL") or "https://www.sefaria.org"
 
-if VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST and VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT:
-    DEFAULT_SEFARIA_AI_BASE_URL = (
-        f"http://{VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST}:{VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT}"
-    )
-else:
-    DEFAULT_SEFARIA_AI_BASE_URL = os.environ.get("SEFARIA_AI_BASE_URL", "https://ai.sefaria.org")
+
+def _get_default_sefaria_ai_base_url() -> str:
+    # In k8s, the AI service may be available via service discovery env vars.
+    service_host = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST")
+    service_port = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT")
+
+    if service_host and service_port:
+        return f"http://{service_host}:{service_port}"
+
+    return os.environ.get("SEFARIA_AI_BASE_URL") or "https://ai.sefaria.org"
 
 # Mapping from Sefaria search filter paths to human-friendly dictionary names.
 # Used by search_in_dictionaries to scope search to lexicon categories.
@@ -68,8 +73,8 @@ class SefariaClient:
     def __init__(
         self, base_url: str | None = None, ai_base_url: str | None = None, timeout: float = 30.0
     ):
-        self.base_url = (base_url or DEFAULT_SEFARIA_BASE_URL).rstrip("/")
-        self.ai_base_url = (ai_base_url or DEFAULT_SEFARIA_AI_BASE_URL).rstrip("/")
+        self.base_url = (base_url or _get_default_sefaria_base_url()).rstrip("/")
+        self.ai_base_url = (ai_base_url or _get_default_sefaria_ai_base_url()).rstrip("/")
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
         self._client_loop: asyncio.AbstractEventLoop | None = None
@@ -647,7 +652,7 @@ class SefariaClient:
         """Build an absolute source sheet URL when a numeric sheet id is available."""
         if sheet_id is None:
             return ""
-        return f"/sheets/{sheet_id}"
+        return f"{DEFAULT_SEFARIA_BASE_URL}/sheets/{sheet_id}"
 
     async def _hydrate_source_sheet_sources(
         self, sources: list[dict[str, Any]]

@@ -11,6 +11,7 @@ import { generateMessageId } from './session.js';
  * @property {string} clientVersion - Widget version
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
+ * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
 /**
@@ -55,6 +56,125 @@ import { generateMessageId } from './session.js';
  */
 
 const CLIENT_VERSION = '1.0.0';
+const STREAM_RECOVERY_TIMEOUT_MS = 20_000;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function buildMessageContext(origin = '', isStaff = false) {
+  /** @type {MessageContext} */
+  const context = {
+    pageUrl: window.location.href,
+    locale: navigator.language || 'en',
+    clientVersion: CLIENT_VERSION
+  };
+  if (origin !== undefined && origin !== '') {
+    context.origin = origin;
+  }
+  if (isStaff) {
+    context.isStaff = true;
+  }
+  return context;
+}
+
+function shouldForceStreamBreak(text) {
+  return typeof text === 'string' && text.includes('#test-stream-break');
+}
+
+async function reportClientStreamEvent(
+  apiBaseUrl,
+  {
+    userId,
+    sessionId,
+    messageId,
+    event,
+    error = '',
+    context,
+    timestamp = new Date().toISOString()
+  }
+) {
+  try {
+    await fetch(`${apiBaseUrl}/v2/chat/client-event`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId,
+        sessionId,
+        messageId,
+        timestamp,
+        event,
+        error,
+        context
+      })
+    });
+  } catch {
+    // Avoid cascading client-side telemetry failures into the chat flow.
+  }
+}
+
+async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
+  const fallbackDeadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
+  let heartbeatDeadline = null;
+  let timeoutReason = 'recovery_timeout';
+
+  while (true) {
+    try {
+      const response = await fetch(`${apiBaseUrl}/v2/chat/recover`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId,
+          sessionId,
+          messageId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'complete' || data.status === 'failed') {
+          return data;
+        }
+        if (
+          typeof data.heartbeatTimeoutMs === 'number' &&
+          typeof data.heartbeatAgeMs === 'number'
+        ) {
+          heartbeatDeadline =
+            Date.now() + Math.max(data.heartbeatTimeoutMs - data.heartbeatAgeMs, 0);
+        }
+        if (data.status === 'stale') {
+          timeoutReason = 'heartbeat_stale';
+          break;
+        }
+      }
+    } catch {
+      // Keep polling until the relevant deadline expires.
+    }
+
+    const activeDeadline = heartbeatDeadline ?? fallbackDeadline;
+    if (Date.now() >= activeDeadline) {
+      timeoutReason = heartbeatDeadline ? 'heartbeat_timeout' : 'recovery_timeout';
+      break;
+    }
+
+    await sleep(1000);
+  }
+
+  await reportClientStreamEvent(apiBaseUrl, {
+    userId,
+    sessionId,
+    messageId,
+    event: 'stream_recovery_timeout',
+    error: timeoutReason,
+    context
+  });
+
+  return null;
+}
 
 /**
  * Send a chat message to the server
@@ -75,11 +195,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
     messageId,
     timestamp,
     text,
-    context: {
-      pageUrl: window.location.href,
-      locale: navigator.language || 'en',
-      clientVersion: CLIENT_VERSION
-    }
+    context: buildMessageContext()
   };
   
   const response = await fetch(`${apiBaseUrl}/chat`, {
@@ -136,6 +252,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
+ * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -146,22 +263,15 @@ export async function sendMessageStream(
   callbacks = {},
   promptSlugs = null,
   origin = '',
-  isStaff = false
+  isStaff = false,
+  requestMetadata = null
 ) {
-  const messageId = generateMessageId();
-  const timestamp = new Date().toISOString();
+  const messageId = requestMetadata?.messageId || generateMessageId();
+  const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
-  /** @type {MessageContext} */
-  const context = {
-    pageUrl: window.location.href,
-    locale: navigator.language || 'en',
-    clientVersion: CLIENT_VERSION
-  };
-  if (origin !== undefined && origin !== '') {
-    context.origin = origin;
-  }
-  if (isStaff) {
-    context.isStaff = true;
+  const context = buildMessageContext(origin, isStaff);
+  if (shouldForceStreamBreak(text)) {
+    context.forceStreamBreakBeforeFinal = true;
   }
 
   /** @type {SendMessagePayload} */
@@ -178,13 +288,40 @@ export async function sendMessageStream(
     payload.promptSlugs = promptSlugs;
   }
   
-  const response = await fetch(`${apiBaseUrl}/chat/stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    await reportClientStreamEvent(apiBaseUrl, {
+      userId,
+      sessionId,
+      messageId,
+      event: 'stream_fetch_failed',
+      error: error?.message || 'fetch failed',
+      context,
+      timestamp
+    });
+
+    const recovered = await recoverStreamMessage(apiBaseUrl, {
+      userId,
+      sessionId,
+      messageId,
+      context
+    });
+    if (recovered?.status === 'complete') {
+      if (callbacks.onMessage) {
+        callbacks.onMessage(recovered.message);
+      }
+      return recovered.message;
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     // Try to parse error response
@@ -205,69 +342,137 @@ export async function sendMessageStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let finalMessage = null;
+  let streamError = '';
+  let streamReadError = null;
   
-  while (true) {
-    const { done, value } = await reader.read();
-    
-    if (done) break;
-    
-    buffer += decoder.decode(value, { stream: true });
-    
-    // Process complete SSE events
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // Keep incomplete line in buffer
-    
-    let currentEvent = null;
-    let currentData = '';
-    
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim();
-      } else if (line.startsWith('data: ')) {
-        currentData = line.slice(6);
-        
-        if (currentEvent && currentData) {
-          try {
-            const data = JSON.parse(currentData);
-            
-            if (currentEvent === 'progress' && callbacks.onProgress) {
-              callbacks.onProgress(data);
-            } else if (currentEvent === 'message') {
-              finalMessage = {
-                messageId: data.messageId,
-                sessionId: data.sessionId,
-                timestamp: data.timestamp,
-                markdown: data.markdown,
-                traceId: data.traceId,
-                toolCalls: data.toolCalls,
-                stats: data.stats,
-                session: data.session
-              };
-              if (callbacks.onMessage) {
-                callbacks.onMessage(finalMessage);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      
+      // Process complete SSE events
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+      
+      let currentEvent = null;
+      let currentData = '';
+      
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          currentData = line.slice(6);
+          
+          if (currentEvent && currentData) {
+            try {
+              const data = JSON.parse(currentData);
+              
+              if (currentEvent === 'progress' && callbacks.onProgress) {
+                callbacks.onProgress(data);
+              } else if (currentEvent === 'message') {
+                finalMessage = {
+                  messageId: data.messageId,
+                  sessionId: data.sessionId,
+                  timestamp: data.timestamp,
+                  markdown: data.markdown,
+                  traceId: data.traceId,
+                  toolCalls: data.toolCalls,
+                  stats: data.stats,
+                  session: data.session,
+                  recovered: data.recovered || false
+                };
+                if (callbacks.onMessage) {
+                  callbacks.onMessage(finalMessage);
+                }
+              } else if (currentEvent === 'error') {
+                streamError = data.error || 'Stream error';
+                await reportClientStreamEvent(apiBaseUrl, {
+                  userId,
+                  sessionId,
+                  messageId,
+                  event: 'stream_error_event',
+                  error: streamError,
+                  context,
+                  timestamp
+                });
+                if (callbacks.onError) {
+                  callbacks.onError(streamError);
+                }
               }
-            } else if (currentEvent === 'error' && callbacks.onError) {
-              callbacks.onError(data.error);
+            } catch (e) {
+              console.warn('[lc-chatbot] Failed to parse SSE data:', e);
             }
-          } catch (e) {
-            console.warn('[lc-chatbot] Failed to parse SSE data:', e);
           }
+          
+          currentEvent = null;
+          currentData = '';
+        } else if (line.startsWith(':')) {
+          // Comment (keepalive), ignore
+        } else if (line === '') {
+          // Empty line, reset
+          currentEvent = null;
+          currentData = '';
         }
-        
-        currentEvent = null;
-        currentData = '';
-      } else if (line.startsWith(':')) {
-        // Comment (keepalive), ignore
-      } else if (line === '') {
-        // Empty line, reset
-        currentEvent = null;
-        currentData = '';
       }
     }
+  } catch (error) {
+    streamReadError = error;
+    await reportClientStreamEvent(apiBaseUrl, {
+      userId,
+      sessionId,
+      messageId,
+      event: 'stream_read_failed',
+      error: error?.message || 'reader failed',
+      context,
+      timestamp
+    });
   }
   
   if (!finalMessage) {
-    throw new Error('Stream ended without message');
+    await reportClientStreamEvent(apiBaseUrl, {
+      userId,
+      sessionId,
+      messageId,
+      event: 'stream_missing_final_message',
+      error: streamError || streamReadError?.message || '',
+      context,
+      timestamp
+    });
+
+    const recovered = await recoverStreamMessage(apiBaseUrl, {
+      userId,
+      sessionId,
+      messageId,
+      context
+    });
+    if (recovered?.status === 'complete') {
+      await reportClientStreamEvent(apiBaseUrl, {
+        userId,
+        sessionId,
+        messageId,
+        event: 'stream_recovery_succeeded',
+        context,
+        timestamp
+      });
+      if (callbacks.onMessage) {
+        callbacks.onMessage(recovered.message);
+      }
+      return recovered.message;
+    }
+    if (recovered?.status === 'failed') {
+      const error = new Error(recovered.error || streamError || 'Recovered failed response');
+      error.code = 'stream_recovered_failed';
+      throw error;
+    }
+
+    if (streamReadError) {
+      throw streamReadError;
+    }
+
+    throw new Error(streamError || 'Stream ended without message');
   }
   
   return finalMessage;
