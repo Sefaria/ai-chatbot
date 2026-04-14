@@ -792,7 +792,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {panelWidth}px; height: {panelHeight}px;"
+      style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
       aria-label="Chat window"
     >
@@ -1150,10 +1150,18 @@
     --lc-font-size-sm: 12px;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
+    /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
 
     display: block;
     font-family: var(--lc-font);
+  }
+
+  /* Fill #main row height when docked so the panel stays in view (banners shrink #main, not 100vh) */
+  :host(:has(.lc-chatbot-container.mode-docked.is-open)) {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
   }
 
   * {
@@ -1172,23 +1180,30 @@
   .lc-chatbot-container.mode-docked.is-open {
     position: static;
     flex-shrink: 0;
+    align-self: stretch;
     width: fit-content;
-    height: calc(100vh - var(--lc-docked-top-offset));
+    /* Inset below global header (same band as .multiPanel #panelWrapBox top: 60px); height shrinks so column still fits #main */
     margin-top: var(--lc-docked-top-offset);
+    height: calc(100% - var(--lc-docked-top-offset));
+    max-height: calc(100% - var(--lc-docked-top-offset));
+    min-height: 0;
+    padding-bottom: 24px;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: stretch;
   }
 
   .lc-chatbot-container.mode-docked .lc-chatbot-panel {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
-    height: 100%;
+    height: auto;
+    max-height: 100%;
     border-radius: 12px;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
     margin-inline-start: 10px;
     margin-inline-end: 42px;
-    margin-bottom: 24px;
+    margin-bottom: 0;
   }
 
   .lc-chatbot-container.mode-docked .resize-n,
@@ -1254,6 +1269,7 @@
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;
+    min-height: 0;
     background: var(--lc-body-bg);
     border-radius: var(--lc-radius);
     box-shadow: var(--lc-shadow);
@@ -1375,7 +1391,8 @@
 
   /* Message List */
   .lc-chatbot-messages {
-    flex: 1;
+    flex: 1 1 0;
+    min-height: 0;
     overflow-y: auto;
     padding: 16px;
     display: flex;
