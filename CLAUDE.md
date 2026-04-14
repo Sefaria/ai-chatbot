@@ -11,6 +11,7 @@ Ships to millions of users via Sefaria.org.
 - Keep code simple and clean - prefer conciseness over robustness
 - Test before committing (pytest for backend, verify frontend)
 - Add tests when adding features
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for all commit messages — CI uses semantic-release to auto-version and deploy. Format: `type: description` (e.g., `fix: handle empty guardrail reason`, `feat: add session timeout`). Valid types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `style`, `perf`, `static`, `helm`
 
 ## Testing Patterns
 

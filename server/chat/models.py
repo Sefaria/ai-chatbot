@@ -215,6 +215,12 @@ class ChatMessage(models.Model):
         FAILED = "failed", "Failed"
         REFUSED = "refused", "Refused"
 
+    class ProcessingState(models.TextChoices):
+        STARTED = "started", "Started"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
     # Identifiers
     message_id = models.CharField(max_length=100, unique=True, db_index=True)
     session_id = models.CharField(max_length=100, db_index=True)
@@ -242,6 +248,13 @@ class ChatMessage(models.Model):
     # Metadata
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.SUCCESS)
     latency_ms = models.IntegerField(null=True, blank=True)
+    processing_state = models.CharField(
+        max_length=20, choices=ProcessingState.choices, blank=True, default=""
+    )
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    processing_finished_at = models.DateTimeField(null=True, blank=True)
+    processing_error = models.TextField(blank=True, default="")
 
     # Context from client
     page_url = models.URLField(max_length=2000, blank=True, default="")
@@ -261,6 +274,23 @@ class ChatMessage(models.Model):
     cache_creation_tokens = models.IntegerField(null=True, blank=True)
     cache_read_tokens = models.IntegerField(null=True, blank=True)
     total_cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+
+    # Processing lifecycle metadata
+    processing_state = models.CharField(
+        max_length=20,
+        choices=[
+            ("started", "Started"),
+            ("running", "Running"),
+            ("completed", "Completed"),
+            ("failed", "Failed"),
+        ],
+        blank=True,
+        default="",
+    )
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    processing_finished_at = models.DateTimeField(null=True, blank=True)
+    processing_error = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["server_timestamp"]

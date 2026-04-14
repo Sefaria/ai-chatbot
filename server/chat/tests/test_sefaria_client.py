@@ -1,5 +1,6 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,7 +36,16 @@ class TestSefariaClientInit:
     """Test SefariaClient initialization."""
 
     def test_default_base_url(self):
-        client = SefariaClient()
+        with patch.dict(
+            os.environ,
+            {
+                "SEFARIA_API_BASE_URL": "",
+                "VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST": "",
+                "VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT": "",
+                "SEFARIA_AI_BASE_URL": "",
+            },
+        ):
+            client = SefariaClient()
         assert client.base_url == "https://www.sefaria.org"
 
     def test_custom_base_url(self):
@@ -215,6 +225,26 @@ class TestGetAuthorIndexes:
         assert "clarify_name_argument" in result.get("suggestion", "")
 
 
+class TestClarifySearchPathFilter:
+    """Test clarify_search_path_filter parsing."""
+
+    @pytest.mark.asyncio
+    async def test_parses_json_string_response_without_embedded_quotes(self, client):
+        class MockResponse:
+            status_code = 200
+
+            def json(self):
+                return "Chasidut/Breslov/Likutei Moharan"
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.clarify_search_path_filter("Likutei Moharan")
+
+        assert result == "Chasidut/Breslov/Likutei Moharan"
+
+
 class TestOptimizeTextResponse:
     """Test _optimize_text_response method."""
 
@@ -370,6 +400,29 @@ class TestTextSearch:
         assert "suggestion" in result
 
     @pytest.mark.asyncio
+    async def test_filtered_search_does_not_fallback_to_unfiltered_results(self, client):
+        """Filtered searches should stay scoped and return no_results when empty."""
+
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"hits": {"hits": [], "total": {"value": 0}}}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=MockResponse())
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.text_search("beginning", ["Tanakh/Torah/Genesis"])
+
+        assert isinstance(result, dict)
+        assert result.get("no_results") is True
+        assert "within the requested book or filter scope" in result["suggestion"]
+        assert "Tanakh/Torah/Genesis" in result["suggestion"]
+        mock_client.post.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_returns_results_when_found(self, client):
         """When search finds results, should return the results list."""
 
@@ -400,3 +453,25 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
+class TestSearchInBook:
+    """Test search_in_book scoped path resolution."""
+
+    @pytest.mark.asyncio
+    async def test_search_in_book_uses_unquoted_filter_path(self, client):
+        with (
+            patch.object(
+                client,
+                "clarify_search_path_filter",
+                AsyncMock(return_value="Chasidut/Breslov/Likutei Moharan"),
+            ),
+            patch.object(
+                client,
+                "text_search",
+                AsyncMock(return_value={"results": []}),
+            ) as mock_text_search,
+        ):
+            await client.search_in_book("פרעה", "Likutei Moharan", 10)
+
+        mock_text_search.assert_awaited_once_with("פרעה", ["Chasidut/Breslov/Likutei Moharan"], 10)
