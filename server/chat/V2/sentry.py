@@ -23,3 +23,18 @@ def capture_exception(exc: BaseException, **context: Any) -> None:
         if normalized:
             scope.set_context("chat_v2", normalized)
         sentry_sdk.capture_exception(exc)
+
+
+def capture_message(message: str, *, level: str = "info", **context: Any) -> None:
+    """Capture a structured message in Sentry."""
+    if not settings.SENTRY_DSN:
+        return
+
+    import sentry_sdk
+
+    with sentry_sdk.new_scope() as scope:
+        normalized = {k: v for k, v in context.items() if v is not None}
+        if normalized:
+            scope.set_context("chat_v2", normalized)
+        scope.level = level
+        sentry_sdk.capture_message(message, level=level)
