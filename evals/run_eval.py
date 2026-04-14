@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +57,13 @@ PROD_API_URL = "https://chat-dev.sefaria.org"
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
+
+# Braintrust's SDK caches a short-lived JWT after the first login() call and
+# never refreshes it unless force_login=True. Long eval runs outlive the JWT,
+# so we retry auth failures with a forced re-login and back off on other
+# transient errors.
+SCORER_MAX_ATTEMPTS = 3
+SCORER_RETRY_DELAYS = (2, 5, 10)
 
 
 class ChatbotClient:
@@ -119,12 +127,31 @@ class ChatbotClient:
         await self.client.aclose()
 
 
+def _is_braintrust_auth_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a 401/403 from Braintrust.
+
+    The SDK wraps `requests`, so HTTPError carries a `response` with a status
+    code. Also matches the common cases where the exception text mentions an
+    auth/JWT failure even without a response object.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (401, 403):
+        return True
+    message = str(exc).lower()
+    return any(
+        needle in message
+        for needle in ("401", "403", "unauthorized", "forbidden", "token")
+    )
+
+
 def create_scorer(slug: str):
     """
     Create a scorer function that invokes a Braintrust UI-defined scorer.
 
-    Braintrust scorers are LLM-based evaluators defined in the Braintrust UI.
-    This wrapper calls them via the Braintrust API and returns the numeric score.
+    Retries are required because Braintrust's SDK caches a JWT after the first
+    login() and will not refresh it on its own. We force a fresh login after an
+    auth-looking failure, and back off on other transient errors. Final failure
+    re-raises so the Eval framework records an error row instead of a fake 0.0.
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
@@ -135,18 +162,35 @@ def create_scorer(slug: str):
             scorer_input["input"] = input
         if metadata is not None:
             scorer_input["metadata"] = metadata
-        try:
-            result = invoke(project_name=PROJECT, slug=slug, input=scorer_input)
-            if isinstance(result, dict):
-                if "score" not in result:
-                    raise ValueError(
-                        f"Scorer {slug} returned dict without 'score': {result}"
-                    )
-                return result["score"]
-            return result
-        except Exception as e:
-            print(f"Error running scorer {slug}: {e}")
-            return 0.0
+
+        last_exc: Exception | None = None
+        for attempt in range(SCORER_MAX_ATTEMPTS):
+            force_login = last_exc is not None and _is_braintrust_auth_error(last_exc)
+            try:
+                result = invoke(
+                    project_name=PROJECT,
+                    slug=slug,
+                    input=scorer_input,
+                    force_login=force_login,
+                )
+                if isinstance(result, dict):
+                    if "score" not in result:
+                        raise ValueError(
+                            f"Scorer {slug} returned dict without 'score': {result}"
+                        )
+                    return result["score"]
+                return result
+            except Exception as e:
+                last_exc = e
+                print(
+                    f"Scorer {slug} attempt {attempt + 1}/{SCORER_MAX_ATTEMPTS} "
+                    f"failed ({type(e).__name__}): {e}"
+                )
+                if attempt < SCORER_MAX_ATTEMPTS - 1:
+                    time.sleep(SCORER_RETRY_DELAYS[attempt])
+
+        assert last_exc is not None
+        raise last_exc
 
     scorer.__name__ = slug.replace("-", "_")
     return scorer

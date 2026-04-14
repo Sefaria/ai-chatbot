@@ -35,23 +35,63 @@ class TestCreateScorer:
             call_args = mock_invoke.call_args
             assert call_args.kwargs["input"]["expected"] == "expected value"
 
-    def test_scorer_returns_zero_on_error(self):
+    def test_scorer_raises_after_exhausted_retries(self):
         from evals.run_eval import create_scorer
 
         scorer = create_scorer("my-scorer")
-        with patch("evals.run_eval.invoke") as mock_invoke:
+        with (
+            patch("evals.run_eval.invoke") as mock_invoke,
+            patch("evals.run_eval.time.sleep"),
+        ):
             mock_invoke.side_effect = Exception("API error")
-            result = scorer("test output")
-            assert result == 0.0
+            with pytest.raises(Exception, match="API error"):
+                scorer("test output")
+            assert mock_invoke.call_count == 3
 
-    def test_scorer_returns_zero_when_dict_missing_score_key(self):
+    def test_scorer_raises_when_dict_missing_score_key(self):
         from evals.run_eval import create_scorer
 
         scorer = create_scorer("my-scorer")
-        with patch("evals.run_eval.invoke") as mock_invoke:
+        with (
+            patch("evals.run_eval.invoke") as mock_invoke,
+            patch("evals.run_eval.time.sleep"),
+        ):
             mock_invoke.return_value = {"pass": True, "reason": "looks good"}
-            result = scorer("test output")
-            assert result == 0.0
+            with pytest.raises(ValueError, match="without 'score'"):
+                scorer("test output")
+
+    def test_scorer_succeeds_after_transient_error(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        with (
+            patch("evals.run_eval.invoke") as mock_invoke,
+            patch("evals.run_eval.time.sleep"),
+        ):
+            mock_invoke.side_effect = [Exception("boom"), {"score": 0.9}]
+            assert scorer("out") == 0.9
+            assert mock_invoke.call_count == 2
+            # First attempt does not force_login (no prior auth error)
+            assert mock_invoke.call_args_list[0].kwargs["force_login"] is False
+
+    def test_scorer_forces_login_after_auth_error(self):
+        from evals.run_eval import create_scorer
+
+        class FakeResponse:
+            status_code = 401
+
+        err = Exception("Unauthorized")
+        err.response = FakeResponse()
+
+        scorer = create_scorer("my-scorer")
+        with (
+            patch("evals.run_eval.invoke") as mock_invoke,
+            patch("evals.run_eval.time.sleep"),
+        ):
+            mock_invoke.side_effect = [err, {"score": 0.5}]
+            assert scorer("out") == 0.5
+            # Retry after a 401 must force a fresh Braintrust login / JWT
+            assert mock_invoke.call_args_list[1].kwargs["force_login"] is True
 
     def test_scorer_returns_raw_value_when_not_dict(self):
         from evals.run_eval import create_scorer
