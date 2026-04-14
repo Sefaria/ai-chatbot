@@ -212,6 +212,7 @@ ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "router-classifier")
 REWRITER_PROMPT_SLUG = os.environ.get("REWRITER_PROMPT_SLUG", "question-rewriter")
 TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation")
 RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "response-format")
+RELAXED_PROMPT_SLUG = os.environ.get("RELAXED_PROMPT_SLUG", "test-relaxed")
 
 # ============================================================================
 # Chat User Token Configuration
