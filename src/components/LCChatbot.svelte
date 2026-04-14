@@ -498,7 +498,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator, {
+      }, personality === 'relaxed' ? { corePromptSlug: 'test-relaxed' } : promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, personality);
