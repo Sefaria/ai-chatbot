@@ -498,7 +498,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, personality === 'relaxed' ? { corePromptSlug: 'test-relaxed' } : promptSlugs, originProp, isModerator, {
+      }, personality === 'relaxed' ? { corePromptSlug: 'test-relaxed' } : personality === 'whimsical' ? { corePromptSlug: 'test-whimsical' } : promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, personality);
@@ -1054,6 +1054,7 @@
         <select bind:value={personality} aria-label="Assistant personality">
           <option value="standard">Standard</option>
           <option value="relaxed">Relaxed</option>
+          <option value="whimsical">Whimsical</option>
         </select>
       </div>
 

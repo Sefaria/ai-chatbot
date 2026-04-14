@@ -81,12 +81,15 @@ class TurnOrchestrator:
         )
 
         is_relaxed = context.personality == "relaxed"
+        is_whimsical = context.personality == "whimsical"
 
-        if is_relaxed:
-            # Relaxed mode: skip guardrail and router entirely.
-            # The Relaxed BT prompt provides all instructions.
-            core_prompt_id = settings.RELAXED_PROMPT_SLUG
-            route = "relaxed"
+        if is_relaxed or is_whimsical:
+            # Non-standard personalities: skip guardrail and router entirely.
+            # The personality's BT prompt provides all instructions.
+            core_prompt_id = (
+                settings.RELAXED_PROMPT_SLUG if is_relaxed else settings.WHIMSICAL_PROMPT_SLUG
+            )
+            route = context.personality
         else:
             guardrail_response = await self.guardrail_gate.run_guardrail(
                 bt_span=bt_span,

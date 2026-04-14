@@ -27,7 +27,7 @@ class PromptSlugsSerializer(serializers.Serializer):
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
-    PERSONALITY_CHOICES = [("standard", "Standard"), ("relaxed", "Relaxed")]
+    PERSONALITY_CHOICES = [("standard", "Standard"), ("relaxed", "Relaxed"), ("whimsical", "Whimsical")]
 
     userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
