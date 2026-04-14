@@ -45,12 +45,12 @@ Each auxiliary service already gets an Anthropic API response with `usage.input_
 
 ### Cost accumulation ✅
 
-`CostAccumulator` in `server/chat/V2/pricing.py` — collects auxiliary LLM costs during a turn via a `contextvars.ContextVar`. Each service calls `get_cost_accumulator().add(model, input_tokens, output_tokens)` after its API call. The orchestrator initializes the accumulator at turn start and reads `accumulator.total` at the end to combine with the SDK cost.
+`CostAccumulator` in `server/chat/V2/pricing.py` — collects guardrail + router costs during a turn via a `contextvars.ContextVar`. Each service calls `get_cost_accumulator().add_from_response(model, response)` after its API call. The orchestrator initializes the accumulator at the top of `generate_sse()` and resets it in the same function's `finally:` block to prevent cross-request state leakage on reused WSGI threads.
 
-- **Guardrail + Router**: Use the accumulator via ContextVar (visible across `asyncio.to_thread` boundaries since the mutable object reference is shared).
-- **Summary**: Runs in the main thread outside the ContextVar scope, so uses explicit `compute_cost()` in `views.py`.
+- **Guardrail + Router** (run inside the agent thread): Add to the shared `CostAccumulator` via the ContextVar. The accumulator reference is visible across `asyncio.to_thread` boundaries because the orchestrator copies the current context before dispatching the agent thread.
+- **Summary** (runs on the main thread after the agent completes): Does **not** use the shared accumulator. `SummaryService.update_summary` returns a `SummaryResult(summary, cost_usd)` named tuple, and `views.py` adds the explicit cost to the turn total. This keeps summary cost attribution unambiguous — it doesn't rely on reading a delta from a shared bucket.
 
-No changes to service return types (`GuardrailResult`, `RouterResult`) — they stay clean. No DB schema changes — `total_cost_usd` just becomes more accurate.
+No DB schema changes — `total_cost_usd` just becomes more accurate.
 
 ### Deferred: Braintrust observability
 

@@ -34,6 +34,8 @@ jobs:
           git checkout -B "$BRANCH"
           git add server/chat/V2/model_pricing.json
           git commit -m "chore: update model pricing from LiteLLM"
+          # Force-push is intentional: this branch is owned by the bot and
+          # each run replaces last week's pricing snapshot. No human work to clobber.
           git push -f origin "$BRANCH"
           # Create PR only if one doesn't already exist for this branch
           if ! gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q .; then
