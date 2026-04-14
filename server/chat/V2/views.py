@@ -53,7 +53,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
-from .pricing import init_cost_accumulator
+from .pricing import init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
 from .services import (
@@ -616,6 +616,10 @@ def chat_stream_v2(request):
                 except Exception:
                     pass
             executor.shutdown(wait=False)
+            # Clear the ContextVar so the next request on this reused WSGI
+            # thread can't accidentally read a stale accumulator before its
+            # own init_cost_accumulator() call.
+            reset_cost_accumulator()
 
     response = StreamingHttpResponse(generate_sse(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"

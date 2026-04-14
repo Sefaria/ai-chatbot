@@ -1,5 +1,6 @@
 """Tests for the pricing utility."""
 
+import contextvars
 from types import SimpleNamespace
 
 from chat.V2.pricing import (
@@ -101,6 +102,29 @@ class TestCostAccumulator:
         assert get_cost_accumulator().total == acc.total
         reset_cost_accumulator()
         assert get_cost_accumulator() is None
+
+    def test_copied_context_sees_same_accumulator(self):
+        """The orchestrator dispatches the agent via contextvars.copy_context().
+        Mutations on the agent thread must be visible back in the caller —
+        this is what makes guardrail/router cost tracking work through
+        asyncio.to_thread boundaries. Regression guard: if the agent is ever
+        dispatched before init_cost_accumulator(), the copied context won't
+        have the accumulator and this test will fail.
+        """
+        reset_cost_accumulator()
+        acc = init_cost_accumulator()
+        ctx = contextvars.copy_context()
+
+        def add_in_copied_context():
+            get_cost_accumulator().add(
+                "claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100
+            )
+
+        ctx.run(add_in_copied_context)
+
+        # The accumulator is shared by reference, so the outer view sees it.
+        assert acc.total > 0
+        reset_cost_accumulator()
 
 
 class TestAddFromResponse:
