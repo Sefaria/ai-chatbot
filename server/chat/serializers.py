@@ -27,6 +27,8 @@ class PromptSlugsSerializer(serializers.Serializer):
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
+    PERSONALITY_CHOICES = [("standard", "Standard"), ("relaxed", "Relaxed")]
+
     userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
@@ -35,6 +37,9 @@ class ChatRequestSerializer(serializers.Serializer):
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
     isLoadTest = serializers.BooleanField(required=False, default=False)
+    personality = serializers.ChoiceField(
+        choices=PERSONALITY_CHOICES, required=False, default="standard"
+    )
 
 
 class FeedbackRequestSerializer(serializers.Serializer):

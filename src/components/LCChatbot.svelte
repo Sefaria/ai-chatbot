@@ -44,6 +44,9 @@
   let currentProgress = $state(null);
   let toolHistory = $state([]);
 
+  // Personality state
+  let personality = $state('standard');
+
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
@@ -498,7 +501,7 @@
       }, promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      });
+      }, personality);
 
       // Update user message status
       messages = messages.map(m => 
@@ -1046,6 +1049,14 @@
         {/if}
       </div>
 
+      <!-- Personality Selector -->
+      <div class="personality-selector">
+        <select bind:value={personality} aria-label="Assistant personality">
+          <option value="standard">Standard</option>
+          <option value="relaxed">Relaxed</option>
+        </select>
+      </div>
+
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
         <textarea
@@ -1582,6 +1593,22 @@
   }
 
   /* Input Footer */
+  .personality-selector {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 16px 0;
+  }
+
+  .personality-selector select {
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid var(--lc-border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--lc-text-secondary, #888);
+    cursor: pointer;
+  }
+
   .lc-chatbot-input {
     display: flex;
     align-items: flex-end;
