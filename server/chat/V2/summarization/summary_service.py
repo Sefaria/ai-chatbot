@@ -14,16 +14,24 @@ The summary is updated after each successful turn:
 
 import logging
 import os
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
-from ..pricing import get_cost_accumulator
+from ..pricing import compute_cost
 from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
+
+
+class SummaryResult(NamedTuple):
+    """Return value of `update_summary` — the summary plus the USD cost of the
+    LLM call that produced it (0.0 for rule-based/fallback paths)."""
+
+    summary: ConversationSummary
+    cost_usd: float
 
 
 # Prompt for generating summaries
@@ -85,7 +93,7 @@ class SummaryService:
         session: ChatSession,
         new_user_message: str,
         new_assistant_response: str,
-    ) -> ConversationSummary:
+    ) -> SummaryResult:
         """
         Update the conversation summary with new messages.
 
@@ -94,7 +102,7 @@ class SummaryService:
             new_user_message: Latest user message
             new_assistant_response: Latest assistant response
         Returns:
-            Updated ConversationSummary
+            SummaryResult(summary, cost_usd) — cost is 0.0 for the rule-based path.
         """
         current_summary = ConversationSummary.objects.filter(session=session).first()
 
@@ -106,11 +114,14 @@ class SummaryService:
                 new_assistant_response,
             )
 
-        return self._simple_summarize(
-            session,
-            current_summary,
-            new_user_message,
-            new_assistant_response,
+        return SummaryResult(
+            summary=self._simple_summarize(
+                session,
+                current_summary,
+                new_user_message,
+                new_assistant_response,
+            ),
+            cost_usd=0.0,
         )
 
     def _llm_summarize(
@@ -119,7 +130,7 @@ class SummaryService:
         current_summary: ConversationSummary | None,
         new_user_message: str,
         new_assistant_response: str,
-    ) -> ConversationSummary:
+    ) -> SummaryResult:
         """Use Claude to generate a structured summary."""
         try:
             # Build context
@@ -144,44 +155,55 @@ class SummaryService:
             # Parse JSON response
             response_text = response.content[0].text
 
-            accumulator = get_cost_accumulator()
-            if accumulator:
-                accumulator.add(
+            usage = response.usage
+            cost = (
+                compute_cost(
                     self.model,
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    cache_creation_tokens=getattr(response.usage, "cache_creation_input_tokens", 0)
-                    or 0,
-                    cache_read_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None) or 0,
+                    cache_read_tokens=getattr(usage, "cache_read_input_tokens", None) or 0,
                 )
+                or 0.0
+            )
 
             import json
 
             try:
                 data = json.loads(strip_markdown_fences(response_text))
 
-                return self._apply_summary_data(
-                    session=session,
-                    current_summary=current_summary,
-                    data=data,
+                return SummaryResult(
+                    summary=self._apply_summary_data(
+                        session=session,
+                        current_summary=current_summary,
+                        data=data,
+                    ),
+                    cost_usd=cost,
                 )
 
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
-                return self._simple_summarize(
-                    session,
-                    current_summary,
-                    new_user_message,
-                    new_assistant_response,
+                return SummaryResult(
+                    summary=self._simple_summarize(
+                        session,
+                        current_summary,
+                        new_user_message,
+                        new_assistant_response,
+                    ),
+                    # The LLM call succeeded (we were charged) even though parsing failed.
+                    cost_usd=cost,
                 )
 
         except Exception as e:
             logger.error(f"LLM summarization error: {e}")
-            return self._simple_summarize(
-                session,
-                current_summary,
-                new_user_message,
-                new_assistant_response,
+            return SummaryResult(
+                summary=self._simple_summarize(
+                    session,
+                    current_summary,
+                    new_user_message,
+                    new_assistant_response,
+                ),
+                cost_usd=0.0,
             )
 
     def _simple_summarize(

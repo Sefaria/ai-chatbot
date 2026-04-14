@@ -483,11 +483,9 @@ def chat_stream_v2(request):
 
             # Fold guardrail/router costs (captured during the agent thread) into
             # the turn total before persisting. Summary cost is added below.
-            pre_summary_aux_cost = cost_accumulator.total
-            if pre_summary_aux_cost > 0:
-                agent_response.total_cost_usd = (
-                    agent_response.total_cost_usd or 0.0
-                ) + pre_summary_aux_cost
+            aux_cost = cost_accumulator.total
+            if aux_cost > 0:
+                agent_response.total_cost_usd = (agent_response.total_cost_usd or 0.0) + aux_cost
 
             logging_result = logging_service.persist_assistant_response(
                 user_message=user_message,
@@ -511,18 +509,18 @@ def chat_stream_v2(request):
             summary_text = None
             try:
                 summary_service = get_summary_service()
-                new_summary = summary_service.update_summary(
+                summary_result = summary_service.update_summary(
                     session=session,
                     new_user_message=data["text"],
                     new_assistant_response=agent_response.content,
                 )
+                new_summary = summary_result.summary
                 summary_text = new_summary.to_prompt_text()
 
-                summary_cost = cost_accumulator.total - pre_summary_aux_cost
-                if summary_cost > 0:
+                if summary_result.cost_usd > 0:
                     agent_response.total_cost_usd = (
                         agent_response.total_cost_usd or 0.0
-                    ) + summary_cost
+                    ) + summary_result.cost_usd
                     response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
                     response_message.save(update_fields=["total_cost_usd"])
             except Exception as exc:
