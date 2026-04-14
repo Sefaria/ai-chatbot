@@ -24,6 +24,7 @@ import json
 import logging
 import queue
 import time
+from decimal import Decimal
 from urllib.parse import urlsplit
 
 import braintrust
@@ -519,8 +520,6 @@ def chat_stream_v2(request):
 
                 summary_cost = cost_accumulator.total - pre_summary_aux_cost
                 if summary_cost > 0:
-                    from decimal import Decimal
-
                     agent_response.total_cost_usd = (
                         agent_response.total_cost_usd or 0.0
                     ) + summary_cost
