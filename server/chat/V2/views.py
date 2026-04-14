@@ -523,6 +523,7 @@ def chat_stream_v2(request):
                     ) + summary_result.cost_usd
                     response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
                     response_message.save(update_fields=["total_cost_usd"])
+                    logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
             except Exception as exc:
                 logger.exception("Summary update failed after agent success")
                 capture_exception(
