@@ -15,7 +15,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+
 from .contracts import MessageContext
+from .catalog_service import CatalogService
 from .sefaria_client import SefariaClient
 
 logger = logging.getLogger("chat.agent")
@@ -39,6 +41,7 @@ class SefariaToolExecutor:
 
     def __init__(self, client: SefariaClient | None = None):
         self.client = client or SefariaClient()
+        self.catalog_service = CatalogService(self.client)
 
     def set_message_context(self, context: MessageContext) -> None:
         """Propagate per-request auth context to the Sefaria client."""
@@ -97,13 +100,6 @@ class SefariaToolExecutor:
                 input_data.get("with_refs", False),
             )
 
-        elif tool_name == "get_author_indexes":
-            return await self.client.get_author_indexes(
-                input_data["author_slug"],
-                input_data.get("include_aggregations", False),
-                input_data.get("include_descriptions", False),
-            )
-
         elif tool_name == "clarify_name_argument":
             return await self.client.clarify_name_argument(
                 input_data["name"], input_data.get("limit"), input_data.get("type_filter")
@@ -113,11 +109,37 @@ class SefariaToolExecutor:
             filter_path = await self.client.clarify_search_path_filter(input_data["book_name"])
             return {"filter_path": filter_path}
 
-        elif tool_name == "get_text_or_category_shape":
-            return await self.client.get_text_or_category_shape(input_data["name"])
+        elif tool_name == "catalog_get_node":
+            return await self.catalog_service.get_node(
+                input_data["identifier"],
+                identifier_type=input_data.get("identifier_type", "path"),
+                child_limit=input_data.get("child_limit", 20),
+            )
 
-        elif tool_name == "get_text_catalogue_info":
-            return await self.client.get_text_catalogue_info(input_data["title"])
+        elif tool_name == "catalog_get_children":
+            return await self.catalog_service.get_children(
+                input_data["path"],
+                child_type=input_data.get("child_type", "all"),
+                limit=input_data.get("limit", 50),
+                offset=input_data.get("offset", 0),
+            )
+
+        elif tool_name == "catalog_search":
+            return await self.catalog_service.search(
+                input_data["query"],
+                node_type=input_data.get("node_type", "any"),
+                category_path=input_data.get("category_path"),
+                limit=input_data.get("limit", 10),
+            )
+
+        elif tool_name == "catalog_query":
+            return await self.catalog_service.query(
+                node_type=input_data.get("node_type", "any"),
+                filters=input_data.get("filters"),
+                select=input_data.get("select"),
+                limit=input_data.get("limit", 20),
+                offset=input_data.get("offset", 0),
+            )
 
         elif tool_name == "get_available_manuscripts":
             return await self.client.get_available_manuscripts(input_data["reference"])
@@ -206,18 +228,15 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         ),
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
-        "get_author_indexes": lambda: (
-            f"Loading works for author {q(tool_input.get('author_slug'))}"
-        ),
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
         "clarify_name_argument": lambda: f"Clarifying name {q(tool_input.get('name'))}",
         "clarify_search_path_filter": lambda: (
             f"Resolving book filter for {q(tool_input.get('book_name'))}"
         ),
-        "get_text_or_category_shape": lambda: f"Loading shape for {q(tool_input.get('name'))}",
-        "get_text_catalogue_info": lambda: (
-            f"Loading catalogue info for {q(tool_input.get('title'))}"
-        ),
+        "catalog_get_node": lambda: f"Loading catalog node for {q(tool_input.get('identifier'))}",
+        "catalog_get_children": lambda: f"Loading catalog children for {q(tool_input.get('path'))}",
+        "catalog_search": lambda: f"Searching catalog for {q(tool_input.get('query'))}",
+        "catalog_query": lambda: "Querying cached catalog metadata",
         "get_available_manuscripts": lambda: (
             f"Checking available manuscripts for {q(tool_input.get('reference'))}"
         ),

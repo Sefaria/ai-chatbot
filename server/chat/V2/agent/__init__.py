@@ -8,10 +8,8 @@ Exports:
 - SefariaClient and tool executor
 """
 
-from .claude_service import (
-    ClaudeAgentService,
-    get_agent_service,
-)
+from .catalog_service import CatalogService
+from .claude_service import ClaudeAgentService, get_agent_service
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
@@ -24,6 +22,7 @@ __all__ = [
     "MessageContext",
     "AgentResponse",
     "AgentProgressUpdate",
+    "CatalogService",
     "SEFARIA_TOOL_SCHEMAS",
     "ALL_TOOLS",
     "get_all_tools",

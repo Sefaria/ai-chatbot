@@ -56,13 +56,9 @@ def mock_client():
     client.search_in_dictionaries = AsyncMock(return_value={"entries": []})
     client.get_english_translations = AsyncMock(return_value={"translations": []})
     client.get_topic_details = AsyncMock(return_value={"topic": "shabbat"})
-    client.get_author_indexes = AsyncMock(
-        return_value={"author": {"slug": "rambam"}, "indexes": []}
-    )
     client.clarify_name_argument = AsyncMock(return_value={"suggestions": []})
     client.clarify_search_path_filter = AsyncMock(return_value="Tanakh/Torah/Genesis")
-    client.get_text_or_category_shape = AsyncMock(return_value={"shape": []})
-    client.get_text_catalogue_info = AsyncMock(return_value={"info": {}})
+    client.get_library_index = AsyncMock(return_value=[])
     client.get_available_manuscripts = AsyncMock(return_value={"manuscripts": []})
     client.get_manuscript_image = AsyncMock(return_value={"image_url": "http://..."})
     client.set_user_session = Mock()
@@ -132,32 +128,16 @@ class TestToolDispatch:
                 ("shabbat", True, True),
             ),
             (
-                "get_author_indexes",
-                {
-                    "author_slug": "rambam",
-                    "include_aggregations": True,
-                    "include_descriptions": True,
-                },
-                "get_author_indexes",
-                ("rambam", True, True),
-            ),
-            (
                 "clarify_name_argument",
                 {"name": "rashi", "limit": 5, "type_filter": "Person"},
                 "clarify_name_argument",
                 ("rashi", 5, "Person"),
             ),
             (
-                "get_text_or_category_shape",
-                {"name": "Genesis"},
-                "get_text_or_category_shape",
+                "clarify_search_path_filter",
+                {"book_name": "Genesis"},
+                "clarify_search_path_filter",
                 ("Genesis",),
-            ),
-            (
-                "get_text_catalogue_info",
-                {"title": "Mishnah Berakhot"},
-                "get_text_catalogue_info",
-                ("Mishnah Berakhot",),
             ),
             (
                 "get_available_manuscripts",
@@ -201,10 +181,69 @@ class TestToolDispatch:
         assert result.is_error is False
 
     @pytest.mark.asyncio
-    async def test_clarify_search_path_filter_wraps_result(self, executor, mock_client):
+    async def test_catalog_get_node_dispatches_to_catalog_service(self, executor):
+        executor.catalog_service.get_node = AsyncMock(return_value={"found": True})
+        result = await executor.execute(
+            "catalog_get_node",
+            {"identifier": "Tanakh/Torah", "identifier_type": "path", "child_limit": 5},
+        )
+        executor.catalog_service.get_node.assert_called_once_with(
+            "Tanakh/Torah", identifier_type="path", child_limit=5
+        )
+        assert result.is_error is False
+
+    @pytest.mark.asyncio
+    async def test_clarify_search_path_filter_wraps_filter_path(self, executor):
         result = await executor.execute("clarify_search_path_filter", {"book_name": "Genesis"})
-        mock_client.clarify_search_path_filter.assert_called_once_with("Genesis")
-        assert "filter_path" in result.content[0]["text"]
+        executor.client.clarify_search_path_filter.assert_called_once_with("Genesis")
+        assert result.is_error is False
+        assert '"filter_path": "Tanakh/Torah/Genesis"' in result.content[0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_catalog_get_children_dispatches_to_catalog_service(self, executor):
+        executor.catalog_service.get_children = AsyncMock(return_value={"found": True})
+        result = await executor.execute(
+            "catalog_get_children",
+            {"path": "Tanakh", "child_type": "book", "limit": 3, "offset": 2},
+        )
+        executor.catalog_service.get_children.assert_called_once_with(
+            "Tanakh", child_type="book", limit=3, offset=2
+        )
+        assert result.is_error is False
+
+    @pytest.mark.asyncio
+    async def test_catalog_search_dispatches_to_catalog_service(self, executor):
+        executor.catalog_service.search = AsyncMock(return_value={"results": []})
+        result = await executor.execute(
+            "catalog_search",
+            {"query": "rashi", "node_type": "book", "category_path": "Tanakh", "limit": 4},
+        )
+        executor.catalog_service.search.assert_called_once_with(
+            "rashi", node_type="book", category_path="Tanakh", limit=4
+        )
+        assert result.is_error is False
+
+    @pytest.mark.asyncio
+    async def test_catalog_query_dispatches_to_catalog_service(self, executor):
+        executor.catalog_service.query = AsyncMock(return_value={"results": []})
+        result = await executor.execute(
+            "catalog_query",
+            {
+                "node_type": "book",
+                "filters": {"creator": "Rashi"},
+                "select": ["title"],
+                "limit": 2,
+                "offset": 1,
+            },
+        )
+        executor.catalog_service.query.assert_called_once_with(
+            node_type="book",
+            filters={"creator": "Rashi"},
+            select=["title"],
+            limit=2,
+            offset=1,
+        )
+        assert result.is_error is False
 
     def test_set_message_context_sets_client_user_session(self, executor, mock_client):
         from chat.V2.agent import MessageContext
@@ -308,8 +347,24 @@ class TestDescribeToolCall:
             ),
             ("get_topic_details", {"topic_slug": "shabbat"}, ["topic details", "shabbat"]),
             ("get_current_calendar", {}, ["calendar"]),
-            ("get_author_indexes", {"author_slug": "rambam"}, ["works", "rambam"]),
             ("clarify_name_argument", {"name": "rashi"}, ["Clarifying name", "rashi"]),
+            (
+                "clarify_search_path_filter",
+                {"book_name": "Genesis"},
+                ["Resolving book filter", "Genesis"],
+            ),
+            (
+                "catalog_get_node",
+                {"identifier": "Tanakh/Torah"},
+                ["catalog node", "Tanakh/Torah"],
+            ),
+            (
+                "catalog_get_children",
+                {"path": "Tanakh"},
+                ["catalog children", "Tanakh"],
+            ),
+            ("catalog_search", {"query": "rashi"}, ["Searching catalog", "rashi"]),
+            ("catalog_query", {}, ["Querying cached catalog"]),
             ("unknown_tool", {"arg": "value"}, ["Running tool", "unknown_tool"]),
         ],
     )
