@@ -1,5 +1,7 @@
 """Tests for the pricing utility."""
 
+from types import SimpleNamespace
+
 from chat.V2.pricing import (
     CostAccumulator,
     compute_cost,
@@ -99,3 +101,68 @@ class TestCostAccumulator:
         assert get_cost_accumulator().total == acc.total
         reset_cost_accumulator()
         assert get_cost_accumulator() is None
+
+
+class TestAddFromResponse:
+    @staticmethod
+    def _mock_response(
+        input_tokens: int = 10,
+        output_tokens: int = 5,
+        cache_creation_input_tokens=None,
+        cache_read_input_tokens=None,
+    ):
+        """Build a duck-typed Anthropic Messages response (only .usage matters)."""
+        usage = SimpleNamespace(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_creation_input_tokens,
+            cache_read_input_tokens=cache_read_input_tokens,
+        )
+        return SimpleNamespace(usage=usage)
+
+    def test_basic(self):
+        acc = CostAccumulator()
+        acc.add_from_response(
+            "claude-haiku-4-5-20251001",
+            self._mock_response(input_tokens=1000, output_tokens=100),
+        )
+        expected = (1000 * 1e-06) + (100 * 5e-06)
+        assert abs(acc.total - expected) < 1e-12
+
+    def test_cache_fields_none(self):
+        """SDK sets cache_* to None for non-caching models. Must not crash."""
+        acc = CostAccumulator()
+        acc.add_from_response(
+            "claude-haiku-4-5-20251001",
+            self._mock_response(
+                input_tokens=1000,
+                output_tokens=100,
+                cache_creation_input_tokens=None,
+                cache_read_input_tokens=None,
+            ),
+        )
+        expected = (1000 * 1e-06) + (100 * 5e-06)
+        assert abs(acc.total - expected) < 1e-12
+
+    def test_cache_fields_missing(self):
+        """Older SDK/response shapes may lack the attrs entirely."""
+        acc = CostAccumulator()
+        usage = SimpleNamespace(input_tokens=1000, output_tokens=100)
+        response = SimpleNamespace(usage=usage)
+        acc.add_from_response("claude-haiku-4-5-20251001", response)
+        expected = (1000 * 1e-06) + (100 * 5e-06)
+        assert abs(acc.total - expected) < 1e-12
+
+    def test_cache_fields_populated(self):
+        acc = CostAccumulator()
+        acc.add_from_response(
+            "claude-haiku-4-5-20251001",
+            self._mock_response(
+                input_tokens=1000,
+                output_tokens=100,
+                cache_creation_input_tokens=500,
+                cache_read_input_tokens=2000,
+            ),
+        )
+        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
+        assert abs(acc.total - expected) < 1e-12

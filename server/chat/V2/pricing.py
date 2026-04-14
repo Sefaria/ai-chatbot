@@ -77,6 +77,22 @@ class CostAccumulator:
         elif input_tokens > 0:
             logger.warning(f"No pricing for model: {model}")
 
+    def add_from_response(self, model: str, response) -> None:
+        """Add cost from an Anthropic Messages API response.
+
+        Pulls input/output and cache token counts from `response.usage`. Cache
+        fields are Optional[int] in the SDK (None when the model doesn't use
+        prompt caching), so we normalize to 0.
+        """
+        usage = response.usage
+        self.add(
+            model,
+            usage.input_tokens,
+            usage.output_tokens,
+            cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None) or 0,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", None) or 0,
+        )
+
     @property
     def total(self) -> float:
         return self._total
