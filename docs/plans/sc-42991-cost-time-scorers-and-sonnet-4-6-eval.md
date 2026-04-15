@@ -1,4 +1,4 @@
-# sc-42991 — Cost and time scorers
+# sc-42991 — Cost and time scorers + Sonnet 4.6 eval
 
 ## Goal
 
@@ -243,3 +243,55 @@ moved −50 pp and `suicide_and_self_harm` (N=5) moved +20 pp, both driven by a
 single flipped verdict. Practical rule: on this benchmark, real regressions
 need to clear roughly ±6 pp (N ≥ 40) or ±25 pp (N ≤ 5) before they're
 distinguishable from noise.
+
+## Sonnet 4.6 vs Sonnet 4.5 (2026-04-15 15:40) — first use of the new scorers
+
+First real use of the cost/latency metrics: compare `claude-sonnet-4-6`
+against the `claude-sonnet-4-5-20250929` baseline on the Benchmark dataset.
+Same code path, same dataset, same concurrency=3, `--local`. Only difference
+is `AGENT_MODEL`. Experiment:
+`Sonnet 4.6 - 2026-04-15 15:40` (id `9d0f42e6-8a5a-43e2-9c6c-0f6dc8a69fef`);
+baseline `Automated Eval - 2026-04-15 14:50-6e1cf278` (id `fb030606`).
+
+**Cost and latency.** Sonnet 4.6 ran slightly cheaper and at the same speed.
+Total cost $8.86 vs $9.62 (−$0.76, −7.9%). Avg cost/row $0.102 vs $0.109, max
+$0.296 vs $0.274. Avg latency 29.9 s vs 29.0 s (within noise), max 62.4 s vs
+69.3 s. Sonnet 4.6's per-token pricing is identical to 4.5, so the cost drop
+reflects fewer tokens used per turn. Zero task-level errors on the 4.6 run;
+the baseline had 7 transient Braintrust scorer-infra timeouts (all retried).
+
+**Scorers — real signal (clears noise floor above).** High-N improvements:
+`theological_questions` 56.1% → 78.6% (+22.5 pp, recovers the
+−23 pp regression flagged in the variance analysis), `brand_adherence`
+50.0% → 62.5% (+12.5 pp), `invalidmissing_reference_scorer` 82.0% → 94.1%
+(+12.1 pp), `sefaria_sources_check` 87.3% → 94.5% (+7.2 pp). Low-N
+improvements that clear ±25 pp: `sefaria_translation_scorer` (N=4) 25% → 80%
+(+55 pp), `specific_reference_retrieval` 66.7% → 100% (+33.3 pp).
+
+**Scorers — within noise.** `antisemitism` +5.7 pp (just under the 6 pp
+threshold), `link_are_valid` −4.5, `health_and_judaism` +1.0,
+`teaser_not_spoiler` +1.3, `concise_and_proportional` +1.2, `minors` −0.1.
+`suicide_and_self_harm` (N=5) −20 pp sits inside the ±25 pp floor.
+Always-100% scorers (`non_psak`, `politics`, `sensitive_jewish_questions`,
+`teststandup`, `delusional`, `violence_and_hate_speech`) unchanged.
+
+**One regression worth investigating.** `html_format_dc7d` dropped 56.6% →
+16.7% (−39.9 pp). N is not in the variance table so the noise floor can't be
+applied directly, but the magnitude is large enough that it's unlikely to be
+pure noise. Before rolling Sonnet 4.6 anywhere, inspect a few html_format
+rows in the UI to confirm whether this is a real regression or a scorer-side
+artifact (e.g., the scorer keying off a formatting pattern that 4.6
+legitimately changed).
+
+**Local change (not committed).** `server/.env` now sets
+`AGENT_MODEL=claude-sonnet-4-6`. The file is gitignored (lines 23 and 47 of
+`.gitignore`), so this is a local override only — production still uses the
+`settings.py` default (`claude-sonnet-4-5-20250929`) until that default is
+changed explicitly.
+
+**Bottom line.** Sonnet 4.6 is a net upgrade on this benchmark: four solid
+high-N quality improvements, two low-N improvements that clear the tiny-N
+threshold, no other real regressions except the html_format drop to triage,
+slightly cheaper, same latency. The new cost/latency metrics made this
+comparison straightforward — cost and quality were both visible in one
+experiment diff, which is exactly the use case this scorer PR was built for.
