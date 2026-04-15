@@ -77,6 +77,10 @@ TOOL_GET_LINKS_BETWEEN_TEXTS = {
         "properties": {
             "reference": {"type": "string"},
             "with_text": {"type": "string", "enum": ["0", "1"], "default": "0"},
+            "category": {
+                "type": "string",
+                "description": "Filter links to a specific category. Allowed values: Chasidut, Commentary, Essay, Guides, Halakhah, Jewish Thought, Kabbalah, Liturgy, Midrash, Mishnah, Musar, Quoting Commentary, Reference, Responsa, Second Temple, Talmud, Tanakh, Targum, Tosefta.",
+            },
         },
         "required": ["reference"],
     },
