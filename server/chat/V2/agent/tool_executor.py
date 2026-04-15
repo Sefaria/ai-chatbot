@@ -72,10 +72,16 @@ class SefariaToolExecutor:
             )
 
         elif tool_name == "get_links_between_texts":
+            category = input_data.get("category")
+            if category is None:
+                return await self.client.get_links_between_texts(
+                    input_data["reference"],
+                    input_data.get("with_text", "0"),
+                )
             return await self.client.get_links_between_texts(
                 input_data["reference"],
                 input_data.get("with_text", "0"),
-                input_data.get("category"),
+                category,
             )
 
         elif tool_name == "search_in_book":
