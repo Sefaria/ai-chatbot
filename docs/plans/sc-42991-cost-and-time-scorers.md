@@ -214,12 +214,13 @@ months of agent drift.
 
 ## Second full run (2026-04-15 14:50) — metrics validated
 
-Re-ran the same code (commit `a49bd79`) against `http://localhost:8001` with
-the same Benchmark dataset and concurrency=3. Experiment:
-`Automated Eval - 2026-04-15 14:50-6e1cf278` (id `fb030606`). Goals: confirm
-the scorer → metric refactor landed cleanly, and measure run-to-run noise
-against the 14:01 baseline (same code, same target — LLM nondeterminism is
-the only intended difference).
+Re-ran against `http://localhost:8001` with the same Benchmark dataset and
+concurrency=3, now on commit `05b1f4a` (the scorer-to-metric refactor).
+Experiment: `Automated Eval - 2026-04-15 14:50-6e1cf278` (id `fb030606`).
+The 14:01 baseline was on the prior commit `a49bd79`; the only code delta
+between the two runs is eval-pipeline plumbing (cost/latency emission),
+which doesn't touch agent behavior, so run-to-run variance on quality
+scorers is pure LLM nondeterminism.
 
 **Health of the run.** 88/88 rows completed with zero task-level errors and
 zero auth errors (the JWT refresh logic held across the 30-minute run). Seven
