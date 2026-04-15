@@ -80,12 +80,16 @@ class ChatbotClient:
             raise ValueError("CHATBOT_USER_TOKEN env var must be set")
         self.client = httpx.AsyncClient(timeout=300.0)
 
-    async def chat(self, message: str) -> str:
+    async def chat(self, message: str) -> dict:
         """
-        Send a message to the chatbot and return the response text.
+        Send a message to the chatbot and return the response payload.
 
         Streams the response via SSE, collecting chunks until the final
-        message event containing the full markdown response.
+        message event. Returns a dict with `content` (markdown),
+        `totalCostUsd`, and `latencyMs` so downstream scorers can see both
+        the response text and the per-turn cost/latency the server reports.
+        Missing stats degrade to None rather than raising, so scorers can
+        skip rows without failing the experiment.
         """
         session_id = f"eval_{uuid.uuid4().hex[:16]}"
         payload = {
@@ -121,7 +125,13 @@ class ChatbotClient:
 
         if not final_response:
             raise Exception("No response received from chatbot")
-        return final_response.get("markdown", "")
+
+        stats = final_response.get("stats") or {}
+        return {
+            "content": final_response.get("markdown", ""),
+            "totalCostUsd": stats.get("totalCostUsd"),
+            "latencyMs": stats.get("latencyMs"),
+        }
 
     async def close(self):
         await self.client.aclose()
@@ -341,7 +351,7 @@ async def run_evaluation(
             return await client.chat(prompt)
         except Exception as e:
             print(f"Error: {e}")
-            return f"ERROR: {e}"
+            return {"content": f"ERROR: {e}", "totalCostUsd": None, "latencyMs": None}
 
     print(f"\n{'=' * 60}")
     print(f"Evaluation: {experiment_name}")

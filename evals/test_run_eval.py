@@ -119,3 +119,141 @@ class TestChatbotClient:
         with patch("evals.run_eval.USER_TOKEN", "test-token"):
             client = ChatbotClient(base_url="http://localhost:8001/")
             assert client.base_url == "http://localhost:8001"
+
+
+def _fake_sse_stream(final_payload: dict):
+    """Build a fake httpx streaming-response context that yields one SSE frame."""
+    import json as _json
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            yield "event: message"
+            yield f"data: {_json.dumps(final_payload)}"
+            yield ""
+
+    class _FakeStream:
+        async def __aenter__(self):
+            return _FakeResponse()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    return _FakeStream()
+
+
+class TestChatbotClientChat:
+    """Tests for ChatbotClient.chat() stats plumbing."""
+
+    @pytest.mark.asyncio
+    async def test_chat_returns_content_and_stats(self):
+        from evals.run_eval import ChatbotClient
+
+        with patch("evals.run_eval.USER_TOKEN", "test-token"):
+            client = ChatbotClient(base_url="http://localhost:8001")
+
+        final = {
+            "markdown": "hello world",
+            "stats": {"totalCostUsd": 0.0123, "latencyMs": 4200},
+        }
+        client.client.stream = lambda *a, **kw: _fake_sse_stream(final)
+
+        result = await client.chat("hi")
+        assert result == {
+            "content": "hello world",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
+
+    @pytest.mark.asyncio
+    async def test_chat_missing_stats_degrades_to_none(self):
+        from evals.run_eval import ChatbotClient
+
+        with patch("evals.run_eval.USER_TOKEN", "test-token"):
+            client = ChatbotClient(base_url="http://localhost:8001")
+
+        # Server didn't emit a stats dict — scorers should see None, not raise.
+        final = {"markdown": "hello"}
+        client.client.stream = lambda *a, **kw: _fake_sse_stream(final)
+
+        result = await client.chat("hi")
+        assert result == {
+            "content": "hello",
+            "totalCostUsd": None,
+            "latencyMs": None,
+        }
+
+
+class TestCostScorer:
+    """Tests for the cost_usd code scorer handler."""
+
+    def test_reads_cost_from_output(self):
+        from evals.scorers.code_scorers.cost_usd import handler
+
+        result = handler(
+            input=None,
+            output={"content": "x", "totalCostUsd": 0.015, "latencyMs": 1000},
+            expected=None,
+            metadata={},
+        )
+        assert result["score"] == 0.015
+        assert result["metadata"]["cost_usd"] == 0.015
+
+    def test_falls_back_to_span_metadata(self):
+        from evals.scorers.code_scorers.cost_usd import handler
+
+        # Pushed-scorer path: output is missing, metadata carries span data.
+        result = handler(
+            input=None,
+            output=None,
+            expected=None,
+            metadata={"totalCostUsd": 0.04},
+        )
+        assert result["score"] == 0.04
+
+    def test_missing_value_returns_none_score(self):
+        from evals.scorers.code_scorers.cost_usd import handler
+
+        result = handler(
+            input=None, output={"content": "x"}, expected=None, metadata={}
+        )
+        assert result["score"] is None
+        assert "reason" in result["metadata"]
+
+
+class TestLatencyScorer:
+    """Tests for the latency_ms code scorer handler."""
+
+    def test_reads_latency_from_output(self):
+        from evals.scorers.code_scorers.latency_ms import handler
+
+        result = handler(
+            input=None,
+            output={"content": "x", "totalCostUsd": 0.0, "latencyMs": 5500},
+            expected=None,
+            metadata={},
+        )
+        assert result["score"] == 5500
+        assert result["metadata"]["latency_ms"] == 5500
+
+    def test_falls_back_to_span_metadata(self):
+        from evals.scorers.code_scorers.latency_ms import handler
+
+        result = handler(
+            input=None,
+            output=None,
+            expected=None,
+            metadata={"latencyMs": 2345},
+        )
+        assert result["score"] == 2345
+
+    def test_missing_value_returns_none_score(self):
+        from evals.scorers.code_scorers.latency_ms import handler
+
+        result = handler(
+            input=None, output={"content": "x"}, expected=None, metadata={}
+        )
+        assert result["score"] is None
+        assert "reason" in result["metadata"]
