@@ -9,6 +9,7 @@ from chat.V2.pricing import (
     get_cost_accumulator,
     init_cost_accumulator,
     reset_cost_accumulator,
+    set_cost_accumulator,
 )
 
 
@@ -124,6 +125,32 @@ class TestCostAccumulator:
 
         # The accumulator is shared by reference, so the outer view sees it.
         assert acc.total > 0
+        reset_cost_accumulator()
+
+    def test_set_cost_accumulator_attaches_existing_instance(self):
+        """Worker threads spawned without copy_context() (e.g. the load-test
+        executor path) must still be able to attach the outer thread's
+        accumulator so guardrail/router costs land on the same instance.
+        """
+        import threading
+
+        reset_cost_accumulator()
+        outer_acc = init_cost_accumulator()
+
+        # Simulate a bare-submit worker: no copy_context() — the ContextVar is
+        # not propagated across the thread boundary.
+        def worker():
+            assert get_cost_accumulator() is None  # fresh thread context
+            set_cost_accumulator(outer_acc)
+            get_cost_accumulator().add(
+                "claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100
+            )
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()
+
+        assert outer_acc.total > 0
         reset_cost_accumulator()
 
 

@@ -24,6 +24,7 @@ jobs:
 
       - name: Create PR if pricing changed
         run: |
+          set -euo pipefail
           if git diff --quiet server/chat/V2/model_pricing.json; then
             echo "No pricing changes detected."
             exit 0

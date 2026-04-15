@@ -102,6 +102,39 @@ class TestCreateScorer:
             result = scorer("test output")
             assert result == 0.75
 
+    def test_scorer_unwraps_content_and_folds_stats_into_metadata(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        task_output = {
+            "content": "hello world",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"score": 0.9}
+            scorer(task_output, metadata={"trial": 1})
+            call_kwargs = mock_invoke.call_args.kwargs
+            # Pre-existing LLM scorers receive a plain string, not a dict.
+            assert call_kwargs["input"]["output"] == "hello world"
+            # Cost/latency are surfaced via metadata so code scorers can read them.
+            assert call_kwargs["input"]["metadata"]["totalCostUsd"] == 0.0123
+            assert call_kwargs["input"]["metadata"]["latencyMs"] == 4200
+            assert call_kwargs["input"]["metadata"]["trial"] == 1
+
+    def test_scorer_preserves_caller_metadata_overrides(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        task_output = {"content": "x", "totalCostUsd": 0.01, "latencyMs": 1}
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"score": 1.0}
+            # Caller-supplied metadata wins over task output stats.
+            scorer(task_output, metadata={"totalCostUsd": 0.99})
+            md = mock_invoke.call_args.kwargs["input"]["metadata"]
+            assert md["totalCostUsd"] == 0.99
+            assert md["latencyMs"] == 1
+
 
 class TestChatbotClient:
     """Tests for ChatbotClient."""

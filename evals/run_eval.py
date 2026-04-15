@@ -165,13 +165,26 @@ def create_scorer(slug: str):
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
-        scorer_input = {"output": output}
+        # task() returns {"content", "totalCostUsd", "latencyMs"}. Unwrap the
+        # string for LLM scorers that expect a plain output, and fold the stats
+        # into metadata so the cost/latency code scorers can still read them
+        # (their fallback path already checks metadata).
+        if isinstance(output, dict) and "content" in output:
+            merged_metadata = dict(metadata) if metadata else {}
+            for key in ("totalCostUsd", "latencyMs"):
+                if key in output and key not in merged_metadata:
+                    merged_metadata[key] = output[key]
+            scorer_input = {"output": output["content"]}
+            if merged_metadata:
+                scorer_input["metadata"] = merged_metadata
+        else:
+            scorer_input = {"output": output}
+            if metadata is not None:
+                scorer_input["metadata"] = metadata
         if expected is not None:
             scorer_input["expected"] = expected
         if input is not None:
             scorer_input["input"] = input
-        if metadata is not None:
-            scorer_input["metadata"] = metadata
 
         last_exc: Exception | None = None
         for attempt in range(SCORER_MAX_ATTEMPTS):

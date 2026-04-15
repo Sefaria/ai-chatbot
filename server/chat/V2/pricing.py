@@ -114,6 +114,16 @@ def reset_cost_accumulator() -> None:
     _cost_accumulator_var.set(None)
 
 
+def set_cost_accumulator(acc: "CostAccumulator") -> None:
+    """Attach an existing accumulator to the current thread's context.
+
+    Used when a worker thread is spawned without copy_context() (e.g. the
+    load-test path, which avoids copying Braintrust span state) but still
+    needs to share the outer thread's accumulator instance.
+    """
+    _cost_accumulator_var.set(acc)
+
+
 def get_cost_accumulator() -> CostAccumulator | None:
     """Retrieve the current turn's accumulator, or None if not initialized."""
     return _cost_accumulator_var.get()
