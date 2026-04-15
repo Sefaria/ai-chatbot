@@ -161,3 +161,87 @@ logged) and the missing-stats path (no log call when the server omits stats).
 Local-vs-prod note: `--local` uses `http://localhost:8001`, which is bound by
 local Anthropic API throughput rather than prod's. The 28:57 wall time is not
 a meaningful baseline for prod latency.
+
+## Baseline-comparison gotcha (2026-04-15)
+
+`evals/run_eval.py` calls `EvalAsync` without a `base_experiment` argument, so
+Braintrust auto-picks the comparison. The auto-pick is not "most recent prior
+run" — it followed a chain that landed on `Automated Eval - 2026-02-16 19:38`
+(2 months stale, run against `chat-dev.sefaria.org`). The eval's printed
+SUMMARY and the experiment record's `base_exp_id` even disagree on which
+ancestor was used; either way it's not a representative baseline.
+
+This makes the SUMMARY's regression numbers misleading on three axes at once:
+
+1. **Cross-environment.** Today's run hit `localhost:8001`; the auto-picked
+   ancestors mostly hit `chat-dev.sefaria.org`. Different latency and routing
+   characteristics.
+2. **Cross-time on `main`.** Between the auto-picked ancestor and now, `main`
+   has had a guardrail rewrite (structured outputs, slug changes, rejection
+   message overhaul), router/logging changes, and scorer infrastructure moves.
+   The agent has drifted significantly even though this branch only adds
+   scorer plumbing.
+3. **LLM-judge scorers can drift on the Braintrust side.** Scorers like
+   `brand_adherence` and `theological_questions` are LLM-graded; matching
+   slugs don't guarantee identical judge prompts over time.
+
+Re-running the diff manually against the most recent prior run with non-empty
+scores — `Automated Eval - 2026-03-22 14:39` (also `--local`, 24 days old) —
+still shows real regressions but at smaller magnitude, mostly attributable to
+guardrail changes on `main`:
+
+| Scorer | Today | Mar 22 | Δ |
+| --- | ---: | ---: | ---: |
+| brand_adherence_98e5 | 0.477 | 0.966 | -48.86% |
+| specific_reference_retrieval_e8c4 | 0.667 | 1.000 | -33.33% |
+| theological_questions_ab7a | 0.432 | 0.628 | -19.55% |
+| html_format_dc7d | 0.584 | 0.675 | -9.09% |
+| link_are_valid_06b8 | 0.886 | 0.932 | -4.55% |
+| sefaria_translation_scorer | 0.750 | 0.500 | +25.00% |
+| (others within ±5%) | | | |
+
+Side-observation while pulling the data: every recent automated run against
+`https://chat-dev.sefaria.org` returns an empty `scores` block in the
+summarize endpoint (Mar 16, Mar 24, Mar 25, and a 14:50 run today against
+prod-dev all show `scores: {}`), while every `--local` run since Mar 19 has
+~19 populated scorers. Worth investigating separately — it suggests scorers
+aren't being attached on prod-dev runs.
+
+Recommendation for future runs: pass an explicit `base_experiment` to
+`EvalAsync` (a known-good prod-dev run) or pin a "blessed" baseline in the
+Braintrust UI, so the SUMMARY isn't comparing across environments and across
+months of agent drift.
+
+## Second full run (2026-04-15 14:50) — metrics validated
+
+Re-ran the same code (commit `a49bd79`) against `http://localhost:8001` with
+the same Benchmark dataset and concurrency=3. Experiment:
+`Automated Eval - 2026-04-15 14:50-6e1cf278` (id `fb030606`). Goals: confirm
+the scorer → metric refactor landed cleanly, and measure run-to-run noise
+against the 14:01 baseline (same code, same target — LLM nondeterminism is
+the only intended difference).
+
+**Health of the run.** 88/88 rows completed with zero task-level errors and
+zero auth errors (the JWT refresh logic held across the 30-minute run). Seven
+transient Braintrust scorer-infra timeouts hit (BrainstoreQuery / 240 s
+function timeouts) and all were retried successfully. The experiment-level
+`errors` metric dropped from 1.00 (14:01, where `latency_ms_4202` failed on
+every row) to 0.08 (only the transient infra timeouts).
+
+**Metrics coverage.** `cost_usd` and `latency_seconds` are populated on all
+88 task rows. Values: cost min $0.0024, median $0.124, avg $0.109, max $0.274,
+total $9.62; latency min 1.32 s, median 30.11 s, avg 28.99 s, max 69.29 s.
+Both show up in the experiment table next to scorers as intended.
+
+**Run-to-run noise floor.** Against the 14:01 baseline (same code, same
+target), 14 of 16 scorers with N ≥ 40 moved within ±6 pp. Outliers on the
+big-N side: `theological_questions` +12.9 pp and `sefaria_sources_check`
+−8.5 pp, both LLM-judge scorers whose per-row verdicts are themselves
+stochastic. Tiny-N scorers swung harder — `sefaria_translation_scorer` (N=4)
+moved −50 pp and `suicide_and_self_harm` (N=5) moved +20 pp, both driven by a
+single flipped verdict. Practical rule: on this benchmark, real regressions
+need to clear roughly ±6 pp (N ≥ 40) or ±25 pp (N ≤ 5) before they're
+distinguishable from noise.
+
+Reports: `sc-42991-reports/eval-variance-2026-04-15.pdf` (variance table) and
+`sc-42991-reports/cost-latency-metrics-2026-04-15.pdf` (metrics rollout).
