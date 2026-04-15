@@ -243,6 +243,3 @@ moved −50 pp and `suicide_and_self_harm` (N=5) moved +20 pp, both driven by a
 single flipped verdict. Practical rule: on this benchmark, real regressions
 need to clear roughly ±6 pp (N ≥ 40) or ±25 pp (N ≤ 5) before they're
 distinguishable from noise.
-
-Reports: `sc-42991-reports/eval-variance-2026-04-15.pdf` (variance table) and
-`sc-42991-reports/cost-latency-metrics-2026-04-15.pdf` (metrics rollout).
