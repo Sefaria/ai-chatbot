@@ -283,6 +283,43 @@ rows in the UI to confirm whether this is a real regression or a scorer-side
 artifact (e.g., the scorer keying off a formatting pattern that 4.6
 legitimately changed).
 
+### html_format_dc7d triage (2026-04-15, evening)
+
+**Root cause: model-behavior shift vs. a strict scorer allow-list, not a
+quality regression.** The scorer
+(`evals/scorers/code_scorers/html_format.py:15-39`) only accepts `<p>`,
+`<ul>`, `<h3>`, `<h4>`, `<a>`, `<span>`, `<li>`, each with a required
+`response-*` class. Any other tag fails the row.
+
+**Method.** Replayed the scorer locally over every failing row pulled from
+Braintrust (65 fails on 4.6, 33 on 4.5 baseline). Braintrust MCP was broken
+on a Cognito JWT; used the REST API with `BRAINTRUST_API_KEY` from
+`server/.env` instead.
+
+**Disallowed-tag occurrences across failing rows:**
+
+| tag | Sonnet 4.5 (33 fails) | Sonnet 4.6 (65 fails) |
+|---|---|---|
+| `<em>` / `</em>` | 16 / 16 | 172 / 172 |
+| `<strong>` / `</strong>` | 15 / 15 | 42 / 42 |
+| `<i>` / `</i>` | 37 / 37 | 5 / 5 |
+| `<br>` | 7 | 0 |
+
+Sonnet 4.6 swapped its emphasis preference from `<i>` to `<em>`/`<strong>`
+and emits them roughly 10× more often. That alone explains 63 of the 65
+failures; the remaining 2 are char-limit-only. Char-limit violations roughly
+doubled (11 → 23) because 4.6 writes slightly longer responses, but that is
+secondary. Zero failures were due to missing `response-*` structure or the
+word limit.
+
+**Open question for the team (before fixing).** Does the Sefaria embed
+pipeline actually render `<em>`, `<strong>`, `<i>`? If it does, the right
+fix is to loosen the scorer's allow-list to match reality — which would also
+lift the 4.5 baseline. If the renderer strips everything outside the
+`response-*` set, the right fix is to tighten the agent system prompt to
+forbid emphasis tags outright. Deferring the code change until we have that
+answer.
+
 **Local change (not committed).** `server/.env` now sets
 `AGENT_MODEL=claude-sonnet-4-6`. The file is gitignored (lines 23 and 47 of
 `.gitignore`), so this is a local override only — production still uses the
