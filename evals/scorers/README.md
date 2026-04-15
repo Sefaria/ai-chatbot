@@ -90,18 +90,17 @@ def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
 
 ## Score Values
 
-Most scorers return a pass/fail:
+Scorers return a pass/fail:
 - `score: 1.0` for PASS
 - `score: 0.0` for FAIL
 - `score: None` for NOT_RELEVANT (skipped in aggregations)
 
-Scores can also be **raw numeric values** when the scorer is a measurement
-rather than a judgment — for example `cost_usd.py` and `latency_ms.py` return
-dollars and milliseconds straight from the server-reported SSE `stats` so
-Braintrust's experiment view shows cumulative cost and p50 latency side by
-side with pass/fail scorers. Return `score: None` (with a `reason` in
-metadata) when the value is missing so the row is skipped instead of dragging
-the aggregate down.
+Braintrust enforces `0 ≤ score ≤ 1`. For raw measurements like cost or
+latency that don't normalize, log them as **span metrics** from the eval task
+instead — see `evals/run_eval.py`'s task body, which calls
+`current_span().log(metrics={"cost_usd": ..., "latency_seconds": ...})`.
+Metrics aggregate (sum per row, average across experiments) and show up in
+the experiment table next to scores.
 
 ## Why This Architecture?
 

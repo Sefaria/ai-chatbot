@@ -32,7 +32,7 @@ from pathlib import Path
 
 import braintrust
 import httpx
-from braintrust import EvalAsync, init_dataset, invoke
+from braintrust import EvalAsync, current_span, init_dataset, invoke
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / "server" / ".env")
@@ -165,22 +165,16 @@ def create_scorer(slug: str):
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
-        # task() returns {"content", "totalCostUsd", "latencyMs"}. Unwrap the
-        # string for LLM scorers that expect a plain output, and fold the stats
-        # into metadata so the cost/latency code scorers can still read them
-        # (their fallback path already checks metadata).
+        # task() returns {"content", "totalCostUsd", "latencyMs"}. Existing
+        # scorers expect the markdown string under output, so unwrap it.
+        # Cost and latency are logged as span metrics (not as scores), so they
+        # don't need to be plumbed through here.
         if isinstance(output, dict) and "content" in output:
-            merged_metadata = dict(metadata) if metadata else {}
-            for key in ("totalCostUsd", "latencyMs"):
-                if key in output and key not in merged_metadata:
-                    merged_metadata[key] = output[key]
             scorer_input = {"output": output["content"]}
-            if merged_metadata:
-                scorer_input["metadata"] = merged_metadata
         else:
             scorer_input = {"output": output}
-            if metadata is not None:
-                scorer_input["metadata"] = metadata
+        if metadata is not None:
+            scorer_input["metadata"] = metadata
         if expected is not None:
             scorer_input["expected"] = expected
         if input is not None:
@@ -361,10 +355,24 @@ async def run_evaluation(
             else str(input_data)
         )
         try:
-            return await client.chat(prompt)
+            response = await client.chat(prompt)
         except Exception as e:
             print(f"Error: {e}")
             return {"content": f"ERROR: {e}", "totalCostUsd": None, "latencyMs": None}
+
+        # Cost and latency are not [0,1] scores — they're per-row metrics.
+        # Logging them on the current span surfaces them in the experiment
+        # table next to scores, where Braintrust sums per row and averages
+        # across experiments.
+        metrics: dict[str, float] = {}
+        if isinstance(response.get("totalCostUsd"), (int, float)):
+            metrics["cost_usd"] = float(response["totalCostUsd"])
+        if isinstance(response.get("latencyMs"), (int, float)):
+            metrics["latency_seconds"] = response["latencyMs"] / 1000.0
+        if metrics:
+            current_span().log(metrics=metrics)
+
+        return response
 
     print(f"\n{'=' * 60}")
     print(f"Evaluation: {experiment_name}")

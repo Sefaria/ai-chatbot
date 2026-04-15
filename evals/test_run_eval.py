@@ -102,7 +102,7 @@ class TestCreateScorer:
             result = scorer("test output")
             assert result == 0.75
 
-    def test_scorer_unwraps_content_and_folds_stats_into_metadata(self):
+    def test_scorer_unwraps_content_for_dict_outputs(self):
         from evals.run_eval import create_scorer
 
         scorer = create_scorer("my-scorer")
@@ -117,23 +117,8 @@ class TestCreateScorer:
             call_kwargs = mock_invoke.call_args.kwargs
             # Pre-existing LLM scorers receive a plain string, not a dict.
             assert call_kwargs["input"]["output"] == "hello world"
-            # Cost/latency are surfaced via metadata so code scorers can read them.
-            assert call_kwargs["input"]["metadata"]["totalCostUsd"] == 0.0123
-            assert call_kwargs["input"]["metadata"]["latencyMs"] == 4200
-            assert call_kwargs["input"]["metadata"]["trial"] == 1
-
-    def test_scorer_preserves_caller_metadata_overrides(self):
-        from evals.run_eval import create_scorer
-
-        scorer = create_scorer("my-scorer")
-        task_output = {"content": "x", "totalCostUsd": 0.01, "latencyMs": 1}
-        with patch("evals.run_eval.invoke") as mock_invoke:
-            mock_invoke.return_value = {"score": 1.0}
-            # Caller-supplied metadata wins over task output stats.
-            scorer(task_output, metadata={"totalCostUsd": 0.99})
-            md = mock_invoke.call_args.kwargs["input"]["metadata"]
-            assert md["totalCostUsd"] == 0.99
-            assert md["latencyMs"] == 1
+            # Cost/latency are span metrics now, not scorer metadata.
+            assert call_kwargs["input"]["metadata"] == {"trial": 1}
 
 
 class TestChatbotClient:
@@ -219,74 +204,86 @@ class TestChatbotClientChat:
         }
 
 
-class TestCostScorer:
-    """Tests for the cost_usd code scorer handler."""
+class TestTaskMetricLogging:
+    """Tests that the eval task logs cost/latency as Braintrust span metrics."""
 
-    def test_reads_cost_from_output(self):
-        from evals.scorers.code_scorers.cost_usd import handler
+    @pytest.mark.asyncio
+    async def test_task_logs_cost_and_latency_metrics(self):
+        from evals import run_eval
 
-        result = handler(
-            input=None,
-            output={"content": "x", "totalCostUsd": 0.015, "latencyMs": 1000},
-            expected=None,
-            metadata={},
-        )
-        assert result["score"] == 0.015
-        assert result["metadata"]["cost_usd"] == 0.015
+        chat_response = {
+            "content": "hello",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
 
-    def test_falls_back_to_span_metadata(self):
-        from evals.scorers.code_scorers.cost_usd import handler
+        class FakeClient:
+            base_url = "http://test"
 
-        # Pushed-scorer path: output is missing, metadata carries span data.
-        result = handler(
-            input=None,
-            output=None,
-            expected=None,
-            metadata={"totalCostUsd": 0.04},
-        )
-        assert result["score"] == 0.04
+            async def chat(self, prompt):
+                return chat_response
 
-    def test_missing_value_returns_none_score(self):
-        from evals.scorers.code_scorers.cost_usd import handler
+            async def close(self):
+                return None
 
-        result = handler(
-            input=None, output={"content": "x"}, expected=None, metadata={}
-        )
-        assert result["score"] is None
-        assert "reason" in result["metadata"]
+        recorded = {}
 
+        class FakeSpan:
+            def log(self, **kwargs):
+                recorded.update(kwargs)
 
-class TestLatencyScorer:
-    """Tests for the latency_ms code scorer handler."""
+        async def fake_eval_async(*args, **kwargs):
+            await kwargs["task"]({"prompt": "hi"})
 
-    def test_reads_latency_from_output(self):
-        from evals.scorers.code_scorers.latency_ms import handler
+        with (
+            patch("evals.run_eval.current_span", return_value=FakeSpan()),
+            patch("evals.run_eval.EvalAsync", side_effect=fake_eval_async),
+            patch("evals.run_eval.init_dataset"),
+        ):
+            await run_eval.run_evaluation(
+                client=FakeClient(),
+                dataset_name="ds",
+                experiment_name="exp",
+                scorers=[],
+                max_concurrency=1,
+            )
 
-        result = handler(
-            input=None,
-            output={"content": "x", "totalCostUsd": 0.0, "latencyMs": 5500},
-            expected=None,
-            metadata={},
-        )
-        assert result["score"] == 5500
-        assert result["metadata"]["latency_ms"] == 5500
+        assert recorded["metrics"] == {"cost_usd": 0.0123, "latency_seconds": 4.2}
 
-    def test_falls_back_to_span_metadata(self):
-        from evals.scorers.code_scorers.latency_ms import handler
+    @pytest.mark.asyncio
+    async def test_task_skips_metrics_when_stats_missing(self):
+        from evals import run_eval
 
-        result = handler(
-            input=None,
-            output=None,
-            expected=None,
-            metadata={"latencyMs": 2345},
-        )
-        assert result["score"] == 2345
+        class FakeClient:
+            base_url = "http://test"
 
-    def test_missing_value_returns_none_score(self):
-        from evals.scorers.code_scorers.latency_ms import handler
+            async def chat(self, prompt):
+                return {"content": "hello", "totalCostUsd": None, "latencyMs": None}
 
-        result = handler(
-            input=None, output={"content": "x"}, expected=None, metadata={}
-        )
-        assert result["score"] is None
-        assert "reason" in result["metadata"]
+            async def close(self):
+                return None
+
+        log_calls = []
+
+        class FakeSpan:
+            def log(self, **kwargs):
+                log_calls.append(kwargs)
+
+        async def fake_eval_async(*args, **kwargs):
+            await kwargs["task"]({"prompt": "hi"})
+
+        with (
+            patch("evals.run_eval.current_span", return_value=FakeSpan()),
+            patch("evals.run_eval.EvalAsync", side_effect=fake_eval_async),
+            patch("evals.run_eval.init_dataset"),
+        ):
+            await run_eval.run_evaluation(
+                client=FakeClient(),
+                dataset_name="ds",
+                experiment_name="exp",
+                scorers=[],
+                max_concurrency=1,
+            )
+
+        # Nothing to log when the server didn't emit stats.
+        assert log_calls == []

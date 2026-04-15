@@ -122,3 +122,42 @@ other scorer uses.
 - Latency units: milliseconds to match what the server emits. We could switch
   to seconds if the Braintrust aggregate view reads poorly at ms resolution;
   decide after first real run.
+
+## Findings from first full run (2026-04-15)
+
+First end-to-end run against the local server: experiment
+`Automated Eval - 2026-04-15 14:01`, Benchmark dataset, 88/88 rows in 28:57.
+URL: https://www.braintrust.dev/app/Sefaria/p/On%20Site%20Agent/experiments/Automated%20Eval%20-%202026-04-15%2014%3A01
+
+The latency scorer (`latency-ms-4202`) raised
+`ValueError: score (X) must be between 0 and 1` on every row. The cost scorer
+hit the same constraint whenever cost > $1 (it stayed silent on this run only
+because per-turn cost happened to be sub-dollar, not because the design is
+sound). Braintrust enforces `0 ≤ score ≤ 1` on the `score` field, so the
+"raw numbers as scores" approach was incompatible.
+
+## Revised approach (2026-04-15)
+
+Cost and latency aren't scores at all — they're **metrics**. Braintrust
+distinguishes the two: scores are normalized [0,1] judgments; metrics are
+arbitrary numerics that aggregate (sum per row, average per experiment) and
+show up in the experiment table next to scores. This is exactly the
+"accumulative, human-readable" semantics we want.
+
+Implementation:
+- The eval task in `evals/run_eval.py` now calls
+  `current_span().log(metrics={"cost_usd": ..., "latency_seconds": ...})`
+  after each successful chat turn. Latency converts to seconds for
+  readability; cost stays in USD.
+- The pushed `cost-usd-4201` and `latency-ms-4202` scorers are deleted
+  (both `code_scorers/` and `built/`). They should be removed from the
+  Braintrust UI as well — they will continue to error on runs until then.
+- `create_scorer` no longer folds cost/latency into scorer metadata — it
+  only unwraps `output["content"]` for LLM scorers.
+
+Tests in `evals/test_run_eval.py` cover both the happy path (metrics get
+logged) and the missing-stats path (no log call when the server omits stats).
+
+Local-vs-prod note: `--local` uses `http://localhost:8001`, which is bound by
+local Anthropic API throughput rather than prod's. The 28:57 wall time is not
+a meaningful baseline for prod latency.
