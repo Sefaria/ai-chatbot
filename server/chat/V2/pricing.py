@@ -74,7 +74,12 @@ class CostAccumulator:
         )
         if cost is not None:
             self._total += cost
-        elif input_tokens > 0:
+        elif (
+            input_tokens > 0
+            or output_tokens > 0
+            or cache_creation_tokens > 0
+            or cache_read_tokens > 0
+        ):
             logger.warning(f"No pricing for model: {model}")
 
     def add_from_response(self, model: str, response) -> None:
