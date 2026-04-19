@@ -55,7 +55,7 @@ TOOL_TEXT_SEARCH = {
 
 TOOL_GET_CURRENT_CALENDAR = {
     "name": "get_current_calendar",
-    "description": "Use for calendar questions including holiday dates, Torah portions (parsha), and zmanim. Provides current Jewish calendar information including Hebrew date, parasha, holidays, etc.",
+    "description": "Use for calendar questions including holiday dates, Torah portions (parasha), and zmanim. Provides current Jewish calendar information including Hebrew date, parasha, holidays, etc.",
     "input_schema": {"type": "object", "properties": {}},
 }
 
