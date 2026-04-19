@@ -330,8 +330,9 @@ def chat_stream_v2(request):
         stream_closed = False
 
         # Initialize the auxiliary-LLM cost accumulator in the outer context so
-        # the agent thread (via copy_context) and summary_service (called on
-        # this thread after the agent returns) share the same instance.
+        # the agent thread (via copy_context) can attribute guardrail/router
+        # costs to this turn. Summary cost is tracked separately via
+        # SummaryResult.cost_usd.
         cost_accumulator = init_cost_accumulator()
 
         def on_progress(update: AgentProgressUpdate):
