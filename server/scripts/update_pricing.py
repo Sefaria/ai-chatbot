@@ -38,7 +38,8 @@ def _fetch_pricing_json() -> dict:
                 time.sleep(FETCH_BACKOFF_SECONDS * attempt)
 
     logger.error("Giving up after %d attempts", FETCH_ATTEMPTS)
-    assert last_exc is not None
+    if last_exc is None:
+        raise RuntimeError("Failed to fetch LiteLLM pricing, but no exception was captured")
     raise last_exc
 
 
