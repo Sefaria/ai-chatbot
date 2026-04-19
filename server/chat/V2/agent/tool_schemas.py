@@ -41,7 +41,7 @@ TOOL_GET_TEXT = {
 
 TOOL_TEXT_SEARCH = {
     "name": "text_search",
-    "description": "Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. To search within an author's works, first retrieve the author's books, then search within those books. Hebrew/Aramaic searches are more reliable than English translations.",
+    "description": "Use for exact phrases or specific Hebrew/Aramaic terms. Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. To search within an author's works, first retrieve the author's books, then search within those books. Hebrew/Aramaic searches are more reliable than English translations.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -55,13 +55,13 @@ TOOL_TEXT_SEARCH = {
 
 TOOL_GET_CURRENT_CALENDAR = {
     "name": "get_current_calendar",
-    "description": "Provides current Jewish calendar information including Hebrew date, parasha, holidays, etc.",
+    "description": "Use for calendar questions including holiday dates, Torah portions (parsha), and zmanim. Provides current Jewish calendar information including Hebrew date, parasha, holidays, etc.",
     "input_schema": {"type": "object", "properties": {}},
 }
 
 TOOL_ENGLISH_SEMANTIC_SEARCH = {
     "name": "english_semantic_search",
-    "description": "Performs semantic similarity search on English embeddings of texts from Sefaria. Uses semantic similarity to find conceptually related text chunks. Works well only with English queries.",
+    "description": "Use for conceptual/thematic English queries. Performs semantic similarity search on English embeddings of texts from Sefaria. Uses semantic similarity to find conceptually related text chunks. Works well only with English queries.",
     "input_schema": {
         "type": "object",
         "properties": {"query": {"type": "string"}, "filters": {"type": "object"}},
@@ -71,7 +71,7 @@ TOOL_ENGLISH_SEMANTIC_SEARCH = {
 
 TOOL_GET_LINKS_BETWEEN_TEXTS = {
     "name": "get_links_between_texts",
-    "description": "Finds all cross-references and connections to a specific text passage.",
+    "description": "Use to find commentaries and related passages after retrieving a primary text. Finds all cross-references and connections to a specific text passage.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -88,7 +88,7 @@ TOOL_GET_LINKS_BETWEEN_TEXTS = {
 
 TOOL_SEARCH_IN_BOOK = {
     "name": "search_in_book",
-    "description": "Searches for content within one specific book or text work.",
+    "description": "Use for queries about a known specific book. Searches for content within one specific book or text work.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -112,7 +112,7 @@ TOOL_SEARCH_IN_DICTIONARIES = {
 
 TOOL_GET_ENGLISH_TRANSLATIONS = {
     "name": "get_english_translations",
-    "description": "Retrieves all available English translations for a specific text reference.",
+    "description": "Use when multiple translation options would help the user or enable a semantic search. Retrieves all available English translations for a specific text reference.",
     "input_schema": {
         "type": "object",
         "properties": {"reference": {"type": "string"}},
@@ -122,7 +122,7 @@ TOOL_GET_ENGLISH_TRANSLATIONS = {
 
 TOOL_GET_TOPIC_DETAILS = {
     "name": "get_topic_details",
-    "description": "Retrieves detailed information about specific topics in Jewish thought and texts.",
+    "description": "Use when the question relates to a topic (e.g. 'What is Shabbat?') to explore a topic's connections. Retrieves detailed information about specific topics in Jewish thought and texts.",
     "input_schema": {
         "type": "object",
         "properties": {
