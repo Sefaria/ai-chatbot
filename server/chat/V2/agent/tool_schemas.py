@@ -41,12 +41,16 @@ TOOL_GET_TEXT = {
 
 TOOL_TEXT_SEARCH = {
     "name": "text_search",
-    "description": "Use for exact phrases or specific Hebrew/Aramaic terms. Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. To search within an author's works, first retrieve the author's books, then search within those books. Hebrew/Aramaic searches are more reliable than English translations.",
+    "description": "The primary and most powerful tool for finding source texts — use this first for most text-finding tasks. Use for exact phrases or specific Hebrew/Aramaic terms. Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. Hebrew/Aramaic searches are more reliable than English translations. To scope a search to a specific book or category, pass filters as Sefaria path strings (e.g. 'Tanakh/Torah/Genesis' or 'Talmud/Bavli/Seder Nashim/Kiddushin'). Note that some works are structured as categories rather than single books — for example, Mishneh Torah is a category and each sub-book (e.g. 'Mishneh Torah/Sefer Madda/Teshuvah') is its own index. Use clarify_search_path_filter to resolve a book name to its correct filter path before filtering.",
     "input_schema": {
         "type": "object",
         "properties": {
             "query": {"type": "string"},
-            "filters": {"type": "array", "items": {"type": "string"}},
+            "filters": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Sefaria path-based scope filters (e.g. 'Tanakh/Torah/Genesis'). Use clarify_search_path_filter to resolve a book name to its correct path before passing it here.",
+            },
             "size": {"type": "number", "default": 10},
         },
         "required": ["query"],
