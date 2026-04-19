@@ -128,21 +128,33 @@ class ChatbotClient:
         await self.client.aclose()
 
 
+_AUTH_ERROR_NEEDLES = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "jwt",
+    "access token",
+    "token expired",
+    "token has expired",
+    "invalid token",
+    "expired token",
+)
+
+
 def _is_braintrust_auth_error(exc: Exception) -> bool:
     """Return True if the exception looks like a 401/403 from Braintrust.
 
-    The SDK wraps `requests`, so HTTPError carries a `response` with a status
-    code. Also matches the common cases where the exception text mentions an
-    auth/JWT failure even without a response object.
+    Prefers a structured HTTP status (the SDK wraps `requests`, so HTTPError
+    carries a `response` with a status code). Falls back to narrow message
+    patterns — we avoid bare "token" because it matches unrelated errors like
+    "token limit" or "tokenizer".
     """
     status = getattr(getattr(exc, "response", None), "status_code", None)
     if status in (401, 403):
         return True
     message = str(exc).lower()
-    return any(
-        needle in message
-        for needle in ("401", "403", "unauthorized", "forbidden", "token")
-    )
+    return any(needle in message for needle in _AUTH_ERROR_NEEDLES)
 
 
 def create_scorer(slug: str):

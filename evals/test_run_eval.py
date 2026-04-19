@@ -105,6 +105,61 @@ class TestCreateScorer:
             assert result == 0.75
 
 
+class TestIsBraintrustAuthError:
+    """Tests for the narrowed _is_braintrust_auth_error heuristic."""
+
+    def test_detects_401_status_code(self):
+        from evals.run_eval import _is_braintrust_auth_error
+
+        class FakeResponse:
+            status_code = 401
+
+        err = Exception("something went wrong")
+        err.response = FakeResponse()
+        assert _is_braintrust_auth_error(err) is True
+
+    def test_detects_403_status_code(self):
+        from evals.run_eval import _is_braintrust_auth_error
+
+        class FakeResponse:
+            status_code = 403
+
+        err = Exception("something went wrong")
+        err.response = FakeResponse()
+        assert _is_braintrust_auth_error(err) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "401 Unauthorized",
+            "HTTP 403 Forbidden",
+            "JWT signature expired",
+            "Access token is invalid",
+            "token expired",
+            "Invalid token provided",
+        ],
+    )
+    def test_detects_auth_keywords(self, message):
+        from evals.run_eval import _is_braintrust_auth_error
+
+        assert _is_braintrust_auth_error(Exception(message)) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "token limit exceeded",
+            "tokenizer failed",
+            "max tokens reached",
+            "connection reset by peer",
+            "500 Internal Server Error",
+        ],
+    )
+    def test_ignores_non_auth_errors(self, message):
+        from evals.run_eval import _is_braintrust_auth_error
+
+        assert _is_braintrust_auth_error(Exception(message)) is False
+
+
 class TestChatbotClient:
     """Tests for ChatbotClient."""
 
