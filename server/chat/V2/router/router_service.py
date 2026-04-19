@@ -107,13 +107,11 @@ class RouterService:
             messages=[{"role": "user", "content": user_message}],
         )
 
-        route = self._parse_classification(response)
-
         accumulator = get_cost_accumulator()
         if accumulator:
             accumulator.add_from_response(settings.ROUTER_MODEL, response)
 
-        return route
+        return self._parse_classification(response)
 
     def _rewrite_message(self, user_message: str) -> str | None:
         """Rewrite a message into a Discovery-style question. Returns None on failure."""
