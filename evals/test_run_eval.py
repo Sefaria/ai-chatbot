@@ -36,7 +36,7 @@ class TestCreateScorer:
             assert call_args.kwargs["input"]["expected"] == "expected value"
 
     def test_scorer_raises_after_exhausted_retries(self):
-        from evals.run_eval import create_scorer
+        from evals.run_eval import SCORER_MAX_ATTEMPTS, create_scorer
 
         scorer = create_scorer("my-scorer")
         with (
@@ -46,7 +46,7 @@ class TestCreateScorer:
             mock_invoke.side_effect = Exception("API error")
             with pytest.raises(Exception, match="API error"):
                 scorer("test output")
-            assert mock_invoke.call_count == 3
+            assert mock_invoke.call_count == SCORER_MAX_ATTEMPTS
 
     def test_scorer_raises_when_dict_missing_score_key(self):
         from evals.run_eval import create_scorer
@@ -59,6 +59,8 @@ class TestCreateScorer:
             mock_invoke.return_value = {"pass": True, "reason": "looks good"}
             with pytest.raises(ValueError, match="without 'score'"):
                 scorer("test output")
+            # Malformed response is deterministic — must not retry.
+            assert mock_invoke.call_count == 1
 
     def test_scorer_succeeds_after_transient_error(self):
         from evals.run_eval import create_scorer

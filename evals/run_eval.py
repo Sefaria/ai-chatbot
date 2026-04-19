@@ -61,9 +61,10 @@ DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 # Braintrust's SDK caches a short-lived JWT after the first login() call and
 # never refreshes it unless force_login=True. Long eval runs outlive the JWT,
 # so we retry auth failures with a forced re-login and back off on other
-# transient errors.
-SCORER_MAX_ATTEMPTS = 3
+# transient errors. One initial attempt + three retries (with 2s/5s/10s
+# backoff between them) = SCORER_MAX_ATTEMPTS total.
 SCORER_RETRY_DELAYS = (2, 5, 10)
+SCORER_MAX_ATTEMPTS = 1 + len(SCORER_RETRY_DELAYS)
 
 
 class ChatbotClient:
@@ -180,6 +181,9 @@ def create_scorer(slug: str):
                         )
                     return result["score"]
                 return result
+            except ValueError:
+                # Malformed scorer response is deterministic — retrying won't help.
+                raise
             except Exception as e:
                 last_exc = e
                 print(
