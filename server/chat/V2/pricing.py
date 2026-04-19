@@ -74,8 +74,8 @@ class CostAccumulator:
         )
         if cost is not None:
             self._total += cost
-        elif input_tokens > 0:
-            logger.warning(f"No pricing for model: {model}")
+        elif (input_tokens + output_tokens) > 0:
+            logger.warning("No pricing for model: %s", model)
 
     def add_from_response(self, model: str, response) -> None:
         """Add cost from an Anthropic Messages API response.
