@@ -156,16 +156,28 @@ class SummaryService:
             response_text = response.content[0].text
 
             usage = response.usage
-            cost = (
-                compute_cost(
+            cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", None) or 0
+            cache_read_tokens = getattr(usage, "cache_read_input_tokens", None) or 0
+            computed_cost = compute_cost(
+                self.model,
+                usage.input_tokens,
+                usage.output_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                cache_read_tokens=cache_read_tokens,
+            )
+            if computed_cost is None:
+                logger.warning(
+                    "No pricing for summary model '%s'; defaulting cost to 0.0 "
+                    "(input=%s output=%s cache_creation=%s cache_read=%s)",
                     self.model,
                     usage.input_tokens,
                     usage.output_tokens,
-                    cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None) or 0,
-                    cache_read_tokens=getattr(usage, "cache_read_input_tokens", None) or 0,
+                    cache_creation_tokens,
+                    cache_read_tokens,
                 )
-                or 0.0
-            )
+                cost = 0.0
+            else:
+                cost = computed_cost
 
             import json
 
