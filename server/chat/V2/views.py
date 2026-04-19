@@ -53,7 +53,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
-from .pricing import init_cost_accumulator, reset_cost_accumulator
+from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
 from .services import (
@@ -347,6 +347,12 @@ def chat_stream_v2(request):
 
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
+            # Bind the outer accumulator into this thread's context so
+            # guardrail/router (invoked via asyncio.to_thread inside the agent)
+            # can record costs. Normal path's ctx.run() already copies the
+            # ContextVar; the load-test path intentionally skips copy_context
+            # to isolate Braintrust state, so an explicit bind is required.
+            bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)

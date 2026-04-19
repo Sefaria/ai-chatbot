@@ -114,6 +114,16 @@ def init_cost_accumulator() -> CostAccumulator:
     return acc
 
 
+def bind_cost_accumulator(accumulator: CostAccumulator) -> None:
+    """Bind an existing accumulator into the current context.
+
+    For threads started without `contextvars.copy_context()` — the accumulator
+    is captured by closure but the ContextVar itself isn't. Call this from
+    the new thread so guardrail/router's `get_cost_accumulator()` resolves.
+    """
+    _cost_accumulator_var.set(accumulator)
+
+
 def reset_cost_accumulator() -> None:
     """Clear the accumulator from the current context."""
     _cost_accumulator_var.set(None)

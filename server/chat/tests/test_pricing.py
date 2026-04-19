@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from chat.V2.pricing import (
     CostAccumulator,
+    bind_cost_accumulator,
     compute_cost,
     get_cost_accumulator,
     init_cost_accumulator,
@@ -102,6 +103,37 @@ class TestCostAccumulator:
         assert get_cost_accumulator().total == acc.total
         reset_cost_accumulator()
         assert get_cost_accumulator() is None
+
+    def test_bind_restores_accumulator_in_fresh_context(self):
+        """Load-test path submits run_agent without contextvars.copy_context().
+        Without explicit rebinding, the thread's context has no accumulator
+        and guardrail/router's get_cost_accumulator() would return None.
+        bind_cost_accumulator() restores it inside the thread.
+        """
+        import threading
+
+        reset_cost_accumulator()
+        outer_acc = init_cost_accumulator()
+        seen_inside = {}
+
+        def worker():
+            # Fresh context (as if started with no copy_context): no accumulator
+            seen_inside["before_bind"] = get_cost_accumulator()
+            bind_cost_accumulator(outer_acc)
+            seen_inside["after_bind"] = get_cost_accumulator()
+            get_cost_accumulator().add(
+                "claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100
+            )
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()
+
+        assert seen_inside["before_bind"] is None
+        assert seen_inside["after_bind"] is outer_acc
+        # Mutation is visible back on the outer accumulator (shared reference)
+        assert outer_acc.total > 0
+        reset_cost_accumulator()
 
     def test_copied_context_sees_same_accumulator(self):
         """The orchestrator dispatches the agent via contextvars.copy_context().
