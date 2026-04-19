@@ -63,7 +63,7 @@ DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 # so we retry auth failures with a forced re-login and back off on other
 # transient errors.
 SCORER_MAX_ATTEMPTS = 3
-SCORER_RETRY_DELAYS = (2, 5, 10)
+SCORER_RETRY_DELAYS = (2, 5)
 
 
 class ChatbotClient:
