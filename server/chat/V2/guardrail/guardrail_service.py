@@ -65,13 +65,11 @@ class GuardrailService:
                 messages=[{"role": "user", "content": user_message}],
                 output_config=settings.GUARDRAIL_OUTPUT_CONFIG,
             )
-            result = self._parse_response(response)
-
             accumulator = get_cost_accumulator()
             if accumulator:
                 accumulator.add_from_response(settings.GUARDRAIL_MODEL, response)
 
-            return result
+            return self._parse_response(response)
         except Exception as exc:
             logger.error(f"Guardrail: LLM call failed: {exc}")
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
