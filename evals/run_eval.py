@@ -47,8 +47,12 @@ def extract_braintrust_items(response_data):
     Falls back to treating response as direct list for compatibility.
     """
     if isinstance(response_data, dict):
-        return response_data.get("objects", response_data)
-    return response_data
+        items = response_data.get("objects", response_data)
+    else:
+        items = response_data
+    if isinstance(items, list):
+        return [i for i in items if i is not None]
+    return items
 
 
 # Configuration
@@ -237,16 +241,21 @@ def get_current_branch() -> str:
 
 def fetch_pinned_experiment() -> dict | None:
     """Fetch the currently pinned baseline experiment for this project from
-    Braintrust. Returns None if no experiment is pinned yet."""
+    Braintrust. The baseline is stored in project settings as baseline_experiment_id."""
     try:
-        response = braintrust.api_conn().get(
-            "/v1/experiment", params={"project_name": PROJECT}
-        )
-        if not response.ok:
+        conn = braintrust.api_conn()
+        r = conn.get("/v1/project", params={"project_name": PROJECT})
+        if not r.ok:
             return None
-        items = extract_braintrust_items(response.json())
-        pinned = [e for e in items if e.get("pinned")]
-        return pinned[0] if pinned else None
+        projects = extract_braintrust_items(r.json())
+        project = next((p for p in projects if p.get("name") == PROJECT), None)
+        if not project:
+            return None
+        baseline_id = (project.get("settings") or {}).get("baseline_experiment_id")
+        if not baseline_id:
+            return None
+        r2 = conn.get(f"/v1/experiment/{baseline_id}")
+        return r2.json() if r2.ok else None
     except Exception:
         return None
 
@@ -269,11 +278,16 @@ def _get_mean(score_val) -> float | None:
     with a 'mean' key. Both are handled here so callers don't need to care."""
     if score_val is None:
         return None
-    if hasattr(score_val, "mean"):
-        return score_val.mean
+    if isinstance(score_val, (int, float)):
+        return float(score_val)
     if isinstance(score_val, dict):
         return score_val.get("mean") or score_val.get("score")
-    return float(score_val)
+    if hasattr(score_val, "mean"):
+        return _get_mean(score_val.mean)
+    try:
+        return float(score_val)
+    except (TypeError, ValueError):
+        return None
 
 
 def _normalize(name: str) -> str:
@@ -362,7 +376,7 @@ def analyze_threshold(current_scores: dict) -> None:
     if failures:
         count = len(failures)
         print(
-            f"NOT READY TO MERGE: ({count} scorer(s) exceeded 10% threshold for regression). "
+            f"NOT READY TO MERGE: ({count} scorer(s) exceeded {REGRESSION_TOLERANCE:.0%} threshold for regression). "
             f"NOTE: The code changes must be reviewed by a member of the eval team "
             f"before merging due to this regression."
         )
@@ -392,7 +406,7 @@ def pin_baseline_for_branch(branch: str) -> None:
 
     experiments = extract_braintrust_items(response.json())
     branch_experiments = [
-        e for e in experiments if e.get("metadata", {}).get("branch") == branch
+        e for e in experiments if (e.get("metadata") or {}).get("branch") == branch
     ]
 
     if not branch_experiments:
@@ -402,19 +416,28 @@ def pin_baseline_for_branch(branch: str) -> None:
     branch_experiments.sort(key=lambda e: e.get("created", ""), reverse=True)
     latest = branch_experiments[0]
 
-    current_baseline = next((e for e in experiments if e.get("pinned")), None)
-    if current_baseline and current_baseline["id"] != latest["id"]:
-        braintrust.api_conn().patch(
-            f"/v1/experiment/{current_baseline['id']}", json={"pinned": False}
-        )
+    r_project = braintrust.api_conn().get(
+        "/v1/project", params={"project_name": PROJECT}
+    )
+    if not r_project.ok:
+        print(f"ERROR: Could not fetch project: {r_project.status_code}")
+        sys.exit(1)
+    projects = extract_braintrust_items(r_project.json())
+    project = next((p for p in projects if p.get("name") == PROJECT), None)
+    if not project:
+        print(f"ERROR: Project '{PROJECT}' not found")
+        sys.exit(1)
 
-    resp = braintrust.api_conn().patch(
-        f"/v1/experiment/{latest['id']}", json={"pinned": True}
+    conn = braintrust.api_conn()
+    resp = conn.session.patch(
+        conn.base_url.rstrip("/") + f"/v1/project/{project['id']}",
+        json={"settings": {"baseline_experiment_id": latest["id"]}},
+        headers={"Authorization": f"Bearer {conn.token}"},
     )
     if resp.ok:
         print(f"Pinned '{latest.get('name', latest['id'])}' as the new baseline.")
     else:
-        print(f"ERROR: Could not pin experiment: {resp.status_code}")
+        print(f"ERROR: Could not pin experiment: {resp.status_code} {resp.text[:200]}")
         sys.exit(1)
 
 
@@ -656,10 +679,13 @@ def main():
         sys.exit(1)
 
     # Validate and create scorers
-    scorers = None
+    if not args.all_scorers and not args.scorers:
+        print("ERROR: specify --all-scorers or --scorers <slug,...>")
+        sys.exit(1)
+
     if args.all_scorers:
         scorers = get_all_scorers()
-    elif args.scorers:
+    else:
         scorer_slugs = [s.strip() for s in args.scorers.split(",")]
         if not validate_scorers(scorer_slugs):
             sys.exit(1)

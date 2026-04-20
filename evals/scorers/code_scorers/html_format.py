@@ -38,7 +38,9 @@ ALLOWED_LIST_PATTERNS = [
     r"</li>",
 ]
 
-ALLOWED_PATTERNS = ALLOWED_OPENING_PATTERNS + ALLOWED_CLOSING_PATTERNS + ALLOWED_LIST_PATTERNS
+ALLOWED_PATTERNS = (
+    ALLOWED_OPENING_PATTERNS + ALLOWED_CLOSING_PATTERNS + ALLOWED_LIST_PATTERNS
+)
 
 # Required structure patterns
 REQUIRED_STRUCTURE_PATTERNS = [
@@ -86,7 +88,9 @@ def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
     word_count = len(text_only.split()) if text_only else 0
 
     if char_count > MAX_CHAR_COUNT:
-        errors.append(f"Exceeds {MAX_CHAR_COUNT} character limit: {char_count} characters")
+        errors.append(
+            f"Exceeds {MAX_CHAR_COUNT} character limit: {char_count} characters"
+        )
     if word_count > MAX_WORD_COUNT:
         errors.append(f"Exceeds {MAX_WORD_COUNT} word limit: {word_count} words")
 
@@ -95,7 +99,9 @@ def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
 
     disallowed_tags = []
     for tag in all_tags:
-        is_allowed = any(re.match(pattern, tag, re.IGNORECASE) for pattern in ALLOWED_PATTERNS)
+        is_allowed = any(
+            re.match(pattern, tag, re.IGNORECASE) for pattern in ALLOWED_PATTERNS
+        )
         if not is_allowed:
             if re.match(r"<(p|ul|h3|h4|a|span)\s", tag, re.IGNORECASE):
                 disallowed_tags.append(f"{tag} (incorrect or missing class)")
