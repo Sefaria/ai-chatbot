@@ -19,12 +19,17 @@ on:
   pull_request:
     types: [closed]
     branches:
-      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch name to pin baseline for"
+        required: true
 
 jobs:
   pin-baseline:
     name: Pin Braintrust Baseline
-    if: github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -43,4 +48,5 @@ jobs:
         env:
           BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
         run: |
-          python evals/run_eval.py --pin-baseline "${{ github.event.pull_request.head.ref }}"
+          BRANCH="${{ github.event.pull_request.head.ref || github.event.inputs.branch }}"
+          python evals/run_eval.py --pin-baseline "$BRANCH"
