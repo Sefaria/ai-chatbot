@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import time
 import uuid
@@ -53,7 +54,8 @@ def extract_braintrust_items(response_data):
 # Configuration
 PROJECT = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 DEFAULT_DATASET = "Benchmark"
-PROD_API_URL = "https://chat-dev.sefaria.org"
+DEV_API_URL = "https://chat-dev.sefaria.org"  # master branch → dev deploy
+PROD_API_URL = "https://chat.sefaria.org"  # production branch → prod deploy
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
@@ -65,6 +67,12 @@ DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 # backoff between them) = SCORER_MAX_ATTEMPTS total.
 SCORER_RETRY_DELAYS = (2, 5, 10)
 SCORER_MAX_ATTEMPTS = 1 + len(SCORER_RETRY_DELAYS)
+
+# Regression threshold: how much a scorer's pass rate can drop vs the pinned
+# baseline before the run is considered out of tolerance. Override per scorer
+# as needed once we have more data on expected variance.
+REGRESSION_TOLERANCE = 0.10
+SCORER_TOLERANCES: dict[str, float] = {}
 
 
 class ChatbotClient:
@@ -210,6 +218,204 @@ def create_scorer(slug: str):
 
     scorer.__name__ = slug.replace("-", "_")
     return scorer
+
+
+def get_current_branch() -> str:
+    """Return the current git branch name, embedded in experiment metadata so
+    CI can find this run again on merge and pin it as the new baseline."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def fetch_pinned_experiment() -> dict | None:
+    """Fetch the currently pinned baseline experiment for this project from
+    Braintrust. Returns None if no experiment is pinned yet."""
+    try:
+        response = braintrust.api_conn().get(
+            "/v1/experiment", params={"project_name": PROJECT}
+        )
+        if not response.ok:
+            return None
+        items = extract_braintrust_items(response.json())
+        pinned = [e for e in items if e.get("pinned")]
+        return pinned[0] if pinned else None
+    except Exception:
+        return None
+
+
+def fetch_experiment_scores(experiment_id: str) -> dict:
+    """Fetch per-scorer pass rates for a given experiment from the Braintrust
+    summary endpoint. Returns a dict of scorer name → score stats."""
+    try:
+        response = braintrust.api_conn().get(f"/v1/experiment/{experiment_id}/summary")
+        if not response.ok:
+            return {}
+        return response.json().get("scores", {})
+    except Exception:
+        return {}
+
+
+def _get_mean(score_val) -> float | None:
+    """Extract a scalar mean from a score value regardless of its shape.
+    The SDK returns objects with a .mean attribute; the REST API returns dicts
+    with a 'mean' key. Both are handled here so callers don't need to care."""
+    if score_val is None:
+        return None
+    if hasattr(score_val, "mean"):
+        return score_val.mean
+    if isinstance(score_val, dict):
+        return score_val.get("mean") or score_val.get("score")
+    return float(score_val)
+
+
+def _normalize(name: str) -> str:
+    """Normalize a scorer name to a consistent key for comparison.
+    Braintrust uses hyphens in scorer slugs but Python function names use
+    underscores, so both forms must map to the same key."""
+    return name.replace("-", "_").lower()
+
+
+def analyze_threshold(current_scores: dict) -> None:
+    """Compare the current eval run's scores against the pinned baseline and
+    print a pass/fail table. Each scorer is checked against REGRESSION_TOLERANCE
+    (default 10%); per-scorer overrides can be set in SCORER_TOLERANCES.
+
+    Prints READY TO MERGE if all scorers are within tolerance, or NOT READY TO
+    MERGE with a reviewer note if any scorer regressed beyond the threshold."""
+    baseline = fetch_pinned_experiment()
+    baseline_scores: dict = {}
+    if baseline:
+        baseline_scores = fetch_experiment_scores(baseline["id"])
+
+    normalized_baseline = {
+        _normalize(k): _get_mean(v) for k, v in baseline_scores.items()
+    }
+
+    print(f"\n{'=' * 60}")
+    print("THRESHOLD ANALYSIS")
+    if baseline:
+        print(
+            f"Baseline: {baseline.get('name', baseline['id'])} | Tolerance: {REGRESSION_TOLERANCE:.0%}"
+        )
+        total_baseline = len(normalized_baseline)
+        total_current = len(current_scores)
+        if total_current < total_baseline:
+            print(
+                f"Comparing {total_current} of {total_baseline} scorers (partial run)"
+            )
+    else:
+        print("No baseline set — merge this branch to establish the first baseline.")
+    print(f"{'=' * 60}")
+
+    if not current_scores:
+        print("No scores available for analysis.")
+        return
+
+    failures: list[str] = []
+    col = 35
+
+    if baseline and normalized_baseline:
+        print(
+            f"{'Scorer':<{col}} {'Baseline':>10} {'Current':>10} {'Delta':>9}  Status"
+        )
+        print("-" * (col + 44))
+        for scorer_name in sorted(current_scores):
+            current_mean = _get_mean(current_scores[scorer_name])
+            baseline_mean = normalized_baseline.get(_normalize(scorer_name))
+            tolerance = SCORER_TOLERANCES.get(
+                _normalize(scorer_name), REGRESSION_TOLERANCE
+            )
+
+            if current_mean is None:
+                continue
+            if baseline_mean is None:
+                print(
+                    f"{scorer_name:<{col}} {'N/A':>10} {current_mean:>10.1%} {'N/A':>9}  NEW"
+                )
+                continue
+
+            delta = current_mean - baseline_mean
+            status = "FAIL" if delta < -tolerance else "PASS"
+            if status == "FAIL":
+                failures.append(scorer_name)
+            print(
+                f"{scorer_name:<{col}} {baseline_mean:>10.1%} {current_mean:>10.1%} {delta:>+9.1%}  {status}"
+            )
+    else:
+        print(f"{'Scorer':<{col}} {'Score':>10}")
+        print("-" * (col + 12))
+        for scorer_name in sorted(current_scores):
+            current_mean = _get_mean(current_scores[scorer_name])
+            if current_mean is not None:
+                print(f"{scorer_name:<{col}} {current_mean:>10.1%}")
+
+    print(f"{'=' * 60}")
+
+    if failures:
+        count = len(failures)
+        print(
+            f"NOT READY TO MERGE: ({count} scorer(s) exceeded 10% threshold for regression). "
+            f"NOTE: The code changes must be reviewed by a member of the eval team "
+            f"before merging due to this regression."
+        )
+    elif baseline:
+        print("READY TO MERGE: All scorers within tolerance.")
+    else:
+        print(
+            "No baseline to compare against — this run will become the baseline on merge."
+        )
+
+
+def pin_baseline_for_branch(branch: str) -> None:
+    """Pin the most recent experiment for a given branch as the project baseline.
+
+    Called by CI on merge to master. Looks up all experiments whose metadata
+    includes the source branch name, picks the latest by creation date, unpins
+    the previous baseline, and pins the new one. If no experiment exists for the
+    branch (i.e. the developer never ran evals), the baseline is left unchanged."""
+    braintrust.login()
+
+    response = braintrust.api_conn().get(
+        "/v1/experiment", params={"project_name": PROJECT}
+    )
+    if not response.ok:
+        print(f"ERROR: Could not fetch experiments: {response.status_code}")
+        sys.exit(1)
+
+    experiments = extract_braintrust_items(response.json())
+    branch_experiments = [
+        e for e in experiments if e.get("metadata", {}).get("branch") == branch
+    ]
+
+    if not branch_experiments:
+        print(f"No experiments found for branch '{branch}'. Baseline unchanged.")
+        return
+
+    branch_experiments.sort(key=lambda e: e.get("created", ""), reverse=True)
+    latest = branch_experiments[0]
+
+    current_baseline = next((e for e in experiments if e.get("pinned")), None)
+    if current_baseline and current_baseline["id"] != latest["id"]:
+        braintrust.api_conn().patch(
+            f"/v1/experiment/{current_baseline['id']}", json={"pinned": False}
+        )
+
+    resp = braintrust.api_conn().patch(
+        f"/v1/experiment/{latest['id']}", json={"pinned": True}
+    )
+    if resp.ok:
+        print(f"Pinned '{latest.get('name', latest['id'])}' as the new baseline.")
+    else:
+        print(f"ERROR: Could not pin experiment: {resp.status_code}")
+        sys.exit(1)
 
 
 def get_available_scorer_slugs() -> set:
@@ -365,7 +571,7 @@ async def run_evaluation(
     print(f"{'=' * 60}\n")
 
     try:
-        await EvalAsync(
+        result = await EvalAsync(
             PROJECT,
             data=init_dataset(PROJECT, name=dataset_name),
             task=task,
@@ -374,10 +580,15 @@ async def run_evaluation(
             metadata={
                 "api_url": client.base_url,
                 "timestamp": datetime.now().isoformat(),
+                "branch": get_current_branch(),
             },
             max_concurrency=max_concurrency,
         )
         print(f"\nComplete! View results in Braintrust: {PROJECT} / {experiment_name}")
+        if result and hasattr(result, "summary") and result.summary:
+            analyze_threshold(result.summary.scores)
+        else:
+            print("WARNING: Could not retrieve scores for threshold analysis.")
     finally:
         await client.close()
 
@@ -385,7 +596,7 @@ async def run_evaluation(
 def main():
     parser = argparse.ArgumentParser(
         description="Run Braintrust evaluations for LC Chatbot",
-        epilog="By default, runs against production. Use --local for local development server.",
+        epilog="By default, runs against dev (master branch). Use --prod for production or --local for localhost.",
     )
     parser.add_argument(
         "--dataset",
@@ -406,9 +617,14 @@ def main():
         help="Max concurrent API calls (default: 3)",
     )
     parser.add_argument(
+        "--prod",
+        action="store_true",
+        help=f"Run against production ({PROD_API_URL}) instead of dev",
+    )
+    parser.add_argument(
         "--local",
         action="store_true",
-        help=f"Use local dev server ({LOCAL_API_URL}) instead of production",
+        help=f"Run against local dev server ({LOCAL_API_URL})",
     )
     parser.add_argument(
         "--scorers", "-s", help="Comma-separated list of Braintrust scorer slugs"
@@ -418,11 +634,20 @@ def main():
         action="store_true",
         help="Use all scorers defined in Braintrust for this project",
     )
+    parser.add_argument(
+        "--pin-baseline",
+        metavar="BRANCH",
+        help="Pin the latest experiment for BRANCH as the baseline (used by CI on merge)",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("BRAINTRUST_API_KEY"):
         print("ERROR: BRAINTRUST_API_KEY not set")
         sys.exit(1)
+
+    if args.pin_baseline:
+        pin_baseline_for_branch(args.pin_baseline)
+        return
 
     braintrust.login()
 
@@ -440,7 +665,12 @@ def main():
             sys.exit(1)
         scorers = [create_scorer(s) for s in scorer_slugs]
 
-    base_url = LOCAL_API_URL if args.local else PROD_API_URL
+    if args.local:
+        base_url = LOCAL_API_URL
+    elif args.prod:
+        base_url = PROD_API_URL
+    else:
+        base_url = DEV_API_URL
     client = ChatbotClient(base_url=base_url)
 
     asyncio.run(
