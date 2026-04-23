@@ -23,7 +23,7 @@ Make sure you have the required env vars set (see `server/.env`):
 - `CHATBOT_USER_TOKEN`
 
 ```bash
-# Run all scorers against dev (default — master branch deploy)
+# Run all scorers against dev (default — main branch deploy)
 python evals/run_eval.py --all-scorers
 
 # Run against production
@@ -46,11 +46,11 @@ python evals/run_eval.py --all-scorers --experiment "My experiment name"
 
 | Environment | Branch | URL | Flag |
 |-------------|--------|-----|------|
-| Dev | `master` | `https://chat-dev.sefaria.org` | _(default)_ |
+| Dev | `main` | `https://chat-dev.sefaria.org` | _(default)_ |
 | Production | `production` | `https://chat.sefaria.org` | `--prod` |
 | Local | any | `http://localhost:8001` | `--local` |
 
-Evals run against dev by default, since `master` is where changes land first. Run against `--prod` only when investigating a production-specific issue.
+Evals run against dev by default, since `main` is where changes land first. Run against `--prod` only when investigating a production-specific issue.
 
 ## Reading the output
 
@@ -91,8 +91,8 @@ The eval team can approve a merge despite a failing threshold — the decision i
 
 The **pinned baseline** is the experiment that all future runs are compared against. It represents the last known-good state of the chatbot.
 
-**How it gets updated:** When a PR is merged to `master`, a GitHub Actions workflow automatically finds the most recent eval experiment that was run on that branch and pins it as the new baseline. You don't need to do anything manually.
+**How it gets updated:** When a PR is merged to `main`, a GitHub Actions workflow automatically finds the most recent eval experiment that was run on that branch and pins it as the new baseline. You don't need to do anything manually.
 
 **If you didn't run evals on your branch:** The baseline is left unchanged on merge. This is fine for changes that don't affect chatbot behavior. For changes that do, run evals before merging.
 
-**If no baseline exists yet:** The threshold analysis will print the current scores without comparison. The first merge to `master` after an eval run will establish the baseline.
+**If no baseline exists yet:** The threshold analysis will print the current scores without comparison. The first merge to `main` after an eval run will establish the baseline.

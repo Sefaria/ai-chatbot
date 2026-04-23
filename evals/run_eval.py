@@ -58,7 +58,7 @@ def extract_braintrust_items(response_data):
 # Configuration
 PROJECT = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 DEFAULT_DATASET = "Benchmark"
-DEV_API_URL = "https://chat-dev.sefaria.org"  # master branch → dev deploy
+DEV_API_URL = "https://chat-dev.sefaria.org"  # main branch → dev deploy
 PROD_API_URL = "https://chat.sefaria.org"  # production branch → prod deploy
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
@@ -281,7 +281,7 @@ def _get_mean(score_val) -> float | None:
     if isinstance(score_val, (int, float)):
         return float(score_val)
     if isinstance(score_val, dict):
-        return score_val.get("mean") or score_val.get("score")
+        return score_val["mean"] if "mean" in score_val else score_val.get("score")
     if hasattr(score_val, "mean"):
         return _get_mean(score_val.mean)
     try:
@@ -312,6 +312,8 @@ def analyze_threshold(current_scores: dict) -> None:
     normalized_baseline = {
         _normalize(k): _get_mean(v) for k, v in baseline_scores.items()
     }
+    if baseline and not normalized_baseline:
+        print("WARNING: Baseline experiment found but scores could not be fetched — comparison skipped.")
 
     print(f"\n{'=' * 60}")
     print("THRESHOLD ANALYSIS")
@@ -391,7 +393,7 @@ def analyze_threshold(current_scores: dict) -> None:
 def pin_baseline_for_branch(branch: str) -> None:
     """Pin the most recent experiment for a given branch as the project baseline.
 
-    Called by CI on merge to master. Looks up all experiments whose metadata
+    Called by CI on merge to main. Looks up all experiments whose metadata
     includes the source branch name, picks the latest by creation date, unpins
     the previous baseline, and pins the new one. If no experiment exists for the
     branch (i.e. the developer never ran evals), the baseline is left unchanged."""
@@ -619,7 +621,7 @@ async def run_evaluation(
 def main():
     parser = argparse.ArgumentParser(
         description="Run Braintrust evaluations for LC Chatbot",
-        epilog="By default, runs against dev (master branch). Use --prod for production or --local for localhost.",
+        epilog="By default, runs against dev (main branch). Use --prod for production or --local for localhost.",
     )
     parser.add_argument(
         "--dataset",
@@ -679,17 +681,13 @@ def main():
         sys.exit(1)
 
     # Validate and create scorers
-    if not args.all_scorers and not args.scorers:
-        print("ERROR: specify --all-scorers or --scorers <slug,...>")
-        sys.exit(1)
-
-    if args.all_scorers:
-        scorers = get_all_scorers()
-    else:
+    if args.scorers:
         scorer_slugs = [s.strip() for s in args.scorers.split(",")]
         if not validate_scorers(scorer_slugs):
             sys.exit(1)
         scorers = [create_scorer(s) for s in scorer_slugs]
+    else:
+        scorers = get_all_scorers()
 
     if args.local:
         base_url = LOCAL_API_URL

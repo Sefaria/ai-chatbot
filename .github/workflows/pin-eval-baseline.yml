@@ -2,7 +2,7 @@
 # Pin Eval Baseline on Merge
 # =============================================================================
 #
-# When a PR is merged to master, finds the most recent Braintrust experiment
+# When a PR is merged to main, finds the most recent Braintrust experiment
 # that was run on that branch and pins it as the new baseline. Future eval
 # runs will compare against this pinned experiment to detect regressions.
 #
@@ -42,7 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install braintrust requests python-dotenv
+        run: pip install braintrust requests python-dotenv 'httpx>=0.27.0'
 
       - name: Pin baseline for merged branch
         env:
