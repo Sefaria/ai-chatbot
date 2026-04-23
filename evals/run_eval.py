@@ -61,9 +61,10 @@ DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 # Braintrust's SDK caches a short-lived JWT after the first login() call and
 # never refreshes it unless force_login=True. Long eval runs outlive the JWT,
 # so we retry auth failures with a forced re-login and back off on other
-# transient errors.
-SCORER_MAX_ATTEMPTS = 3
-SCORER_RETRY_DELAYS = (2, 5)
+# transient errors. One initial attempt + three retries (with 2s/5s/10s
+# backoff between them) = SCORER_MAX_ATTEMPTS total.
+SCORER_RETRY_DELAYS = (2, 5, 10)
+SCORER_MAX_ATTEMPTS = 1 + len(SCORER_RETRY_DELAYS)
 
 
 class ChatbotClient:
@@ -137,21 +138,33 @@ class ChatbotClient:
         await self.client.aclose()
 
 
+_AUTH_ERROR_NEEDLES = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "jwt",
+    "access token",
+    "token expired",
+    "token has expired",
+    "invalid token",
+    "expired token",
+)
+
+
 def _is_braintrust_auth_error(exc: Exception) -> bool:
     """Return True if the exception looks like a 401/403 from Braintrust.
 
-    The SDK wraps `requests`, so HTTPError carries a `response` with a status
-    code. Also matches the common cases where the exception text mentions an
-    auth/JWT failure even without a response object.
+    Prefers a structured HTTP status (the SDK wraps `requests`, so HTTPError
+    carries a `response` with a status code). Falls back to narrow message
+    patterns — we avoid bare "token" because it matches unrelated errors like
+    "token limit" or "tokenizer".
     """
     status = getattr(getattr(exc, "response", None), "status_code", None)
     if status in (401, 403):
         return True
     message = str(exc).lower()
-    return any(
-        needle in message
-        for needle in ("401", "403", "unauthorized", "forbidden", "token")
-    )
+    return any(needle in message for needle in _AUTH_ERROR_NEEDLES)
 
 
 def create_scorer(slug: str):
@@ -197,6 +210,9 @@ def create_scorer(slug: str):
                         )
                     return result["score"]
                 return result
+            except ValueError:
+                # Malformed scorer response is deterministic — retrying won't help.
+                raise
             except Exception as e:
                 last_exc = e
                 print(

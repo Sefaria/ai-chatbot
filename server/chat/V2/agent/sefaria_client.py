@@ -185,11 +185,14 @@ class SefariaClient:
             raise
 
     async def get_links_between_texts(
-        self, reference: str, with_text: str = "0"
+        self, reference: str, with_text: str = "0", category: str | None = None
     ) -> list[dict[str, Any]]:
         """Find cross-references to a text passage."""
         encoded_ref = quote(reference)
-        data = await self._get_json(f"api/links/{encoded_ref}", {"with_text": with_text})
+        params = {"with_text": with_text}
+        if category:
+            params["category"] = category
+        data = await self._get_json(f"api/links/{encoded_ref}", params)
         return self._optimize_links_response(data)
 
     async def search_in_book(self, query: str, book_name: str, size: int = 10) -> Any:
