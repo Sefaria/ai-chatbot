@@ -312,13 +312,42 @@ doubled (11 → 23) because 4.6 writes slightly longer responses, but that is
 secondary. Zero failures were due to missing `response-*` structure or the
 word limit.
 
-**Open question for the team (before fixing).** Does the Sefaria embed
-pipeline actually render `<em>`, `<strong>`, `<i>`? If it does, the right
-fix is to loosen the scorer's allow-list to match reality — which would also
-lift the 4.5 baseline. If the renderer strips everything outside the
-`response-*` set, the right fix is to tighten the agent system prompt to
-forbid emphasis tags outright. Deferring the code change until we have that
-answer.
+**Verdict: real degradation, not a scorer artifact (updated 2026-04-23).**
+Pulled the `response-format` prompt from Braintrust (project "On Site Agent",
+slug `response-format`) and confirmed it already prohibits `<em>`,
+`<strong>`, `<i>`, `<br>`. The prompt lists a closed whitelist of seven
+wrappers — `<p class="response-generic">`, `<ul class="response-list">`,
+`<h3 class="response-title">`, `<h4 class="response-section">`,
+`<a class="response-link">`, `<span class="response-quote">`,
+`<p class="response-signoff">`, plus `<li>` inside the list — and tells the
+model to "limit yourself to these building blocks and use the associated
+HTML wrapper". The scorer is aligned with the prompt; both models are
+drifting from it, and Sonnet 4.6 drifts roughly 10× harder on emphasis tags,
+which is what surfaced the regression.
+
+**Options for the scorer.**
+- Loosen the eval to accept emphasis tags — makes runs turn green without
+  any behavior change, at the cost of hiding non-compliance.
+- Leave the eval strict — keeps the signal honest so future prompt
+  iterations can be measured against it.
+
+Expanding the prompt's whitelist is deliberately not on the table: the
+renderer contract is tied to the `response-*` class set, and widening the
+grammar would undermine the building-block design.
+
+**Disposition.** Treat this as a genuine prompt-compliance degradation; keep
+the eval strict. File a follow-up ticket to improve prompt compliance.
+Candidates to investigate under that ticket:
+
+- Switching the `{{response_format}}` placeholder in `core-8fbc` and
+  `Translation` to triple-brace `{{{response_format}}}` so the injected HTML
+  examples arrive unescaped rather than as
+  `&lt;p class=&quot;response-generic&quot;&gt;` (the core prompt's own
+  inline examples are already unescaped, so today the two halves of the
+  merged system prompt disagree on how the whitelist should look).
+- Adding explicit "do not use `<em>`, `<strong>`, `<i>`, `<br>`" language
+  alongside the whitelist in `response-format`, rather than relying on the
+  closed-whitelist framing alone.
 
 **Local change (not committed).** `server/.env` now sets
 `AGENT_MODEL=claude-sonnet-4-6`. The file is gitignored (lines 23 and 47 of
@@ -328,7 +357,9 @@ changed explicitly.
 
 **Bottom line.** Sonnet 4.6 is a net upgrade on this benchmark: four solid
 high-N quality improvements, two low-N improvements that clear the tiny-N
-threshold, no other real regressions except the html_format drop to triage,
-slightly cheaper, same latency. The new cost/latency metrics made this
+threshold, slightly cheaper, same latency. The one genuine regression is
+`html_format` — confirmed as a prompt-compliance drift (the model defying the
+`response-format` whitelist), tracked under a separate ticket rather than
+masked by loosening the scorer. The new cost/latency metrics made this
 comparison straightforward — cost and quality were both visible in one
 experiment diff, which is exactly the use case this scorer PR was built for.
