@@ -7,6 +7,7 @@ a contextvars.ContextVar so services don't need to thread usage through returns.
 """
 
 import contextvars
+import functools
 import json
 import logging
 from pathlib import Path
@@ -132,3 +133,22 @@ def reset_cost_accumulator() -> None:
 def get_cost_accumulator() -> CostAccumulator | None:
     """Retrieve the current turn's accumulator, or None if not initialized."""
     return _cost_accumulator_var.get()
+
+
+def track_cost(func):
+    """Decorator: records the cost of an Anthropic Messages API call.
+
+    Wraps a callable that takes `model` as a keyword argument and returns a
+    Messages API response; appends usage cost to the contextvar-bound
+    CostAccumulator (no-op when no accumulator is bound).
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        response = func(*args, **kwargs)
+        accumulator = get_cost_accumulator()
+        if accumulator and (model := kwargs.get("model")):
+            accumulator.add_from_response(model, response)
+        return response
+
+    return wrapper
