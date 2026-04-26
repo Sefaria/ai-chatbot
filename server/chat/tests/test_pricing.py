@@ -2,6 +2,7 @@
 
 import contextvars
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from chat.V2.pricing import (
     CostAccumulator,
@@ -10,7 +11,7 @@ from chat.V2.pricing import (
     get_cost_accumulator,
     init_cost_accumulator,
     reset_cost_accumulator,
-    track_cost,
+    tracked_messages_create,
 )
 
 
@@ -225,52 +226,47 @@ class TestAddFromResponse:
         assert abs(acc.total - expected) < 1e-12
 
 
-class TestTrackCost:
+class TestTrackedMessagesCreate:
     @staticmethod
-    def _response(input_tokens=1000, output_tokens=100):
+    def _make_client(input_tokens=1000, output_tokens=100):
         usage = SimpleNamespace(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_creation_input_tokens=None,
             cache_read_input_tokens=None,
         )
-        return SimpleNamespace(usage=usage)
+        client = MagicMock()
+        client.messages.create.return_value = SimpleNamespace(usage=usage)
+        return client
+
+    def test_forwards_kwargs_and_returns_response(self):
+        reset_cost_accumulator()
+        client = self._make_client()
+        response = tracked_messages_create(client, model="claude-haiku-4-5-20251001", max_tokens=10)
+        client.messages.create.assert_called_once_with(
+            model="claude-haiku-4-5-20251001", max_tokens=10
+        )
+        assert response is client.messages.create.return_value
 
     def test_appends_cost_to_bound_accumulator(self):
         reset_cost_accumulator()
         acc = init_cost_accumulator()
-
-        @track_cost
-        def call(**kwargs):
-            return self._response(input_tokens=1000, output_tokens=100)
-
-        call(model="claude-haiku-4-5-20251001")
+        client = self._make_client(input_tokens=1000, output_tokens=100)
+        tracked_messages_create(client, model="claude-haiku-4-5-20251001")
         expected = (1000 * 1e-06) + (100 * 5e-06)
         assert abs(acc.total - expected) < 1e-12
         reset_cost_accumulator()
 
     def test_no_op_when_no_accumulator_bound(self):
         reset_cost_accumulator()
-        called = {}
-
-        @track_cost
-        def call(**kwargs):
-            called["was_called"] = True
-            return self._response()
-
-        result = call(model="claude-haiku-4-5-20251001")
-        assert called["was_called"] is True
-        assert result is not None
+        client = self._make_client()
+        tracked_messages_create(client, model="claude-haiku-4-5-20251001")
         assert get_cost_accumulator() is None
 
     def test_no_op_when_model_kwarg_missing(self):
         reset_cost_accumulator()
         acc = init_cost_accumulator()
-
-        @track_cost
-        def call(**kwargs):
-            return self._response()
-
-        call()  # no `model` kwarg
+        client = self._make_client()
+        tracked_messages_create(client, max_tokens=10)
         assert acc.total == 0.0
         reset_cost_accumulator()

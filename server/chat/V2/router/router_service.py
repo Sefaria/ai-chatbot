@@ -16,7 +16,7 @@ from enum import Enum
 
 from django.conf import settings
 
-from ..pricing import track_cost
+from ..pricing import tracked_messages_create
 from ..prompts import get_prompt_service
 from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
@@ -99,7 +99,8 @@ class RouterService:
             return deterministic_route
         system_prompt = self._load_prompt(settings.ROUTER_PROMPT_SLUG)
 
-        response = self._call_llm(
+        response = tracked_messages_create(
+            self.client,
             model=settings.ROUTER_MODEL,
             max_tokens=256,
             temperature=0.0,
@@ -114,7 +115,8 @@ class RouterService:
         try:
             system_prompt = self._load_prompt(settings.REWRITER_PROMPT_SLUG)
 
-            response = self._call_llm(
+            response = tracked_messages_create(
+                self.client,
                 model=settings.ROUTER_MODEL,
                 max_tokens=512,
                 temperature=0.0,
@@ -130,10 +132,6 @@ class RouterService:
         except Exception as exc:
             logger.error(f"Router: rewrite failed: {exc}")
             return None
-
-    @track_cost
-    def _call_llm(self, **kwargs):
-        return self.client.messages.create(**kwargs)
 
     def _load_prompt(self, slug: str) -> str:
         """Fetch a prompt from Braintrust via PromptService."""

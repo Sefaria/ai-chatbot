@@ -7,7 +7,6 @@ a contextvars.ContextVar so services don't need to thread usage through returns.
 """
 
 import contextvars
-import functools
 import json
 import logging
 from pathlib import Path
@@ -135,20 +134,15 @@ def get_cost_accumulator() -> CostAccumulator | None:
     return _cost_accumulator_var.get()
 
 
-def track_cost(func):
-    """Decorator: records the cost of an Anthropic Messages API call.
+def tracked_messages_create(client, **kwargs):
+    """Anthropic `messages.create` wrapper that records cost via the accumulator.
 
-    Wraps a callable that takes `model` as a keyword argument and returns a
-    Messages API response; appends usage cost to the contextvar-bound
-    CostAccumulator (no-op when no accumulator is bound).
+    Use in place of `client.messages.create(...)` for any auxiliary LLM call
+    whose cost should roll up into the per-turn total. No-op (just forwards)
+    when no accumulator is bound.
     """
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        response = func(*args, **kwargs)
-        accumulator = get_cost_accumulator()
-        if accumulator and (model := kwargs.get("model")):
-            accumulator.add_from_response(model, response)
-        return response
-
-    return wrapper
+    response = client.messages.create(**kwargs)
+    accumulator = get_cost_accumulator()
+    if accumulator and (model := kwargs.get("model")):
+        accumulator.add_from_response(model, response)
+    return response

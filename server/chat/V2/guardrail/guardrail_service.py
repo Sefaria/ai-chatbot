@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
-from ..pricing import track_cost
+from ..pricing import tracked_messages_create
 from ..prompts import get_prompt_service
 from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
 from ..utils import get_anthropic_client, make_singleton
@@ -57,7 +57,8 @@ class GuardrailService:
             # Uses Haiku for speed/cost — classification doesn't need Sonnet.
             # temperature=0.0 for deterministic decisions.
             # GUARDRAIL_OUTPUT_CONFIG (json_schema) guarantees valid JSON output.
-            response = self._call_llm(
+            response = tracked_messages_create(
+                self.client,
                 model=settings.GUARDRAIL_MODEL,
                 max_tokens=256,
                 temperature=0.0,
@@ -69,10 +70,6 @@ class GuardrailService:
         except Exception as exc:
             logger.error(f"Guardrail: LLM call failed: {exc}")
             return GuardrailResult(allowed=False, reason=GUARDRAIL_UNAVAILABLE_REASON)
-
-    @track_cost
-    def _call_llm(self, **kwargs):
-        return self.client.messages.create(**kwargs)
 
     def _load_prompt(self) -> str:
         """Fetch the guardrail prompt from Braintrust via PromptService."""
