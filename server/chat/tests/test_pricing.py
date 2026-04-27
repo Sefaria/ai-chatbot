@@ -4,6 +4,8 @@ import contextvars
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from chat.V2.pricing import (
     CostAccumulator,
     bind_cost_accumulator,
@@ -14,44 +16,67 @@ from chat.V2.pricing import (
     tracked_messages_create,
 )
 
+# Deterministic fixture prices — chosen so each token category contributes a
+# distinct amount. Tests assert the math against these constants instead of
+# real LiteLLM prices, which refresh weekly via the update-pricing workflow.
+TEST_MODEL = "test-model"
+INPUT_PRICE = 1e-06
+OUTPUT_PRICE = 1e-05
+CACHE_WRITE_PRICE = 2e-06
+CACHE_READ_PRICE = 1e-07
+
+
+@pytest.fixture(autouse=True)
+def fixed_pricing(monkeypatch):
+    """Install a deterministic pricing table so tests don't break when
+    model_pricing.json is regenerated from upstream LiteLLM data."""
+    monkeypatch.setattr(
+        "chat.V2.pricing._MODEL_PRICING",
+        {
+            TEST_MODEL: {
+                "input_cost_per_token": INPUT_PRICE,
+                "output_cost_per_token": OUTPUT_PRICE,
+                "cache_creation_input_token_cost": CACHE_WRITE_PRICE,
+                "cache_read_input_token_cost": CACHE_READ_PRICE,
+            },
+        },
+    )
+
 
 class TestComputeCost:
-    def test_haiku_cost(self):
-        cost = compute_cost("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
-        assert cost is not None
-        # Haiku: $1.00/M input, $5.00/M output (from LiteLLM JSON)
-        expected = (1000 * 1e-06) + (100 * 5e-06)
-        assert abs(cost - expected) < 1e-12
-
-    def test_openai_model(self):
-        cost = compute_cost("gpt-4o", input_tokens=1000, output_tokens=500)
-        assert cost is not None
-        assert cost > 0
+    def test_basic_cost(self):
+        cost = compute_cost(TEST_MODEL, input_tokens=1000, output_tokens=100)
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert cost == pytest.approx(expected)
 
     def test_unknown_model_returns_none(self):
         cost = compute_cost("unknown-model", input_tokens=100, output_tokens=50)
         assert cost is None
 
     def test_zero_tokens(self):
-        cost = compute_cost("claude-haiku-4-5-20251001", input_tokens=0, output_tokens=0)
+        cost = compute_cost(TEST_MODEL, input_tokens=0, output_tokens=0)
         assert cost == 0.0
 
     def test_cache_tokens_included(self):
         cost = compute_cost(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             input_tokens=1000,
             output_tokens=100,
             cache_creation_tokens=500,
             cache_read_tokens=2000,
         )
-        # Haiku: input $1.00/M, output $5.00/M, cache write $1.25/M, cache read $0.10/M
-        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
-        assert abs(cost - expected) < 1e-12
+        expected = (
+            (1000 * INPUT_PRICE)
+            + (100 * OUTPUT_PRICE)
+            + (500 * CACHE_WRITE_PRICE)
+            + (2000 * CACHE_READ_PRICE)
+        )
+        assert cost == pytest.approx(expected)
 
     def test_cache_tokens_default_to_zero(self):
-        without = compute_cost("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
+        without = compute_cost(TEST_MODEL, input_tokens=1000, output_tokens=100)
         with_zero_cache = compute_cost(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             input_tokens=1000,
             output_tokens=100,
             cache_creation_tokens=0,
@@ -67,8 +92,9 @@ class TestCostAccumulator:
 
     def test_add_known_model(self):
         acc = CostAccumulator()
-        acc.add("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
-        assert acc.total > 0
+        acc.add(TEST_MODEL, input_tokens=1000, output_tokens=100)
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert acc.total == pytest.approx(expected)
 
     def test_add_unknown_model_ignored(self):
         acc = CostAccumulator()
@@ -78,21 +104,26 @@ class TestCostAccumulator:
     def test_add_with_cache_tokens(self):
         acc = CostAccumulator()
         acc.add(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             input_tokens=1000,
             output_tokens=100,
             cache_creation_tokens=500,
             cache_read_tokens=2000,
         )
-        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
-        assert abs(acc.total - expected) < 1e-12
+        expected = (
+            (1000 * INPUT_PRICE)
+            + (100 * OUTPUT_PRICE)
+            + (500 * CACHE_WRITE_PRICE)
+            + (2000 * CACHE_READ_PRICE)
+        )
+        assert acc.total == pytest.approx(expected)
 
     def test_accumulates_multiple_calls(self):
         acc = CostAccumulator()
-        acc.add("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
+        acc.add(TEST_MODEL, input_tokens=1000, output_tokens=100)
         first = acc.total
-        acc.add("claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100)
-        assert acc.total == first * 2
+        acc.add(TEST_MODEL, input_tokens=1000, output_tokens=100)
+        assert acc.total == pytest.approx(first * 2)
 
     def test_context_var_lifecycle(self):
         # Reset first — other tests (or prior requests on a reused WSGI thread)
@@ -101,7 +132,7 @@ class TestCostAccumulator:
         assert get_cost_accumulator() is None
         acc = init_cost_accumulator()
         assert get_cost_accumulator() is acc
-        acc.add("claude-haiku-4-5-20251001", input_tokens=500, output_tokens=50)
+        acc.add(TEST_MODEL, input_tokens=500, output_tokens=50)
         assert get_cost_accumulator().total == acc.total
         reset_cost_accumulator()
         assert get_cost_accumulator() is None
@@ -123,9 +154,7 @@ class TestCostAccumulator:
             seen_inside["before_bind"] = get_cost_accumulator()
             bind_cost_accumulator(outer_acc)
             seen_inside["after_bind"] = get_cost_accumulator()
-            get_cost_accumulator().add(
-                "claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100
-            )
+            get_cost_accumulator().add(TEST_MODEL, input_tokens=1000, output_tokens=100)
 
         t = threading.Thread(target=worker)
         t.start()
@@ -150,9 +179,7 @@ class TestCostAccumulator:
         ctx = contextvars.copy_context()
 
         def add_in_copied_context():
-            get_cost_accumulator().add(
-                "claude-haiku-4-5-20251001", input_tokens=1000, output_tokens=100
-            )
+            get_cost_accumulator().add(TEST_MODEL, input_tokens=1000, output_tokens=100)
 
         ctx.run(add_in_copied_context)
 
@@ -181,17 +208,17 @@ class TestAddFromResponse:
     def test_basic(self):
         acc = CostAccumulator()
         acc.add_from_response(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             self._mock_response(input_tokens=1000, output_tokens=100),
         )
-        expected = (1000 * 1e-06) + (100 * 5e-06)
-        assert abs(acc.total - expected) < 1e-12
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert acc.total == pytest.approx(expected)
 
     def test_cache_fields_none(self):
         """SDK sets cache_* to None for non-caching models. Must not crash."""
         acc = CostAccumulator()
         acc.add_from_response(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             self._mock_response(
                 input_tokens=1000,
                 output_tokens=100,
@@ -199,22 +226,22 @@ class TestAddFromResponse:
                 cache_read_input_tokens=None,
             ),
         )
-        expected = (1000 * 1e-06) + (100 * 5e-06)
-        assert abs(acc.total - expected) < 1e-12
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert acc.total == pytest.approx(expected)
 
     def test_cache_fields_missing(self):
         """Older SDK/response shapes may lack the attrs entirely."""
         acc = CostAccumulator()
         usage = SimpleNamespace(input_tokens=1000, output_tokens=100)
         response = SimpleNamespace(usage=usage)
-        acc.add_from_response("claude-haiku-4-5-20251001", response)
-        expected = (1000 * 1e-06) + (100 * 5e-06)
-        assert abs(acc.total - expected) < 1e-12
+        acc.add_from_response(TEST_MODEL, response)
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert acc.total == pytest.approx(expected)
 
     def test_cache_fields_populated(self):
         acc = CostAccumulator()
         acc.add_from_response(
-            "claude-haiku-4-5-20251001",
+            TEST_MODEL,
             self._mock_response(
                 input_tokens=1000,
                 output_tokens=100,
@@ -222,8 +249,13 @@ class TestAddFromResponse:
                 cache_read_input_tokens=2000,
             ),
         )
-        expected = (1000 * 1e-06) + (100 * 5e-06) + (500 * 1.25e-06) + (2000 * 1e-07)
-        assert abs(acc.total - expected) < 1e-12
+        expected = (
+            (1000 * INPUT_PRICE)
+            + (100 * OUTPUT_PRICE)
+            + (500 * CACHE_WRITE_PRICE)
+            + (2000 * CACHE_READ_PRICE)
+        )
+        assert acc.total == pytest.approx(expected)
 
 
 class TestTrackedMessagesCreate:
@@ -242,25 +274,23 @@ class TestTrackedMessagesCreate:
     def test_forwards_kwargs_and_returns_response(self):
         reset_cost_accumulator()
         client = self._make_client()
-        response = tracked_messages_create(client, model="claude-haiku-4-5-20251001", max_tokens=10)
-        client.messages.create.assert_called_once_with(
-            model="claude-haiku-4-5-20251001", max_tokens=10
-        )
+        response = tracked_messages_create(client, model=TEST_MODEL, max_tokens=10)
+        client.messages.create.assert_called_once_with(model=TEST_MODEL, max_tokens=10)
         assert response is client.messages.create.return_value
 
     def test_appends_cost_to_bound_accumulator(self):
         reset_cost_accumulator()
         acc = init_cost_accumulator()
         client = self._make_client(input_tokens=1000, output_tokens=100)
-        tracked_messages_create(client, model="claude-haiku-4-5-20251001")
-        expected = (1000 * 1e-06) + (100 * 5e-06)
-        assert abs(acc.total - expected) < 1e-12
+        tracked_messages_create(client, model=TEST_MODEL)
+        expected = (1000 * INPUT_PRICE) + (100 * OUTPUT_PRICE)
+        assert acc.total == pytest.approx(expected)
         reset_cost_accumulator()
 
     def test_no_op_when_no_accumulator_bound(self):
         reset_cost_accumulator()
         client = self._make_client()
-        tracked_messages_create(client, model="claude-haiku-4-5-20251001")
+        tracked_messages_create(client, model=TEST_MODEL)
         assert get_cost_accumulator() is None
 
     def test_no_op_when_model_kwarg_missing(self):
