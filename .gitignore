@@ -61,6 +61,8 @@ server/**/migrations/*.pyc
 
 # Claude Code
 .mcp.json
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # IDE and editors
 .vscode/
