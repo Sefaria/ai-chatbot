@@ -53,7 +53,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
-from .pricing import init_cost_accumulator, reset_cost_accumulator, set_cost_accumulator
+from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
 from .services import (
@@ -348,11 +348,12 @@ def chat_stream_v2(request):
 
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
-            # ContextVars don't cross thread boundaries on their own. The load-test
-            # path intentionally skips copy_context() to avoid leaking Braintrust
-            # span state, so attach the accumulator explicitly to make sure
-            # guardrail/router costs are captured on both paths.
-            set_cost_accumulator(cost_accumulator)
+            # Bind the outer accumulator into this thread's context so
+            # guardrail/router (invoked via asyncio.to_thread inside the agent)
+            # can record costs. Normal path's ctx.run() already copies the
+            # ContextVar; the load-test path intentionally skips copy_context
+            # to isolate Braintrust state, so an explicit bind is required.
+            bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)
@@ -487,11 +488,15 @@ def chat_stream_v2(request):
                 },
             )
 
-            # Fold guardrail/router costs (captured during the agent thread) into
-            # the turn total before persisting. Summary cost is added below.
-            aux_cost = cost_accumulator.total
-            if aux_cost > 0:
-                agent_response.total_cost_usd = (agent_response.total_cost_usd or 0.0) + aux_cost
+            # Fold aux LLM costs captured so far (guardrail + router, run on the
+            # agent thread) into the turn total before persisting. Summary runs
+            # below and pushes its own cost via the accumulator; we back-patch
+            # the persisted row from the accumulator delta after summary.
+            aux_cost_at_persist = cost_accumulator.total
+            if aux_cost_at_persist > 0:
+                agent_response.total_cost_usd = (
+                    agent_response.total_cost_usd or 0.0
+                ) + aux_cost_at_persist
 
             logging_result = logging_service.persist_assistant_response(
                 user_message=user_message,
@@ -515,18 +520,19 @@ def chat_stream_v2(request):
             summary_text = None
             try:
                 summary_service = get_summary_service()
-                summary_result = summary_service.update_summary(
+                new_summary = summary_service.update_summary(
                     session=session,
                     new_user_message=data["text"],
                     new_assistant_response=agent_response.content,
                 )
-                new_summary = summary_result.summary
                 summary_text = new_summary.to_prompt_text()
 
-                if summary_result.cost_usd > 0:
+                # Back-patch any cost added since persist (summary, in practice).
+                post_persist_delta = cost_accumulator.total - aux_cost_at_persist
+                if post_persist_delta > 0:
                     agent_response.total_cost_usd = (
                         agent_response.total_cost_usd or 0.0
-                    ) + summary_result.cost_usd
+                    ) + post_persist_delta
                     response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
                     response_message.save(update_fields=["total_cost_usd"])
                     logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd

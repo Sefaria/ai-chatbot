@@ -74,8 +74,13 @@ class CostAccumulator:
         )
         if cost is not None:
             self._total += cost
-        elif (input_tokens + output_tokens) > 0:
-            logger.warning("No pricing for model: %s", model)
+        elif (
+            input_tokens > 0
+            or output_tokens > 0
+            or cache_creation_tokens > 0
+            or cache_read_tokens > 0
+        ):
+            logger.warning(f"No pricing for model: {model}")
 
     def add_from_response(self, model: str, response) -> None:
         """Add cost from an Anthropic Messages API response.
@@ -109,21 +114,35 @@ def init_cost_accumulator() -> CostAccumulator:
     return acc
 
 
+def bind_cost_accumulator(accumulator: CostAccumulator) -> None:
+    """Bind an existing accumulator into the current context.
+
+    For threads started without `contextvars.copy_context()` — the accumulator
+    is captured by closure but the ContextVar itself isn't. Call this from
+    the new thread so guardrail/router's `get_cost_accumulator()` resolves.
+    """
+    _cost_accumulator_var.set(accumulator)
+
+
 def reset_cost_accumulator() -> None:
     """Clear the accumulator from the current context."""
     _cost_accumulator_var.set(None)
 
 
-def set_cost_accumulator(acc: "CostAccumulator") -> None:
-    """Attach an existing accumulator to the current thread's context.
-
-    Used when a worker thread is spawned without copy_context() (e.g. the
-    load-test path, which avoids copying Braintrust span state) but still
-    needs to share the outer thread's accumulator instance.
-    """
-    _cost_accumulator_var.set(acc)
-
-
 def get_cost_accumulator() -> CostAccumulator | None:
     """Retrieve the current turn's accumulator, or None if not initialized."""
     return _cost_accumulator_var.get()
+
+
+def tracked_messages_create(client, **kwargs):
+    """Anthropic `messages.create` wrapper that records cost via the accumulator.
+
+    Use in place of `client.messages.create(...)` for any auxiliary LLM call
+    whose cost should roll up into the per-turn total. No-op (just forwards)
+    when no accumulator is bound.
+    """
+    response = client.messages.create(**kwargs)
+    accumulator = get_cost_accumulator()
+    if accumulator and (model := kwargs.get("model")):
+        accumulator.add_from_response(model, response)
+    return response
