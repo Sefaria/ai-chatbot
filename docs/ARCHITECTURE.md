@@ -237,7 +237,7 @@ Defined in `server/chat/urls.py`.
   "content": [
     { "type": "text", "text": "..." }
   ],
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-opus-4-7",
   "stop_reason": "end_turn",
   "stop_sequence": null,
   "usage": {
@@ -320,7 +320,7 @@ BRAINTRUST_PROJECT="On Site Agent"   # optional, defaults as shown
 CORE_PROMPT_SLUG=core-...
 GUARDRAIL_PROMPT_SLUG=guardrail-checker
 
-AGENT_MODEL=claude-sonnet-4-5-20250929
+AGENT_MODEL=claude-opus-4-7
 GUARDRAIL_MODEL=claude-haiku-4-5-20251001
 SUMMARY_MODEL=claude-haiku-4-5-20251001
 ```

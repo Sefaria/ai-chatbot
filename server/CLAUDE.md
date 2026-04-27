@@ -75,7 +75,7 @@ pytest                                    # Run tests
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
 | `BRAINTRUST_API_KEY` | Yes | Prompt management & tracing |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
-| `AGENT_MODEL` | No | Model for normal requests (default: claude-sonnet-4-5-20250929) |
+| `AGENT_MODEL` | No | Model for normal requests (default: claude-opus-4-7) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |

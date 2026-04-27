@@ -60,7 +60,7 @@ server/*.log
 server/**/migrations/*.pyc
 
 # Claude Code
-.claude/.mcp.json
+.mcp.json
 
 # IDE and editors
 .vscode/
