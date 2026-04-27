@@ -104,6 +104,24 @@ class TestCreateScorer:
             result = scorer("test output")
             assert result == 0.75
 
+    def test_scorer_unwraps_content_for_dict_outputs(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("my-scorer")
+        task_output = {
+            "content": "hello world",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
+        with patch("evals.run_eval.invoke") as mock_invoke:
+            mock_invoke.return_value = {"score": 0.9}
+            scorer(task_output, metadata={"trial": 1})
+            call_kwargs = mock_invoke.call_args.kwargs
+            # Pre-existing LLM scorers receive a plain string, not a dict.
+            assert call_kwargs["input"]["output"] == "hello world"
+            # Cost/latency are span metrics now, not scorer metadata.
+            assert call_kwargs["input"]["metadata"] == {"trial": 1}
+
 
 class TestIsBraintrustAuthError:
     """Tests for the narrowed _is_braintrust_auth_error heuristic."""
@@ -176,3 +194,153 @@ class TestChatbotClient:
         with patch("evals.run_eval.USER_TOKEN", "test-token"):
             client = ChatbotClient(base_url="http://localhost:8001/")
             assert client.base_url == "http://localhost:8001"
+
+
+def _fake_sse_stream(final_payload: dict):
+    """Build a fake httpx streaming-response context that yields one SSE frame."""
+    import json as _json
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            yield "event: message"
+            yield f"data: {_json.dumps(final_payload)}"
+            yield ""
+
+    class _FakeStream:
+        async def __aenter__(self):
+            return _FakeResponse()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    return _FakeStream()
+
+
+class TestChatbotClientChat:
+    """Tests for ChatbotClient.chat() stats plumbing."""
+
+    @pytest.mark.asyncio
+    async def test_chat_returns_content_and_stats(self):
+        from evals.run_eval import ChatbotClient
+
+        with patch("evals.run_eval.USER_TOKEN", "test-token"):
+            client = ChatbotClient(base_url="http://localhost:8001")
+
+        final = {
+            "markdown": "hello world",
+            "stats": {"totalCostUsd": 0.0123, "latencyMs": 4200},
+        }
+        client.client.stream = lambda *a, **kw: _fake_sse_stream(final)
+
+        result = await client.chat("hi")
+        assert result == {
+            "content": "hello world",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
+
+    @pytest.mark.asyncio
+    async def test_chat_missing_stats_degrades_to_none(self):
+        from evals.run_eval import ChatbotClient
+
+        with patch("evals.run_eval.USER_TOKEN", "test-token"):
+            client = ChatbotClient(base_url="http://localhost:8001")
+
+        # Server didn't emit a stats dict — scorers should see None, not raise.
+        final = {"markdown": "hello"}
+        client.client.stream = lambda *a, **kw: _fake_sse_stream(final)
+
+        result = await client.chat("hi")
+        assert result == {
+            "content": "hello",
+            "totalCostUsd": None,
+            "latencyMs": None,
+        }
+
+
+class TestTaskMetricLogging:
+    """Tests that the eval task logs cost/latency as Braintrust span metrics."""
+
+    @pytest.mark.asyncio
+    async def test_task_logs_cost_and_latency_metrics(self):
+        from evals import run_eval
+
+        chat_response = {
+            "content": "hello",
+            "totalCostUsd": 0.0123,
+            "latencyMs": 4200,
+        }
+
+        class FakeClient:
+            base_url = "http://test"
+
+            async def chat(self, prompt):
+                return chat_response
+
+            async def close(self):
+                return None
+
+        recorded = {}
+
+        class FakeSpan:
+            def log(self, **kwargs):
+                recorded.update(kwargs)
+
+        async def fake_eval_async(*args, **kwargs):
+            await kwargs["task"]({"prompt": "hi"})
+
+        with (
+            patch("evals.run_eval.current_span", return_value=FakeSpan()),
+            patch("evals.run_eval.EvalAsync", side_effect=fake_eval_async),
+            patch("evals.run_eval.init_dataset"),
+        ):
+            await run_eval.run_evaluation(
+                client=FakeClient(),
+                dataset_name="ds",
+                experiment_name="exp",
+                scorers=[],
+                max_concurrency=1,
+            )
+
+        assert recorded["metrics"] == {"cost_usd": 0.0123, "latency_seconds": 4.2}
+
+    @pytest.mark.asyncio
+    async def test_task_skips_metrics_when_stats_missing(self):
+        from evals import run_eval
+
+        class FakeClient:
+            base_url = "http://test"
+
+            async def chat(self, prompt):
+                return {"content": "hello", "totalCostUsd": None, "latencyMs": None}
+
+            async def close(self):
+                return None
+
+        log_calls = []
+
+        class FakeSpan:
+            def log(self, **kwargs):
+                log_calls.append(kwargs)
+
+        async def fake_eval_async(*args, **kwargs):
+            await kwargs["task"]({"prompt": "hi"})
+
+        with (
+            patch("evals.run_eval.current_span", return_value=FakeSpan()),
+            patch("evals.run_eval.EvalAsync", side_effect=fake_eval_async),
+            patch("evals.run_eval.init_dataset"),
+        ):
+            await run_eval.run_evaluation(
+                client=FakeClient(),
+                dataset_name="ds",
+                experiment_name="exp",
+                scorers=[],
+                max_concurrency=1,
+            )
+
+        # Nothing to log when the server didn't emit stats.
+        assert log_calls == []
