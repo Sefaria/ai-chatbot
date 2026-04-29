@@ -256,7 +256,11 @@ def fetch_pinned_experiment() -> dict | None:
             return None
         r2 = conn.get(f"/v1/experiment/{baseline_id}")
         return r2.json() if r2.ok else None
-    except Exception:
+    except Exception as e:
+        print(
+            f"WARNING: Could not fetch pinned experiment: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -268,7 +272,12 @@ def fetch_experiment_scores(experiment_id: str) -> dict:
         if not response.ok:
             return {}
         return response.json().get("scores", {})
-    except Exception:
+    except Exception as e:
+        print(
+            f"WARNING: Could not fetch experiment scores for {experiment_id}: "
+            f"{type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
         return {}
 
 
@@ -313,7 +322,9 @@ def analyze_threshold(current_scores: dict) -> None:
         _normalize(k): _get_mean(v) for k, v in baseline_scores.items()
     }
     if baseline and not normalized_baseline:
-        print("WARNING: Baseline experiment found but scores could not be fetched — comparison skipped.")
+        print(
+            "WARNING: Baseline experiment found but scores could not be fetched — comparison skipped."
+        )
 
     print(f"\n{'=' * 60}")
     print("THRESHOLD ANALYSIS")
@@ -403,7 +414,10 @@ def pin_baseline_for_branch(branch: str) -> None:
         "/v1/experiment", params={"project_name": PROJECT}
     )
     if not response.ok:
-        print(f"ERROR: Could not fetch experiments: {response.status_code}")
+        print(
+            f"ERROR: Could not fetch experiments: {response.status_code}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     experiments = extract_braintrust_items(response.json())
@@ -422,12 +436,14 @@ def pin_baseline_for_branch(branch: str) -> None:
         "/v1/project", params={"project_name": PROJECT}
     )
     if not r_project.ok:
-        print(f"ERROR: Could not fetch project: {r_project.status_code}")
+        print(
+            f"ERROR: Could not fetch project: {r_project.status_code}", file=sys.stderr
+        )
         sys.exit(1)
     projects = extract_braintrust_items(r_project.json())
     project = next((p for p in projects if p.get("name") == PROJECT), None)
     if not project:
-        print(f"ERROR: Project '{PROJECT}' not found")
+        print(f"ERROR: Project '{PROJECT}' not found", file=sys.stderr)
         sys.exit(1)
 
     conn = braintrust.api_conn()
@@ -439,7 +455,10 @@ def pin_baseline_for_branch(branch: str) -> None:
     if resp.ok:
         print(f"Pinned '{latest.get('name', latest['id'])}' as the new baseline.")
     else:
-        print(f"ERROR: Could not pin experiment: {resp.status_code} {resp.text[:200]}")
+        print(
+            f"ERROR: Could not pin experiment: {resp.status_code} {resp.text[:200]}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -474,7 +493,7 @@ def get_all_scorers() -> list:
     filtering out test scorers (those prefixed with TEST_).
     """
     if not os.environ.get("BRAINTRUST_API_KEY"):
-        print("ERROR: BRAINTRUST_API_KEY not set")
+        print("ERROR: BRAINTRUST_API_KEY not set", file=sys.stderr)
         return []
 
     try:
@@ -514,7 +533,9 @@ def validate_scorers(scorer_slugs: list[str]) -> bool:
     """
     valid_scorers = get_available_scorer_slugs()
     if not valid_scorers:
-        print("ERROR: Could not fetch available scorers from Braintrust")
+        print(
+            "ERROR: Could not fetch available scorers from Braintrust", file=sys.stderr
+        )
         return False
 
     invalid_scorer = [s for s in scorer_slugs if s not in valid_scorers]
@@ -536,7 +557,7 @@ def validate_dataset(dataset_name: str) -> bool:
         braintrust.login()
         response = braintrust.api_conn().get("/v1/dataset")
         if not response.ok:
-            print("ERROR: Could not fetch datasets from Braintrust")
+            print("ERROR: Could not fetch datasets from Braintrust", file=sys.stderr)
             return False
 
         data = response.json()
@@ -551,7 +572,7 @@ def validate_dataset(dataset_name: str) -> bool:
         return True
 
     except Exception as e:
-        print(f"ERROR: Could not validate dataset: {e}")
+        print(f"ERROR: Could not validate dataset: {e}", file=sys.stderr)
         return False
 
 
@@ -667,7 +688,7 @@ def main():
     args = parser.parse_args()
 
     if not os.environ.get("BRAINTRUST_API_KEY"):
-        print("ERROR: BRAINTRUST_API_KEY not set")
+        print("ERROR: BRAINTRUST_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
     if args.pin_baseline:
