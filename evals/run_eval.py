@@ -270,6 +270,11 @@ def fetch_experiment_scores(experiment_id: str) -> dict:
     try:
         response = braintrust.api_conn().get(f"/v1/experiment/{experiment_id}/summary")
         if not response.ok:
+            print(
+                f"WARNING: Could not fetch experiment scores for {experiment_id}: "
+                f"HTTP {response.status_code}",
+                file=sys.stderr,
+            )
             return {}
         return response.json().get("scores", {})
     except Exception as e:
@@ -323,7 +328,8 @@ def analyze_threshold(current_scores: dict) -> None:
     }
     if baseline and not normalized_baseline:
         print(
-            "WARNING: Baseline experiment found but scores could not be fetched — comparison skipped."
+            "WARNING: Baseline experiment found but scores could not be fetched — comparison skipped.",
+            file=sys.stderr,
         )
 
     print(f"\n{'=' * 60}")
@@ -634,7 +640,10 @@ async def run_evaluation(
         if result and hasattr(result, "summary") and result.summary:
             analyze_threshold(result.summary.scores)
         else:
-            print("WARNING: Could not retrieve scores for threshold analysis.")
+            print(
+                "WARNING: Could not retrieve scores for threshold analysis.",
+                file=sys.stderr,
+            )
     finally:
         await client.close()
 
@@ -707,8 +716,10 @@ def main():
         if not validate_scorers(scorer_slugs):
             sys.exit(1)
         scorers = [create_scorer(s) for s in scorer_slugs]
-    else:
+    elif args.all_scorers:
         scorers = get_all_scorers()
+    else:
+        parser.error("pick a flag: --scorers <slugs> or --all-scorers")
 
     if args.local:
         base_url = LOCAL_API_URL
