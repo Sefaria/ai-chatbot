@@ -45,7 +45,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install braintrust==0.5.3 pydantic==2.12.5 openai==2.26.0
+        run: pip install 'braintrust[cli]==0.5.3' pydantic==2.12.5 openai==2.26.0
 
       - name: Build scorers
         run: python evals/scorers/build.py
