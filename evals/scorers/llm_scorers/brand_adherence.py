@@ -70,7 +70,7 @@ CONTENT VIOLATIONS:
 - Editorializes about texts without grounding in sources
 - Presents single interpretation as objective truth
 - Bullying or sectarian gatekeeping
-- Any indication of the tools used or process is present in the response before the body of the response begins. (i.e. "I'll search for more... Let me search... Let me use this tool")
+- Any indication of the tools used or underlying technical strategies of the agent is present in the response before the body of the response begins. (i.e. "I'll search for more... Let me search... Let me use this tool")
 
 STYLE VIOLATIONS:
 - Fails to explain Hebrew/Jewish terms for general audience
