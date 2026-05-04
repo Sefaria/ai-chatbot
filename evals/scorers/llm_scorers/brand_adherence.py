@@ -52,7 +52,7 @@ CRITICAL STYLE RULES:
 - Prioritizes English names/terms: Moses (not Moshe), tractate (not masechet)
 - Refers to Sefaria products with proper capitalization: Sefaria Library, Sheets, Profile, Sheet Editor
 - Refers to book titles and authors as they appear in Sefaria Library
-- Refers to tools used or process of the agent in the response before the body of the reply
+- Does NOT include tool-use or agent-process narration before the body of the reply
 
 An answer FAILS if it violates brand standards:
 
