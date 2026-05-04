@@ -55,7 +55,7 @@ load_env_file(ENV_FILE)
 
 # Edit these defaults directly when you want to change the sampled dataset.
 SCRIPT_CONFIG = {
-    "count": 10,
+    "count": 100,
     "seeds": [1],
     "project": os.environ.get("BRAINTRUST_PROJECT", DEFAULT_PROJECT),
     "output_dir": DATA_DIR,
