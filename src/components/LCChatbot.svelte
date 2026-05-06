@@ -769,6 +769,7 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
+  dir={interfaceLang === 'he' ? 'rtl' : 'ltr'}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1336,7 +1337,6 @@
   .menu-dropdown {
     position: absolute;
     top: 100%;
-    right: 0;
     margin-top: 4px;
     min-width: 200px;
     background: var(--lc-bg);
@@ -1346,6 +1346,14 @@
     z-index: 100;
     overflow: hidden;
   }
+
+  .menu-dropdown {
+      right: auto;
+      left: auto;
+      inset-inline-start: auto;
+      inset-inline-end: 0;
+    }
+  
 
   .menu-item {
     display: flex;

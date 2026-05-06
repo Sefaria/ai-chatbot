@@ -1,4 +1,8 @@
 {
+  "assistant.welcome.message": "ברוך הבא! שאל אותי כל מה שתרצה על טקסטים יהודיים.",
+  "assistant.welcome.restart": "התחל שיחה",
+  "assistant.welcome.newSession": "התחל שיחה חדשה",
+
   "assistant.title": "עוזר הספרייה",
   "assistant.badge.ai": "AI",
 
@@ -8,6 +12,7 @@
 
   "assistant.menu.restart": "התחל שיחה מחדש",
   "assistant.menu.feedback": "שלח משוב",
+  "assistant.menu.settings": "הגדרות",
   "assistant.menu.help": "עזרה",
   "assistant.menu.optout": "כיבוי בהגדרות",
 
