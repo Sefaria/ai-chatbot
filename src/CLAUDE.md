@@ -50,7 +50,6 @@ npm run build    # Build bundle to dist/
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag — shows settings gear and logged to Braintrust metadata |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
-| `welcome-messages` | JSON string | No | Localized welcome/restart messages |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 

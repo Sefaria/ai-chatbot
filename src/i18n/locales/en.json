@@ -1,4 +1,8 @@
 {
+  "welcome.message": "**Welcome! I’m the Library Assistant, an experimental AI-powered tool to help you explore the Sefaria Library. To get started, you can:**\n\n- Ask me to find sources about a topic or theme\n- Get help understanding a text\n- Request a translation of a passage\n\n_Like any AI system, I can make mistakes. Please verify responses with the original sources._\n\n_Your feedback helps us improve. Use the 👍/👎 buttons to rate the quality of my responses._",
+  "welcome.restart": "Let me know how I can help.",
+  "welcome.newSession": "**Welcome back! I’m ready to help you explore the Library. You can try things like:**\n\n- Find me sources about gratitude\n- Help me understand this text\n- Translate this passage for me\n\n_Your feedback on responses is always appreciated._",
+
   "header.title": "Library Assistant",
   "header.triggerLabel": "LIBRARY ASSISTANT",
   "header.openAssistant": "Open Library Assistant",
