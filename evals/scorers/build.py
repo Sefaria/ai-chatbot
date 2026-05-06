@@ -49,7 +49,9 @@ def extract_constants(file_path: Path, keys: list[str]) -> dict:
 
 def build_llm_scorer(scorer_file: Path) -> None:
     """Build an LLM-based scorer that uses a prompt for evaluation."""
-    constants = extract_constants(scorer_file, ["NAME", "SLUG", "DESCRIPTION", "PROMPT"])
+    constants = extract_constants(
+        scorer_file, ["NAME", "SLUG", "DESCRIPTION", "PROMPT"]
+    )
 
     name = constants.get("NAME")
     slug = constants.get("SLUG")

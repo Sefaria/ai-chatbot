@@ -1,0 +1,52 @@
+# =============================================================================
+# Pin Eval Baseline on Merge
+# =============================================================================
+#
+# When a PR is merged to main, finds the most recent Braintrust experiment
+# that was run on that branch and pins it as the new baseline. Future eval
+# runs will compare against this pinned experiment to detect regressions.
+#
+# If no eval was run on the branch, the baseline is left unchanged and a
+# warning is printed — no failure.
+#
+# Required secrets:
+#   - BRAINTRUST_API_KEY: API key for Braintrust authentication
+# =============================================================================
+
+name: Pin Eval Baseline
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch name to pin baseline for"
+        required: true
+
+jobs:
+  pin-baseline:
+    name: Pin Braintrust Baseline
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install braintrust==0.5.3 requests==2.32.5 python-dotenv==1.2.1 httpx==0.28.1
+
+      - name: Pin baseline for merged branch
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref || github.event.inputs.branch }}"
+          python evals/run_eval.py --pin-baseline "$BRANCH"

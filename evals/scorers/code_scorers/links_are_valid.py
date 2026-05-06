@@ -48,7 +48,9 @@ def _split_url(url: str):
     Minimal URL split: returns (scheme, host, path).
     Uses regex to extract URL components without external dependencies.
     """
-    match = re.match(r"^(https?)://([^/]+)(/[^?#]*)?.*$", url.strip(), flags=re.IGNORECASE)
+    match = re.match(
+        r"^(https?)://([^/]+)(/[^?#]*)?.*$", url.strip(), flags=re.IGNORECASE
+    )
     if not match:
         return None, None, None
     scheme = (match.group(1) or "https").lower()
