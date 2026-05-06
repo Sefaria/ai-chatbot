@@ -158,6 +158,53 @@ async def test_catalog_search_matches_hebrew_author_name(service):
 
 
 @pytest.mark.asyncio
+async def test_catalog_search_handles_null_order_values(service, sample_catalog):
+    sample_catalog[0]["contents"][0]["contents"].append(
+        {
+            "title": "Rav Shagar on Pesach",
+            "heTitle": 'רב שג"ר על פסח',
+            "categories": ["Tanakh", "Torah", "Commentary"],
+            "primary_category": "Commentary",
+            "enShortDesc": "Teachings by Rav Shagar",
+            "heShortDesc": 'שיעורים של הרב שג"ר',
+            "order": None,
+            "authors": [
+                {
+                    "en": "Rav Shagar",
+                    "he": 'שג"ר',
+                    "slug": "rav-shagar",
+                }
+            ],
+        }
+    )
+    sample_catalog[0]["contents"][0]["contents"].append(
+        {
+            "title": "Collected Writings of Rav Shagar",
+            "heTitle": 'כתבי הרב שג"ר',
+            "categories": ["Tanakh", "Torah", "Commentary"],
+            "primary_category": "Commentary",
+            "enShortDesc": "Collected writings",
+            "heShortDesc": "כתבים",
+            "order": 2,
+            "authors": [
+                {
+                    "en": "Rav Shagar",
+                    "he": 'שג"ר',
+                    "slug": "rav-shagar",
+                }
+            ],
+        }
+    )
+
+    result = await service.search("Rav Shagar", node_type="book")
+
+    assert [item["node"]["title"] for item in result["results"][:2]] == [
+        "Collected Writings of Rav Shagar",
+        "Rav Shagar on Pesach",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_catalog_query_filters_by_creator_and_base_text(service):
     result = await service.query(
         node_type="book",

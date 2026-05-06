@@ -155,7 +155,7 @@ class CatalogService:
         results.sort(
             key=lambda item: (
                 -item["score"],
-                item["node"].get("order", 10**9),
+                self._sort_order_value(item["node"].get("order")),
                 item["node"]["path"],
             )
         )
@@ -184,7 +184,7 @@ class CatalogService:
             for node in index["nodes_by_id"].values()
             if self._matches_node_type(node, node_type) and self._matches_filters(node, filters)
         ]
-        matches.sort(key=lambda node: (node["path"], node.get("order", 10**9)))
+        matches.sort(key=lambda node: (node["path"], self._sort_order_value(node.get("order"))))
         page = matches[offset : offset + limit]
 
         return {
@@ -548,6 +548,10 @@ class CatalogService:
                 value for value in [author.get("en"), author.get("he"), author.get("slug")] if value
             )
         return values
+
+    @staticmethod
+    def _sort_order_value(value: Any) -> Any:
+        return value if value is not None else 10**9
 
     def _matches_filters(self, node: dict[str, Any], filters: dict[str, Any]) -> bool:
         if not filters:
