@@ -1,1 +1,39 @@
-{}
+{
+  "assistant.title": "עוזר הספרייה",
+  "assistant.badge.ai": "AI",
+
+  "assistant.header.close.tooltip": "סגור",
+  "assistant.header.dock.tooltip": "עגן את העוזר",
+  "assistant.header.undock.tooltip": "חזרו למצב צף",
+
+  "assistant.menu.restart": "התחל שיחה מחדש",
+  "assistant.menu.feedback": "שלח משוב",
+  "assistant.menu.help": "עזרה",
+  "assistant.menu.optout": "כיבוי בהגדרות",
+
+  "assistant.empty.description": "אפשר לשאול שאלות תוך כדי הלימוד.",
+  "assistant.empty.examples.label": "לדוגמה:",
+  "assistant.empty.example.1": "מצאו מקורות על שבת",
+  "assistant.empty.example.2": "עזרו לי להבין את הפרשה",
+  "assistant.empty.example.3": "תרגמו את הקטע הזה עבורי",
+  "assistant.empty.disclaimer": "אתם משתמשים בגרסה חדשה של עוזר הספרייה.\nהוא מבוסס על AI וייתכנו טעויות.",
+
+  "assistant.input.placeholder": "שאלו שאלה…",
+  "assistant.input.send.tooltip": "שלח",
+
+  "assistant.loading.thinking": "בודקים…",
+  "assistant.loading.delayed": "זה לוקח קצת יותר זמן מהרגיל.",
+
+  "assistant.feedback.prompt": "האם התשובה הייתה מועילה?",
+  "assistant.feedback.positive": "מועיל",
+  "assistant.feedback.negative": "לא מועיל",
+
+  "assistant.restart.title": "להתחיל שיחה חדשה?",
+  "assistant.restart.description": "הפעולה תמחק את השיחה הנוכחית.",
+  "assistant.restart.confirm": "התחל שיחה חדשה",
+  "assistant.restart.cancel": "ביטול",
+
+  "assistant.error.generic": "אירעה שגיאה. נסו שוב.",
+  "assistant.error.network": "יש בעיה בחיבור לרשת. בדקו את החיבור ונסו שוב.",
+  "assistant.timeout": "זה לוקח מעט יותר זמן מהצפוי."
+}

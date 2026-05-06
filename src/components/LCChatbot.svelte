@@ -93,18 +93,18 @@
 
   $effect(() => { setLocale(interfaceLang); });
 
-  let welcomeMessage = $derived($_('welcome.message'));
-  let restartMessage = $derived($_('welcome.restart'));
-  let newSessionMessage = $derived($_('welcome.newSession'));
+  let welcomeMessage = $derived($_('assistant.welcome.message'));
+  let restartMessage = $derived($_('assistant.welcome.restart'));
+  let newSessionMessage = $derived($_('assistant.welcome.newSession'));
 
   // Feedback issue options for dislikes — labels resolved reactively from the i18n store
   const DISLIKE_REASON_KEYS = [
-    { value: 'inaccurate', key: 'feedback.reason.inaccurate' },
-    { value: 'disrespectful', key: 'feedback.reason.disrespectful' },
-    { value: 'unhelpful', key: 'feedback.reason.unhelpful' },
-    { value: 'overly_definitive', key: 'feedback.reason.overlyDefinitive' },
-    { value: 'tech_issue', key: 'feedback.reason.techIssue' },
-    { value: 'other', key: 'feedback.reason.other' }
+    { value: 'inaccurate', key: 'assistant.feedback.reason.inaccurate' },
+    { value: 'disrespectful', key: 'assistant.feedback.reason.disrespectful' },
+    { value: 'unhelpful', key: 'assistant.feedback.reason.unhelpful' },
+    { value: 'overly_definitive', key: 'assistant.feedback.reason.overlyDefinitive' },
+    { value: 'tech_issue', key: 'assistant.feedback.reason.techIssue' },
+    { value: 'other', key: 'assistant.feedback.reason.other' }
   ];
   let DISLIKE_REASONS = $derived(DISLIKE_REASON_KEYS.map(r => ({ value: r.value, label: $_(r.key) })));
 
@@ -772,9 +772,9 @@
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button aria-label={$_('header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
+    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_('header.triggerLabel')}</span>
+      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -783,7 +783,7 @@
       class:resizing={isResizing}
       style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
-      aria-label={$_('header.chatWindow')}
+      aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
@@ -806,14 +806,14 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          <h2>{$_('header.title')} {#if testingVersion}(V{testingVersion}){/if}
+          <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
           <HeaderButton
             className="panel-btn"
-            title={(mode === 'floating') ? $_('header.dock') : $_('header.undock')}
+            title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
@@ -824,40 +824,40 @@
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
-            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('header.moreOptions')} aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 {#if isModerator}
-                  <button class="menu-item" aria-label={$_('menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
+                  <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
                       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
-                    {$_('menu.settings')}
+                    {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
-                  {$_('menu.restart')}
+                  {$_('assistant.menu.restart')}
                 </button>
-                <a class="menu-item" aria-label={$_('menu.feedback')} href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
-                  {$_('menu.feedback')}
+                  {$_('assistant.menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  {$_('menu.help')}
+                  {$_('assistant.menu.help')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  {$_('menu.optOut')}
+                  {$_('assistant.menu.optout')}
                 </a>
               </div>
             {/if}
           </div>
-          <HeaderButton className="close-btn" onClick={closePanel} title={$_('header.close')}>
+          <HeaderButton className="close-btn" onClick={closePanel} title={$_('assistant.header.close.tooltip')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -869,14 +869,14 @@
       {#if showSettings}
         <div class="settings-panel">
           <div class="settings-header">
-            <button class="settings-back" onclick={closeSettings} aria-label={$_('settings.back.aria')}>
-              {$_('settings.back')}
+            <button class="settings-back" onclick={closeSettings} aria-label={$_('assistant.settings.back.aria')}>
+              {$_('assistant.settings.back')}
             </button>
-            <div class="settings-title">{$_('settings.title')}</div>
+            <div class="settings-title">{$_('assistant.settings.title')}</div>
           </div>
 
           {#if isLoadingSettings}
-            <div class="settings-loading">{$_('settings.loading')}</div>
+            <div class="settings-loading">{$_('assistant.settings.loading')}</div>
           {/if}
 
           {#if settingsError}
@@ -885,7 +885,7 @@
 
           <div class="settings-fields">
             <label class="settings-field">
-              <span>{$_('settings.corePromptSlug')}</span>
+              <span>{$_('assistant.settings.corePromptSlug')}</span>
               <input
                 type="text"
                 bind:value={promptSlugs.corePromptSlug}
@@ -897,14 +897,14 @@
 
           <div class="settings-actions">
             <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
-              {$_('settings.save')}
+              {$_('assistant.settings.save')}
             </button>
             <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
-              {$_('settings.reset')}
+              {$_('assistant.settings.reset')}
             </button>
           </div>
 
-          <p class="settings-note">{$_('settings.note')}</p>
+          <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
       {:else}
       <!-- Message List -->
@@ -915,7 +915,7 @@
         onscroll={handleScroll}
         onclick={handleMessageLinkClick}
         role="log"
-        aria-label={$_('messages.aria')}
+        aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
@@ -925,8 +925,8 @@
             </div>
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
-                  {$_('messages.retry')}
+                <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
+                  {$_('assistant.messages.retry')}
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
@@ -936,7 +936,7 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('messages.like')}
+                      aria-label={$_('assistant.feedback.positive')}
                     >
                       {@html THUMBUP}
                     </button>
@@ -944,13 +944,13 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('messages.dislike')}
+                      aria-label={$_('assistant.feedback.negative')}
                     >
                       {@html THUMBDOWN}
                     </button>
                   </div>
                   {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('messages.feedbackThanks')}</p>
+                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
                   {/if}
                 </div>
               {/if}
@@ -961,7 +961,7 @@
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
-            <span>{$_('messages.loadingHistory')}</span>
+            <span>{$_('assistant.messages.loadingHistory')}</span>
           </div>
         {/if}
 
@@ -985,8 +985,8 @@
               </div>
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(item.messageId)}>
-                    {$_('messages.retry')}
+                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
+                    {$_('assistant.messages.retry')}
                   </button>
                 {/if}
               </div>
@@ -1010,11 +1010,11 @@
                       <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     {/if}
                   </svg>
-                  <span>{currentProgress.isError ? $_('status.toolError') : $_('status.done')}</span>
+                  <span>{currentProgress.isError ? $_('assistant.status.toolError') : $_('assistant.status.done')}</span>
                 </div>
               {:else}
                 <div class="status-text">
-                  <p>{currentProgress?.displayText || $_('status.thinking')}<span class="dots"></span></p>
+                  <p>{currentProgress?.displayText || $_('assistant.loading.thinking')}<span class="dots"></span></p>
                 </div>
               {/if}
             </div>
@@ -1025,10 +1025,10 @@
           <div class="message assistant limit-message">
             <div class="message-content">
               <p>
-                {$_('limit.reached')}
+                {$_('assistant.limit.reached')}
               </p>
               <p>
-                 <button aria-label={$_('limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('limit.startNew')}</button>
+                 <button aria-label={$_('assistant.limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('assistant.limit.startNew')}</button>
               </p>
             </div>
           </div>
@@ -1042,8 +1042,8 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('input.placeholder')}
-          aria-label={$_('input.aria')}
+          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          aria-label={$_('assistant.input.aria')}
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
@@ -1051,7 +1051,7 @@
           class="send-btn"
           onclick={handleSend}
           disabled={!inputText.trim() || isSending || limitReached}
-          aria-label={$_('input.send.aria')}
+          aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -1067,18 +1067,18 @@
         <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">{$_('feedback.modal.title')}</h3>
-            <p class="feedback-modal-subtitle">{$_('feedback.modal.subtitle')}</p>
+            <h3 class="feedback-modal-title">{$_('assistant.feedback.modal.title')}</h3>
+            <p class="feedback-modal-subtitle">{$_('assistant.feedback.modal.subtitle')}</p>
             {#if feedbackType === FEEDBACK_DOWN}
               <div class="feedback-modal-field">
-                <label for="select" class="feedback-modal-select-label">{$_('feedback.modal.issueLabel')}</label>
+                <label for="select" class="feedback-modal-select-label">{$_('assistant.feedback.modal.issueLabel')}</label>
                 <select
                   id="select"
                   class="feedback-modal-select"
                   class:is-placeholder={!feedbackReason}
                   bind:value={feedbackReason}
                 >
-                  <option value="" disabled>{$_('feedback.modal.selectIssue')}</option>
+                  <option value="" disabled>{$_('assistant.feedback.modal.selectIssue')}</option>
                   {#each DISLIKE_REASONS as issue}
                     <option value={issue.value}>{issue.label}</option>
                   {/each}
@@ -1088,7 +1088,7 @@
             <textarea
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === FEEDBACK_DOWN ? $_('feedback.modal.placeholder.detailed') : $_('feedback.modal.placeholder.optional')}
+              placeholder={feedbackType === FEEDBACK_DOWN ? $_('assistant.feedback.modal.placeholder.detailed') : $_('assistant.feedback.modal.placeholder.optional')}
             />
             <div class="feedback-modal-actions">
               <button
@@ -1096,10 +1096,10 @@
                 onclick={() => submitFeedback(true)}
                 disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
               >
-                {$_('feedback.modal.submit')}
+                {$_('assistant.feedback.modal.submit')}
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
-                {$_('feedback.modal.skip')}
+                {$_('assistant.feedback.modal.skip')}
               </button>
             </div>
           </div>
