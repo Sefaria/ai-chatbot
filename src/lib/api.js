@@ -264,7 +264,8 @@ export async function sendMessageStream(
   promptSlugs = null,
   origin = '',
   isStaff = false,
-  requestMetadata = null
+  requestMetadata = null,
+  personality = 'standard'
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
@@ -281,7 +282,8 @@ export async function sendMessageStream(
     messageId,
     timestamp,
     text,
-    context
+    context,
+    personality
   };
 
   if (promptSlugs) {

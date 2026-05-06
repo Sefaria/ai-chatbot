@@ -305,6 +305,7 @@ def chat_stream_v2(request):
         origin=resolve_origin(context.get("origin")),
         is_staff=context.get("isStaff", False),
         user_id=actor.user_id,
+        personality=data.get("personality", "standard"),
     )
 
     def generate_sse():

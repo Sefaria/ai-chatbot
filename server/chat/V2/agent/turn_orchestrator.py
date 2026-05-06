@@ -80,20 +80,31 @@ class TurnOrchestrator:
             model=self.model,
         )
 
-        guardrail_response = await self.guardrail_gate.run_guardrail(
-            bt_span=bt_span,
-            user_message=last_user_message,
-            context=context,
-            start_time=start_time,
-        )
-        if guardrail_response:
-            return guardrail_response
+        is_relaxed = context.personality == "relaxed"
+        is_whimsical = context.personality == "whimsical"
 
-        router_prompt_id, route, messages = await self.router.run_router(
-            bt_span, last_user_message, messages
-        )
-        if router_prompt_id:
-            core_prompt_id = router_prompt_id
+        if is_relaxed or is_whimsical:
+            # Non-standard personalities: skip guardrail and router entirely.
+            # The personality's BT prompt provides all instructions.
+            core_prompt_id = (
+                settings.RELAXED_PROMPT_SLUG if is_relaxed else settings.WHIMSICAL_PROMPT_SLUG
+            )
+            route = context.personality
+        else:
+            guardrail_response = await self.guardrail_gate.run_guardrail(
+                bt_span=bt_span,
+                user_message=last_user_message,
+                context=context,
+                start_time=start_time,
+            )
+            if guardrail_response:
+                return guardrail_response
+
+            router_prompt_id, route, messages = await self.router.run_router(
+                bt_span, last_user_message, messages
+            )
+            if router_prompt_id:
+                core_prompt_id = router_prompt_id
 
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.
