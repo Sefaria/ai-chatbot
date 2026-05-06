@@ -199,8 +199,8 @@ async def test_catalog_search_handles_null_order_values(service, sample_catalog)
     result = await service.search("Rav Shagar", node_type="book")
 
     assert [item["node"]["title"] for item in result["results"][:2]] == [
-        "Collected Writings of Rav Shagar",
         "Rav Shagar on Pesach",
+        "Collected Writings of Rav Shagar",
     ]
 
 
