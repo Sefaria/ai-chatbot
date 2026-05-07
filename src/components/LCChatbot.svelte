@@ -1703,8 +1703,8 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: #f9fafb;
-    border: 1px solid #6f6f6f;
+    background: #e6e6e6;
+    border: none;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1712,11 +1712,11 @@
   }
 
   .stop-btn:hover {
-    background: #eeeeee;
+    background: #cccccc;
   }
 
   .stop-btn:active {
-    background: #eeeeee;
+    background: #cccccc;
     transform: scale(0.95);
   }
 
