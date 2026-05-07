@@ -33,6 +33,7 @@
   let inputText = $state('');
   let isSending = $state(false);
   let streamAbortController = $state(null);
+  let wasStopped = $state(false);
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -549,6 +550,7 @@
 
     } catch (e) {
       if (e?.name === 'AbortError') {
+        wasStopped = true;
         messages = messages.map(m =>
           m.messageId === userMessage.messageId ? { ...m, status: 'sent' } : m
         );
@@ -583,6 +585,7 @@
       }
     } finally {
       isSending = false;
+      wasStopped = false;
       currentProgress = null;
       toolHistory = [];
       streamAbortController = null;
@@ -1031,7 +1034,7 @@
           {/if}
         {/each}
 
-        {#if isSending}
+        {#if isSending && !wasStopped}
           <div class="message assistant">
             <div class="thinking-content">
               <!-- Progress Status -->
