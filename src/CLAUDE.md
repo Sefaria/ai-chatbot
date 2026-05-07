@@ -10,7 +10,7 @@ src/
 ├── components/
 │   └── LCChatbot.svelte         # Main widget (single-file component)
 ├── i18n/
-│   ├── index.js                 # svelte-i18n setup, locale normalization
+│   ├── index.js                 # svelte-i18n setup and locale store wiring
 │   └── locales/
 │       ├── en.json              # source-of-truth strings (translated via Weblate)
 │       └── he.json              # Hebrew translations
