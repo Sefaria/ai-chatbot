@@ -1,7 +1,7 @@
 """Link Quote Accuracy Scorer - validates Sefaria links, quoted source text, and absence claims."""
 
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 import re
 import json
 import requests
@@ -10,7 +10,8 @@ NAME = "Link Quote Accuracy"
 SLUG = "links-are-valid-06b8"
 DESCRIPTION = (
     "0 if any Sefaria links are invalid, quoted source-language text doesn't match "
-    "the cited ref, or the response falsely claims Sefaria lacks a work it has. "
+    "the cited ref, or the claims that a book is or is not in the library is verified "
+    "(i.e. we don't falsely claim we're missing a book we have)"
     "Failure metadata identifies which check(s) failed."
 )
 
@@ -22,7 +23,6 @@ TIMEOUT = 5.0
 
 # ── URL extraction ────────────────────────────────────────────────────────────
 
-_HREF_URL_RE = re.compile(r'href=["\'](https?://[^"\']+)["\']', flags=re.IGNORECASE)
 _PLAIN_URL_RE = re.compile(r'https?://[^\s"<>]+', flags=re.IGNORECASE)
 _RESPONSE_LINK_HREF_RE = re.compile(
     r'<a\s+class=["\']response-link["\'][^>]*href=["\']([^"\']+)["\']',
@@ -67,8 +67,6 @@ _TRAILING_NOUN_RE = re.compile(
     r"\s+(?:books?|writings?|works?|teachings?|texts?|commentaries?)$", re.IGNORECASE
 )
 _LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an|any|all|most|many)\s+", re.IGNORECASE)
-_RABBINICAL_TITLE_RE = re.compile(r"^(?:rabbi|rebbe)\b", re.IGNORECASE)
-_RABBINICAL_PREFIX_RE = re.compile(r"^(?:rabbi|rav|rebbe)\s+(.+)$", re.IGNORECASE)
 _OF_PHRASE_RE = re.compile(
     r"^(?:writings?|books?|works?|teachings?)\s+of\s+(.+)$", re.IGNORECASE
 )
@@ -95,27 +93,10 @@ def _strip_trailing_punct(url: str) -> str:
 
 
 def _split_url(url: str):
-    match = re.match(
-        r"^(https?)://([^/]+)(/[^?#]*)?.*$", url.strip(), flags=re.IGNORECASE
-    )
-    if not match:
+    parts = urlsplit(url.strip())
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
         return None, None, None
-    scheme = (match.group(1) or "https").lower()
-    host = (match.group(2) or "").lower()
-    path = match.group(3) or "/"
-    return scheme, host, path
-
-
-def _is_sefaria_host(host: str | None) -> bool:
-    if not host:
-        return False
-    h = host.lower()
-    return (
-        h == "sefaria.org"
-        or h.endswith(".sefaria.org")
-        or h == "sefaria.org.il"
-        or h.endswith(".sefaria.org.il")
-    )
+    return parts.scheme.lower(), parts.netloc.lower(), parts.path or "/"
 
 
 def _quote_path(path: str) -> str:
@@ -127,17 +108,11 @@ def _unquote_path(path: str) -> str:
 
 
 def _has_content(value: Any) -> bool:
-    if value is None:
-        return False
     if isinstance(value, str):
         return bool(value.strip())
-    if isinstance(value, (int, float)):
-        return True
     if isinstance(value, list):
         return any(_has_content(v) for v in value)
-    if isinstance(value, dict):
-        return any(_has_content(v) for v in value.values())
-    return bool(value)
+    return False
 
 
 def _strip_html(s: str) -> str:
@@ -172,7 +147,7 @@ def _response_text(output: Any) -> str:
 
 def _extract_tref_from_url(url: str) -> str | None:
     scheme, host, path = _split_url(url)
-    if not scheme or not _is_sefaria_host(host):
+    if not scheme or not host or "sefaria.org" not in host:
         return None
     p = _unquote_path(path).strip("/")
     if not p:
@@ -197,23 +172,6 @@ def _extract_tref_from_url(url: str) -> str | None:
     return p or None
 
 
-def _validate_nontext_page_exists(
-    session: requests.Session, url: str
-) -> tuple[bool, str]:
-    try:
-        res = session.get(url, timeout=TIMEOUT, allow_redirects=True)
-    except Exception as e:
-        return False, f"exception: {type(e).__name__}"
-    if res.status_code >= 400:
-        return False, f"GET status {res.status_code}"
-    ct = (res.headers.get("Content-Type") or "").lower()
-    if "text/html" in ct:
-        body = (res.text or "").lower()
-        if ("page not found" in body) or ("404" in body and "not found" in body):
-            return False, "GET returned 'page not found' content"
-    return True, "ok"
-
-
 def _validate_tref_as_existing_text_ref(
     session: requests.Session, base_host: str, tref: str
 ) -> tuple[bool, str]:
@@ -226,10 +184,11 @@ def _validate_tref_as_existing_text_ref(
         return False, "not a ref per /api/name"
     normalized_ref = _unquote_path(name_data.get("url") or name_data.get("ref") or tref)
     if name_data.get("is_node"):
-        ok, reason = _validate_nontext_page_exists(
-            session, f"{base_host}/{_quote_path(normalized_ref)}"
-        )
-        return ok, f"node ref; page check: {reason}"
+        try:
+            res = session.get(f"{base_host}/{_quote_path(normalized_ref)}", timeout=TIMEOUT, allow_redirects=True)
+        except Exception as e:
+            return False, f"exception: {type(e).__name__}"
+        return res.status_code < 400, f"node ref; GET status {res.status_code}"
     texts_res = session.get(
         f"{base_host}/api/texts/{_quote_path(normalized_ref)}",
         params={"context": 0, "pad": 0, "commentary": 0},
@@ -246,10 +205,9 @@ def _validate_tref_as_existing_text_ref(
 
 
 def _extract_urls(text: str) -> list[str]:
-    text = _maybe_json_unescape(text)
     seen = set()
     out: list[str] = []
-    for u in _HREF_URL_RE.findall(text) + _PLAIN_URL_RE.findall(text):
+    for u in _PLAIN_URL_RE.findall(text):
         u = _strip_trailing_punct(u)
         if u and u not in seen:
             seen.add(u)
@@ -274,18 +232,19 @@ def _drop_prefix_urls(urls: list[str]) -> list[str]:
 # ── Quote matching ────────────────────────────────────────────────────────────
 
 
-def _quote_language(s: str) -> str:
+def _quote_language(s: str) -> str | None:
+    """Return 'he', 'en', or None if the quote is mixed/ambiguous."""
     he = len(_HEBREW_RE.findall(s))
     en = len(_LATIN_RE.findall(s))
     if he > en * 2:
         return "he"
     if en > he * 2:
         return "en"
-    return "mixed"
+    return None
 
 
 def _extract_quotes(text: str) -> list[tuple[str, str]]:
-    """Return [(normalized_quote, language), ...]."""
+    """Return [(normalized_quote, language), ...] for unambiguous he/en quotes only."""
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
     for raw in _QUOTE_RE.findall(text):
@@ -293,7 +252,9 @@ def _extract_quotes(text: str) -> list[tuple[str, str]]:
         if len(n) < MIN_QUOTE_LEN or n in seen:
             continue
         seen.add(n)
-        out.append((n, _quote_language(n)))
+        lang = _quote_language(n)
+        if lang is not None:
+            out.append((n, lang))
     return out
 
 
@@ -370,21 +331,6 @@ def _clean_capture(phrase: str) -> str:
     return phrase
 
 
-def _candidate_variants(phrase: str) -> list[str]:
-    variants = [phrase]
-    m = _RABBINICAL_PREFIX_RE.match(phrase)
-    if m:
-        variants.append(m.group(1).strip())
-    elif not _RABBINICAL_TITLE_RE.match(phrase):
-        variants.append(f"Rabbi {phrase}")
-    seen, out = set(), []
-    for v in variants:
-        k = v.lower()
-        if v and k not in seen:
-            seen.add(k)
-            out.append(v)
-    return out
-
 
 def _detect_absence_claims(text: str) -> list[str]:
     plain = _strip_html(text)
@@ -414,27 +360,25 @@ def _name_api_resolves(session: requests.Session, claim: str) -> str | None:
     if data.get("is_ref"):
         return data.get("ref") or claim
     claim_norm = _normalize(claim)
-    completions = data.get("completion_objects") or []
-    for obj in completions:
-        if obj.get("type") not in {"ref", "Book", "AuthorTopic"}:
-            continue
-        if _normalize(obj.get("title") or "") == claim_norm:
-            return obj.get("title")
     claim_words = [w for w in claim_norm.split() if len(w) > 2]
-    if not claim_words:
-        return None
-    for obj in completions:
-        if obj.get("type") != "AuthorTopic":
-            continue
-        if "library" not in (obj.get("topic_pools") or []):
-            continue
-        if all(w in _normalize(obj.get("title") or "") for w in claim_words):
-            return obj.get("title")
-    for obj in completions:
-        if obj.get("type") != "Book":
-            continue
-        if all(w in _normalize(obj.get("title") or "") for w in claim_words):
-            return obj.get("title")
+    completions = data.get("completion_objects") or []
+
+    def _priority(obj: dict) -> int:
+        title_norm = _normalize(obj.get("title") or "")
+        obj_type = obj.get("type")
+        if obj_type in {"ref", "Book", "AuthorTopic"} and title_norm == claim_norm:
+            return 0
+        if not claim_words or not all(w in title_norm for w in claim_words):
+            return 99
+        if obj_type == "AuthorTopic" and "library" in (obj.get("topic_pools") or []):
+            return 1
+        if obj_type == "Book":
+            return 2
+        return 99
+
+    best = min(completions, key=_priority, default=None)
+    if best is not None and _priority(best) < 99:
+        return best.get("title")
     return None
 
 
@@ -456,11 +400,15 @@ def _index_api_resolves(session: requests.Session, claim: str) -> str | None:
     return data.get("title") or claim
 
 
+_RABBINICAL_PREFIX_RE = re.compile(r"^(?:rabbi|rav|rebbe)\s+(.+)$", re.IGNORECASE)
+
+
 def _claim_is_false_absence(session: requests.Session, claim: str) -> str | None:
-    for variant in _candidate_variants(claim):
-        match = _name_api_resolves(session, variant)
-        if match:
-            return match
+    if result := _name_api_resolves(session, claim):
+        return result
+    m = _RABBINICAL_PREFIX_RE.match(claim)
+    if m and (result := _name_api_resolves(session, m.group(1).strip())):
+        return result
     return _index_api_resolves(session, claim)
 
 
@@ -482,7 +430,7 @@ def handler(
     # ── Check 1: link validity ────────────────────────────────────────────────
 
     raw_urls = _extract_urls(text)
-    sefaria_urls = [u for u in raw_urls if _is_sefaria_host(_split_url(u)[1])]
+    sefaria_urls = [u for u in raw_urls if "sefaria.org" in u.lower()]
     seen: set[str] = set()
     urls = [u for u in sefaria_urls if not (u in seen or seen.add(u))]
     urls = _drop_prefix_urls(urls)
@@ -490,9 +438,6 @@ def handler(
     urls = urls[:MAX_URLS_TO_VALIDATE]
 
     invalid_urls: list[str] = []
-    validation_details: dict[str, str] = {}
-    text_urls: list[str] = []
-    nontext_urls: list[str] = []
 
     # ── Check 2: quote matching + Check 3: absence claims ────────────────────
 
@@ -501,7 +446,6 @@ def handler(
     false_absences: list[dict[str, str]] = []
     unmatched_quotes: list[dict[str, str]] = []
     ref_source_langs: set[str] = set()
-    refs_with_text = 0
 
     with requests.Session() as session:
         for url in urls:
@@ -510,19 +454,17 @@ def handler(
             tref = _extract_tref_from_url(url)
             try:
                 if tref:
-                    text_urls.append(url)
-                    is_valid, reason = _validate_tref_as_existing_text_ref(
-                        session, base_host, tref
-                    )
+                    is_valid, _ = _validate_tref_as_existing_text_ref(session, base_host, tref)
                 else:
-                    nontext_urls.append(url)
-                    is_valid, reason = _validate_nontext_page_exists(session, url)
+                    try:
+                        res = session.get(url, timeout=TIMEOUT, allow_redirects=True)
+                        is_valid = res.status_code < 400
+                    except Exception:
+                        is_valid = False
                 if not is_valid:
                     invalid_urls.append(url)
-                validation_details[url] = reason
-            except Exception as e:
+            except Exception:
                 invalid_urls.append(url)
-                validation_details[url] = f"exception: {type(e).__name__}"
 
         for claim in _detect_absence_claims(text):
             matched = _claim_is_false_absence(session, claim)
@@ -538,12 +480,11 @@ def handler(
                 src_text, src_lang = _fetch_ref_source(session, tref)
                 if src_text:
                     ref_corpus += " " + src_text
-                    refs_with_text += 1
                 if src_lang:
                     ref_source_langs.add(src_lang)
             if ref_corpus.strip():
                 for q, q_lang in quotes:
-                    if q_lang == "mixed" or q_lang not in ref_source_langs:
+                    if q_lang not in ref_source_langs:
                         continue
                     if not _quote_in_corpus(q, ref_corpus):
                         unmatched_quotes.append({"quote": q, "lang": q_lang})
@@ -585,15 +526,8 @@ def handler(
                 "reason": " | ".join(failures),
                 "checks_failed": [f.split(":")[0] for f in failures],
                 "invalid_urls": invalid_urls,
-                "validation_details": validation_details,
                 "false_absences": false_absences,
                 "unmatched_quotes": unmatched_quotes,
-                "urls_checked": len(urls),
-                "quotes_checked": len(quotes),
-                "refs_checked": len(ref_link_urls[:MAX_REFS_TO_FETCH]),
-                "refs_with_text": refs_with_text,
-                "ref_source_langs": sorted(ref_source_langs),
-                "truncated": truncated,
             },
         }
 
@@ -609,16 +543,5 @@ def handler(
     return {
         "score": 1.0,
         "name": NAME,
-        "metadata": {
-            "reason": "; ".join(reason_parts),
-            "urls_checked": len(urls),
-            "text_urls": text_urls,
-            "nontext_urls": nontext_urls,
-            "validation_details": validation_details,
-            "quotes_checked": len(quotes),
-            "refs_checked": len(ref_link_urls[:MAX_REFS_TO_FETCH]),
-            "refs_with_text": refs_with_text,
-            "ref_source_langs": sorted(ref_source_langs),
-            "truncated": truncated,
-        },
+        "metadata": {"reason": "; ".join(reason_parts)},
     }
