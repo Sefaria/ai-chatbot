@@ -1702,11 +1702,11 @@
   }
 
   .stop-btn {
-    background: var(--lc-error, #c0392b);
+    background: #6b3fa0;
   }
 
   .stop-btn:hover {
-    background: color-mix(in srgb, var(--lc-error, #c0392b) 85%, black);
+    background: #5a3486;
   }
 
   /* Settings Panel */
