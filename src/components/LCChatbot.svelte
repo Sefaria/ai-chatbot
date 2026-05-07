@@ -1314,9 +1314,13 @@
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
     font-weight: 600;
-    color: var(--lc-text);
     margin: 0;
     line-height: 1.1;
+    color: var(--brand-sefaria-blue, #18345D);
+    font-family: Roboto;
+    font-style: normal;
+    font-weight: 600;
+    line-height: normal;
   }
 
   .lc-chatbot-header h2 img {
@@ -1435,6 +1439,7 @@
   .message.user {
     max-width: 85%;
     align-self: flex-end;
+    background-color: #0056B3;
   }
 
   .message.assistant {
