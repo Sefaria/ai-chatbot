@@ -264,7 +264,8 @@ export async function sendMessageStream(
   promptSlugs = null,
   origin = '',
   isStaff = false,
-  requestMetadata = null
+  requestMetadata = null,
+  signal = null
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
@@ -295,9 +296,11 @@ export async function sendMessageStream(
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
   } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
       sessionId,

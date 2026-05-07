@@ -32,6 +32,7 @@
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
+  let streamAbortController = $state(null);
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -462,6 +463,7 @@
     isSending = true;
     currentProgress = null;
     toolHistory = [];
+    streamAbortController = new AbortController();
     updateSessionActivity(sessionId);
 
     try {
@@ -498,7 +500,7 @@
       }, promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      });
+      }, streamAbortController.signal);
 
       // Update user message status
       messages = messages.map(m => 
@@ -546,25 +548,44 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
+      if (e?.name === 'AbortError') {
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId ? { ...m, status: 'sent' } : m
+        );
+        messages = [...messages, {
+          messageId: generateMessageId(),
+          sessionId,
+          userId,
+          role: 'assistant',
+          content: "okay, I won't answer that",
+          timestamp: new Date().toISOString(),
+          status: 'sent',
+          feedback: null
+        }];
+        saveMessagesToStorage();
+        scrollToResponseStart();
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
 
-      // Mark message as failed for other errors
-      messages = messages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
-      saveMessagesToStorage();
+        // Mark message as failed for other errors
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+        saveMessagesToStorage();
 
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
     } finally {
       isSending = false;
       currentProgress = null;
       toolHistory = [];
+      streamAbortController = null;
     }
   }
 
@@ -573,6 +594,10 @@
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function handleStop() {
+    streamAbortController?.abort();
   }
 
   async function handleFeedback(messageId, score) {
@@ -1058,17 +1083,29 @@
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if isSending}
+          <button
+            class="send-btn stop-btn"
+            onclick={handleStop}
+            aria-label="Stop generating"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+          </button>
+        {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || limitReached}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
       {/if}
 
@@ -1661,6 +1698,14 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  .stop-btn {
+    background: var(--lc-error, #c0392b);
+  }
+
+  .stop-btn:hover {
+    background: color-mix(in srgb, var(--lc-error, #c0392b) 85%, black);
   }
 
   /* Settings Panel */
