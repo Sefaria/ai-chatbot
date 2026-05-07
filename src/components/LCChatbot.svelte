@@ -33,7 +33,6 @@
   let inputText = $state('');
   let isSending = $state(false);
   let streamAbortController = $state(null);
-  let wasStopped = $state(false);
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -438,6 +437,7 @@
     const text = inputText.trim();
     const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isSending && !limitReached;
+    let stoppedByUser = false;
     if (!isConfigured || !isReadyToSend) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
@@ -550,7 +550,7 @@
 
     } catch (e) {
       if (e?.name === 'AbortError') {
-        wasStopped = true;
+        stoppedByUser = true;
         messages = messages.map(m =>
           m.messageId === userMessage.messageId ? { ...m, status: 'sent' } : m
         );
@@ -574,10 +574,13 @@
       }
     } finally {
       isSending = false;
-      wasStopped = false;
       currentProgress = null;
       toolHistory = [];
       streamAbortController = null;
+      if (stoppedByUser) {
+        await tick();
+        inputRef?.focus();
+      }
     }
   }
 
@@ -590,7 +593,6 @@
 
   function handleStop() {
     streamAbortController?.abort();
-    setTimeout(() => inputRef?.focus(), 0);
   }
 
   async function handleFeedback(messageId, score) {
@@ -1023,7 +1025,7 @@
           {/if}
         {/each}
 
-        {#if isSending && !wasStopped}
+        {#if isSending}
           <div class="message assistant">
             <div class="thinking-content">
               <!-- Progress Status -->
@@ -1172,7 +1174,7 @@
     --lc-error: #ef4444;
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
-    --lc-disabled-button-hover: #cccccc;
+    --lc-stop-btn-bg: #cccccc;
     --lc-stop-btn-hover: #999999;
     --lc-disabled-text: #999;
     --lc-submit-white: #FBFDFE;
@@ -1705,7 +1707,7 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: var(--lc-disabled-button-hover);
+    background: var(--lc-stop-btn-bg);
     border: none;
     border-radius: var(--lc-radius-sm);
     color: var(--lc-bg);
