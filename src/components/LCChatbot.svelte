@@ -598,6 +598,7 @@
 
   function handleStop() {
     streamAbortController?.abort();
+    setTimeout(() => inputRef?.focus(), 0);
   }
 
   async function handleFeedback(messageId, score) {
