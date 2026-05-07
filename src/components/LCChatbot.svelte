@@ -1725,9 +1725,8 @@
   }
 
   .stop-btn:focus-visible {
-    outline: 2px solid var(--lc-bg);
+    outline: 2px solid var(--lc-primary);
     outline-offset: 2px;
-    box-shadow: 0 0 0 4px var(--lc-primary);
   }
 
   /* Settings Panel */
