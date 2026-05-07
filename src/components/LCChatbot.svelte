@@ -1703,7 +1703,7 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: #ffffff;
+    background: #f9fafb;
     border: 1px solid #6f6f6f;
     border-radius: 8px;
     cursor: pointer;
