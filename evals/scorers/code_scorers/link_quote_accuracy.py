@@ -3,15 +3,13 @@
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 import re
-import json
 import requests
 
 NAME = "Link Quote Accuracy"
 SLUG = "links-are-valid-06b8"
 DESCRIPTION = (
-    "0 if any Sefaria links are invalid, quoted source-language text doesn't match "
-    "the cited ref, or the claims that a book is or is not in the library is verified "
-    "(i.e. we don't falsely claim we're missing a book we have)"
+    "0 if any Sefaria links are broken, quoted source-language text doesn't appear "
+    "at the cited ref, or the response falsely claims a book isn't in Sefaria's library. "
     "Failure metadata identifies which check(s) failed."
 )
 
@@ -21,16 +19,13 @@ MIN_QUOTE_LEN = 8
 API_BASE = "https://www.sefaria.org"
 TIMEOUT = 5.0
 
-# ── URL extraction ────────────────────────────────────────────────────────────
+# ── Regexes ───────────────────────────────────────────────────────────────────
 
 _PLAIN_URL_RE = re.compile(r'https?://[^\s"<>]+', flags=re.IGNORECASE)
 _RESPONSE_LINK_HREF_RE = re.compile(
     r'<a\s+class=["\']response-link["\'][^>]*href=["\']([^"\']+)["\']',
     flags=re.IGNORECASE,
 )
-
-# ── Quote / text extraction ───────────────────────────────────────────────────
-
 _QUOTE_RE = re.compile(
     r'<span\s+class=["\']response-quote["\'][^>]*>(.*?)</span>',
     flags=re.IGNORECASE | re.DOTALL,
@@ -42,21 +37,17 @@ _LATIN_RE = re.compile(r"[A-Za-z]")
 _WS_RE = re.compile(r"\s+")
 _ELLIPSIS_RE = re.compile(r"\.{2,}|…")
 
-# ── Absence-claim detection ───────────────────────────────────────────────────
-
 _ABSENCE_PATTERNS = [
-    # "X is/are not [in/part of/available in/added to] Sefaria('s library/collection)"
     re.compile(
         r"([\w''.\- ]{2,60}?)\s+"
-        r"(?:is|are|isn'?t|aren'?t|is\s+not|are\s+not|hasn'?t\s+been|haven'?t\s+been)\s+"
+        r"(?:is|are|isn[''']?t|aren[''']?t|is\s+not|are\s+not|hasn[''']?t\s+been|haven[''']?t\s+been)\s+"
         r"(?:currently\s+|yet\s+)?"
         r"(?:in|part\s+of|included\s+in|available\s+(?:in|on)|added\s+to)\s+"
-        r"(?:Sefaria|Sefaria'?s\s+(?:library|collection|database))",
+        r"(?:Sefaria|Sefaria[''']?s\s+(?:library|collection|database))",
         re.IGNORECASE,
     ),
-    # "Sefaria (does not|doesn't) (have|include|contain|carry|host) X"
     re.compile(
-        r"Sefaria\s+(?:does\s+not|doesn'?t|do(?:es)n'?t)\s+(?:currently\s+|yet\s+)?"
+        r"Sefaria\s+(?:does\s+not|doesn[''']?t|do(?:es)n[''']?t)\s+(?:currently\s+|yet\s+)?"
         r"(?:have|include|contain|carry|host)\s+([\w''.\- ]{2,60})",
         re.IGNORECASE,
     ),
@@ -71,20 +62,7 @@ _OF_PHRASE_RE = re.compile(
     r"^(?:writings?|books?|works?|teachings?)\s+of\s+(.+)$", re.IGNORECASE
 )
 
-
 # ── Shared helpers ────────────────────────────────────────────────────────────
-
-
-def _maybe_json_unescape(text: str) -> str:
-    if not isinstance(text, str):
-        return str(text)
-    stripped = text.strip()
-    if len(stripped) >= 2 and stripped[0] == '"' and stripped[-1] == '"':
-        try:
-            return json.loads(stripped)
-        except Exception:
-            return text
-    return text
 
 
 def _strip_trailing_punct(url: str) -> str:
@@ -92,27 +70,8 @@ def _strip_trailing_punct(url: str) -> str:
     return url.rstrip(").,;:!?]}>\"'`")
 
 
-def _split_url(url: str):
-    parts = urlsplit(url.strip())
-    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
-        return None, None, None
-    return parts.scheme.lower(), parts.netloc.lower(), parts.path or "/"
-
-
 def _quote_path(path: str) -> str:
     return quote(path, safe="")
-
-
-def _unquote_path(path: str) -> str:
-    return unquote(path, encoding="utf-8", errors="replace")
-
-
-def _has_content(value: Any) -> bool:
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, list):
-        return any(_has_content(v) for v in value)
-    return False
 
 
 def _strip_html(s: str) -> str:
@@ -120,7 +79,6 @@ def _strip_html(s: str) -> str:
 
 
 def _normalize(s: str) -> str:
-    """Strip HTML + nikud, collapse whitespace, lowercase if no Hebrew."""
     s = _strip_html(s)
     s = _NIKUD_RE.sub("", s)
     s = _WS_RE.sub(" ", s).strip()
@@ -142,143 +100,47 @@ def _response_text(output: Any) -> str:
     return str(output)
 
 
-# ── URL / link validation ─────────────────────────────────────────────────────
-
-
-def _extract_tref_from_url(url: str) -> str | None:
-    scheme, host, path = _split_url(url)
-    if not scheme or not host or "sefaria.org" not in host:
-        return None
-    p = _unquote_path(path).strip("/")
-    if not p:
-        return None
-    if p.startswith("texts/") or p == "texts":
-        return None
-    blocked = (
-        "sheets/",
-        "topics/",
-        "collections/",
-        "search",
-        "api/",
-        "about",
-        "help",
-        "community",
-        "donate",
-        "account",
-        "my/",
-    )
-    if any(p == b.rstrip("/") or p.startswith(b) for b in blocked):
-        return None
-    return p or None
-
-
-def _validate_tref_as_existing_text_ref(
-    session: requests.Session, base_host: str, tref: str
-) -> tuple[bool, str]:
-    tref = _unquote_path(tref)
-    name_res = session.get(f"{base_host}/api/name/{_quote_path(tref)}", timeout=TIMEOUT)
-    if name_res.status_code != 200:
-        return False, f"/api/name status {name_res.status_code}"
-    name_data = name_res.json()
-    if not name_data.get("is_ref"):
-        return False, "not a ref per /api/name"
-    normalized_ref = _unquote_path(name_data.get("url") or name_data.get("ref") or tref)
-    if name_data.get("is_node"):
-        try:
-            res = session.get(f"{base_host}/{_quote_path(normalized_ref)}", timeout=TIMEOUT, allow_redirects=True)
-        except Exception as e:
-            return False, f"exception: {type(e).__name__}"
-        return res.status_code < 400, f"node ref; GET status {res.status_code}"
-    texts_res = session.get(
-        f"{base_host}/api/texts/{_quote_path(normalized_ref)}",
-        params={"context": 0, "pad": 0, "commentary": 0},
-        timeout=TIMEOUT,
-    )
-    if texts_res.status_code != 200:
-        return False, f"/api/texts status {texts_res.status_code}"
-    text_data = texts_res.json()
-    if text_data.get("error"):
-        return False, f"/api/texts error: {text_data.get('error')}"
-    if not (_has_content(text_data.get("text")) or _has_content(text_data.get("he"))):
-        return False, "no text content at ref"
-    return True, "ok"
+# ── Check 1: link validity ────────────────────────────────────────────────────
 
 
 def _extract_urls(text: str) -> list[str]:
-    seen = set()
+    seen: set[str] = set()
     out: list[str] = []
     for u in _PLAIN_URL_RE.findall(text):
         u = _strip_trailing_punct(u)
-        if u and u not in seen:
+        if u and "sefaria.org" in u.lower() and u not in seen:
             seen.add(u)
             out.append(u)
     return out
 
 
-def _drop_prefix_urls(urls: list[str]) -> list[str]:
+def _url_is_valid(session: requests.Session, url: str) -> bool:
+    try:
+        res = session.get(url, timeout=TIMEOUT, allow_redirects=True)
+        return res.status_code < 400
+    except Exception:
+        return False
+
+
+# ── Check 2: hallucinated quotes ─────────────────────────────────────────────
+
+
+def _extract_response_link_trefs(text: str) -> list[str]:
     out: list[str] = []
-    for u in urls:
-        is_prefix = any(
-            v != u
-            and v.startswith(u)
-            and v[len(u) : len(u) + 1] in ("'", "%", "_", "-", ".", ":", ";", ",")
-            for v in urls
-        )
-        if not is_prefix:
-            out.append(u)
-    return out
-
-
-# ── Quote matching ────────────────────────────────────────────────────────────
-
-
-def _quote_language(s: str) -> str | None:
-    """Return 'he', 'en', or None if the quote is mixed/ambiguous."""
-    he = len(_HEBREW_RE.findall(s))
-    en = len(_LATIN_RE.findall(s))
-    if he > en * 2:
-        return "he"
-    if en > he * 2:
-        return "en"
-    return None
-
-
-def _extract_quotes(text: str) -> list[tuple[str, str]]:
-    """Return [(normalized_quote, language), ...] for unambiguous he/en quotes only."""
-    out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for raw in _QUOTE_RE.findall(text):
-        n = _normalize(raw)
-        if len(n) < MIN_QUOTE_LEN or n in seen:
+    for href in _RESPONSE_LINK_HREF_RE.findall(text):
+        if "sefaria.org" not in href.lower():
             continue
-        seen.add(n)
-        lang = _quote_language(n)
-        if lang is not None:
-            out.append((n, lang))
+        parts = urlsplit(href.strip())
+        tref = unquote(parts.path).strip("/")
+        if tref and tref not in seen:
+            seen.add(tref)
+            out.append(tref)
     return out
 
 
-def _extract_response_link_urls(text: str) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for u in _RESPONSE_LINK_HREF_RE.findall(text):
-        if "sefaria.org" in u.lower() and u not in seen:
-            seen.add(u)
-            out.append(u)
-    return out
-
-
-def _quote_in_corpus(q: str, corpus: str) -> bool:
-    """Ellipsis-aware: split on '...'/'…', require each fragment to appear in corpus."""
-    fragments = [f.strip(" .,;:!?\"'") for f in _ELLIPSIS_RE.split(q)]
-    fragments = [f for f in fragments if len(f) >= 4]
-    if not fragments:
-        return q in corpus
-    return all(f in corpus for f in fragments)
-
-
-def _fetch_ref_source(session: requests.Session, tref: str) -> tuple[str, str]:
-    """Return (normalized_source_text, source_language). Empty strings on failure."""
+def _fetch_ref_text(session: requests.Session, tref: str) -> tuple[str, str]:
+    """Return (normalized_text, language). Empty strings on failure."""
     try:
         res = session.get(
             f"{API_BASE}/api/v3/texts/{_quote_path(tref)}", timeout=TIMEOUT
@@ -303,6 +165,7 @@ def _fetch_ref_source(session: requests.Session, tref: str) -> tuple[str, str]:
     )
     if not version:
         return "", ""
+
     chunks: list[str] = []
 
     def _walk(v: Any) -> None:
@@ -317,7 +180,40 @@ def _fetch_ref_source(session: requests.Session, tref: str) -> tuple[str, str]:
     return _normalize(" ".join(chunks)), lang
 
 
-# ── Absence-claim detection ───────────────────────────────────────────────────
+def _quote_language(s: str) -> str | None:
+    he = len(_HEBREW_RE.findall(s))
+    en = len(_LATIN_RE.findall(s))
+    if he > en * 2:
+        return "he"
+    if en > he * 2:
+        return "en"
+    return None
+
+
+def _extract_quotes(text: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw in _QUOTE_RE.findall(text):
+        n = _normalize(raw)
+        if len(n) < MIN_QUOTE_LEN or n in seen:
+            continue
+        seen.add(n)
+        lang = _quote_language(n)
+        if lang is not None:
+            out.append((n, lang))
+    return out
+
+
+def _quote_in_corpus(q: str, corpus: str) -> bool:
+    """Split on ellipses; each fragment must appear in corpus."""
+    fragments = [f.strip(" .,;:!?\"'") for f in _ELLIPSIS_RE.split(q)]
+    fragments = [f for f in fragments if len(f) >= 4]
+    if not fragments:
+        return q in corpus
+    return all(f in corpus for f in fragments)
+
+
+# ── Check 3: false absences ───────────────────────────────────────────────────
 
 
 def _clean_capture(phrase: str) -> str:
@@ -329,7 +225,6 @@ def _clean_capture(phrase: str) -> str:
     if m:
         phrase = m.group(1).strip()
     return phrase
-
 
 
 def _detect_absence_claims(text: str) -> list[str]:
@@ -344,6 +239,9 @@ def _detect_absence_claims(text: str) -> list[str]:
                 seen.add(n)
                 out.append(phrase)
     return out
+
+
+_RABBINICAL_PREFIX_RE = re.compile(r"^(?:rabbi|rav|rebbe)\s+(.+)$", re.IGNORECASE)
 
 
 def _name_api_resolves(session: requests.Session, claim: str) -> str | None:
@@ -361,123 +259,82 @@ def _name_api_resolves(session: requests.Session, claim: str) -> str | None:
         return data.get("ref") or claim
     claim_norm = _normalize(claim)
     claim_words = [w for w in claim_norm.split() if len(w) > 2]
-    completions = data.get("completion_objects") or []
-
-    def _priority(obj: dict) -> int:
-        title_norm = _normalize(obj.get("title") or "")
+    for obj in data.get("completion_objects") or []:
         obj_type = obj.get("type")
-        if obj_type in {"ref", "Book", "AuthorTopic"} and title_norm == claim_norm:
-            return 0
-        if not claim_words or not all(w in title_norm for w in claim_words):
-            return 99
-        if obj_type == "AuthorTopic" and "library" in (obj.get("topic_pools") or []):
-            return 1
-        if obj_type == "Book":
-            return 2
-        return 99
-
-    best = min(completions, key=_priority, default=None)
-    if best is not None and _priority(best) < 99:
-        return best.get("title")
+        title = obj.get("title") or ""
+        title_norm = _normalize(title)
+        if obj_type not in {"ref", "Book", "AuthorTopic"}:
+            continue
+        if title_norm == claim_norm:
+            return title
+        # word-match: all claim words appear in title (catches "Sacks" → "Jonathan Sacks")
+        if claim_words and all(w in title_norm for w in claim_words):
+            if obj_type == "AuthorTopic" and "library" in (
+                obj.get("topic_pools") or []
+            ):
+                return title
     return None
-
-
-def _index_api_resolves(session: requests.Session, claim: str) -> str | None:
-    try:
-        res = session.get(
-            f"{API_BASE}/api/v2/index/{_quote_path(claim)}", timeout=TIMEOUT
-        )
-    except Exception:
-        return None
-    if res.status_code != 200:
-        return None
-    try:
-        data = res.json()
-    except Exception:
-        return None
-    if data.get("error"):
-        return None
-    return data.get("title") or claim
-
-
-_RABBINICAL_PREFIX_RE = re.compile(r"^(?:rabbi|rav|rebbe)\s+(.+)$", re.IGNORECASE)
 
 
 def _claim_is_false_absence(session: requests.Session, claim: str) -> str | None:
     if result := _name_api_resolves(session, claim):
         return result
+    # strip rabbinical prefix and retry (e.g. "Rabbi Jonathan Sacks" → "Jonathan Sacks")
     m = _RABBINICAL_PREFIX_RE.match(claim)
-    if m and (result := _name_api_resolves(session, m.group(1).strip())):
-        return result
-    return _index_api_resolves(session, claim)
+    if m:
+        if result := _name_api_resolves(session, m.group(1).strip()):
+            return result
+    # fall back to index API
+    try:
+        res = session.get(
+            f"{API_BASE}/api/v2/index/{_quote_path(claim)}", timeout=TIMEOUT
+        )
+        if res.status_code == 200:
+            data = res.json()
+            if not data.get("error"):
+                return data.get("title") or claim
+    except Exception:
+        pass
+    return None
 
 
 # ── Handler ───────────────────────────────────────────────────────────────────
 
 
-def handler(
-    input: Any,
-    output: Any,
-    expected: Any,
-    metadata: dict[str, Any],
-):
+def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
     text = _response_text(output)
-    text = _maybe_json_unescape(text)
 
     if not text:
         return {"score": 1.0, "name": NAME, "metadata": {"reason": "Empty response"}}
 
-    # ── Check 1: link validity ────────────────────────────────────────────────
-
-    raw_urls = _extract_urls(text)
-    sefaria_urls = [u for u in raw_urls if "sefaria.org" in u.lower()]
-    seen: set[str] = set()
-    urls = [u for u in sefaria_urls if not (u in seen or seen.add(u))]
-    urls = _drop_prefix_urls(urls)
+    # Check 1: link validity
+    urls = _extract_urls(text)
     truncated = len(urls) > MAX_URLS_TO_VALIDATE
     urls = urls[:MAX_URLS_TO_VALIDATE]
 
-    invalid_urls: list[str] = []
-
-    # ── Check 2: quote matching + Check 3: absence claims ────────────────────
-
+    # Check 2: hallucinated quotes
     quotes = _extract_quotes(text)
-    ref_link_urls = _extract_response_link_urls(text)
-    false_absences: list[dict[str, str]] = []
+    trefs = _extract_response_link_trefs(text)
+
+    # Check 3: false absences
+    absence_claims = _detect_absence_claims(text)
+
+    invalid_urls: list[str] = []
     unmatched_quotes: list[dict[str, str]] = []
-    ref_source_langs: set[str] = set()
+    false_absences: list[dict[str, str]] = []
 
     with requests.Session() as session:
+        # Check 1
         for url in urls:
-            scheme, host, _ = _split_url(url)
-            base_host = f"{scheme}://{host}" if scheme and host else API_BASE
-            tref = _extract_tref_from_url(url)
-            try:
-                if tref:
-                    is_valid, _ = _validate_tref_as_existing_text_ref(session, base_host, tref)
-                else:
-                    try:
-                        res = session.get(url, timeout=TIMEOUT, allow_redirects=True)
-                        is_valid = res.status_code < 400
-                    except Exception:
-                        is_valid = False
-                if not is_valid:
-                    invalid_urls.append(url)
-            except Exception:
+            if not _url_is_valid(session, url):
                 invalid_urls.append(url)
 
-        for claim in _detect_absence_claims(text):
-            matched = _claim_is_false_absence(session, claim)
-            if matched:
-                false_absences.append({"claim": claim, "matched_title": matched})
-
-        if quotes and ref_link_urls:
+        # Check 2
+        if quotes and trefs:
             ref_corpus = ""
-            for url in ref_link_urls[:MAX_REFS_TO_FETCH]:
-                tref = _extract_tref_from_url(url)
-                if not tref:
-                    continue
-                src_text, src_lang = _fetch_ref_source(session, tref)
+            ref_source_langs: set[str] = set()
+            for tref in trefs[:MAX_REFS_TO_FETCH]:
+                src_text, src_lang = _fetch_ref_text(session, tref)
                 if src_text:
                     ref_corpus += " " + src_text
                 if src_lang:
@@ -489,6 +346,12 @@ def handler(
                     if not _quote_in_corpus(q, ref_corpus):
                         unmatched_quotes.append({"quote": q, "lang": q_lang})
 
+        # Check 3
+        for claim in absence_claims:
+            matched = _claim_is_false_absence(session, claim)
+            if matched:
+                false_absences.append({"claim": claim, "matched_title": matched})
+
     # ── Collect failures ──────────────────────────────────────────────────────
 
     failures: list[str] = []
@@ -498,15 +361,6 @@ def handler(
         if truncated:
             detail += f" (validated first {MAX_URLS_TO_VALIDATE})"
         failures.append(detail)
-
-    if false_absences:
-        failures.append(
-            "false absence: "
-            + "; ".join(
-                f"'{f['claim']}' → in library as '{f['matched_title']}'"
-                for f in false_absences
-            )
-        )
 
     if unmatched_quotes:
         previews = [
@@ -518,6 +372,15 @@ def handler(
             + "; ".join(f"'{p}'" for p in previews)
         )
 
+    if false_absences:
+        failures.append(
+            "false absence: "
+            + "; ".join(
+                f"'{f['claim']}' → in library as '{f['matched_title']}'"
+                for f in false_absences
+            )
+        )
+
     if failures:
         return {
             "score": 0.0,
@@ -526,8 +389,8 @@ def handler(
                 "reason": " | ".join(failures),
                 "checks_failed": [f.split(":")[0] for f in failures],
                 "invalid_urls": invalid_urls,
-                "false_absences": false_absences,
                 "unmatched_quotes": unmatched_quotes,
+                "false_absences": false_absences,
             },
         }
 

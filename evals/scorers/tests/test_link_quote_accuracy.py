@@ -33,7 +33,6 @@ CASES = [
         '<a class="response-link" href="https://www.sefaria.org/texts/Talmud">Talmud</a>',
         1.0,
     ),
-
     # ── Quote matching ────────────────────────────────────────────────────────
     (
         "Rav Kook real quotes (incl. ellipsis + English rendering)",
@@ -49,7 +48,6 @@ CASES = [
         '<ul><li><span class="response-quote">בראשית ברא אלהים מטוס ולא ידע איש</span></li></ul>',
         0.0,
     ),
-
     # ── False-absence claims ──────────────────────────────────────────────────
     (
         "Sacks - 'are not currently in'",
@@ -71,17 +69,14 @@ CASES = [
         "Sefaria doesn't host the writings of Rabbi Sacks.",
         0.0,
     ),
-
     # ── True absence (made-up book) ───────────────────────────────────────────
     ("Made-up book", "Sefaria does not have the Squiggle Squoggle Codex.", 1.0),
-
     # ── Honest 'couldn't find' (no library claim) ─────────────────────────────
     (
         "Honest couldn't find",
         "<p>I searched but couldn't find that quote in Sefaria.</p>",
         1.0,
     ),
-
     # ── Multiple failures combined ────────────────────────────────────────────
     (
         "Bad link + false absence",
