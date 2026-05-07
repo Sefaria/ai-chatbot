@@ -1704,7 +1704,7 @@
     height: 40px;
     padding: 0;
     background: #ffffff;
-    border: none;
+    border: 1px solid #6f6f6f;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s ease;
