@@ -769,7 +769,7 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
-  dir={interfaceLang === 'he' ? 'rtl' : 'ltr'}
+  class:interface-hebrew={interfaceLang === 'he'}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1050,7 +1050,6 @@
         ></textarea>
         <button
           class="send-btn"
-          class:send-btn-rtl={interfaceLang === 'he'}
           onclick={handleSend}
           disabled={!inputText.trim() || isSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
@@ -1166,6 +1165,11 @@
     bottom: 24px;
     inset-inline-end: 24px;
     z-index: 9999;
+    direction: ltr;
+  }
+
+  .lc-chatbot-container.interface-hebrew {
+    direction: rtl;
   }
 
   .lc-chatbot-container.mode-docked.is-open {
@@ -1452,11 +1456,17 @@
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
   }
-  .empty-state .message.assistant .message-content :global(ul) {
+
+  .message.assistant .message-content :global(ul),
+  .message.assistant .message-content :global(ol) {
     padding-inline-start: 20px;
   }
-  .empty-state .message.assistant .message-content :global(ul li) {
+
+  .message.assistant .message-content :global(li) {
     margin-bottom: 5px;
+  }
+  .interface-hebrew .message.assistant .message-content :global(li) {
+    margin-bottom: 10px;
   }
 
   .message-content {
@@ -1661,7 +1671,7 @@
     cursor: not-allowed;
   }
 
-  .send-btn.send-btn-rtl svg {
+  .interface-hebrew .send-btn svg {
     transform: scaleX(-1);
   }
 
