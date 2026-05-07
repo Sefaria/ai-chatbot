@@ -1711,7 +1711,7 @@
     border-radius: var(--lc-radius-sm);
     color: var(--lc-bg);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, transform 0.15s ease;
     flex-shrink: 0;
   }
 
