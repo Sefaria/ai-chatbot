@@ -1085,7 +1085,7 @@
             title="Stop"
             aria-label="Stop generating"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M14 9H10C9.44771 9 9 9.44771 9 10V14C9 14.5523 9.44771 15 10 15H14C14.5523 15 15 14.5523 15 14V10C15 9.44771 14.5523 9 14 9Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -1721,6 +1721,11 @@
   .stop-btn:active {
     background: var(--lc-primary-hover);
     transform: scale(0.95);
+  }
+
+  .stop-btn:focus-visible {
+    outline: 2px solid var(--lc-primary);
+    outline-offset: 2px;
   }
 
   /* Settings Panel */
