@@ -29,6 +29,7 @@ export function formatDateMarker(date) {
 export function formatTime(isoString) {
   const date = new Date(isoString);
   return date.toLocaleTimeString(activeLocale(), {
+    hour12: true,
     hour: 'numeric',
     minute: '2-digit'
   });
