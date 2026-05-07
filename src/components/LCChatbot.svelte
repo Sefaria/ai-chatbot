@@ -502,7 +502,7 @@
       }, promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, { signal: streamAbortController.signal });
+      }, { signal: streamAbortController.signal, getProgress: () => currentProgress });
 
       // Update user message status
       messages = messages.map(m => 
