@@ -1086,12 +1086,12 @@
         ></textarea>
         {#if isSending}
           <button
-            class="send-btn stop-btn"
+            class="stop-btn"
             onclick={handleStop}
             aria-label="Stop generating"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.6667 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V3.33333C14 2.59695 13.403 2 12.6667 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
         {:else}
@@ -1702,11 +1702,26 @@
   }
 
   .stop-btn {
-    background: #6b3fa0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: #c03522;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
   }
 
   .stop-btn:hover {
-    background: #5a3486;
+    background: #a02c1c;
+  }
+
+  .stop-btn:active {
+    background: #a02c1c;
+    transform: scale(0.95);
   }
 
   /* Settings Panel */
