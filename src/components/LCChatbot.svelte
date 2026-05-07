@@ -1173,6 +1173,7 @@
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-button-hover: #cccccc;
+    --lc-stop-btn-hover: #999999;
     --lc-disabled-text: #999;
     --lc-submit-white: #FBFDFE;
 
@@ -1704,7 +1705,7 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: var(--lc-disabled-button);
+    background: var(--lc-disabled-button-hover);
     border: none;
     border-radius: var(--lc-radius-sm);
     color: var(--lc-bg);
@@ -1714,11 +1715,11 @@
   }
 
   .stop-btn:hover {
-    background: var(--lc-disabled-button-hover);
+    background: var(--lc-stop-btn-hover);
   }
 
   .stop-btn:active {
-    background: var(--lc-disabled-button-hover);
+    background: var(--lc-stop-btn-hover);
     transform: scale(0.95);
   }
 
