@@ -422,6 +422,7 @@ export async function sendMessageStream(
       }
     }
   } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     streamReadError = error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
