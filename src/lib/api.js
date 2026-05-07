@@ -253,6 +253,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
+ * @param {{signal?: AbortSignal}} [options] - Optional request options (e.g. signal to abort the stream)
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(

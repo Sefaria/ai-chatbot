@@ -507,7 +507,7 @@
       // Update user message status
       messages = messages.map(m => 
         m.messageId === userMessage.messageId 
-          ? { ...m, status: 'sent' }
+          ? { ...m, status: STATUS_SENT }
           : m
       );
 
@@ -519,7 +519,7 @@
         role: 'assistant',
         content: response.markdown,
         timestamp: response.timestamp,
-        status: 'sent',
+        status: STATUS_SENT,
         traceId: response.traceId || null,
         feedback: null,
         toolCalls: response.toolCalls,
@@ -578,8 +578,7 @@
       toolHistory = [];
       streamAbortController = null;
       if (stoppedByUser) {
-        await tick();
-        inputRef?.focus();
+        try { await tick(); inputRef?.focus(); } catch {}
       }
     }
   }
