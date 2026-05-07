@@ -32,6 +32,7 @@
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
+  let streamAbortController = null;
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -82,6 +83,7 @@
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
   const STATUS_FAILED = 'failed';
+  const STATUS_SENT = 'sent';
 
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
@@ -459,9 +461,11 @@
     saveMessagesToStorage();
     scrollToBottom();
 
+    let stoppedByUser = false;
     isSending = true;
     currentProgress = null;
     toolHistory = [];
+    streamAbortController = new AbortController();
     updateSessionActivity(sessionId);
 
     try {
@@ -498,12 +502,12 @@
       }, promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      });
+      }, { signal: streamAbortController.signal, getProgress: () => currentProgress });
 
       // Update user message status
       messages = messages.map(m => 
         m.messageId === userMessage.messageId 
-          ? { ...m, status: 'sent' }
+          ? { ...m, status: STATUS_SENT }
           : m
       );
 
@@ -515,7 +519,7 @@
         role: 'assistant',
         content: response.markdown,
         timestamp: response.timestamp,
-        status: 'sent',
+        status: STATUS_SENT,
         traceId: response.traceId || null,
         feedback: null,
         toolCalls: response.toolCalls,
@@ -546,25 +550,36 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
+      if (e?.name === 'AbortError') {
+        stoppedByUser = true;
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId ? { ...m, status: STATUS_SENT } : m
+        );
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
 
-      // Mark message as failed for other errors
-      messages = messages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
+        // Mark message as failed for other errors
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
       saveMessagesToStorage();
-
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
     } finally {
       isSending = false;
       currentProgress = null;
       toolHistory = [];
+      streamAbortController = null;
+      if (stoppedByUser) {
+        try { await tick(); inputRef?.focus(); } catch {}
+      }
     }
   }
 
@@ -573,6 +588,10 @@
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function handleStop() {
+    streamAbortController?.abort();
   }
 
   async function handleFeedback(messageId, score) {
@@ -1058,17 +1077,32 @@
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
-          aria-label="Send message"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if isSending}
+          <button
+            type="button"
+            class="stop-btn"
+            onclick={handleStop}
+            title="Stop"
+            aria-label="Stop generating"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 9H10C9.44771 9 9 9.44771 9 10V14C9 14.5523 9.44771 15 10 15H14C14.5523 15 15 14.5523 15 14V10C15 9.44771 14.5523 9 14 9Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || limitReached}
+            aria-label="Send message"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
       {/if}
 
@@ -1661,6 +1695,37 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  .stop-btn {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: var(--lc-primary);
+    border: none;
+    border-radius: var(--lc-radius-sm);
+    color: var(--lc-bg);
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .stop-btn:hover {
+    background: var(--lc-primary-hover);
+  }
+
+  .stop-btn:active {
+    background: var(--lc-primary-hover);
+    transform: scale(0.95);
+  }
+
+  .stop-btn:focus-visible {
+    outline: 2px solid var(--lc-primary);
+    outline-offset: 2px;
   }
 
   /* Settings Panel */
