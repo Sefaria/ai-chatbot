@@ -265,8 +265,9 @@ export async function sendMessageStream(
   origin = '',
   isStaff = false,
   requestMetadata = null,
-  signal = null
+  options = {}
 ) {
+  const { signal = null } = options;
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 

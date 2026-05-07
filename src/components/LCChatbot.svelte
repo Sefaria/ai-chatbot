@@ -32,7 +32,7 @@
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
-  let streamAbortController = $state(null);
+  let streamAbortController = null;
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -83,6 +83,7 @@
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
   const STATUS_FAILED = 'failed';
+  const STATUS_SENT = 'sent';
 
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
@@ -437,7 +438,6 @@
     const text = inputText.trim();
     const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isSending && !limitReached;
-    let stoppedByUser = false;
     if (!isConfigured || !isReadyToSend) return;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
@@ -461,6 +461,7 @@
     saveMessagesToStorage();
     scrollToBottom();
 
+    let stoppedByUser = false;
     isSending = true;
     currentProgress = null;
     toolHistory = [];
@@ -501,7 +502,7 @@
       }, promptSlugs, originProp, isModerator, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, streamAbortController.signal);
+      }, { signal: streamAbortController.signal });
 
       // Update user message status
       messages = messages.map(m => 
@@ -552,9 +553,8 @@
       if (e?.name === 'AbortError') {
         stoppedByUser = true;
         messages = messages.map(m =>
-          m.messageId === userMessage.messageId ? { ...m, status: 'sent' } : m
+          m.messageId === userMessage.messageId ? { ...m, status: STATUS_SENT } : m
         );
-        saveMessagesToStorage();
       } else {
         console.error('[lc-chatbot] Send failed:', e);
 
@@ -564,7 +564,6 @@
             ? { ...m, status: STATUS_FAILED }
             : m
         );
-        saveMessagesToStorage();
 
         dispatchEvent('error', {
           type: 'send_failed',
@@ -572,6 +571,7 @@
           error: e.message
         });
       }
+      saveMessagesToStorage();
     } finally {
       isSending = false;
       currentProgress = null;
@@ -1080,6 +1080,7 @@
         ></textarea>
         {#if isSending}
           <button
+            type="button"
             class="stop-btn"
             onclick={handleStop}
             title="Stop"
@@ -1724,8 +1725,9 @@
   }
 
   .stop-btn:focus-visible {
-    outline: 2px solid var(--lc-primary);
+    outline: 2px solid var(--lc-bg);
     outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--lc-primary);
   }
 
   /* Settings Panel */
