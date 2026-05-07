@@ -1050,6 +1050,7 @@
         ></textarea>
         <button
           class="send-btn"
+          class:send-btn-rtl={interfaceLang === 'he'}
           onclick={handleSend}
           disabled={!inputText.trim() || isSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
@@ -1113,7 +1114,7 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    --lc-primary: #18345D;
+    --brand-sefaria-blue: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
@@ -1211,7 +1212,7 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: 9999px;
@@ -1316,7 +1317,7 @@
     font-weight: 600;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue, #18345D);
+    color: var(--brand-sefaria-blue);
     font-family: Roboto;
     font-style: normal;
     font-weight: 600;
@@ -1440,6 +1441,7 @@
     max-width: 85%;
     align-self: flex-end;
     background-color: #0056B3;
+    border-radius: 0 16px 16px 16px;
   }
 
   .message.assistant {
@@ -1463,10 +1465,8 @@
 
   .message.user .message-content {
     padding: 12px 16px;
-    border-radius: var(--lc-radius);
     font-size: var(--lc-font-size);
     word-wrap: break-word;
-    background: var(--lc-user-bg);
     color: var(--lc-user-text);
     border-bottom-right-radius: 4px;
   }
@@ -1504,7 +1504,7 @@
   }
 
   .message-status.sending {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .retry-btn {
@@ -1556,7 +1556,7 @@
   }
 
   .status-text.tool-running {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .status-text.tool-error {
@@ -1591,7 +1591,7 @@
     width: 16px;
     height: 16px;
     border: 2px solid var(--lc-border);
-    border-top-color: var(--lc-primary);
+    border-top-color: var(--brand-sefaria-blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1626,7 +1626,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -1644,7 +1644,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -1659,6 +1659,10 @@
   .send-btn:disabled {
     background: var(--lc-disabled-button);
     cursor: not-allowed;
+  }
+
+  .send-btn.send-btn-rtl svg {
+    transform: scaleX(-1);
   }
 
   .send-btn:active:not(:disabled) {
@@ -1691,7 +1695,7 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -1757,7 +1761,7 @@
   }
 
   .settings-save {
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border-color: transparent;
   }
@@ -1883,7 +1887,7 @@ inset: 8px;
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -1893,7 +1897,7 @@ inset: 8px;
 
 
   .feedback-modal-input:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-input::placeholder {
@@ -1955,30 +1959,55 @@ inset: 8px;
   .message-content :global(.response-title) {
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-generic) {
-    line-height: 21px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-section) {
-    font-weight: 600;
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-list) {
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-link) {
     width: 239px;
-    line-height: 21px;
     text-decoration-line: underline;
     text-decoration-style: solid;
     text-decoration-skip-ink: none;
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-signoff) {
