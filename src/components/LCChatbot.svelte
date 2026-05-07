@@ -1703,9 +1703,9 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: #e6e6e6;
+    background: var(--lc-disabled-button);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--lc-radius-sm);
     cursor: pointer;
     transition: all 0.15s ease;
     flex-shrink: 0;
