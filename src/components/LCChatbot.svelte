@@ -554,18 +554,7 @@
         messages = messages.map(m =>
           m.messageId === userMessage.messageId ? { ...m, status: 'sent' } : m
         );
-        messages = [...messages, {
-          messageId: generateMessageId(),
-          sessionId,
-          userId,
-          role: 'assistant',
-          content: "okay, I won't answer that",
-          timestamp: new Date().toISOString(),
-          status: 'sent',
-          feedback: null
-        }];
         saveMessagesToStorage();
-        scrollToResponseStart();
       } else {
         console.error('[lc-chatbot] Send failed:', e);
 
