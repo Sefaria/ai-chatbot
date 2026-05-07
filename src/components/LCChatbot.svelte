@@ -1083,8 +1083,9 @@
             title="Stop"
             aria-label="Stop generating"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12.6667 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V3.33333C14 2.59695 13.403 2 12.6667 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#6F6F6F" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 9H10C9.44771 9 9 9.44771 9 10V14C9 14.5523 9.44771 15 10 15H14C14.5523 15 15 14.5523 15 14V10C15 9.44771 14.5523 9 14 9Z" stroke="#6F6F6F" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
         {:else}
@@ -1702,7 +1703,7 @@
     width: 40px;
     height: 40px;
     padding: 0;
-    background: #c03522;
+    background: #ffffff;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -1711,11 +1712,11 @@
   }
 
   .stop-btn:hover {
-    background: #a02c1c;
+    background: #eeeeee;
   }
 
   .stop-btn:active {
-    background: #a02c1c;
+    background: #eeeeee;
     transform: scale(0.95);
   }
 
