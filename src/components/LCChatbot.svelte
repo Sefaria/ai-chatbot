@@ -1172,6 +1172,7 @@
     --lc-error: #ef4444;
     --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
+    --lc-disabled-button-hover: #cccccc;
     --lc-disabled-text: #999;
     --lc-submit-white: #FBFDFE;
 
@@ -1712,11 +1713,11 @@
   }
 
   .stop-btn:hover {
-    background: #cccccc;
+    background: var(--lc-disabled-button-hover);
   }
 
   .stop-btn:active {
-    background: #cccccc;
+    background: var(--lc-disabled-button-hover);
     transform: scale(0.95);
   }
 
