@@ -51,5 +51,11 @@
 
   "assistant.error.generic": "אירעה שגיאה. נסו שוב.",
   "assistant.error.network": "יש בעיה בחיבור לרשת. בדקו את החיבור ונסו שוב.",
-  "assistant.timeout": "זה לוקח מעט יותר זמן מהצפוי."
+  "assistant.timeout": "זה לוקח מעט יותר זמן מהצפוי.",
+  "assistant.feedback.reason.inaccurate": "לא נכון או מטעה",
+  "assistant.feedback.reason.disrespectful": "טון לא מתאים",
+  "assistant.feedback.reason.unhelpful": "לא מועיל או לא ברור",
+  "assistant.feedback.reason.overlyDefinitive": "קטגורי מדי",
+  "assistant.feedback.reason.techIssue": "בעיה טכנית",
+  "assistant.feedback.reason.other": "אחר"
 }
