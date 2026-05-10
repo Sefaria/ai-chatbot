@@ -60,8 +60,8 @@ CASES = [
         0.0,
     ),
     (
-        "Sacks - 'haven't been added'",
-        "Rabbi Sacks's books haven't been added to Sefaria yet.",
+        "Rambam - 'haven't been added'",
+        "The Rambam's books haven't been added to Sefaria yet.",
         0.0,
     ),
     (
@@ -69,8 +69,29 @@ CASES = [
         "Sefaria doesn't host the writings of Rabbi Sacks.",
         0.0,
     ),
+    (
+        "Rashba - 'is not available on'",
+        "The Rashba's commentary is not available on Sefaria.",
+        0.0,
+    ),
+    (
+        "Rashba - 'aren't included in'",
+        "Rashba's writings aren't included in Sefaria's database.",
+        0.0,
+    ),
+    (
+        "Soloveitchik - 'doesn't include'",
+        "Sefaria doesn't include the works of Rav Soloveitchik.",
+        0.0,
+    ),
+    (
+        "Rambam - 'does not contain'",
+        "Sefaria does not contain the Rambam's writings.",
+        0.0,
+    ),
     # ── True absence (made-up book) ───────────────────────────────────────────
-    ("Made-up book", "Sefaria does not have the Squiggle Squoggle Codex.", 1.0),
+    ("Made-up book - case one", "Sefaria does not have the Meira Sofer.", 1.0),
+    ("Made-up book - case two", "Sefaria does not have the Chumich.", 1.0),
     # ── Honest 'couldn't find' (no library claim) ─────────────────────────────
     (
         "Honest couldn't find",

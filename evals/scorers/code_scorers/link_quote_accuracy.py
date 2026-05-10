@@ -55,7 +55,8 @@ _ABSENCE_PATTERNS = [
 
 _TRAILING_POSSESSIVE_RE = re.compile(r"['']s\b", re.IGNORECASE)
 _TRAILING_NOUN_RE = re.compile(
-    r"\s+(?:books?|writings?|works?|teachings?|texts?|commentaries?)$", re.IGNORECASE
+    r"\s+(?:books?|writings?|works?|teachings?|texts?|commentar(?:y|ies)?)$",
+    re.IGNORECASE,
 )
 _LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an|any|all|most|many)\s+", re.IGNORECASE)
 _OF_PHRASE_RE = re.compile(
@@ -257,22 +258,13 @@ def _name_api_resolves(session: requests.Session, claim: str) -> str | None:
         return None
     if data.get("is_ref"):
         return data.get("ref") or claim
-    claim_norm = _normalize(claim)
-    claim_words = [w for w in claim_norm.split() if len(w) > 2]
+    claim_words = [w for w in _normalize(claim).split() if len(w) > 2]
     for obj in data.get("completion_objects") or []:
-        obj_type = obj.get("type")
-        title = obj.get("title") or ""
-        title_norm = _normalize(title)
-        if obj_type not in {"ref", "Book", "AuthorTopic"}:
+        if obj.get("type") not in {"ref", "Book", "AuthorTopic"}:
             continue
-        if title_norm == claim_norm:
-            return title
-        # word-match: all claim words appear in title (catches "Sacks" → "Jonathan Sacks")
+        title_norm = _normalize(obj.get("title") or "")
         if claim_words and all(w in title_norm for w in claim_words):
-            if obj_type == "AuthorTopic" and "library" in (
-                obj.get("topic_pools") or []
-            ):
-                return title
+            return obj.get("title") or claim
     return None
 
 
