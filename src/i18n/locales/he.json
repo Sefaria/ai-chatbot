@@ -18,6 +18,15 @@
   "assistant.menu.help": "עזרה",
   "assistant.menu.optout": "כיבוי בהגדרות",
 
+  "assistant.feedback.modal.title": "רוצים להוסיף פרטים נוספים? (אופציונלי)",
+  "assistant.feedback.modal.subtitle": "המשוב שלכם עוזר לנו להשתפר.",
+  "assistant.feedback.modal.issueLabel": "מה הייתה הבעיה?",
+  "assistant.feedback.modal.selectIssue": "בחרו בעיה",
+  "assistant.feedback.modal.placeholder.detailed": "פרטים נוספים",
+  "assistant.feedback.modal.placeholder.optional": "תרצו להוסיף משהו?",
+  "assistant.feedback.modal.submit": "שלח",
+  "assistant.feedback.modal.skip": "דלג",
+
   "assistant.empty.description": "אפשר לשאול שאלות תוך כדי הלימוד.",
   "assistant.empty.examples.label": "לדוגמה:",
   "assistant.empty.example.1": "מצאו מקורות על שבת",

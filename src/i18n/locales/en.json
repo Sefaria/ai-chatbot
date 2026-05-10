@@ -38,7 +38,6 @@
 
   "assistant.loading.thinking": "Reviewing your question",
   "assistant.loading.delayed": "This is taking a little longer than expected.",
-
   "assistant.feedback.prompt": "Was this helpful?",
   "assistant.feedback.positive": "Helpful",
   "assistant.feedback.negative": "Not helpful",
