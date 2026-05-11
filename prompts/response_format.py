@@ -21,8 +21,9 @@ from chatbot_server.model_defaults import (
     AGENT_TEMPERATURE,
 )
 
-NAME = "Response Format"
 SLUG = os.environ.get("PROMPT_SLUG_OVERRIDE", "response-format")
+# Prefix name so sandbox pushes are visually distinct in the Braintrust UI.
+NAME = "[test] Response Format" if SLUG != "response-format" else "Response Format"
 DESCRIPTION = "Formatting instructions injected into the core agent system prompt via {{response_format}}"
 
 # response_format runs inside the core agent, so it shares the same model.

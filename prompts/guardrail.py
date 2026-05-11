@@ -21,8 +21,9 @@ from chatbot_server.model_defaults import (
     GUARDRAIL_TEMPERATURE,
 )
 
-NAME = "Guardrail"
 SLUG = os.environ.get("PROMPT_SLUG_OVERRIDE", "guardrail-checker")
+# Prefix name so sandbox pushes are visually distinct in the Braintrust UI.
+NAME = "[test] Guardrail" if SLUG != "guardrail-checker" else "Guardrail"
 DESCRIPTION = "Pre-agent filter that classifies whether a user message is in scope"
 
 # Metadata for Braintrust — the runtime reads GUARDRAIL_MODEL from env/settings independently.

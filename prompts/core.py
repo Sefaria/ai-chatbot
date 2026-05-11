@@ -21,8 +21,9 @@ from chatbot_server.model_defaults import (
     AGENT_TEMPERATURE,
 )
 
-NAME = "Core"
 SLUG = os.environ.get("PROMPT_SLUG_OVERRIDE", "core-8fbc")
+# Prefix name so sandbox pushes are visually distinct in the Braintrust UI.
+NAME = "[test] Core" if SLUG != "core-8fbc" else "Core"
 DESCRIPTION = "Top-level system prompt for the Sefaria assistant"
 
 # Metadata for Braintrust — the runtime reads AGENT_MODEL from env/settings independently.

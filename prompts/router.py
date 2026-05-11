@@ -21,8 +21,9 @@ from chatbot_server.model_defaults import (
     ROUTER_TEMPERATURE,
 )
 
-NAME = "Router"
 SLUG = os.environ.get("PROMPT_SLUG_OVERRIDE", "router-classifier")
+# Prefix name so sandbox pushes are visually distinct in the Braintrust UI.
+NAME = "[test] Router" if SLUG != "router-classifier" else "Router"
 DESCRIPTION = "Classifies messages as Translation, Discovery, or Other"
 
 # Metadata for Braintrust — the runtime reads ROUTER_MODEL from env/settings independently.
