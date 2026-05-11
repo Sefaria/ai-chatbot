@@ -56,7 +56,7 @@ if __name__ == "__main__":
         sys.exit(2)
 
     project = braintrust.projects.create(name="On Site Agent")
-    project.prompts.create(
+    prompt = project.prompts.create(
         name=NAME,
         slug=SLUG,
         description=DESCRIPTION,
@@ -65,4 +65,6 @@ if __name__ == "__main__":
         params=PARAMS,
         if_exists="replace",
     )
+    project.add_prompt(prompt)
+    project.publish()
     print(f"Pushed: {SLUG}")
