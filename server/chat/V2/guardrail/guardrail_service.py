@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
+from chatbot_server.model_defaults import GUARDRAIL_MAX_TOKENS, GUARDRAIL_TEMPERATURE
+
 from ..prompts import get_prompt_service
 from ..prompts.prompt_fragments import GUARDRAIL_MALFORMED_REASON, GUARDRAIL_UNAVAILABLE_REASON
 from ..utils import get_anthropic_client, make_singleton
@@ -58,8 +60,8 @@ class GuardrailService:
             # GUARDRAIL_OUTPUT_CONFIG (json_schema) guarantees valid JSON output.
             response = self.client.messages.create(
                 model=settings.GUARDRAIL_MODEL,
-                max_tokens=256,
-                temperature=0.0,
+                max_tokens=GUARDRAIL_MAX_TOKENS,
+                temperature=GUARDRAIL_TEMPERATURE,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_message}],
                 output_config=settings.GUARDRAIL_OUTPUT_CONFIG,

@@ -540,7 +540,10 @@ def chat_stream_v2(request):
                 stats=logging_result.stats,
             )
 
-            if context.get("forceStreamBreakBeforeFinal", False) and _is_stream_break_test_enabled():
+            if (
+                context.get("forceStreamBreakBeforeFinal", False)
+                and _is_stream_break_test_enabled()
+            ):
                 test_exc = RuntimeError("Forced stream break before final SSE for testing")
                 logger.error(
                     "Forcing stream break before final SSE for testing",
