@@ -93,7 +93,7 @@ from utilities import read_prompt_text
 
 # Import shared model defaults from server/chatbot_server/model_defaults.py
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "server"))
-from chatbot_server.model_defaults import AGENT_MODEL as AGENT_MODEL_DEFAULT
+from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_MODEL as AGENT_MODEL_DEFAULT, AGENT_TEMPERATURE
 
 # SLUG is the contract with the runtime; PROMPT_SLUG_OVERRIDE redirects to a sandbox
 NAME = "Core"
@@ -104,9 +104,8 @@ DESCRIPTION = "Top-level system prompt for the Sefaria assistant"
 # associating the right metadata in Braintrust.
 MODEL = os.environ.get("AGENT_MODEL", AGENT_MODEL_DEFAULT)
 
-# PARAMS are not env-driven — the runtime hardcodes them at the callsite.
-# Keep these in sync with that callsite.
-PARAMS = {"temperature": 0.0, "max_tokens": 4096}
+# PARAMS are imported from model_defaults so they stay in sync with the runtime callsite.
+PARAMS = {"temperature": AGENT_TEMPERATURE, "max_tokens": AGENT_MAX_TOKENS}
 
 PROMPT = read_prompt_text("core")  # reads prompts/prompt_text/core.md
 
@@ -162,8 +161,16 @@ We want these two values to always agree. The mechanism: a shared Python module 
 ```python
 # server/chatbot_server/model_defaults.py
 AGENT_MODEL = "claude-sonnet-4-5-20250929"
+AGENT_MAX_TOKENS = 8000
+AGENT_TEMPERATURE = 0.7
+
 GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
+GUARDRAIL_MAX_TOKENS = 256
+GUARDRAIL_TEMPERATURE = 0.0
+
 ROUTER_MODEL = "claude-haiku-4-5-20251001"
+ROUTER_MAX_TOKENS = 256
+ROUTER_TEMPERATURE = 0.0
 ```
 
 ```python
@@ -175,8 +182,9 @@ AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
 
 ```python
 # prompts/core.py
-from chatbot_server.model_defaults import AGENT_MODEL as AGENT_MODEL_DEFAULT
+from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_MODEL as AGENT_MODEL_DEFAULT, AGENT_TEMPERATURE
 MODEL = os.environ.get("AGENT_MODEL", AGENT_MODEL_DEFAULT)
+PARAMS = {"temperature": AGENT_TEMPERATURE, "max_tokens": AGENT_MAX_TOKENS}
 ```
 
 Both sides — the runtime via `settings.py` and the push script in `prompts/*.py` — read the **same env var** at runtime, falling back to the **same default constant** from `model_defaults.py`. There is exactly one literal in the codebase for each default model identifier. Drift between "what the runtime falls back to" and "what the push records in Braintrust" is impossible by construction.
@@ -187,12 +195,12 @@ Mapping of prompt file → env var → settings line:
 
 | Prompt file | Env var | Settings line |
 |---|---|---|
-| `core.py` | `AGENT_MODEL` | `settings.py:229` |
-| `guardrail.py` | `GUARDRAIL_MODEL` | `settings.py:230` |
-| `router.py` | `ROUTER_MODEL` | `settings.py:251` |
-| `response_format.py` | `AGENT_MODEL` | `settings.py:229` (response_format is fed into the core agent's system prompt, so it runs on the same model as `core.py`) |
+| `core.py` | `AGENT_MODEL` | `settings.py:233` |
+| `guardrail.py` | `GUARDRAIL_MODEL` | `settings.py:234` |
+| `router.py` | `ROUTER_MODEL` | `settings.py:255` |
+| `response_format.py` | `AGENT_MODEL` | `settings.py:233` (response_format is fed into the core agent's system prompt, so it runs on the same model as `core.py`) |
 
-`PARAMS` (temperature, max_tokens, etc.) work differently: the runtime hardcodes them at each callsite (e.g. `guardrail_service.py:61-62` has `max_tokens=256, temperature=0.0`). They're not env-driven and not in `settings.py`. So the `PARAMS` literal in each prompt file is duplicated from the runtime callsite, and stays in sync by convention. If you change params at the runtime callsite, update the matching prompt file too. A future cleanup would be to lift these into `settings.py` (and thus into `model_defaults.py` or a sibling module) so the runtime and the prompt file reference one source — out of scope here.
+`PARAMS` (temperature, max_tokens, etc.) use the same drift-proofing approach as `MODEL`: the constants live in `model_defaults.py`, and both the runtime callsites (`guardrail_service.py`, `router_service.py`, `claude_service.py`) and the prompt push scripts import them from there. There is exactly one literal for each param value. They're not env-driven and not in `settings.py` — if you need to change a param, edit `model_defaults.py` and the runtime callsite and the Braintrust metadata all update together.
 
 ## CI workflow
 
@@ -243,8 +251,8 @@ A staging/prod toggle is **deferred** pending a conversation with devops. When w
 For each of the four prompts:
 
 1. Open the prompt in the Braintrust UI.
-2. Copy the prompt text into the matching `prompts/<name>.py`.
-3. Wire `MODEL` to the correct env var + shared-default import for this prompt (see the mapping table in "Model and params: where the values come from"). `PARAMS` should match the literals at the runtime callsite (e.g. `guardrail_service.py:61-62`). Watch for normalization gotchas (`0.0` vs `0`).
+2. Copy the prompt text into the matching `prompts/prompt_text/<name>.md`.
+3. Verify `MODEL` and `PARAMS` in the `.py` file match what's in `model_defaults.py` for that prompt (see the mapping table in "Model and params: where the values come from").
 4. Locally: `python prompts/<name>.py`. Confirm in the Braintrust UI that the slug was updated (not duplicated) and the version bumped.
 5. Hit the running app on a path that uses that prompt. Confirm `PromptService.load_prompt(<slug>)` still resolves cleanly.
 
@@ -325,7 +333,7 @@ Repeat as many times as you need. Prod is never affected.
 
 Once you're happy with the local behavior, ship it through the normal PR process. **You cannot push to prod from your laptop** — running `python prompts/<name>.py` without `PROMPT_SLUG_OVERRIDE` will refuse with an error message pointing you back to PR + CI. That's by design.
 
-1. `git status` should show edits to `prompts/prompt_text/<name>.md` (the prompt text) and optionally `prompts/<name>.py` (only if you changed `MODEL` or `PARAMS`). If you accidentally edited the `SLUG` line in the `.py` file, revert that.
+1. `git status` should show edits to `prompts/prompt_text/<name>.md` (the prompt text) and optionally `server/chatbot_server/model_defaults.py` (only if you changed model or params). If you accidentally edited the `SLUG` line in the `.py` file, revert that.
 2. Commit: `git commit -m "feat(prompts): tighten core prompt for conciseness"` (use the conventional-commits format the rest of the repo uses; see top-level `CLAUDE.md`).
 3. Push the branch and open a PR. Reviewers see the prompt diff like any other code change.
 4. **On merge to `main`**, the `push-prompts` CI workflow runs `python prompts/<name>.py` for each prompt file with `BRAINTRUST_PUSH_TARGET=prod` set in the workflow's `env:` block. That env var is what unlocks the prod push — neither your laptop nor anyone else's can do this routinely.
@@ -375,16 +383,14 @@ Any prompt you don't override stays on prod for that local server — you're onl
 ## Open / deferred
 
 - **Staging vs prod toggle in CI.** Deferred pending devops conversation. Will be added as a follow-up — does not affect the initial rollout.
-- **Per-prompt params verification.** During bootstrap, confirm each prompt's checked-in `PARAMS` matches the literals at the runtime callsite. Easy to drift on the first push. (Model defaults are protected by `model_defaults.py`, so they're safe.)
 - **Rewriter and Translation prompts.** Not part of this iteration — they remain UI-managed. When we're ready, the migration is the same shape: add a `prompts/rewriter.py` / `prompts/translation.py` file matching the file shape above, run the bootstrap steps, and they get picked up by the CI workflow automatically (the glob already covers them).
 - **Test for hardcoded slug overrides.** Considered writing a pytest that statically scans `prompts/*.py` to ensure every `SLUG` assignment uses the `os.environ.get("PROMPT_SLUG_OVERRIDE", "<prod-slug>")` form with the default matching `server/chatbot_server/settings.py`. Skipped for this iteration — revisit if a sandbox slug ever slips into a commit.
 - **Repo-level Python packaging.** Each prompt file does a small `sys.path` hop to import from `server/chatbot_server/model_defaults.py`. Setting up the repo as a proper Python package (`pyproject.toml` at the root, editable install) would let the hop go away in favor of clean imports. Out of scope here — touches dev onboarding, `setup.sh`, and the existing `server/venv` model. Worth doing eventually.
-- **`PARAMS` into shared module.** Same drift-proofing trick as `MODEL` would apply if we lifted hardcoded sampling params out of each runtime callsite into a shared module that both the callsite and the prompt file import. Skipped for this iteration — `PARAMS` rarely change and the divergence cost is low.
 
 ## Commit sequence
 
 1. `feat(prompts): scaffold prompts/ directory with plan, utilities, and prompt_text dir`
-2. `refactor(server): lift model defaults into chatbot_server/model_defaults.py` — pure-Python module, no behavior change. `settings.py` imports from it. Prerequisite for the prompt files.
+2. `refactor(server): lift model and param defaults into chatbot_server/model_defaults.py` — pure-Python module, no behavior change. `settings.py`, `claude_service.py`, `guardrail_service.py`, and `router_service.py` all import from it. Prerequisite for the prompt files.
 3. `feat(prompts): add core prompt source` — adds both `prompts/core.py` and `prompts/prompt_text/core.md`. Verify in Braintrust UI.
 4. `feat(prompts): add guardrail prompt source`
 5. `feat(prompts): add router prompt source`
