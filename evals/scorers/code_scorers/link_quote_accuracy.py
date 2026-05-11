@@ -2,6 +2,9 @@
 
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
+import anthropic
+import json
+import os
 import re
 import requests
 
@@ -18,6 +21,7 @@ MAX_REFS_TO_FETCH = 10
 MIN_QUOTE_LEN = 8
 API_BASE = "https://www.sefaria.org"
 TIMEOUT = 5.0
+LLM_MODEL = "claude-haiku-4-5-20251001"
 
 # ── Regexes ───────────────────────────────────────────────────────────────────
 
@@ -37,31 +41,30 @@ _LATIN_RE = re.compile(r"[A-Za-z]")
 _WS_RE = re.compile(r"\s+")
 _ELLIPSIS_RE = re.compile(r"\.{2,}|…")
 
-_ABSENCE_PATTERNS = [
-    re.compile(
-        r"([\w''.\- ]{2,60}?)\s+"
-        r"(?:is|are|isn[''']?t|aren[''']?t|is\s+not|are\s+not|hasn[''']?t\s+been|haven[''']?t\s+been)\s+"
-        r"(?:currently\s+|yet\s+)?"
-        r"(?:in|part\s+of|included\s+in|available\s+(?:in|on)|added\s+to)\s+"
-        r"(?:Sefaria|Sefaria[''']?s\s+(?:library|collection|database))",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"Sefaria\s+(?:does\s+not|doesn[''']?t|do(?:es)n[''']?t)\s+(?:currently\s+|yet\s+)?"
-        r"(?:have|include|contain|carry|host)\s+([\w''.\- ]{2,60})",
-        re.IGNORECASE,
-    ),
-]
+_ABSENCE_PROMPT = """\
+You are analyzing an AI assistant's response about Jewish texts on the Sefaria platform.
 
-_TRAILING_POSSESSIVE_RE = re.compile(r"['']s\b", re.IGNORECASE)
-_TRAILING_NOUN_RE = re.compile(
-    r"\s+(?:books?|writings?|works?|teachings?|texts?|commentar(?:y|ies)?)$",
-    re.IGNORECASE,
-)
-_LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an|any|all|most|many)\s+", re.IGNORECASE)
-_OF_PHRASE_RE = re.compile(
-    r"^(?:writings?|books?|works?|teachings?)\s+of\s+(.+)$", re.IGNORECASE
-)
+Identify every place where the response explicitly claims that a specific book, work, or author \
+is NOT in Sefaria's library/collection/database. For each such claim, extract the specific \
+book title or author name being claimed as absent.
+
+Rules:
+- Only include explicit absence claims about Sefaria (e.g. "X is not in Sefaria", "Sefaria doesn't have X").
+- Do NOT include vague statements like "I couldn't find it" or "I'm not sure if it's there".
+- For book_name: strip possessives ('s), leading articles (the/a/an), and trailing generic \
+  nouns (commentary, books, writings, works, teachings, texts) to return just the core name or title. \
+  Examples: "Rashba's commentary" → "Rashba"; "the writings of Rabbi Sacks" → "Rabbi Sacks"; \
+  "Rambam's books" → "Rambam".
+- If the same entity is mentioned multiple times, include it only once.
+
+Respond with a JSON object: {{"claims": [...]}}. Each item in the array has:
+  "claim": the exact phrase from the response describing the absence
+  "book_name": the cleaned book title or author name to look up
+
+If there are no absence claims, respond with {{"claims": []}}.
+
+Response to analyze:
+{response}"""
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -217,29 +220,42 @@ def _quote_in_corpus(q: str, corpus: str) -> bool:
 # ── Check 3: false absences ───────────────────────────────────────────────────
 
 
-def _clean_capture(phrase: str) -> str:
-    phrase = phrase.strip().strip(".,;:'\"")
-    phrase = _TRAILING_NOUN_RE.sub("", phrase).strip()
-    phrase = _TRAILING_POSSESSIVE_RE.sub("", phrase).strip()
-    phrase = _LEADING_ARTICLE_RE.sub("", phrase).strip()
-    m = _OF_PHRASE_RE.match(phrase)
-    if m:
-        phrase = m.group(1).strip()
-    return phrase
-
-
-def _detect_absence_claims(text: str) -> list[str]:
+def _detect_absence_claims(text: str) -> list[tuple[str, str]]:
+    """Use an LLM to extract absence claims. Returns (book_name, original_claim) pairs."""
     plain = _strip_html(text)
-    out: list[str] = []
-    seen: set[str] = set()
-    for pat in _ABSENCE_PATTERNS:
-        for m in pat.finditer(plain):
-            phrase = _clean_capture(m.group(1))
-            n = _normalize(phrase)
-            if phrase and n and n not in seen:
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        resp = client.messages.create(
+            model=LLM_MODEL,
+            max_tokens=512,
+            temperature=0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _ABSENCE_PROMPT.format(response=plain),
+                }
+            ],
+        )
+        raw = resp.content[0].text if resp.content else "{}"
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        parsed = json.loads(raw)
+        items = (
+            parsed.get("claims")
+            or parsed.get("items")
+            or (parsed if isinstance(parsed, list) else [])
+        )
+        seen: set[str] = set()
+        out: list[tuple[str, str]] = []
+        for item in items:
+            name = (item.get("book_name") or "").strip()
+            claim = (item.get("claim") or name).strip()
+            n = _normalize(name)
+            if name and n and n not in seen:
                 seen.add(n)
-                out.append(phrase)
-    return out
+                out.append((name, claim))
+        return out
+    except Exception:
+        return []
 
 
 _RABBINICAL_PREFIX_RE = re.compile(r"^(?:rabbi|rav|rebbe)\s+(.+)$", re.IGNORECASE)
@@ -339,8 +355,8 @@ def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
                         unmatched_quotes.append({"quote": q, "lang": q_lang})
 
         # Check 3
-        for claim in absence_claims:
-            matched = _claim_is_false_absence(session, claim)
+        for book_name, claim in absence_claims:
+            matched = _claim_is_false_absence(session, book_name)
             if matched:
                 false_absences.append({"claim": claim, "matched_title": matched})
 

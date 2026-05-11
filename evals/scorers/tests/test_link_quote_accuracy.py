@@ -75,6 +75,11 @@ CASES = [
         0.0,
     ),
     (
+        "Sefer HaChinukh - 'related texts'",
+        "Sefer HaChinukh and its related texts are not available on Sefaria.",
+        0.0,
+    ),
+    (
         "Rashba - 'aren't included in'",
         "Rashba's writings aren't included in Sefaria's database.",
         0.0,
