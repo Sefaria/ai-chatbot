@@ -21,7 +21,6 @@
     mode: modeProp = 'floating',
     'max-input-chars': maxInputChars = DEFAULT_MAX_INPUT_CHARS,
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
-    'welcome-messages': welcomeMessagesJson = '{"welcome_english":"Hi! How can I help you today?","restart_english":"The conversation has been restarted. What would you like to talk about?","new_session_english":"Starting a new session. How can I assist you?","welcome_hebrew":"שלום! איך אפשר לעזור?","restart_hebrew":"השיחה אופסה. על מה תרצה לדבר?","new_session_hebrew":"מתחילים שיחה חדשה. איך אפשר לעזור?"}', 
     origin: originProp = '',
     'is-moderator': isModerator = false,
     'interface-lang': interfaceLang = 'en'
@@ -92,34 +91,20 @@
   const THUMBUP = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3457 6.439e-05C8.82494 0.00605952 9.29664 0.120247 9.72559 0.334049C10.1546 0.547943 10.53 0.856213 10.8232 1.23542C11.1165 1.61466 11.3208 2.05545 11.4199 2.52448C11.5187 2.9925 11.5096 3.47698 11.3955 3.94147L10.8975 6.00006H14.207C14.5695 6.00006 14.9277 6.08404 15.252 6.24616C15.576 6.4082 15.8577 6.64384 16.0752 6.93366C16.2926 7.22359 16.44 7.5605 16.5049 7.91706C16.5697 8.27354 16.5506 8.64049 16.4492 8.98835L14.7012 14.9883C14.5597 15.4733 14.2654 15.9001 13.8613 16.2032C13.4571 16.5063 12.9652 16.67 12.46 16.67H2.33496C1.71568 16.67 1.12149 16.4243 0.683594 15.9864C0.245697 15.5485 0 14.9543 0 14.335V8.33503C0 7.71574 0.245696 7.12156 0.683594 6.68366C1.12149 6.24576 1.71568 6.00006 2.33496 6.00006H4.4043C4.52801 6 4.64974 5.96566 4.75488 5.90045C4.86 5.83526 4.94496 5.74169 5 5.63092L7.58789 0.461002L7.64844 0.359439C7.80498 0.133378 8.0657 -0.00340299 8.3457 6.439e-05ZM6.49414 6.37604C6.30081 6.76418 6.0033 7.09086 5.63477 7.3194C5.56531 7.36247 5.49306 7.40024 5.41992 7.43561V15.0001H12.46C12.6038 15.0001 12.7443 14.9536 12.8594 14.8673C12.9743 14.781 13.0583 14.6595 13.0986 14.5215L14.8457 8.52155C14.8746 8.42244 14.8798 8.31746 14.8613 8.21589C14.8428 8.1144 14.8012 8.01813 14.7393 7.93561C14.6774 7.8532 14.5971 7.7864 14.5049 7.7403C14.4125 7.69413 14.3103 7.66999 14.207 7.66999H9.83496C9.57899 7.66999 9.33703 7.55274 9.17871 7.35163C9.0204 7.15029 8.96303 6.88665 9.02344 6.63776L9.77344 3.54792L9.77441 3.54499C9.82901 3.32384 9.83314 3.09306 9.78613 2.87018C9.73906 2.64723 9.6423 2.43718 9.50293 2.2569C9.36353 2.07661 9.18442 1.93085 8.98047 1.82917C8.92425 1.80114 8.86657 1.77666 8.80762 1.75592L6.49414 6.37604ZM1.66992 14.335C1.66992 14.5114 1.73955 14.681 1.86426 14.8057C1.98897 14.9304 2.15859 15.0001 2.33496 15.0001H3.75V7.66999H2.33496C2.15859 7.66999 1.98897 7.73961 1.86426 7.86432C1.73955 7.98903 1.66992 8.15866 1.66992 8.33503V14.335Z" fill="currentColor"/></svg>'
   const THUMBDOWN = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8716 2.33496C14.8716 2.15859 14.802 1.98897 14.6773 1.86426C14.5526 1.73968 14.3829 1.66992 14.2066 1.66992H12.7916V9H14.2066C14.3829 9 14.5526 8.93024 14.6773 8.80566C14.802 8.68095 14.8716 8.51133 14.8716 8.33496V2.33496ZM4.0816 1.66992C3.93795 1.67001 3.79812 1.71658 3.68316 1.80273C3.56816 1.88899 3.48424 2.01046 3.44391 2.14844L1.69586 8.14844C1.66695 8.24755 1.66177 8.35253 1.68023 8.4541C1.69872 8.55561 1.7404 8.65183 1.8023 8.73438C1.86414 8.81678 1.94456 8.88355 2.03668 8.92969C2.12902 8.97586 2.23129 9 2.33453 9H6.7066C6.96268 9 7.20551 9.11708 7.36383 9.31836C7.52214 9.51969 7.57853 9.78333 7.51812 10.0322L6.76812 13.1221V13.125C6.71352 13.3462 6.70938 13.5769 6.7564 13.7998C6.80348 14.0228 6.90021 14.2328 7.03961 14.4131C7.17892 14.5932 7.35734 14.7392 7.56109 14.8408C7.61711 14.8687 7.67521 14.8924 7.73394 14.9131L10.0474 10.2939C10.2407 9.90584 10.5384 9.57915 10.9068 9.35059C10.9763 9.30751 11.0485 9.26877 11.1216 9.2334V1.66992H4.0816ZM16.5416 8.33496C16.5416 8.95424 16.2959 9.54843 15.858 9.98633C15.4201 10.4241 14.8258 10.6699 14.2066 10.6699H12.1373C12.0137 10.67 11.8927 10.7045 11.7877 10.7695C11.6825 10.8347 11.5976 10.9283 11.5425 11.0391L8.95367 16.209C8.81047 16.4948 8.51653 16.6738 8.19683 16.6699C7.71735 16.664 7.24512 16.5499 6.81598 16.3359C6.3869 16.122 6.01161 15.8139 5.71832 15.4346C5.42511 15.0554 5.22171 14.6145 5.12262 14.1455C5.02356 13.6763 5.03111 13.1902 5.14605 12.7246L5.64508 10.6699H2.33453C1.97218 10.6699 1.61471 10.5858 1.29058 10.4238C0.966416 10.2617 0.683849 10.0263 0.466366 9.73633C0.248938 9.44642 0.102533 9.10945 0.0376551 8.75293C-0.0271694 8.39639 -0.00809404 8.02954 0.0933192 7.68164L1.84039 1.68164L1.90094 1.50195C2.05771 1.09146 2.32764 0.731974 2.68121 0.466797C3.08524 0.163841 3.57661 9.28572e-05 4.0816 0H14.2066C14.8258 0 15.4201 0.245831 15.858 0.683594C16.2959 1.12149 16.5416 1.71568 16.5416 2.33496V8.33496Z" fill="currentColor"/></svg>'
 
-  let welcomeMessages = $derived((() => { try { return JSON.parse(welcomeMessagesJson); } catch { return {}; } })());
-  let isHebrew = $derived(interfaceLang === 'he');
-
   $effect(() => { setLocale(interfaceLang); });
-  let welcomeMessage = $derived(
-    isHebrew
-      ? (welcomeMessages.welcome_hebrew)
-      : (welcomeMessages.welcome_english)
-  );
-  let restartMessage = $derived(
-    isHebrew
-      ? (welcomeMessages.restart_hebrew)
-      : (welcomeMessages.restart_english)
-  );
-  let newSessionMessage = $derived(
-    isHebrew
-      ? (welcomeMessages.new_session_hebrew)
-      : (welcomeMessages.new_session_english)
-  );
+
+  let welcomeMessage = $derived($_('assistant.welcome.message'));
+  let restartMessage = $derived($_('assistant.welcome.restart'));
+  let newSessionMessage = $derived($_('assistant.welcome.newSession'));
 
   // Feedback issue options for dislikes — labels resolved reactively from the i18n store
   const DISLIKE_REASON_KEYS = [
-    { value: 'inaccurate', key: 'feedback.reason.inaccurate' },
-    { value: 'disrespectful', key: 'feedback.reason.disrespectful' },
-    { value: 'unhelpful', key: 'feedback.reason.unhelpful' },
-    { value: 'overly_definitive', key: 'feedback.reason.overlyDefinitive' },
-    { value: 'tech_issue', key: 'feedback.reason.techIssue' },
-    { value: 'other', key: 'feedback.reason.other' }
+    { value: 'inaccurate', key: 'assistant.feedback.reason.inaccurate' },
+    { value: 'disrespectful', key: 'assistant.feedback.reason.disrespectful' },
+    { value: 'unhelpful', key: 'assistant.feedback.reason.unhelpful' },
+    { value: 'overly_definitive', key: 'assistant.feedback.reason.overlyDefinitive' },
+    { value: 'tech_issue', key: 'assistant.feedback.reason.techIssue' },
+    { value: 'other', key: 'assistant.feedback.reason.other' }
   ];
   let DISLIKE_REASONS = $derived(DISLIKE_REASON_KEYS.map(r => ({ value: r.value, label: $_(r.key) })));
 
@@ -784,12 +769,13 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
+  class:interface-hebrew={interfaceLang === 'he'}
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button aria-label={$_('header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
+    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_('header.triggerLabel')}</span>
+      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -798,7 +784,7 @@
       class:resizing={isResizing}
       style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
-      aria-label={$_('header.chatWindow')}
+      aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
@@ -821,14 +807,14 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          <h2>{$_('header.title')} {#if testingVersion}(V{testingVersion}){/if}
+          <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
           <img src="{staticIconsBaseUrl}/AI.svg"/>
           </h2>
         </div>
         <div class="header-actions">
           <HeaderButton
             className="panel-btn"
-            title={(mode === 'floating') ? $_('header.dock') : $_('header.undock')}
+            title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
@@ -839,40 +825,40 @@
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
-            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('header.moreOptions')} aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 {#if isModerator}
-                  <button class="menu-item" aria-label={$_('menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
+                  <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
                       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
-                    {$_('menu.settings')}
+                    {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
-                  {$_('menu.restart')}
+                  {$_('assistant.menu.restart')}
                 </button>
-                <a class="menu-item" aria-label={$_('menu.feedback')} href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
-                  {$_('menu.feedback')}
+                  {$_('assistant.menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  {$_('menu.help')}
+                  {$_('assistant.menu.help')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  {$_('menu.optOut')}
+                  {$_('assistant.menu.optout')}
                 </a>
               </div>
             {/if}
           </div>
-          <HeaderButton className="close-btn" onClick={closePanel} title={$_('header.close')}>
+          <HeaderButton className="close-btn" onClick={closePanel} title={$_('assistant.header.close.tooltip')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -884,14 +870,14 @@
       {#if showSettings}
         <div class="settings-panel">
           <div class="settings-header">
-            <button class="settings-back" onclick={closeSettings} aria-label={$_('settings.back.aria')}>
-              {$_('settings.back')}
+            <button class="settings-back" onclick={closeSettings} aria-label={$_('assistant.settings.back.aria')}>
+              {$_('assistant.settings.back')}
             </button>
-            <div class="settings-title">{$_('settings.title')}</div>
+            <div class="settings-title">{$_('assistant.settings.title')}</div>
           </div>
 
           {#if isLoadingSettings}
-            <div class="settings-loading">{$_('settings.loading')}</div>
+            <div class="settings-loading">{$_('assistant.settings.loading')}</div>
           {/if}
 
           {#if settingsError}
@@ -900,7 +886,7 @@
 
           <div class="settings-fields">
             <label class="settings-field">
-              <span>{$_('settings.corePromptSlug')}</span>
+              <span>{$_('assistant.settings.corePromptSlug')}</span>
               <input
                 type="text"
                 bind:value={promptSlugs.corePromptSlug}
@@ -912,14 +898,14 @@
 
           <div class="settings-actions">
             <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
-              {$_('settings.save')}
+              {$_('assistant.settings.save')}
             </button>
             <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
-              {$_('settings.reset')}
+              {$_('assistant.settings.reset')}
             </button>
           </div>
 
-          <p class="settings-note">{$_('settings.note')}</p>
+          <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
       {:else}
       <!-- Message List -->
@@ -930,7 +916,7 @@
         onscroll={handleScroll}
         onclick={handleMessageLinkClick}
         role="log"
-        aria-label={$_('messages.aria')}
+        aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
@@ -940,8 +926,8 @@
             </div>
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
-                  {$_('messages.retry')}
+                <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
+                  {$_('assistant.messages.retry')}
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
@@ -951,7 +937,7 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('messages.like')}
+                      aria-label={$_('assistant.feedback.positive')}
                     >
                       {@html THUMBUP}
                     </button>
@@ -959,13 +945,13 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('messages.dislike')}
+                      aria-label={$_('assistant.feedback.negative')}
                     >
                       {@html THUMBDOWN}
                     </button>
                   </div>
                   {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('messages.feedbackThanks')}</p>
+                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
                   {/if}
                 </div>
               {/if}
@@ -976,7 +962,7 @@
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
-            <span>{$_('messages.loadingHistory')}</span>
+            <span>{$_('assistant.messages.loadingHistory')}</span>
           </div>
         {/if}
 
@@ -1000,8 +986,8 @@
               </div>
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(item.messageId)}>
-                    {$_('messages.retry')}
+                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
+                    {$_('assistant.messages.retry')}
                   </button>
                 {/if}
               </div>
@@ -1025,11 +1011,11 @@
                       <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     {/if}
                   </svg>
-                  <span>{currentProgress.isError ? $_('status.toolError') : $_('status.done')}</span>
+                  <span>{currentProgress.isError ? $_('assistant.status.toolError') : $_('assistant.status.done')}</span>
                 </div>
               {:else}
                 <div class="status-text">
-                  <p>{currentProgress?.displayText || $_('status.thinking')}<span class="dots"></span></p>
+                  <p>{currentProgress?.displayText || $_('assistant.loading.thinking')}<span class="dots"></span></p>
                 </div>
               {/if}
             </div>
@@ -1040,10 +1026,10 @@
           <div class="message assistant limit-message">
             <div class="message-content">
               <p>
-                {$_('limit.reached')}
+                {$_('assistant.limit.reached')}
               </p>
               <p>
-                 <button aria-label={$_('limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('limit.startNew')}</button>
+                 <button aria-label={$_('assistant.limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('assistant.limit.startNew')}</button>
               </p>
             </div>
           </div>
@@ -1057,8 +1043,8 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('input.placeholder')}
-          aria-label={$_('input.aria')}
+          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          aria-label={$_('assistant.input.aria')}
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
@@ -1066,7 +1052,7 @@
           class="send-btn"
           onclick={handleSend}
           disabled={!inputText.trim() || isSending || limitReached}
-          aria-label={$_('input.send.aria')}
+          aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -1082,18 +1068,18 @@
         <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">{$_('feedback.modal.title')}</h3>
-            <p class="feedback-modal-subtitle">{$_('feedback.modal.subtitle')}</p>
+            <h3 class="feedback-modal-title">{$_('assistant.feedback.modal.title')}</h3>
+            <p class="feedback-modal-subtitle">{$_('assistant.feedback.modal.subtitle')}</p>
             {#if feedbackType === FEEDBACK_DOWN}
               <div class="feedback-modal-field">
-                <label for="select" class="feedback-modal-select-label">{$_('feedback.modal.issueLabel')}</label>
+                <label for="select" class="feedback-modal-select-label">{$_('assistant.feedback.modal.issueLabel')}</label>
                 <select
                   id="select"
                   class="feedback-modal-select"
                   class:is-placeholder={!feedbackReason}
                   bind:value={feedbackReason}
                 >
-                  <option value="" disabled>{$_('feedback.modal.selectIssue')}</option>
+                  <option value="" disabled>{$_('assistant.feedback.modal.selectIssue')}</option>
                   {#each DISLIKE_REASONS as issue}
                     <option value={issue.value}>{issue.label}</option>
                   {/each}
@@ -1103,7 +1089,7 @@
             <textarea
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === FEEDBACK_DOWN ? $_('feedback.modal.placeholder.detailed') : $_('feedback.modal.placeholder.optional')}
+              placeholder={feedbackType === FEEDBACK_DOWN ? $_('assistant.feedback.modal.placeholder.detailed') : $_('assistant.feedback.modal.placeholder.optional')}
             />
             <div class="feedback-modal-actions">
               <button
@@ -1111,10 +1097,10 @@
                 onclick={() => submitFeedback(true)}
                 disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
               >
-                {$_('feedback.modal.submit')}
+                {$_('assistant.feedback.modal.submit')}
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
-                {$_('feedback.modal.skip')}
+                {$_('assistant.feedback.modal.skip')}
               </button>
             </div>
           </div>
@@ -1127,7 +1113,7 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    --lc-primary: #18345D;
+    --brand-sefaria-blue: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
@@ -1179,6 +1165,11 @@
     bottom: 24px;
     inset-inline-end: 24px;
     z-index: 9999;
+    direction: ltr;
+  }
+
+  .lc-chatbot-container.interface-hebrew {
+    direction: rtl;
   }
 
   .lc-chatbot-container.mode-docked.is-open {
@@ -1225,7 +1216,7 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: 9999px;
@@ -1328,9 +1319,13 @@
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
     font-weight: 600;
-    color: var(--lc-text);
     margin: 0;
     line-height: 1.1;
+    color: var(--brand-sefaria-blue);
+    font-family: Roboto;
+    font-style: normal;
+    font-weight: 600;
+    line-height: normal;
   }
 
   .lc-chatbot-header h2 img {
@@ -1351,7 +1346,6 @@
   .menu-dropdown {
     position: absolute;
     top: 100%;
-    right: 0;
     margin-top: 4px;
     min-width: 200px;
     background: var(--lc-bg);
@@ -1361,6 +1355,14 @@
     z-index: 100;
     overflow: hidden;
   }
+
+  .menu-dropdown {
+      right: auto;
+      left: auto;
+      inset-inline-start: auto;
+      inset-inline-end: 0;
+    }
+  
 
   .menu-item {
     display: flex;
@@ -1442,6 +1444,8 @@
   .message.user {
     max-width: 85%;
     align-self: flex-end;
+    background-color: #0056B3;
+    border-radius: 0 16px 16px 16px;
   }
 
   .message.assistant {
@@ -1452,11 +1456,17 @@
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
   }
-  .empty-state .message.assistant .message-content :global(ul) {
+
+  .message.assistant .message-content :global(ul),
+  .message.assistant .message-content :global(ol) {
     padding-inline-start: 20px;
   }
-  .empty-state .message.assistant .message-content :global(ul li) {
+
+  .message.assistant .message-content :global(li) {
     margin-bottom: 5px;
+  }
+  .interface-hebrew .message.assistant .message-content :global(li) {
+    margin-bottom: 10px;
   }
 
   .message-content {
@@ -1465,10 +1475,8 @@
 
   .message.user .message-content {
     padding: 12px 16px;
-    border-radius: var(--lc-radius);
     font-size: var(--lc-font-size);
     word-wrap: break-word;
-    background: var(--lc-user-bg);
     color: var(--lc-user-text);
     border-bottom-right-radius: 4px;
   }
@@ -1506,7 +1514,7 @@
   }
 
   .message-status.sending {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .retry-btn {
@@ -1558,7 +1566,7 @@
   }
 
   .status-text.tool-running {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .status-text.tool-error {
@@ -1593,7 +1601,7 @@
     width: 16px;
     height: 16px;
     border: 2px solid var(--lc-border);
-    border-top-color: var(--lc-primary);
+    border-top-color: var(--brand-sefaria-blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1628,7 +1636,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -1646,7 +1654,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -1661,6 +1669,10 @@
   .send-btn:disabled {
     background: var(--lc-disabled-button);
     cursor: not-allowed;
+  }
+
+  .interface-hebrew .send-btn svg {
+    transform: scaleX(-1);
   }
 
   .send-btn:active:not(:disabled) {
@@ -1693,7 +1705,7 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -1759,7 +1771,7 @@
   }
 
   .settings-save {
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border-color: transparent;
   }
@@ -1885,7 +1897,7 @@ inset: 8px;
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -1895,7 +1907,7 @@ inset: 8px;
 
 
   .feedback-modal-input:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-input::placeholder {
@@ -1957,30 +1969,55 @@ inset: 8px;
   .message-content :global(.response-title) {
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-generic) {
-    line-height: 21px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-section) {
-    font-weight: 600;
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-list) {
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-link) {
     width: 239px;
-    line-height: 21px;
     text-decoration-line: underline;
     text-decoration-style: solid;
     text-decoration-skip-ink: none;
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
+    color: var(--brand-sefaria-blue);
+    font-family: Heebo;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-signoff) {

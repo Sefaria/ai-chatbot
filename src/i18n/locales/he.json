@@ -1,1 +1,61 @@
-{}
+{
+  "assistant.welcome.message": "ברוך הבא! שאל אותי כל מה שתרצה על טקסטים יהודיים.",
+  "assistant.welcome.restart": "התחל שיחה",
+  "assistant.welcome.newSession": "התחל שיחה חדשה",
+
+  "assistant.title": "עוזר הספרייה",
+  "assistant.header.triggerLabel": "עוזר הספרייה",
+  "assistant.badge.ai": "AI",
+
+  "assistant.header.close.tooltip": "סגור",
+  "assistant.header.dock.tooltip": "עגן את העוזר",
+  "assistant.header.undock.tooltip": "חזרו למצב צף",
+
+  "assistant.menu.restart": "התחל שיחה מחדש",
+  "assistant.menu.feedback": "שלח משוב",
+  "assistant.menu.feedbackURL": "https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation_he",
+  "assistant.menu.settings": "הגדרות",
+  "assistant.menu.help": "עזרה",
+  "assistant.menu.optout": "כיבוי בהגדרות",
+
+  "assistant.feedback.modal.title": "רוצים להוסיף פרטים נוספים? (אופציונלי)",
+  "assistant.feedback.modal.subtitle": "המשוב שלכם עוזר לנו להשתפר.",
+  "assistant.feedback.modal.issueLabel": "מה הייתה הבעיה?",
+  "assistant.feedback.modal.selectIssue": "בחרו בעיה",
+  "assistant.feedback.modal.placeholder.detailed": "פרטים נוספים",
+  "assistant.feedback.modal.placeholder.optional": "תרצו להוסיף משהו?",
+  "assistant.feedback.modal.submit": "שלח",
+  "assistant.feedback.modal.skip": "דלג",
+
+  "assistant.empty.description": "אפשר לשאול שאלות תוך כדי הלימוד.",
+  "assistant.empty.examples.label": "לדוגמה:",
+  "assistant.empty.example.1": "מצאו מקורות על שבת",
+  "assistant.empty.example.2": "עזרו לי להבין את הפרשה",
+  "assistant.empty.example.3": "תרגמו את הקטע הזה עבורי",
+  "assistant.empty.disclaimer": "אתם משתמשים בגרסה חדשה של עוזר הספרייה.\nהוא מבוסס על AI וייתכנו טעויות.",
+
+  "assistant.input.placeholder": "שאלו שאלה…",
+  "assistant.input.send.tooltip": "שלח",
+
+  "assistant.loading.thinking": "בודקים…",
+  "assistant.loading.delayed": "זה לוקח קצת יותר זמן מהרגיל.",
+
+  "assistant.feedback.prompt": "האם התשובה הייתה מועילה?",
+  "assistant.feedback.positive": "מועיל",
+  "assistant.feedback.negative": "לא מועיל",
+
+  "assistant.restart.title": "להתחיל שיחה חדשה?",
+  "assistant.restart.description": "הפעולה תמחק את השיחה הנוכחית.",
+  "assistant.restart.confirm": "התחל שיחה חדשה",
+  "assistant.restart.cancel": "ביטול",
+
+  "assistant.error.generic": "אירעה שגיאה. נסו שוב.",
+  "assistant.error.network": "יש בעיה בחיבור לרשת. בדקו את החיבור ונסו שוב.",
+  "assistant.timeout": "זה לוקח מעט יותר זמן מהצפוי.",
+  "assistant.feedback.reason.inaccurate": "לא נכון או מטעה",
+  "assistant.feedback.reason.disrespectful": "טון לא מתאים",
+  "assistant.feedback.reason.unhelpful": "לא מועיל או לא ברור",
+  "assistant.feedback.reason.overlyDefinitive": "קטגורי מדי",
+  "assistant.feedback.reason.techIssue": "בעיה טכנית",
+  "assistant.feedback.reason.other": "אחר"
+}
