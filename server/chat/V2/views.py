@@ -24,6 +24,7 @@ import json
 import logging
 import queue
 import time
+from decimal import Decimal
 from urllib.parse import urlsplit
 
 import braintrust
@@ -52,6 +53,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
+from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
 from .services import (
@@ -327,6 +329,12 @@ def chat_stream_v2(request):
         final_event_sent = False
         stream_closed = False
 
+        # Initialize the auxiliary-LLM cost accumulator in the outer context so
+        # the agent thread (via copy_context) can attribute guardrail/router
+        # costs to this turn. Summary cost is tracked separately via
+        # SummaryResult.cost_usd.
+        cost_accumulator = init_cost_accumulator()
+
         def on_progress(update: AgentProgressUpdate):
             if stream_closed:
                 return
@@ -340,6 +348,12 @@ def chat_stream_v2(request):
 
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
+            # Bind the outer accumulator into this thread's context so
+            # guardrail/router (invoked via asyncio.to_thread inside the agent)
+            # can record costs. Normal path's ctx.run() already copies the
+            # ContextVar; the load-test path intentionally skips copy_context
+            # to isolate Braintrust state, so an explicit bind is required.
+            bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
                 agent = get_agent_service(is_load_test=is_load_test)
@@ -474,6 +488,16 @@ def chat_stream_v2(request):
                 },
             )
 
+            # Fold aux LLM costs captured so far (guardrail + router, run on the
+            # agent thread) into the turn total before persisting. Summary runs
+            # below and pushes its own cost via the accumulator; we back-patch
+            # the persisted row from the accumulator delta after summary.
+            aux_cost_at_persist = cost_accumulator.total
+            if aux_cost_at_persist > 0:
+                agent_response.total_cost_usd = (
+                    agent_response.total_cost_usd or 0.0
+                ) + aux_cost_at_persist
+
             logging_result = logging_service.persist_assistant_response(
                 user_message=user_message,
                 agent_response=agent_response,
@@ -502,6 +526,16 @@ def chat_stream_v2(request):
                     new_assistant_response=agent_response.content,
                 )
                 summary_text = new_summary.to_prompt_text()
+
+                # Back-patch any cost added since persist (summary, in practice).
+                post_persist_delta = cost_accumulator.total - aux_cost_at_persist
+                if post_persist_delta > 0:
+                    agent_response.total_cost_usd = (
+                        agent_response.total_cost_usd or 0.0
+                    ) + post_persist_delta
+                    response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
+                    response_message.save(update_fields=["total_cost_usd"])
+                    logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
             except Exception as exc:
                 logger.exception("Summary update failed after agent success")
                 capture_exception(
@@ -540,7 +574,10 @@ def chat_stream_v2(request):
                 stats=logging_result.stats,
             )
 
-            if context.get("forceStreamBreakBeforeFinal", False) and _is_stream_break_test_enabled():
+            if (
+                context.get("forceStreamBreakBeforeFinal", False)
+                and _is_stream_break_test_enabled()
+            ):
                 test_exc = RuntimeError("Forced stream break before final SSE for testing")
                 logger.error(
                     "Forcing stream break before final SSE for testing",
@@ -592,6 +629,10 @@ def chat_stream_v2(request):
                 except Exception:
                     pass
             executor.shutdown(wait=False)
+            # Clear the ContextVar so the next request on this reused WSGI
+            # thread can't accidentally read a stale accumulator before its
+            # own init_cost_accumulator() call.
+            reset_cost_accumulator()
 
     response = StreamingHttpResponse(generate_sse(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"

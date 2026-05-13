@@ -519,6 +519,7 @@ class TestStreamingEndpointErrorHandling:
 
         assert response.status_code == 400
 
+
 @pytest.mark.django_db
 class TestStreamingEndpointOriginPropagation:
     """Tests for origin field propagation through the streaming endpoint."""
