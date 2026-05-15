@@ -55,11 +55,22 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 
 ## i18n
 
-User-facing strings live in `src/i18n/locales/{en,he}.json` and are looked up via `$_('key')` (svelte-i18n). Adding a new string:
+User-facing strings live in `src/i18n/locales/{en,he}.json` and are looked up via `$_('key')` (svelte-i18n). Production translations are managed in Weblate at:
 
-1. Add the key to `en.json` (source of truth — Weblate watches this file).
+- `https://weblate.sefaria.org/projects/ai-chatbot/`
+
+Adding a new string:
+
+1. Add the key to `en.json` (source of truth).
 2. Use `$_('your.key')` in templates or `get(_)('your.key')` in JS contexts.
 3. Don't translate dev-facing logs/errors (e.g. anything in `lib/api.js` that the user never sees).
+4. Merge to `main`; Weblate will pick up the new key and surface it for translation (target SLA: within ~5 minutes after sync).
+
+Translation delivery convention:
+
+- Translators edit in Weblate.
+- Weblate opens PRs against `main` (no direct pushes to `main`).
+- Engineers review and merge translation PRs in GitHub.
 
 Conventions for Weblate compatibility:
 - Flat dotted keys (`section.subsection.name`), grouped by UI area.

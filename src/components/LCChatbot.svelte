@@ -808,7 +808,7 @@
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
           <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
-          <img src="{staticIconsBaseUrl}/AI.svg"/>
+          <img src="{staticIconsBaseUrl}/AI.svg" alt={$_('assistant.badge.ai')} />
           </h2>
         </div>
         <div class="header-actions">
