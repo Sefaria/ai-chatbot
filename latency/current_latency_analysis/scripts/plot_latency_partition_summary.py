@@ -51,6 +51,7 @@ GROUPED_COMPONENTS = [
 SCRIPT_CONFIG = {
     "input_csv": None,
     "output_dir": None,
+    "exclude_top_latency_quantile": 0.99,
     "hist_bins": 50,
     "timeline_figsize": (12, 3),
     "grouped_figsize": (10, 3),
@@ -103,6 +104,15 @@ def get_output_dir(input_csv: Path) -> Path:
     if configured:
         return Path(configured)
     return input_csv.parent
+
+
+def apply_latency_outlier_filter(df: Any) -> tuple[Any, float | None]:
+    quantile = SCRIPT_CONFIG["exclude_top_latency_quantile"]
+    if quantile is None:
+        return df.copy(), None
+    cutoff = float(df["total_turn_ms"].quantile(quantile))
+    filtered = df[df["total_turn_ms"] <= cutoff].copy()
+    return filtered, cutoff
 
 
 def validate_components_present(df: Any, components: list[str]) -> None:
@@ -204,6 +214,7 @@ def plot_stacked_timeline(
 def write_summary_file(
     *,
     path: Path,
+    outlier_cutoff_ms: float | None,
     mean_total: float,
     means: Any,
     grouped_means: Any,
@@ -214,6 +225,12 @@ def write_summary_file(
     top_variance = contrib_series.sort_values(ascending=False).head()
 
     lines = [
+        (
+            f"Outlier filter: excluded traces above p99 total_turn_ms "
+            f"(cutoff {outlier_cutoff_ms})"
+            if outlier_cutoff_ms is not None
+            else "Outlier filter: none"
+        ),
         f"Mean total latency: {mean_total}",
         "",
         "Top mean contributors:",
@@ -242,6 +259,7 @@ def main() -> int:
     )
 
     df = df[df["total_turn_ms"].notna() & (~df["has_partition_error"])].copy()
+    df, outlier_cutoff_ms = apply_latency_outlier_filter(df)
     if df.empty:
         raise RuntimeError("No valid partition rows remained after filtering.")
 
@@ -327,12 +345,18 @@ def main() -> int:
 
     write_summary_file(
         path=output_dir / "latency_summary.txt",
+        outlier_cutoff_ms=outlier_cutoff_ms,
         mean_total=mean_total,
         means=means,
         grouped_means=grouped_means,
         contrib_series=contrib_series,
     )
 
+    if outlier_cutoff_ms is not None:
+        print(
+            "Outlier filter: excluded traces above p99 total_turn_ms "
+            f"(cutoff {outlier_cutoff_ms})"
+        )
     print(f"Mean total latency: {mean_total}")
     print("\nTop mean contributors:")
     print(means.sort_values(ascending=False).head())

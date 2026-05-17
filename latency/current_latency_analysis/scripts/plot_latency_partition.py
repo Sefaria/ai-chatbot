@@ -93,6 +93,7 @@ COMPONENT_EXPLANATIONS = {
 SCRIPT_CONFIG = {
     "input_csv": None,
     "output_dir": None,
+    "exclude_top_latency_quantile": 0.99,
     "sampled_timeline_count": 60,
     "sampled_timeline_above_mean_count": 60,
     "timeline_figsize": (14, 4),
@@ -213,6 +214,15 @@ def validate_columns(df: Any, columns: list[str]) -> None:
 def add_plot_group_columns(df: Any) -> Any:
     df = df.copy()
     return df
+
+
+def apply_latency_outlier_filter(df: Any) -> tuple[Any, float | None]:
+    quantile = SCRIPT_CONFIG["exclude_top_latency_quantile"]
+    if quantile is None:
+        return df.copy(), None
+    cutoff = float(df["total_turn_ms"].quantile(quantile))
+    filtered = df[df["total_turn_ms"] <= cutoff].copy()
+    return filtered, cutoff
 
 
 def compute_variance_contributions(df: Any, np: Any, components: list[str]):
@@ -354,7 +364,7 @@ def plot_stacked_mean_bar(
     )
     ax.text(
         0.5,
-        -0.42,
+        -0.14,
         footer,
         transform=ax.transAxes,
         ha="center",
@@ -364,7 +374,7 @@ def plot_stacked_mean_bar(
     )
     ax.set_ylim(-0.30, 0.92)
 
-    line_y = -0.24
+    line_y = -0.27
     line_step = 0.14
     label_x = 0.01
     description_x = 0.20
@@ -709,6 +719,10 @@ def main() -> int:
     ].copy()
     if df.empty:
         raise RuntimeError("No valid rows remained after filtering partition errors.")
+    original_count = len(df)
+    df, outlier_cutoff_ms = apply_latency_outlier_filter(df)
+    if df.empty:
+        raise RuntimeError("No valid rows remained after latency outlier filtering.")
 
     df = add_plot_group_columns(df)
     colors = list(plt.cm.tab20.colors)
@@ -737,6 +751,12 @@ def main() -> int:
             "Segment width is empirical mean wall-clock contribution. σ is across-trace "
             "standard deviation. Components are mutually exclusive and sum to mean "
             "end-to-end latency."
+            + (
+                f" Top 1% highest-latency traces were excluded"
+                f" (cutoff {format_ms(outlier_cutoff_ms)}; kept {len(df)}/{original_count} traces)."
+                if outlier_cutoff_ms is not None
+                else ""
+            )
         ),
         footer="Labels show: mean latency in seconds, σ across traces in seconds, and share of mean total latency.",
         axis_formatter=FuncFormatter(format_axis_seconds),
@@ -774,6 +794,12 @@ def main() -> int:
         subtitle=(
             "LLM time is classified by temporal relation to tool calls and/or metadata "
             "when available."
+            + (
+                f" Top 1% highest-latency traces were excluded"
+                f" (cutoff {format_ms(outlier_cutoff_ms)})."
+                if outlier_cutoff_ms is not None
+                else ""
+            )
         ),
         footer="Labels show: mean latency in seconds, σ across traces in seconds, and share of mean LLM latency.",
         axis_formatter=FuncFormatter(format_axis_seconds),
@@ -823,7 +849,15 @@ def main() -> int:
         components=RAW_GROUPED_COMPONENTS,
         colors=colors,
         title="Above-Median Mean Decomposition",
-        subtitle="Subset: traces with total latency above the median.",
+        subtitle=(
+            "Subset: traces with total latency above the median."
+            + (
+                f" Top 1% highest-latency traces were excluded first"
+                f" (cutoff {format_ms(outlier_cutoff_ms)})."
+                if outlier_cutoff_ms is not None
+                else ""
+            )
+        ),
         footer="Labels show: mean latency in seconds, σ across above-median traces, and share of mean above-median latency.",
         axis_formatter=FuncFormatter(format_axis_seconds),
         total_mean_ms=median_plus_total_mean,
@@ -857,7 +891,15 @@ def main() -> int:
         components=RAW_GROUPED_COMPONENTS,
         colors=colors,
         title="Slow-Trace Mean Decomposition",
-        subtitle="Subset: traces with total latency at or above the p90 threshold.",
+        subtitle=(
+            "Subset: traces with total latency at or above the p90 threshold."
+            + (
+                f" Top 1% highest-latency traces were excluded first"
+                f" (cutoff {format_ms(outlier_cutoff_ms)})."
+                if outlier_cutoff_ms is not None
+                else ""
+            )
+        ),
         footer="Labels show: mean latency in seconds, σ across slow traces in seconds, and share of mean slow-trace latency.",
         axis_formatter=FuncFormatter(format_axis_seconds),
         total_mean_ms=slow_total_mean,
@@ -879,6 +921,12 @@ def main() -> int:
         subtitle=(
             "Each row is one trace. Components are mutually exclusive wall-clock "
             "groups, sampled from all valid traces."
+            + (
+                f" Top 1% highest-latency traces were excluded first"
+                f" (cutoff {format_ms(outlier_cutoff_ms)})."
+                if outlier_cutoff_ms is not None
+                else ""
+            )
         ),
     )
 
@@ -894,6 +942,12 @@ def main() -> int:
             subtitle=(
                 "Each row is one trace. Components are mutually exclusive wall-clock "
                 "groups, sampled only from traces above the mean total latency."
+                + (
+                    f" Top 1% highest-latency traces were excluded first"
+                    f" (cutoff {format_ms(outlier_cutoff_ms)})."
+                    if outlier_cutoff_ms is not None
+                    else ""
+                )
             ),
         )
 
@@ -906,6 +960,12 @@ def main() -> int:
 
     summary_lines = [
         f"Trace count: {len(df)}",
+        (
+            f"Outlier filter: excluded traces above p99 total_turn_ms "
+            f"(cutoff {outlier_cutoff_ms})"
+            if outlier_cutoff_ms is not None
+            else "Outlier filter: none"
+        ),
         f"Mean total latency: {mean_total}",
         f"P50 / P90 / P95: "
         f"{np.quantile(df['total_turn_ms'], 0.50)}, "
@@ -946,6 +1006,11 @@ def main() -> int:
     write_summary_text(output_dir / "latency_summary.txt", summary_lines)
 
     print(f"Trace count: {len(df)}")
+    if outlier_cutoff_ms is not None:
+        print(
+            "Outlier filter: excluded traces above p99 total_turn_ms "
+            f"(cutoff {outlier_cutoff_ms})"
+        )
     print(f"Mean total latency: {mean_total}")
     print(
         "P50 / P90 / P95: "
