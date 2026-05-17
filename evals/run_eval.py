@@ -33,7 +33,7 @@ from pathlib import Path
 
 import braintrust
 import httpx
-from braintrust import EvalAsync, init_dataset, invoke
+from braintrust import EvalAsync, current_span, init_dataset, invoke
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / "server" / ".env")
@@ -93,12 +93,16 @@ class ChatbotClient:
             raise ValueError("CHATBOT_USER_TOKEN env var must be set")
         self.client = httpx.AsyncClient(timeout=300.0)
 
-    async def chat(self, message: str) -> str:
+    async def chat(self, message: str) -> dict:
         """
-        Send a message to the chatbot and return the response text.
+        Send a message to the chatbot and return the response payload.
 
         Streams the response via SSE, collecting chunks until the final
-        message event containing the full markdown response.
+        message event. Returns a dict with `content` (markdown),
+        `totalCostUsd`, and `latencyMs` so downstream scorers can see both
+        the response text and the per-turn cost/latency the server reports.
+        Missing stats degrade to None rather than raising, so scorers can
+        skip rows without failing the experiment.
         """
         session_id = f"eval_{uuid.uuid4().hex[:16]}"
         payload = {
@@ -134,7 +138,13 @@ class ChatbotClient:
 
         if not final_response:
             raise Exception("No response received from chatbot")
-        return final_response.get("markdown", "")
+
+        stats = final_response.get("stats") or {}
+        return {
+            "content": final_response.get("markdown", ""),
+            "totalCostUsd": stats.get("totalCostUsd"),
+            "latencyMs": stats.get("latencyMs"),
+        }
 
     async def close(self):
         await self.client.aclose()
@@ -180,13 +190,20 @@ def create_scorer(slug: str):
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
-        scorer_input = {"output": output}
+        # task() returns {"content", "totalCostUsd", "latencyMs"}. Existing
+        # scorers expect the markdown string under output, so unwrap it.
+        # Cost and latency are logged as span metrics (not as scores), so they
+        # don't need to be plumbed through here.
+        if isinstance(output, dict) and "content" in output:
+            scorer_input = {"output": output["content"]}
+        else:
+            scorer_input = {"output": output}
+        if metadata is not None:
+            scorer_input["metadata"] = metadata
         if expected is not None:
             scorer_input["expected"] = expected
         if input is not None:
             scorer_input["input"] = input
-        if metadata is not None:
-            scorer_input["metadata"] = metadata
 
         last_exc: Exception | None = None
         for attempt in range(SCORER_MAX_ATTEMPTS):
@@ -612,10 +629,24 @@ async def run_evaluation(
             else str(input_data)
         )
         try:
-            return await client.chat(prompt)
+            response = await client.chat(prompt)
         except Exception as e:
             print(f"Error: {e}")
-            return f"ERROR: {e}"
+            return {"content": f"ERROR: {e}", "totalCostUsd": None, "latencyMs": None}
+
+        # Cost and latency are not [0,1] scores — they're per-row metrics.
+        # Logging them on the current span surfaces them in the experiment
+        # table next to scores, where Braintrust sums per row and averages
+        # across experiments.
+        metrics: dict[str, float] = {}
+        if isinstance(response.get("totalCostUsd"), (int, float)):
+            metrics["cost_usd"] = float(response["totalCostUsd"])
+        if isinstance(response.get("latencyMs"), (int, float)):
+            metrics["latency_seconds"] = response["latencyMs"] / 1000.0
+        if metrics:
+            current_span().log(metrics=metrics)
+
+        return response
 
     print(f"\n{'=' * 60}")
     print(f"Evaluation: {experiment_name}")

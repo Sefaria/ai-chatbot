@@ -5,12 +5,16 @@ from unittest.mock import MagicMock
 from chat.V2.guardrail.guardrail_service import GuardrailService
 
 
-def _make_anthropic_response(text: str):
+def _make_anthropic_response(text: str, input_tokens: int = 10, output_tokens: int = 5):
     """Build a mock Anthropic Messages response."""
     block = MagicMock()
     block.text = text
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
     response = MagicMock()
     response.content = [block]
+    response.usage = usage
     return response
 
 
