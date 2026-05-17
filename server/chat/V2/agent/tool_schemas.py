@@ -381,6 +381,12 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
 }
 
+LABS_TOOL_NAMES = {
+    "search_user_source_sheets",
+    "get_source_sheet",
+    "create_source_sheet",
+}
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -400,9 +406,16 @@ def get_tools_by_names(names: list[str]) -> list[dict[str, Any]]:
 
 
 def get_all_tools() -> list[dict[str, Any]]:
-    """Get all available tool schemas."""
-    return list(ALL_TOOLS.values())
+    """Get all generally available tool schemas."""
+    return [tool for name, tool in ALL_TOOLS.items() if name not in LABS_TOOL_NAMES]
+
+
+def get_tools_for_labs(labs: bool = False) -> list[dict[str, Any]]:
+    """Get tool schemas available for the request's Labs setting."""
+    if labs:
+        return list(ALL_TOOLS.values())
+    return get_all_tools()
 
 
 # Legacy compatibility
-SEFARIA_TOOL_SCHEMAS = get_all_tools()
+SEFARIA_TOOL_SCHEMAS = get_tools_for_labs(labs=True)

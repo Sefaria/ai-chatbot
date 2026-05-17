@@ -709,6 +709,80 @@ class TestStreamingEndpointIsStaffPropagation:
 
 
 @pytest.mark.django_db
+class TestStreamingEndpointLabsPropagation:
+    """Tests for Labs field propagation through the streaming endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def mock_agent(self):
+        mock = MagicMock()
+        mock.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Response",
+                tool_calls=[],
+                latency_ms=100,
+                trace_id="trace_123",
+            )
+        )
+        return mock
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_labs_true_propagates_to_agent(self, mock_get_agent, client, secret, mock_agent):
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_labs", secret),
+                "sessionId": "sess_labs_test",
+                "messageId": "msg_labs_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {"labs": True},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.labs is True
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_labs_defaults_to_false(self, mock_get_agent, client, secret, mock_agent):
+        mock_get_agent.return_value = mock_agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_no_labs", secret),
+                "sessionId": "sess_no_labs_test",
+                "messageId": "msg_no_labs_test",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Hello",
+                "context": {},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        ctx = mock_agent.send_message.call_args.kwargs["context"]
+        assert ctx.labs is False
+
+
+@pytest.mark.django_db
 class TestStreamingEndpointRecovery:
     """Tests for persisted-response recovery after stream interruption."""
 
