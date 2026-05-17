@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build production latency dataframes from recent Braintrust logs.
+"""Build latency dataframes for a Braintrust experiment by joining trace spans.
 
-This exporter pulls the last 30 days of production `chat-agent` traces from
-Braintrust and writes:
+This exporter starts from one Braintrust experiment, extracts the per-row
+`trace_id` values, fetches the corresponding trace rows and child spans from
+Braintrust project logs, and writes:
 
 1. `trace_rows.csv/jsonl` — one raw root row per trace
 2. `span_rows.csv/jsonl` — one raw span row per attached span
@@ -41,14 +42,13 @@ from dotenv import dotenv_values
 from tqdm import tqdm
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-ANALYSIS_ROOT = REPO_ROOT / "latency" / "current_latency_analysis"
-DATA_DIR = ANALYSIS_ROOT / "data"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ANALYSIS_ROOT = REPO_ROOT / "latency" / "analysis"
+DATA_DIR = ANALYSIS_ROOT
 ENV_FILE = REPO_ROOT / "server" / ".env"
 DEFAULT_PROJECT = "On Site Agent"
 DEFAULT_PAGE_SIZE = 500
 DEFAULT_ROOT_ID_BATCH_SIZE = 25
-PRODUCTION_ORIGIN = "sefaria-production"
 ROOT_SPAN_NAME = "chat-agent"
 TOOL_ANALYSIS_WINDOW_MS = 2000
 PARTITION_COMPONENT_COLUMNS = [
@@ -136,11 +136,11 @@ load_env_file(ENV_FILE)
 
 SCRIPT_CONFIG = {
     "project": os.environ.get("BRAINTRUST_PROJECT", DEFAULT_PROJECT),
+    "experiment_name": None,
+    "experiment_id": None,
     "output_dir": DATA_DIR,
-    "lookback_days": 30,
     "page_size": DEFAULT_PAGE_SIZE,
     "root_id_batch_size": DEFAULT_ROOT_ID_BATCH_SIZE,
-    "max_root_rows": None,
     "max_btql_retries": 4,
     "retry_backoff_seconds": 2.0,
     "tool_analysis_window_ms": TOOL_ANALYSIS_WINDOW_MS,
@@ -170,23 +170,16 @@ class LlmSpanClassification:
 def get_config() -> SimpleNamespace:
     args = SimpleNamespace(
         project=SCRIPT_CONFIG["project"],
+        experiment_name=SCRIPT_CONFIG["experiment_name"],
+        experiment_id=SCRIPT_CONFIG["experiment_id"],
         output_dir=Path(SCRIPT_CONFIG["output_dir"]),
-        lookback_days=SCRIPT_CONFIG["lookback_days"],
         page_size=SCRIPT_CONFIG["page_size"],
         root_id_batch_size=SCRIPT_CONFIG["root_id_batch_size"],
-        max_root_rows=SCRIPT_CONFIG["max_root_rows"],
         max_btql_retries=SCRIPT_CONFIG["max_btql_retries"],
         retry_backoff_seconds=SCRIPT_CONFIG["retry_backoff_seconds"],
         tool_analysis_window_ms=SCRIPT_CONFIG["tool_analysis_window_ms"],
     )
-    args.cutoff_datetime = get_cutoff_datetime(args.lookback_days)
     return args
-
-
-def get_cutoff_datetime(lookback_days: int | None) -> datetime | None:
-    if lookback_days is None:
-        return None
-    return datetime.now(UTC) - timedelta(days=lookback_days)
 
 
 def require_api_key() -> str:
@@ -234,31 +227,30 @@ def build_root_filter() -> dict[str, Any]:
                 "left": {"op": "ident", "name": ["span_attributes", "name"]},
                 "right": {"op": "literal", "value": ROOT_SPAN_NAME},
             },
-            {
-                "op": "eq",
-                "left": {"op": "ident", "name": ["metadata", "origin"]},
-                "right": {"op": "literal", "value": PRODUCTION_ORIGIN},
-            },
         ],
     }
 
 
 def build_root_span_id_filter(root_span_ids: list[str]) -> dict[str, Any]:
-    if len(root_span_ids) == 1:
+    return build_string_field_filter(["root_span_id"], root_span_ids)
+
+
+def build_string_field_filter(field_path: list[str], values: list[str]) -> dict[str, Any]:
+    if len(values) == 1:
         return {
             "op": "eq",
-            "left": {"op": "ident", "name": ["root_span_id"]},
-            "right": {"op": "literal", "value": root_span_ids[0]},
+            "left": {"op": "ident", "name": field_path},
+            "right": {"op": "literal", "value": values[0]},
         }
     return {
         "op": "or",
         "children": [
             {
                 "op": "eq",
-                "left": {"op": "ident", "name": ["root_span_id"]},
-                "right": {"op": "literal", "value": root_span_id},
+                "left": {"op": "ident", "name": field_path},
+                "right": {"op": "literal", "value": value},
             }
-            for root_span_id in root_span_ids
+            for value in values
         ],
     }
 
@@ -337,6 +329,35 @@ def post_btql_with_retries(
             time.sleep(sleep_seconds)
 
 
+def post_btql_sql_with_retries(
+    *,
+    query_text: str,
+    max_retries: int,
+    retry_backoff_seconds: float,
+    page_desc: str,
+):
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            response = braintrust.api_conn().post(
+                "btql",
+                json={"query": query_text, "fmt": "json"},
+                headers={"Accept-Encoding": "gzip"},
+            )
+            response.raise_for_status()
+            return response
+        except Exception as exc:
+            if attempt > max_retries or not should_retry_btql_error(exc):
+                raise
+            sleep_seconds = retry_backoff_seconds * (2 ** (attempt - 1))
+            tqdm.write(
+                f"{page_desc}: retry {attempt}/{max_retries} after {exc} "
+                f"(sleeping {sleep_seconds:.1f}s)"
+            )
+            time.sleep(sleep_seconds)
+
+
 def iter_btql_rows(
     *,
     project_id: str,
@@ -385,33 +406,55 @@ def iter_btql_rows(
         page_bar.close()
 
 
-def fetch_root_rows(project_id: str, args: SimpleNamespace) -> list[dict[str, Any]]:
-    roots: list[dict[str, Any]] = []
-    root_bar = tqdm(desc="Production roots", unit="root")
+def fetch_experiment_object(args: SimpleNamespace) -> dict[str, Any]:
+    if args.experiment_id:
+        response = braintrust.api_conn().get(f"/v1/experiment/{args.experiment_id}")
+        response.raise_for_status()
+        return response.json()
 
-    try:
-        for row in iter_btql_rows(
-            project_id=project_id,
-            query_filter=build_root_filter(),
-            page_size=args.page_size,
-            query_source="latency_current_root_scan",
-            page_desc="Root pages",
-            max_retries=args.max_btql_retries,
-            retry_backoff_seconds=args.retry_backoff_seconds,
-        ):
-            created = parse_iso_datetime(row.get("created"))
-            if args.cutoff_datetime is not None and (
-                created is None or created < args.cutoff_datetime
-            ):
-                continue
-            roots.append(row)
-            root_bar.update(1)
-            if args.max_root_rows is not None and len(roots) >= args.max_root_rows:
-                break
-    finally:
-        root_bar.close()
+    response = braintrust.api_conn().get(
+        "/v1/experiment", params={"project_name": args.project}
+    )
+    response.raise_for_status()
+    experiments = extract_braintrust_items(response.json())
+    if args.experiment_name:
+        experiment = next(
+            (item for item in experiments if item.get("name") == args.experiment_name), None
+        )
+        if not experiment:
+            raise RuntimeError(
+                f"Experiment {args.experiment_name!r} not found in project {args.project!r}"
+            )
+        return experiment
 
-    return roots
+    beta_experiments = [
+        item
+        for item in experiments
+        if (item.get("metadata") or {}).get("run_type") == "beta_baseline"
+    ]
+    if not beta_experiments:
+        raise RuntimeError(
+            "No beta_baseline experiments found. Set SCRIPT_CONFIG['experiment_name'] or "
+            "SCRIPT_CONFIG['experiment_id']."
+        )
+    beta_experiments.sort(key=lambda item: item.get("created", ""), reverse=True)
+    return beta_experiments[0]
+
+
+def fetch_experiment_rows(experiment_id: str, args: SimpleNamespace) -> list[dict[str, Any]]:
+    query = f"""
+    SELECT id, input, output, expected, metadata, tags, scores
+    FROM experiment('{experiment_id}')
+    LIMIT 1000
+    """
+    response = post_btql_sql_with_retries(
+        query_text=query,
+        max_retries=args.max_btql_retries,
+        retry_backoff_seconds=args.retry_backoff_seconds,
+        page_desc="Experiment rows",
+    )
+    payload = response.json()
+    return extract_braintrust_items(payload)
 
 
 def batched_strings(values: list[str], batch_size: int):
@@ -453,6 +496,26 @@ def fetch_rows_for_root_ids(
         batch_bar.close()
 
     return rows_by_root
+
+
+def extract_trace_id_from_experiment_row(row: dict[str, Any]) -> str | None:
+    output = row.get("output") or {}
+    if isinstance(output, dict):
+        trace_id = output.get("trace_id")
+        if isinstance(trace_id, str) and trace_id:
+            return trace_id
+    return None
+
+
+def build_experiment_row_map(
+    experiment_rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    row_map: dict[str, dict[str, Any]] = {}
+    for row in experiment_rows:
+        trace_id = extract_trace_id_from_experiment_row(row)
+        if trace_id:
+            row_map[trace_id] = row
+    return row_map
 
 
 def get_metrics(row: dict[str, Any]) -> dict[str, Any]:
@@ -656,12 +719,29 @@ def build_span_row(
 
 
 def build_trace_row(
-    root_row: dict[str, Any], rows: list[dict[str, Any]]
+    root_row: dict[str, Any],
+    rows: list[dict[str, Any]],
+    experiment_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     root_metadata = get_metadata(root_row)
     root_metrics = get_metrics(root_row)
     root_input = get_input_payload(root_row)
     root_output = get_output_payload(root_row)
+    experiment_input = (
+        experiment_row.get("input")
+        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("input"), dict)
+        else {}
+    )
+    experiment_output = (
+        experiment_row.get("output")
+        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("output"), dict)
+        else {}
+    )
+    experiment_metadata = (
+        experiment_row.get("metadata")
+        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("metadata"), dict)
+        else {}
+    )
     root_start_s, root_end_s = get_time_range_seconds(root_row)
     total_turn_ms = get_int(root_metrics.get("latency_ms")) or get_duration_ms(root_row)
 
@@ -730,9 +810,16 @@ def build_trace_row(
         else None
     )
 
-    summary_text = root_input.get("summary")
-    question = normalize_text(root_input.get("message"))
+    summary_text = experiment_input.get("summary_text")
+    if not isinstance(summary_text, str):
+        summary_text = root_input.get("summary")
+    question = normalize_text(experiment_input.get("question"))
+    if question is None:
+        question = normalize_text(root_input.get("message"))
     output_content = root_output.get("content")
+    request = experiment_output.get("request") or {}
+    response_payload = experiment_output.get("response") or {}
+    error_payload = experiment_output.get("error") or {}
 
     return {
         "root_span_id": root_row.get("root_span_id"),
@@ -741,15 +828,19 @@ def build_trace_row(
         "question_char_count": len(question) if question else 0,
         "summary_text": summary_text,
         "summary_char_count": len(summary_text) if isinstance(summary_text, str) else 0,
-        "page_url": root_input.get("page_url"),
+        "page_url": experiment_input.get("page_url") or root_input.get("page_url"),
         "origin": root_metadata.get("origin"),
         "model": root_metadata.get("model"),
         "route": root_metadata.get("route"),
-        "session_id": root_metadata.get("session_id"),
+        "session_id": experiment_metadata.get("session_id") or root_metadata.get("session_id"),
         "user_id": root_metadata.get("user_id"),
-        "summary_included": root_metadata.get("summary_included"),
-        "core_prompt_id": root_metadata.get("core_prompt_id"),
-        "core_prompt_version": root_metadata.get("core_prompt_version"),
+        "summary_included": experiment_metadata.get("summary_included")
+        if "summary_included" in experiment_metadata
+        else root_metadata.get("summary_included"),
+        "core_prompt_id": experiment_metadata.get("effective_core_prompt_id")
+        or root_metadata.get("core_prompt_id"),
+        "core_prompt_version": experiment_metadata.get("effective_core_prompt_version")
+        or root_metadata.get("core_prompt_version"),
         "root_start_s": root_start_s,
         "root_end_s": root_end_s,
         "total_turn_ms": total_turn_ms,
@@ -802,6 +893,26 @@ def build_trace_row(
         "tool_name_counts_json": to_json_string(dict(tool_name_counts)),
         "tool_name_duration_ms_json": to_json_string(dict(tool_name_duration_ms)),
         "root_tags_json": to_json_string(normalize_string_list(root_row.get("tags"))),
+        "experiment_row_id": experiment_row.get("id") if experiment_row else None,
+        "experiment_status": experiment_output.get("status"),
+        "experiment_trace_id": experiment_output.get("trace_id"),
+        "request_user_message_char_count": get_int(
+            request.get("user_message_char_count")
+        ),
+        "request_question_char_count": get_int(request.get("question_char_count")),
+        "experiment_first_event_latency_ms": get_int(
+            (experiment_output.get("metrics") or {}).get("first_event_latency_ms")
+        ),
+        "experiment_harness_latency_ms": get_int(
+            (experiment_output.get("metrics") or {}).get("harness_latency_ms")
+        ),
+        "experiment_error_type": error_payload.get("type"),
+        "experiment_error_message": error_payload.get("message"),
+        "experiment_response_char_count": (
+            len(response_payload.get("content"))
+            if isinstance(response_payload.get("content"), str)
+            else 0
+        ),
     }
 
 
@@ -1400,9 +1511,10 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def build_output_dir(base_output_dir: Path, args: SimpleNamespace) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    experiment_slug_source = args.experiment_name or args.experiment_id or "latest-beta-baseline"
     slug = "".join(
         ch.lower() if ch.isalnum() else "-"
-        for ch in f"{args.project}-prod-last-{args.lookback_days}d"
+        for ch in f"{args.project}-{experiment_slug_source}"
     ).strip("-")
     slug = "-".join(part for part in slug.split("-") if part)
     return base_output_dir / f"{timestamp}-{slug}"
@@ -1490,13 +1602,8 @@ def write_run_outputs(
     metadata = {
         "generated_at": datetime.now(UTC).isoformat(),
         "project": args.project,
-        "production_origin": PRODUCTION_ORIGIN,
-        "lookback_days": args.lookback_days,
-        "cutoff_datetime_utc": (
-            args.cutoff_datetime.isoformat()
-            if args.cutoff_datetime is not None
-            else None
-        ),
+        "experiment_id": args.experiment_id,
+        "experiment_name": args.experiment_name,
         "trace_row_count": len(trace_rows),
         "span_row_count": len(span_rows),
         "partition_row_count": len(partition_rows),
@@ -1536,7 +1643,7 @@ def print_partition_summary(rows: list[dict[str, Any]]) -> None:
     )
 
 
-def main() -> int:
+def run_export() -> Path:
     args = get_config()
     if args.page_size <= 0:
         raise RuntimeError("page_size must be positive")
@@ -1546,36 +1653,72 @@ def main() -> int:
         raise RuntimeError("max_btql_retries must be non-negative")
     if args.retry_backoff_seconds <= 0:
         raise RuntimeError("retry_backoff_seconds must be positive")
-    if args.lookback_days is not None and args.lookback_days <= 0:
-        raise RuntimeError("lookback_days must be positive when provided")
-    if args.max_root_rows is not None and args.max_root_rows <= 0:
-        raise RuntimeError("max_root_rows must be positive when provided")
     if args.tool_analysis_window_ms <= 0:
         raise RuntimeError("tool_analysis_window_ms must be positive")
 
     api_key = require_api_key()
     braintrust.login(api_key=api_key)
 
-    project_id = get_project_id(args.project)
-    root_rows = fetch_root_rows(project_id, args)
-    if not root_rows:
-        raise RuntimeError("No production root traces matched the requested window")
+    experiment = fetch_experiment_object(args)
+    args.experiment_id = experiment.get("id")
+    args.experiment_name = experiment.get("name")
 
-    root_rows_by_id = {
-        str(row["root_span_id"]): row
+    project_id = get_project_id(args.project)
+    experiment_rows = fetch_experiment_rows(args.experiment_id, args)
+    if not experiment_rows:
+        raise RuntimeError("No experiment rows found")
+    experiment_rows_by_trace = build_experiment_row_map(experiment_rows)
+    trace_ids = list(experiment_rows_by_trace)
+    if not trace_ids:
+        raise RuntimeError("No trace_id values found in experiment row outputs")
+
+    root_rows = list(
+        iter_btql_rows(
+            project_id=project_id,
+            query_filter={
+                "op": "and",
+                "children": [
+                    build_root_filter(),
+                    build_string_field_filter(["id"], trace_ids),
+                ],
+            },
+            page_size=args.page_size,
+            query_source="latency_experiment_root_scan",
+            page_desc="Experiment root pages",
+            max_retries=args.max_btql_retries,
+            retry_backoff_seconds=args.retry_backoff_seconds,
+        )
+    )
+    if not root_rows:
+        raise RuntimeError("No root trace rows matched the experiment trace ids")
+
+    root_rows_by_trace_id = {
+        str(row["id"]): row
         for row in root_rows
-        if isinstance(row.get("root_span_id"), str) and row.get("root_span_id")
+        if isinstance(row.get("id"), str) and row.get("id")
     }
-    root_span_ids = list(root_rows_by_id)
+    matched_trace_ids = [
+        trace_id for trace_id in trace_ids if trace_id in root_rows_by_trace_id
+    ]
+    root_span_ids = [
+        root_rows_by_trace_id[trace_id]["root_span_id"]
+        for trace_id in matched_trace_ids
+        if isinstance(root_rows_by_trace_id[trace_id].get("root_span_id"), str)
+        and root_rows_by_trace_id[trace_id].get("root_span_id")
+    ]
+    if not root_span_ids:
+        raise RuntimeError("Matched experiment trace ids had no root_span_id values")
     rows_by_root = fetch_rows_for_root_ids(project_id, root_span_ids, args)
 
     trace_rows: list[dict[str, Any]] = []
     span_rows: list[dict[str, Any]] = []
     partition_rows: list[dict[str, Any]] = []
-    trace_bar = tqdm(root_span_ids, desc="Building dataframes", unit="trace")
+    trace_bar = tqdm(matched_trace_ids, desc="Building dataframes", unit="trace")
 
-    for root_span_id in trace_bar:
-        root_row = root_rows_by_id[root_span_id]
+    for trace_id in trace_bar:
+        root_row = root_rows_by_trace_id[trace_id]
+        root_span_id = root_row["root_span_id"]
+        experiment_row = experiment_rows_by_trace.get(trace_id)
         rows = rows_by_root.get(root_span_id, [root_row])
         rows = sorted(
             rows,
@@ -1585,7 +1728,7 @@ def main() -> int:
             ),
         )
         root_start_s, root_end_s = get_time_range_seconds(root_row)
-        trace_row = build_trace_row(root_row, rows)
+        trace_row = build_trace_row(root_row, rows, experiment_row=experiment_row)
         trace_rows.append(trace_row)
 
         per_trace_span_rows: list[dict[str, Any]] = []
@@ -1623,7 +1766,13 @@ def main() -> int:
         f"{len(partition_rows)} partition rows to "
         f"{output_dir / 'trace_latency_partition_rows.csv'}"
     )
+    print(f"Experiment: {args.experiment_name} ({args.experiment_id})")
     print_partition_summary(partition_rows)
+    return output_dir
+
+
+def main() -> int:
+    run_export()
     return 0
 
 
