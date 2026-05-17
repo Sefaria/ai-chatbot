@@ -109,6 +109,12 @@ class TestToolDispatch:
                 ("Genesis 1:1", "1"),
             ),
             (
+                "get_links_between_texts",
+                {"reference": "Genesis 1:1", "with_text": "1", "category": "Commentary"},
+                "get_links_between_texts",
+                ("Genesis 1:1", "1", "Commentary"),
+            ),
+            (
                 "search_in_book",
                 {"query": "light", "book_name": "Genesis", "size": 5},
                 "search_in_book",

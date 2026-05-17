@@ -1,6 +1,12 @@
 /**
  * Date formatting utilities
  */
+import { get } from 'svelte/store';
+import { locale } from '../i18n/index.js';
+
+function activeLocale() {
+  return get(locale) || 'en';
+}
 
 /**
  * Format a date for display as a date marker
@@ -8,7 +14,7 @@
  * @returns {string} Formatted date string (e.g., "Jan 5, 2026")
  */
 export function formatDateMarker(date) {
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(activeLocale(), {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
@@ -22,10 +28,10 @@ export function formatDateMarker(date) {
  */
 export function formatTime(isoString) {
   const date = new Date(isoString);
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString(activeLocale(), {
+    hour12: true,
     hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
+    minute: '2-digit'
   });
 }
 
