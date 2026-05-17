@@ -1,0 +1,39 @@
+name: Push Prompts to Braintrust
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "prompts/core.py"
+      - "prompts/guardrail.py"
+      - "prompts/response_format.py"
+      - "prompts/router.py"
+      - "server/chatbot_server/model_defaults.py"
+      - "prompts/prompt_text/core.md"
+      - "prompts/prompt_text/guardrail.md"
+      - "prompts/prompt_text/response_format.md"
+      - "prompts/prompt_text/router.md"
+
+jobs:
+  push-prompts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install 'braintrust==0.5.3'
+      - env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          # This is what makes CI the only routine path to prod. Each prompt
+          # file refuses to push without either PROMPT_SLUG_OVERRIDE or this
+          # var being set. CI sets it; developers don't (unless they're
+          # emergency-pushing, which the plan documents as an escape hatch).
+          BRAINTRUST_PUSH_TARGET: prod
+        run: |
+          set -e
+          for file in prompts/core.py prompts/guardrail.py prompts/response_format.py prompts/router.py server/chatbot_server/model_defaults.py; do
+            echo "Pushing: $file"
+            python "$file"
+          done
