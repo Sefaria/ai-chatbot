@@ -46,6 +46,7 @@ services:
       # GitHub integration (PR-based workflow)
       WEBLATE_GITHUB_USERNAME: ${WEBLATE_GITHUB_USERNAME}
       WEBLATE_GITHUB_TOKEN: ${WEBLATE_GITHUB_TOKEN}
+      WEBLATE_GITHUB_HOST: api.github.com
       WEBLATE_GITHUB_WEBHOOK_SECRET: ${WEBLATE_GITHUB_WEBHOOK_SECRET}
 
       # Reverse proxy / TLS handling (Coolify handles TLS termination)
