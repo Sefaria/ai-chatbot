@@ -106,6 +106,7 @@ Create a `.env` file in the `server/` directory with your API keys.
 
 - [Architecture](docs/ARCHITECTURE.md) - System design and API reference
 - [Fresh Install](docs/FRESH_INSTALL.md) - Local setup and troubleshooting guide
+- [Weblate i18n Ops](docs/i18n-weblate.md) - Coolify deployment and translation workflow
 - [Testing](docs/TESTING.md) - Test commands and CI details
 
 ## License
