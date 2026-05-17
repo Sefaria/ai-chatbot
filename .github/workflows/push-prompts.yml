@@ -5,7 +5,15 @@ on:
   push:
     branches: [main]
     paths:
-      - "prompts/*.py"
+      - "prompts/core.py"
+      - "prompts/guardrail.py"
+      - "prompts/response_format.py"
+      - "prompts/router.py"
+      - "server/chatbot_server/model_defaults.py"
+      - "prompts/prompt_text/core.md"
+      - "prompts/prompt_text/guardrail.md"
+      - "prompts/prompt_text/response_format.md"
+      - "prompts/prompt_text/router.md"
 
 jobs:
   push-prompts:
@@ -25,7 +33,7 @@ jobs:
           BRAINTRUST_PUSH_TARGET: prod
         run: |
           set -e
-          for file in prompts/*.py; do
+          for file in prompts/core.py prompts/guardrail.py prompts/response_format.py prompts/router.py server/chatbot_server/model_defaults.py; do
             echo "Pushing: $file"
             python "$file"
           done
