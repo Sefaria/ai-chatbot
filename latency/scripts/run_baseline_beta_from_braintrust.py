@@ -80,9 +80,9 @@ SCRIPT_CONFIG = {
         "CHATBOT_BETA_BASE_URL", "https://chat-beta.sefaria.org"
     ),
     "dataset_fetch_batch_size": 200,
-    "limit": 3,
+    "limit": None,
     "stop_on_error": False,
-    "max_concurrency": 1,
+    "max_concurrency": 8,
     "user_id": "eval-user",
     "token_expires_in_days": 365,
     "braintrust_experiment_name": None,

@@ -22,23 +22,52 @@ This folder is organized around the ongoing latency workflow, not one-off explor
 3. Each run writes local artifacts to `runs/` and also logs a Braintrust experiment.
 4. `analyze_experiment_latency.py` takes one Braintrust experiment, fetches its trace/span data, and writes generated outputs to `analysis/`.
 
-### Primary entrypoints
+### Running the beta baseline
 
-- `latency/scripts/run_baseline_beta_from_braintrust.py`
-  - run the baseline dataset against beta and create a Braintrust experiment
-- `latency/scripts/analyze_experiment_latency.py`
-  - analyze one Braintrust experiment end-to-end and produce the plots and tables
+Anyone with the repo and the required credentials can run the baseline against
+`chat-beta.sefaria.org`.
 
-### Archived scripts
+Required credentials:
 
-- `latency/archive/run_baseline_local.py`
-  - local replay runner kept for reference
-- `latency/archive/sample_braintrust_questions.py`
-  - older local sampling utility now superseded by the Braintrust dataset workflow
-- `latency/archive/upload_questions_dataset_to_braintrust.py`
-  - one-off dataset upload utility kept for reference
+1. Braintrust API access
+   - set `BRAINTRUST_API_KEY` in your shell or local env
+2. Beta chatbot auth
+   - create `server/.env.beta.local`
+   - add the beta secret:
 
-### Notes
+```bash
+CHATBOT_BETA_BASE_URL=https://chat-beta.sefaria.org
+CHATBOT_USER_TOKEN_SECRET_BETA=...
+```
 
-- Generated data under `runs/` and `analysis/` is not source-of-truth and should stay out of git.
-- The intended workflow now starts from an existing Braintrust dataset rather than rebuilding local sampled datasets.
+To create a beta chatbot token manually from that secret:
+
+```bash
+python evals/generate_prod_token.py --secret "$CHATBOT_USER_TOKEN_SECRET_BETA" --user-id eval-user
+```
+
+That prints a token you can save as:
+
+```bash
+CHATBOT_USER_TOKEN_BETA=...
+```
+
+In practice, the beta baseline script will generate `CHATBOT_USER_TOKEN_BETA`
+for you automatically from `CHATBOT_USER_TOKEN_SECRET_BETA`, so storing the
+secret is usually enough.
+
+`server/.env.beta.local` is local-only and ignored by git.
+
+How to run:
+
+1. Run the beta baseline dataset:
+
+```bash
+python3 latency/scripts/run_baseline_beta_from_braintrust.py
+```
+
+2. Analyze the latest beta experiment:
+
+```bash
+python3 latency/scripts/analyze_experiment_latency.py
+```

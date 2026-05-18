@@ -96,7 +96,7 @@ SCRIPT_CONFIG = {
     "sampled_timeline_count": 60,
     "sampled_timeline_above_mean_count": 60,
     "timeline_figsize": (14, 4),
-    "llm_figsize": (12, 3.5),
+    "llm_figsize": (12, 5.8),
     "variance_figsize": (9, 6),
     "sampled_timeline_width": 16,
     "sampled_timeline_row_height": 0.38,
@@ -295,6 +295,11 @@ def plot_stacked_mean_bar(
     axis_formatter: Any,
     total_mean_ms: float,
     total_std_ms: float,
+    subtitle_y: float = 1.05,
+    total_y: float = 1.00,
+    footer_y: float = -0.14,
+    explanation_start_y: float = -0.27,
+    explanation_line_step: float = 0.14,
 ) -> None:
     left = 0.0
     small_segment_index = 0
@@ -333,7 +338,7 @@ def plot_stacked_mean_bar(
     ax.set_title(title, fontsize=16, pad=26)
     ax.text(
         0.5,
-        1.05,
+        subtitle_y,
         subtitle,
         transform=ax.transAxes,
         ha="center",
@@ -343,7 +348,7 @@ def plot_stacked_mean_bar(
     )
     ax.text(
         0.5,
-        1.00,
+        total_y,
         f"Total mean: {format_ms(total_mean_ms)}   σ: {format_ms(total_std_ms)}",
         transform=ax.transAxes,
         ha="center",
@@ -354,7 +359,7 @@ def plot_stacked_mean_bar(
     )
     ax.text(
         0.5,
-        -0.14,
+        footer_y,
         footer,
         transform=ax.transAxes,
         ha="center",
@@ -364,8 +369,8 @@ def plot_stacked_mean_bar(
     )
     ax.set_ylim(-0.30, 0.92)
 
-    line_y = -0.27
-    line_step = 0.14
+    line_y = explanation_start_y
+    line_step = explanation_line_step
     label_x = 0.01
     description_x = 0.20
     for index, component in enumerate(components):
@@ -778,8 +783,13 @@ def main() -> int:
         axis_formatter=FuncFormatter(format_axis_seconds),
         total_mean_ms=llm_total_mean,
         total_std_ms=llm_total_std,
+        subtitle_y=1.06,
+        total_y=1.01,
+        footer_y=-0.09,
+        explanation_start_y=-0.22,
+        explanation_line_step=0.115,
     )
-    fig.tight_layout()
+    fig.subplots_adjust(top=0.80, bottom=0.40, left=0.06, right=0.98)
     fig.savefig(
         output_dir / "llm_context_mean_decomposition.png", dpi=150, bbox_inches="tight"
     )
