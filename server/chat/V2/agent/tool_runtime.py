@@ -78,6 +78,7 @@ class ToolRuntime:
                     AgentProgressUpdate(
                         type="tool_end",
                         tool_name=tool_name,
+                        tool_input=tool_input,
                         is_error=result.is_error,
                         output_preview=output_preview,
                     )

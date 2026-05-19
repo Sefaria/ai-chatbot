@@ -8,6 +8,7 @@
   import { renderMarkdown } from '../lib/markdown.js';
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
+  import SourceSuggestion from './SourceSuggestion.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -43,6 +44,13 @@
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
+
+  // Tools that fetch a specific text by reference — the only ones worth suggesting to read
+  const SOURCE_PROVIDING_TOOLS = new Set([
+    'get_text', 'get_english_translations'
+  ]);
+  let firstSourcePreview = $state(null);
+  let sourcePreviewMessageId = $state(null);
 
   // Settings state
   let showSettings = $state(false);
@@ -458,6 +466,8 @@
     isSending = true;
     currentProgress = null;
     toolHistory = [];
+    firstSourcePreview = null;
+    sourcePreviewMessageId = null;
     updateSessionActivity(sessionId);
 
     try {
@@ -469,7 +479,7 @@
           } else if (progress?.type === 'tool_start') {
             displayText = progress.description || `Running ${progress.toolName}`;
           }
-          displayText = displayText.replace(/…|\.\.\./, '');
+          displayText = displayText?.replace(/…|\.\.\./, '');
           currentProgress = {...progress, displayText};
 
           // Track tool usage in history
@@ -481,8 +491,21 @@
               startTime: Date.now()
             }];
           } else if (progress.type === 'tool_end') {
-            toolHistory = toolHistory.map((t, i) => 
-              i === toolHistory.length - 1 
+            const isFirstSuccessfulSourceTool = (
+              !progress.isError &&
+              firstSourcePreview === null &&
+              SOURCE_PROVIDING_TOOLS.has(progress.toolName)
+            );
+            if (isFirstSuccessfulSourceTool) {
+              const matchingTool = toolHistory[toolHistory.length - 1];
+              firstSourcePreview = {
+                toolName: progress.toolName,
+                description: matchingTool?.description || '',
+                toolInput: progress.toolInput || null,
+              };
+            }
+            toolHistory = toolHistory.map((t, i) =>
+              i === toolHistory.length - 1
                 ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
                 : t
             );
@@ -519,6 +542,7 @@
       };
 
       messages = [...messages, assistantMessage];
+      sourcePreviewMessageId = assistantMessage.messageId;
       saveMessagesToStorage();
       scrollToResponseStart();
 
@@ -1006,6 +1030,9 @@
               <span>{item.date}</span>
             </div>
           {:else if item.role === 'assistant'}
+            {#if firstSourcePreview && item.messageId === sourcePreviewMessageId}
+              <SourceSuggestion preview={firstSourcePreview} streaming={false} />
+            {/if}
             {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
           {:else}
             <div class="message user">
@@ -1048,6 +1075,10 @@
               {/if}
             </div>
           </div>
+        {/if}
+
+        {#if isSending && firstSourcePreview}
+          <SourceSuggestion preview={firstSourcePreview} streaming={true} />
         {/if}
 
         {#if limitReached}
@@ -2022,6 +2053,73 @@ inset: 8px;
 
   .message-content :global(.response-quote) {
     /*  place holder */
+  }
+
+  /* SourceSuggestion styles — must live here so they are injected into the shadow DOM */
+  :global(.source-suggestion) {
+    margin: 6px 12px 0;
+    border-radius: 8px;
+    border: 1px solid #e9d96a;
+    background: #fffde7;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  :global(.source-header) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 30px;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: start;
+    color: #4a4700;
+    font-size: 12px;
+    font-family: inherit;
+    line-height: 1.4;
+  }
+  :global(.source-header[disabled]) {
+    cursor: default;
+  }
+  :global(.source-header:not([disabled]):hover) {
+    background: #fff9c4;
+  }
+  :global(.source-book-icon) {
+    flex-shrink: 0;
+    color: #8a7a00;
+  }
+  :global(.source-header-text) {
+    flex: 1;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global(.source-chevron) {
+    flex-shrink: 0;
+    color: #8a7a00;
+    transition: transform 0.2s ease;
+  }
+  :global(.source-chevron.rotated) {
+    transform: rotate(180deg);
+  }
+  :global(.source-body) {
+    padding: 6px 10px 8px;
+    border-top: 1px solid #f0e68c;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  :global(.source-link) {
+    color: #18345D;
+    text-decoration: underline;
+    font-size: 12px;
+    align-self: flex-start;
+  }
+  :global(.source-link:hover) {
+    color: #465D7D;
   }
 
 </style>
