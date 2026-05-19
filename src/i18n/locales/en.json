@@ -42,6 +42,9 @@
   "status.done": "Done",
   "status.toolError": "Tool error",
 
+  "source.readWhileWaiting": "Found a source — read while you wait",
+  "source.readOnSefaria": "Read on Sefaria",
+
   "limit.reached": "The conversation has reached its limit.",
   "limit.startNew": "Start a new chat to keep exploring.",
   "limit.maxTurnsRestart.aria": "Max turns restart",
