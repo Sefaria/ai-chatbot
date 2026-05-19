@@ -286,6 +286,73 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
     },
 }
 
+TOOL_SEARCH_USER_SOURCE_SHEETS = {
+    "name": "search_user_source_sheets",
+    "description": "Searches the authenticated user's own Sefaria source sheets by title, summary, tags, and topics. Use this when the user refers to 'my source sheet', 'my sheets', or wants to reuse an idea or workflow from one of their sheets. This tool automatically uses the authenticated user's stored session token; never ask the user for a user ID or token.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Words or phrase to match against the user's source sheet titles, summaries, tags, and topics. Omit to list recent sheets.",
+            },
+            "limit": {
+                "type": "integer",
+                "default": 10,
+                "description": "Maximum number of matching sheets to return.",
+            },
+        },
+    },
+}
+
+TOOL_GET_SOURCE_SHEET = {
+    "name": "get_source_sheet",
+    "description": "Retrieves the contents of a Sefaria source sheet by sheet ID. Use this after identifying a relevant sheet, especially when the user refers to one of their own sheets. This tool automatically includes the retained session token when available so unlisted user sheets can be read.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sheet_id": {
+                "type": "integer",
+                "description": "The numeric Sefaria sheet ID to load.",
+            }
+        },
+        "required": ["sheet_id"],
+    },
+}
+
+TOOL_CREATE_SOURCE_SHEET = {
+    "name": "create_source_sheet",
+    "description": "Creates a new authenticated Sefaria source sheet. Provide the sheet title, summary, and an ordered list of sources. Ref sources should include both ref and heRef; the tool will fetch the English and Hebrew text and serialize the final sheet payload automatically.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "The source sheet title.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "A short summary for the sheet.",
+                "default": "",
+            },
+            "sources": {
+                "type": "array",
+                "description": "Ordered list of sheet sources. Each item should contain either outsideText, or ref plus heRef.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "outsideText": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "heRef": {"type": "string"},
+                        "node": {"type": "integer"},
+                    },
+                },
+            },
+        },
+        "required": ["title", "sources"],
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -309,6 +376,15 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "catalog_query": TOOL_CATALOG_QUERY,
     "get_available_manuscripts": TOOL_GET_AVAILABLE_MANUSCRIPTS,
     "get_manuscript_image": TOOL_GET_MANUSCRIPT_IMAGE,
+    "search_user_source_sheets": TOOL_SEARCH_USER_SOURCE_SHEETS,
+    "get_source_sheet": TOOL_GET_SOURCE_SHEET,
+    "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
+}
+
+LABS_TOOL_NAMES = {
+    "search_user_source_sheets",
+    "get_source_sheet",
+    "create_source_sheet",
 }
 
 # ============================================================================
@@ -330,9 +406,16 @@ def get_tools_by_names(names: list[str]) -> list[dict[str, Any]]:
 
 
 def get_all_tools() -> list[dict[str, Any]]:
-    """Get all available tool schemas."""
-    return list(ALL_TOOLS.values())
+    """Get all generally available tool schemas."""
+    return [tool for name, tool in ALL_TOOLS.items() if name not in LABS_TOOL_NAMES]
+
+
+def get_tools_for_labs(labs: bool = False) -> list[dict[str, Any]]:
+    """Get tool schemas available for the request's Labs setting."""
+    if labs:
+        return list(ALL_TOOLS.values())
+    return get_all_tools()
 
 
 # Legacy compatibility
-SEFARIA_TOOL_SCHEMAS = get_all_tools()
+SEFARIA_TOOL_SCHEMAS = get_tools_for_labs(labs=True)

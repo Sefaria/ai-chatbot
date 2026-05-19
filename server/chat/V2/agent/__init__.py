@@ -13,7 +13,13 @@ from .claude_service import ClaudeAgentService, get_agent_service
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
-from .tool_schemas import ALL_TOOLS, SEFARIA_TOOL_SCHEMAS, get_all_tools, get_tools_by_names
+from .tool_schemas import (
+    ALL_TOOLS,
+    SEFARIA_TOOL_SCHEMAS,
+    get_all_tools,
+    get_tools_by_names,
+    get_tools_for_labs,
+)
 
 __all__ = [
     "ClaudeAgentService",
@@ -27,6 +33,7 @@ __all__ = [
     "ALL_TOOLS",
     "get_all_tools",
     "get_tools_by_names",
+    "get_tools_for_labs",
     "SefariaClient",
     "SefariaToolExecutor",
 ]
