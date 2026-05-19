@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from .contracts import AgentProgressUpdate
+from .contracts import AgentProgressUpdate, MessageContext
 from .helpers import truncate
 from .tool_executor import SefariaToolExecutor, describe_tool_call
 
@@ -28,11 +28,13 @@ class ToolRuntime:
         self,
         *,
         tool_schemas: list[dict[str, Any]],
+        context: MessageContext,
         emit: Callable[[AgentProgressUpdate], None],
         tool_calls_list: list[dict[str, Any]],
     ) -> list[Any]:
         """Create SDK-compatible tool handlers from JSON schemas."""
         sdk_tools: list[Any] = []
+        self.tool_executor.set_message_context(context)
 
         def build_handler(
             tool_name: str,
