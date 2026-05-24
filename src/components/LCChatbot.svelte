@@ -839,6 +839,7 @@
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
+              class:panel-close-icon={mode === 'floating'}
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
               width="16"
@@ -1701,6 +1702,10 @@
   }
 
   .interface-hebrew .send-btn svg {
+    transform: scaleX(-1);
+  }
+
+  .interface-hebrew .panel-close-icon {
     transform: scaleX(-1);
   }
 
