@@ -35,6 +35,7 @@ DEFAULT_SEFARIA_BASE_URL = os.environ.get(
     "SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org"
 )
 
+
 def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or "https://www.sefaria.org"
 
@@ -677,7 +678,9 @@ class SefariaClient:
     ) -> list[dict[str, Any]]:
         """Fill in source text HTML for ref sources before sheet creation."""
         normalized_sources = prepare_source_sheet_sources(sources)
-        ref_indices = [index for index, source in enumerate(normalized_sources) if source.get("ref")]
+        ref_indices = [
+            index for index, source in enumerate(normalized_sources) if source.get("ref")
+        ]
         if not ref_indices:
             return normalized_sources
 
@@ -862,7 +865,9 @@ class SefariaClient:
         if not value:
             return False
         normalized_value = value.casefold()
-        return normalized_query in normalized_value or any(term in normalized_value for term in terms)
+        return normalized_query in normalized_value or any(
+            term in normalized_value for term in terms
+        )
 
     @staticmethod
     def _normalize_sheet_limit(limit: Any) -> int:

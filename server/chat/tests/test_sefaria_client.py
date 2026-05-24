@@ -456,6 +456,8 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
 class TestSearchUserSourceSheets:
     """Test authenticated source sheet search."""
 
@@ -668,7 +670,10 @@ class TestCreateSourceSheet:
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
         assert posted_payload["sources"][2]["node"] == 3
-        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert (
+            posted_payload["sources"][2]["text"]["en"]
+            == "<p>Now the serpent was the shrewdest.</p>"
+        )
         assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
         assert posted_payload["nextNode"] == 4
 
@@ -676,6 +681,7 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{DEFAULT_SEFARIA_BASE_URL}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""
@@ -697,4 +703,3 @@ class TestSearchInBook:
             await client.search_in_book("פרעה", "Likutei Moharan", 10)
 
         mock_text_search.assert_awaited_once_with("פרעה", ["Chasidut/Breslov/Likutei Moharan"], 10)
-
