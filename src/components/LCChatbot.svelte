@@ -1200,6 +1200,7 @@
 
   .lc-chatbot-container.interface-hebrew {
     direction: rtl;
+    font-family: Heebo;
   }
 
   .lc-chatbot-container.mode-docked.is-open {
@@ -1348,15 +1349,18 @@
     gap: 6px;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
-    font-weight: 600;
     margin: 0;
     line-height: 1.1;
     color: var(--brand-sefaria-blue);
     font-family: Roboto;
     font-style: normal;
     font-weight: 600;
+  }
+
+  .interface-hebrew .lc-chatbot-header h2 {
     line-height: normal;
   }
+
 
   .lc-chatbot-header h2 img {
     display: block;
@@ -1945,7 +1949,6 @@ inset: 8px;
     background-image: url("data:image/svg+xml,...");
     background-repeat: no-repeat;
     background-position: right 12px center;
-    padding-right: 36px;
   }
 
   .feedback-modal-select:focus {
@@ -1955,8 +1958,6 @@ inset: 8px;
   .feedback-modal-select.is-placeholder {
     color: var(--lc-disabled-text);
   }
-
-
 
   .feedback-modal-input:focus {
     border-color: var(--brand-sefaria-blue);
@@ -2022,17 +2023,16 @@ inset: 8px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 16px;
     font-style: normal;
-    font-weight: 700;
     line-height: normal;
+  }
+  .interface-hebrew .message-content :global(.response-title) {
+    font-weight: 700;
   }
 
   .message-content :global(.response-generic) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
     line-height: normal;
@@ -2040,8 +2040,7 @@ inset: 8px;
 
   .message-content :global(.response-section) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
@@ -2049,8 +2048,7 @@ inset: 8px;
 
   .message-content :global(.response-list) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
     line-height: normal;
@@ -2065,8 +2063,7 @@ inset: 8px;
     text-underline-offset: auto;
     text-underline-position: from-font;
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
