@@ -46,7 +46,7 @@
     "assistant.settings.back": "← Back",
     "assistant.settings.back.aria": "Back to chat",
     "assistant.settings.title": "Agent Settings",
-    "assistant.settings.loading": "Loading defaults...",
+    "assistant.settings.loading": "Loading defaults…",
     "assistant.settings.corePromptSlug": "Core prompt slug",
     "assistant.settings.save": "Save",
     "assistant.settings.reset": "Reset to defaults",
