@@ -31,9 +31,7 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get(
-    "SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org"
-)
+DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
 
 
 def _get_default_sefaria_base_url() -> str:
