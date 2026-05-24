@@ -90,10 +90,17 @@ def handler(input: Any, output: Any, expected: Any, metadata: dict[str, Any]):
 
 ## Score Values
 
-Both scorer types return:
+Scorers return a pass/fail:
 - `score: 1.0` for PASS
 - `score: 0.0` for FAIL
 - `score: None` for NOT_RELEVANT (skipped in aggregations)
+
+Braintrust enforces `0 ≤ score ≤ 1`. For raw measurements like cost or
+latency that don't normalize, log them as **span metrics** from the eval task
+instead — see `evals/run_eval.py`'s task body, which calls
+`current_span().log(metrics={"cost_usd": ..., "latency_seconds": ...})`.
+Metrics aggregate (sum per row, average across experiments) and show up in
+the experiment table next to scores.
 
 ## Why This Architecture?
 
@@ -160,6 +167,15 @@ Required secrets:
 2. Rebuild all: `python build.py`
 3. Test one scorer: `braintrust push built/non_psak.py`
 4. Commit and push—CI will rebuild and push all scorers
+
+### build.py limitation: helpers in code scorers
+
+`build.py` copies only the top-level `handler` function from a code-scorer
+source file into the built artifact. Any **module-level helper functions
+(e.g. `_extract_foo`) are silently dropped** — the pushed scorer will
+`NameError` at runtime when `handler` calls them. Inline helper logic
+directly inside `handler` for now, or extend `build.py` to carry additional
+functions if a scorer grows complex enough to need them.
 
 ### Debugging LLM scorers
 

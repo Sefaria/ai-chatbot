@@ -15,6 +15,7 @@ class MessageContextSerializer(serializers.Serializer):
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
     origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
     isStaff = serializers.BooleanField(required=False, default=False)
+    labs = serializers.BooleanField(required=False, default=False)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
 
 
@@ -22,6 +23,7 @@ class PromptSlugsSerializer(serializers.Serializer):
     """Optional core prompt slug override for Braintrust."""
 
     corePromptSlug = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    labs = serializers.BooleanField(required=False, default=False)
 
 
 class ChatRequestSerializer(serializers.Serializer):

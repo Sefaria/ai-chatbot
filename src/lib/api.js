@@ -11,6 +11,7 @@ import { generateMessageId } from './session.js';
  * @property {string} clientVersion - Widget version
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
+ * @property {boolean} [labs] - Whether Labs tools are enabled for this request
  * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
@@ -43,6 +44,7 @@ import { generateMessageId } from './session.js';
 /**
  * @typedef {Object} PromptSlugs
  * @property {string} [corePromptSlug]
+ * @property {boolean} [labs]
  */
 
 /**
@@ -62,7 +64,7 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildMessageContext(origin = '', isStaff = false) {
+function buildMessageContext(origin = '', isStaff = false, labs = false) {
   /** @type {MessageContext} */
   const context = {
     pageUrl: window.location.href,
@@ -74,6 +76,9 @@ function buildMessageContext(origin = '', isStaff = false) {
   }
   if (isStaff) {
     context.isStaff = true;
+  }
+  if (labs) {
+    context.labs = true;
   }
   return context;
 }
@@ -252,6 +257,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {PromptSlugs} [promptSlugs] - Prompt slug overrides
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
+ * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @returns {Promise<ChatResponse>}
  */
@@ -264,12 +270,13 @@ export async function sendMessageStream(
   promptSlugs = null,
   origin = '',
   isStaff = false,
+  labs = false,
   requestMetadata = null
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
-  const context = buildMessageContext(origin, isStaff);
+  const context = buildMessageContext(origin, isStaff, labs);
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }

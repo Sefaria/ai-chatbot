@@ -29,6 +29,7 @@ class TestMessageContextSerializer:
             ({}, True),
             ({"locale": "he"}, True),
             ({"pageUrl": "", "locale": "", "clientVersion": ""}, True),
+            ({"labs": True}, True),
             ({"pageUrl": "not-a-url"}, False),
         ],
     )
@@ -37,11 +38,12 @@ class TestMessageContextSerializer:
         assert serializer.is_valid() == is_valid
 
     def test_valid_context_values(self):
-        data = {"pageUrl": "https://example.com/page", "locale": "he"}
+        data = {"pageUrl": "https://example.com/page", "locale": "he", "labs": True}
         serializer = MessageContextSerializer(data=data)
         assert serializer.is_valid()
         assert serializer.validated_data["pageUrl"] == "https://example.com/page"
         assert serializer.validated_data["locale"] == "he"
+        assert serializer.validated_data["labs"] is True
 
     def test_invalid_url_error(self):
         serializer = MessageContextSerializer(data={"pageUrl": "not-a-url"})

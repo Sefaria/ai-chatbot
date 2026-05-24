@@ -731,3 +731,22 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 200
         ctx = mock_agent_service.send_message.call_args.kwargs["context"]
         assert ctx.origin == DEFAULT_ORIGIN
+
+    @override_settings(CORE_PROMPT_SLUG="test-prompt", CHATBOT_USER_TOKEN_SECRET="test-secret-key")
+    @patch("chat.V2.anthropic_views.get_agent_service")
+    def test_user_token_and_user_id_propagate_to_agent_context(
+        self, mock_get_agent, client, mock_agent_service, user_token
+    ):
+        mock_get_agent.return_value = mock_agent_service
+
+        response = client.post(
+            "/api/v2/chat/anthropic",
+            data={"messages": [{"role": "user", "content": "Test"}]},
+            format="json",
+            HTTP_X_API_KEY=user_token,
+        )
+
+        assert response.status_code == 200
+        ctx = mock_agent_service.send_message.call_args.kwargs["context"]
+        assert ctx.user_id == "test-user"
+        assert ctx.encrypted_user_token == user_token

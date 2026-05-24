@@ -60,6 +60,12 @@ class TestDecryptChatbotUserToken:
         result = decrypt_chatbot_user_token(token, secret)
         assert result == "12345"
 
+    def test_valid_token_with_user_id_field(self, secret):
+        """Token payloads using user_id should be supported."""
+        token = create_test_token("legacy-id", secret, payload_override={"id": None, "user_id": 186013})
+        result = decrypt_chatbot_user_token(token, secret)
+        assert result == "186013"
+
     def test_expired_token_raises_error(self, secret):
         """Expired token should raise UserTokenExpiredError."""
         expired_time = timezone.now() - timedelta(hours=1)

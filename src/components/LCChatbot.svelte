@@ -47,10 +47,12 @@
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
-    corePromptSlug: ''
+    corePromptSlug: '',
+    labs: false
   });
   let defaultPromptSlugs = $state({
-    corePromptSlug: ''
+    corePromptSlug: '',
+    labs: false
   });
   let settingsLoaded = $state(false);
   let isLoadingSettings = $state(false);
@@ -173,7 +175,8 @@
     const savedPromptSlugs = getStorage(STORAGE_KEYS.PROMPT_SLUGS, null);
     if (savedPromptSlugs) {
       promptSlugs = {
-        corePromptSlug: savedPromptSlugs.corePromptSlug || ''
+        corePromptSlug: savedPromptSlugs.corePromptSlug || '',
+        labs: savedPromptSlugs.labs === true
       };
       settingsLoaded = true;
     }
@@ -308,10 +311,12 @@
       try {
         const defaults = await fetchPromptDefaults(apiBaseUrl);
         defaultPromptSlugs = {
-          corePromptSlug: defaults.corePromptSlug || ''
+          corePromptSlug: defaults.corePromptSlug || '',
+          labs: defaults.labs === true
         };
         promptSlugs = {
-          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug
+          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug,
+          labs: promptSlugs.labs === true
         };
         settingsLoaded = true;
       } catch (e) {
@@ -329,7 +334,8 @@
 
   function saveSettings() {
     setStorage(STORAGE_KEYS.PROMPT_SLUGS, {
-      corePromptSlug: promptSlugs.corePromptSlug || ''
+      corePromptSlug: promptSlugs.corePromptSlug || '',
+      labs: promptSlugs.labs === true
     });
     settingsError = '';
   }
@@ -345,7 +351,8 @@
     try {
       const defaults = await fetchPromptDefaults(apiBaseUrl);
       defaultPromptSlugs = {
-        corePromptSlug: defaults.corePromptSlug || ''
+        corePromptSlug: defaults.corePromptSlug || '',
+        labs: defaults.labs === true
       };
       promptSlugs = { ...defaultPromptSlugs };
       setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
@@ -484,7 +491,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator, {
+      }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       });
@@ -706,13 +713,27 @@
     const anchor = e.target?.closest?.('a');
     if (!anchor) return;
 
-    const sefariaPath = anchor.getAttribute('href');
-    if (!sefariaPath) return;
+    const href = anchor.getAttribute('href');
+    if (!href) return;
 
     e.preventDefault();
 
-    const path = sefariaPath;
-    console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(href, window.location.href);
+    } catch {
+      return;
+    }
+
+    const sheetMatch = resolvedUrl.pathname.match(/^\/sheets\/([^/?#]+)\/?$/);
+    if (sheetMatch) {
+      const rebasedSheetUrl = `${window.location.origin}/sheets/${sheetMatch[1]}`;
+      window.open(rebasedSheetUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
+    console.log('[lc-chatbot] Link clicked:', href);
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
       detail: {
         url: path,
@@ -893,6 +914,14 @@
                 placeholder="core-8fbc"
                 disabled={isLoadingSettings}
               />
+            </label>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                bind:checked={promptSlugs.labs}
+                disabled={isLoadingSettings}
+              />
+              <span>{$_('settings.labs')}</span>
             </label>
           </div>
 
@@ -1744,6 +1773,24 @@
   }
 
   .settings-field input:disabled {
+    opacity: 0.6;
+  }
+
+  .settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--lc-primary);
+  }
+
+  .settings-toggle input:disabled {
     opacity: 0.6;
   }
 
