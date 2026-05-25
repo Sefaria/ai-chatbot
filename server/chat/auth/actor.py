@@ -2,6 +2,8 @@
 Actor dataclass representing an authenticated user identity.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -10,6 +12,7 @@ class Actor:
     """Represents an authenticated user for chat operations."""
 
     user_id: str
+    encrypted_token: str | None = None
 
     @property
     def identity(self) -> str:
