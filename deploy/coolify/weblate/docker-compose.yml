@@ -1,6 +1,6 @@
 services:
   weblate:
-    image: weblate/weblate:5.10.4.0
+    image: weblate/weblate:5.17.1.0
     restart: unless-stopped
     depends_on:
       database:
@@ -48,7 +48,7 @@ services:
       POSTGRES_USER: weblate
       POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
     volumes:
-      - 'weblate-postgres:/var/lib/postgresql/data'
+      - 'weblate-pg-reset2:/var/lib/postgresql/data'
     healthcheck:
       test:
         - CMD-SHELL
@@ -70,5 +70,5 @@ services:
       - 'weblate-redis:/data'
 volumes:
   weblate-data: null
-  weblate-postgres: null
+  weblate-pg-reset2: null
   weblate-redis: null
