@@ -37,7 +37,9 @@ class MessageContext:
     session_id: str | None = None
     origin: str | None = None
     is_staff: bool = False
+    labs: bool = False
     user_id: str | None = None
+    encrypted_user_token: str | None = None
 
 
 @dataclass

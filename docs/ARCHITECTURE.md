@@ -328,7 +328,7 @@ SUMMARY_MODEL=claude-haiku-4-5-20251001
 ### Sefaria integration
 
 ```bash
-SEFARIA_API_BASE_URL=https://www.sefaria.org
+SEFARIA_API_BASE_URL=http://127.0.0.1:8000
 SEFARIA_AI_BASE_URL=https://ai.sefaria.org
 SEFARIA_AI_TOKEN=...
 ```

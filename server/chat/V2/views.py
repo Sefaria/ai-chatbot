@@ -272,6 +272,7 @@ def chat_stream_v2(request):
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
+    labs_enabled = context.get("labs", prompt_slugs.get("labs", False))
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
@@ -306,7 +307,9 @@ def chat_stream_v2(request):
         # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
         origin=resolve_origin(context.get("origin")),
         is_staff=context.get("isStaff", False),
+        labs=labs_enabled,
         user_id=actor.user_id,
+        encrypted_user_token=actor.encrypted_token,
     )
 
     def generate_sse():
@@ -786,6 +789,7 @@ def prompt_defaults(request):
     return Response(
         {
             "corePromptSlug": settings.CORE_PROMPT_SLUG,
+            "labs": False,
         }
     )
 

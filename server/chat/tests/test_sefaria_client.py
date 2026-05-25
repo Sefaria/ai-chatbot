@@ -1,25 +1,26 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
+import json
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from chat.V2.agent.sefaria_client import SefariaClient
+from chat.V2.agent.sefaria_client import DEFAULT_SEFARIA_BASE_URL, SefariaClient
 
 
 @pytest.fixture
 def client():
     """Create a SefariaClient instance."""
-    return SefariaClient()
+    return SefariaClient(base_url="https://www.sefaria.org")
 
 
 @pytest.fixture
 def mock_http_response():
     """Create a mock HTTP response."""
-    mock_response = AsyncMock()
-    mock_response.json = AsyncMock(return_value={})
-    mock_response.raise_for_status = AsyncMock()
+    mock_response = Mock()
+    mock_response.json = Mock(return_value={})
+    mock_response.raise_for_status = Mock()
     return mock_response
 
 
@@ -40,13 +41,22 @@ class TestSefariaClientInit:
             os.environ,
             {
                 "SEFARIA_API_BASE_URL": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT": "",
-                "SEFARIA_AI_BASE_URL": "",
             },
         ):
             client = SefariaClient()
         assert client.base_url == "https://www.sefaria.org"
+        assert client.base_url == DEFAULT_SEFARIA_BASE_URL
+
+    def test_env_base_url(self):
+        with patch.dict(
+            os.environ,
+            {
+                "SEFARIA_API_BASE_URL": "https://www.personalization.cauldron.sefaria.org",
+            },
+        ):
+            client = SefariaClient()
+
+        assert client.base_url == "https://www.personalization.cauldron.sefaria.org"
 
     def test_custom_base_url(self):
         client = SefariaClient(base_url="https://custom.sefaria.org/")
@@ -453,7 +463,226 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+class TestSearchUserSourceSheets:
+    """Test authenticated source sheet search."""
 
+    @pytest.mark.asyncio
+    async def test_requires_authenticated_user_session(self, client):
+        with pytest.raises(ValueError, match="requires authenticated user context"):
+            await client.search_user_source_sheets("shabbat")
+
+    @pytest.mark.asyncio
+    async def test_calls_sheet_api_with_x_session_id(self, client):
+        response = Mock()
+        response.json.return_value = {
+            "sheets": [
+                {
+                    "id": 702510,
+                    "title": "Sabbath prohibitions",
+                    "summary": "Theory about melacha",
+                    "sheetUrl": "/sheets/702510",
+                    "tags": ["Shabbat"],
+                    "topics": [{"asTyped": "שבת", "slug": "shabbat", "he": "שבת", "en": "Shabbat"}],
+                }
+            ]
+        }
+        response.raise_for_status = Mock()
+        mock_client = Mock()
+        mock_client.get = AsyncMock(return_value=response)
+
+        client.set_user_session("186013", "encrypted-token")
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.search_user_source_sheets("prohibitions", limit=5)
+
+        mock_client.get.assert_called_once()
+        call_args = mock_client.get.call_args
+        assert call_args.args[0] == f"{client.base_url}/api/sheets/user/186013/date/0/0"
+        assert call_args.kwargs["headers"]["X-Session-ID"] == "encrypted-token"
+        assert result["total_matches"] == 1
+        assert result["sheets"][0]["matched_fields"] == ["title"]
+
+    @pytest.mark.asyncio
+    async def test_filters_across_title_summary_tags_and_topics(self, client):
+        client.set_user_session("186013", "encrypted-token")
+        sheets = [
+            {
+                "id": 1,
+                "title": "Hilchot Shabbat",
+                "summary": "A structured learning workflow",
+                "sheetUrl": "/sheets/1",
+                "tags": ["halacha"],
+                "topics": [],
+            },
+            {
+                "id": 2,
+                "title": "Pesach Notes",
+                "summary": "Festival prep",
+                "sheetUrl": "/sheets/2",
+                "tags": [],
+                "topics": [{"asTyped": "Shabbat", "slug": "shabbat", "he": "שבת", "en": "Shabbat"}],
+            },
+        ]
+
+        with patch.object(client, "_get_json", AsyncMock(return_value={"sheets": sheets})):
+            result = await client.search_user_source_sheets("shabbat workflow", limit=10)
+
+        assert result["total_matches"] == 2
+        assert result["sheets"][0]["id"] == 1
+        assert set(result["sheets"][0]["matched_fields"]) == {"title", "summary"}
+        assert result["sheets"][1]["id"] == 2
+
+
+class TestGetSourceSheet:
+    """Test loading and normalizing a source sheet."""
+
+    @pytest.mark.asyncio
+    async def test_calls_sheet_endpoint_with_retained_session_token(self, client):
+        response = Mock()
+        response.json.return_value = {
+            "_id": "696c836aad417adc76f0f9e6",
+            "id": 702510,
+            "status": "unlisted",
+            "title": "מבחן",
+            "sources": [
+                {"outsideText": "<p>שלום וברכה</p>", "node": 2},
+                {
+                    "ref": "Genesis 3:1",
+                    "heRef": "בראשית ג׳:א׳",
+                    "text": {
+                        "en": "<p><small>(1)</small> Now the serpent was here.</p>",
+                        "he": "<p><small>(א)</small> וְהַנָּחָשׁ הָיָה עָרוּם.</p>",
+                    },
+                    "node": 10,
+                },
+            ],
+        }
+        response.raise_for_status = Mock()
+        mock_client = Mock()
+        mock_client.get = AsyncMock(return_value=response)
+
+        client.set_user_session("186013", "encrypted-token")
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            result = await client.get_source_sheet(702510)
+
+        mock_client.get.assert_called_once()
+        call_args = mock_client.get.call_args
+        assert call_args.args[0] == f"{client.base_url}/api/sheets/702510"
+        assert call_args.kwargs["headers"]["X-Session-ID"] == "encrypted-token"
+        assert result["title"] == "מבחן"
+        assert result["source_count"] == 2
+        assert result["sources"][0]["outsideText"] == "שלום וברכה"
+        assert result["sources"][1]["ref"] == "Genesis 3:1"
+        assert "Now the serpent was here." in result["sources"][1]["text"]["en"]
+
+    @pytest.mark.asyncio
+    async def test_works_without_retained_session_token(self, client):
+        with patch.object(
+            client,
+            "_get_json",
+            AsyncMock(return_value={"title": "Public Sheet", "status": "public", "sources": []}),
+        ) as mock_get_json:
+            result = await client.get_source_sheet(123)
+
+        mock_get_json.assert_awaited_once_with(
+            "api/sheets/123",
+            headers={"Accept": "application/json"},
+        )
+        assert result["title"] == "Public Sheet"
+        assert result["source_count"] == 0
+
+
+class TestCreateSourceSheet:
+    """Test creating authenticated source sheets."""
+
+    @pytest.mark.asyncio
+    async def test_requires_authenticated_user_session(self, client):
+        with pytest.raises(ValueError, match="requires authenticated user context"):
+            await client.create_source_sheet(
+                "Bereshit",
+                "A starter sheet",
+                [{"outsideText": "<p>hi there</p>", "node": 1}],
+            )
+
+    @pytest.mark.asyncio
+    async def test_hydrates_ref_sources_and_posts_form_payload(self, client):
+        response = Mock()
+        response.json.return_value = {
+            "id": 715437,
+            "status": "unlisted",
+            "title": "Bereshit",
+            "summary": "A starter sheet",
+            "sources": [
+                {"outsideText": "<p>hi there</p>", "node": 1},
+                {"outsideText": "<p>this is text</p>", "node": 2},
+                {
+                    "ref": "Genesis 3:1",
+                    "heRef": "בראשית ג׳:א׳",
+                    "text": {
+                        "en": "<p>Now the serpent was the shrewdest.</p>",
+                        "he": "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>",
+                    },
+                    "node": 3,
+                },
+            ],
+        }
+        response.raise_for_status = Mock()
+        mock_client = Mock()
+        mock_client.post = AsyncMock(return_value=response)
+
+        client.set_user_session("186013", "encrypted-token")
+
+        with patch.object(client, "_get_client", return_value=mock_client):
+            with patch.object(
+                client,
+                "get_text",
+                AsyncMock(
+                    return_value={
+                        "versions": [
+                            {
+                                "languageFamilyName": "english",
+                                "text": ["Now the serpent was the shrewdest."],
+                            },
+                            {
+                                "languageFamilyName": "hebrew",
+                                "text": ["וְהַנָּחָשׁ הָיָה עָרוּם."],
+                            },
+                        ]
+                    }
+                ),
+            ) as mock_get_text:
+                result = await client.create_source_sheet(
+                    "Bereshit",
+                    "A starter sheet",
+                    [
+                        {"outsideText": "<p>hi there</p>", "node": 1},
+                        {"outsideText": "<p>this is text</p>"},
+                        {"ref": "Genesis 3:1", "heRef": "בראשית ג׳:א׳"},
+                    ],
+                )
+
+        mock_get_text.assert_awaited_once_with("Genesis 3:1", "both")
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert call_args.args[0] == f"{client.base_url}/api/sheets/"
+        assert call_args.kwargs["headers"]["X-Session-ID"] == "encrypted-token"
+
+        posted_payload = json.loads(call_args.kwargs["data"]["json"])
+        assert posted_payload["title"] == "Bereshit"
+        assert posted_payload["summary"] == "A starter sheet"
+        assert posted_payload["status"] == "unlisted"
+        assert posted_payload["options"]["language"] == "bilingual"
+        assert posted_payload["sources"][1]["node"] == 2
+        assert posted_payload["sources"][2]["node"] == 3
+        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
+        assert posted_payload["nextNode"] == 4
+
+        assert result["id"] == 715437
+        assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
+        assert result["source_count"] == 3
+        assert result["sources"][2]["ref"] == "Genesis 3:1"
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""

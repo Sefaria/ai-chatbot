@@ -15,6 +15,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+
+from .contracts import MessageContext
 from .catalog_service import CatalogService
 from .sefaria_client import SefariaClient
 
@@ -40,6 +42,10 @@ class SefariaToolExecutor:
     def __init__(self, client: SefariaClient | None = None):
         self.client = client or SefariaClient()
         self.catalog_service = CatalogService(self.client)
+
+    def set_message_context(self, context: MessageContext) -> None:
+        """Propagate per-request auth context to the Sefaria client."""
+        self.client.set_user_session(context.user_id, context.encrypted_user_token)
 
     async def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Execute a tool by name. Errors are caught and returned as ToolResult(is_error=True)."""
@@ -151,6 +157,21 @@ class SefariaToolExecutor:
                 input_data["image_url"], input_data.get("manuscript_title")
             )
 
+        elif tool_name == "search_user_source_sheets":
+            return await self.client.search_user_source_sheets(
+                input_data.get("query"), input_data.get("limit", 10)
+            )
+
+        elif tool_name == "get_source_sheet":
+            return await self.client.get_source_sheet(input_data["sheet_id"])
+
+        elif tool_name == "create_source_sheet":
+            return await self.client.create_source_sheet(
+                input_data["title"],
+                input_data.get("summary", ""),
+                input_data["sources"],
+            )
+
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -231,6 +252,12 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "get_english_translations": lambda: (
             f"Getting English translations for {q(tool_input.get('reference'))}"
         ),
+        "search_user_source_sheets": lambda: (
+            "Searching the user's source sheets"
+            + (f" for {q(tool_input.get('query'))}" if tool_input.get("query") else "")
+        ),
+        "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
+        "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
     }
 
     if tool_name in descriptions:
