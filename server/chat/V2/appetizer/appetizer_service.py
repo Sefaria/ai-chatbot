@@ -1,9 +1,16 @@
-"""Fast topic appetizer — finds a relevant Sefaria topic within 5 seconds."""
+"""Fast topic appetizer — finds a relevant Sefaria topic within 5 seconds.
+
+Two-tier approach:
+  Tier 1: Strip prompt wrappers, search Sefaria name API directly (<500ms)
+  Tier 2: If no topic found, use Haiku to extract the concept, retry (2-4s)
+Both tiers run inside a 5-second asyncio.wait_for timeout.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 
 from ..agent.sefaria_client import SefariaClient
@@ -15,6 +22,26 @@ logger = logging.getLogger("chat.appetizer")
 APPETIZER_TIMEOUT_SECONDS = 5
 APPETIZER_MODEL = "claude-haiku-4-5-20251001"
 SEFARIA_TOPICS_BASE_URL = "https://www.sefaria.org/topics"
+
+_STRIP_PREFIXES = [
+    r"(?:can you |please )?(?:find|show|give|get|bring)(?: me)? (?:some )?(?:sources?|texts?|references?) (?:about|on|for|regarding|related to) ",
+    r"(?:can you |please )?(?:tell|teach) me (?:about|more about) ",
+    r"what (?:does |do |did )?(?:the )?(?:torah|talmud|bible|tanakh|mishnah|gemara) (?:say|teach)s? (?:about|on|regarding) ",
+    r"what (?:is|are|was|were) (?:the )?",
+]
+_STRIP_RE = re.compile(
+    r"^(?:" + "|".join(_STRIP_PREFIXES) + r")",
+    re.IGNORECASE,
+)
+
+
+def _extract_query_words(prompt: str) -> str:
+    """Strip common natural-language prompt wrappers, return the topical core."""
+    prompt = prompt.strip()
+    if not prompt:
+        return ""
+    cleaned = _STRIP_RE.sub("", prompt).strip().rstrip("?.,!")
+    return cleaned if cleaned else prompt
 
 
 @dataclass
@@ -43,14 +70,28 @@ class AppetizerService:
             return None
 
     async def _find_appetizer_inner(self, user_message: str) -> AppetizerResult | None:
-        concept = await self._extract_concept(user_message)
-        if not concept:
-            return None
+        # Tier 1: direct keyword search (<500ms)
+        query = _extract_query_words(user_message)
+        if query:
+            result = await self._search_and_build(query)
+            if result:
+                logger.info("Appetizer tier-1 hit for query=%r", query)
+                return result
 
-        topics = await self.sefaria_client.search_topics(concept, limit=3)
+        # Tier 2: Haiku concept extraction fallback (2-4s)
+        concept = await self._extract_concept_via_haiku(user_message)
+        if concept:
+            result = await self._search_and_build(concept)
+            if result:
+                logger.info("Appetizer tier-2 hit for concept=%r", concept)
+                return result
+
+        return None
+
+    async def _search_and_build(self, query: str) -> AppetizerResult | None:
+        topics = await self.sefaria_client.search_topics(query, limit=3)
         if not topics:
             return None
-
         best = topics[0]
         return AppetizerResult(
             topic_slug=best["slug"],
@@ -58,25 +99,29 @@ class AppetizerService:
             topic_url=f"{SEFARIA_TOPICS_BASE_URL}/{best['slug']}",
         )
 
-    async def _extract_concept(self, user_message: str) -> str | None:
-        response = await asyncio.to_thread(
-            tracked_messages_create,
-            self.client,
-            model=APPETIZER_MODEL,
-            max_tokens=50,
-            temperature=0.0,
-            system=(
-                "Extract the single most important Jewish topic, concept, or figure "
-                "from the user's question. Return ONLY the topic name in English, "
-                "nothing else. If the question is not about Jewish texts/topics, "
-                "return NONE."
-            ),
-            messages=[{"role": "user", "content": user_message}],
-        )
-        text = response.content[0].text.strip()
-        if not text or text.upper().rstrip(".,!?") == "NONE":
+    async def _extract_concept_via_haiku(self, user_message: str) -> str | None:
+        try:
+            response = await asyncio.to_thread(
+                tracked_messages_create,
+                self.client,
+                model=APPETIZER_MODEL,
+                max_tokens=50,
+                temperature=0.0,
+                system=(
+                    "Extract the single most important Jewish topic, concept, or figure "
+                    "from the user's question. Return ONLY the topic name in English, "
+                    "nothing else. If the question is not about Jewish texts/topics, "
+                    "return NONE."
+                ),
+                messages=[{"role": "user", "content": user_message}],
+            )
+            text = response.content[0].text.strip()
+            if not text or text.upper().rstrip(".,!?") == "NONE":
+                return None
+            return text
+        except Exception:
+            logger.exception("Haiku concept extraction failed")
             return None
-        return text
 
 
 get_appetizer_service, reset_appetizer_service = make_singleton(AppetizerService)
