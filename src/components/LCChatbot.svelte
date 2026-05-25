@@ -10,6 +10,7 @@
   import HeaderButton from './HeaderButton.svelte';
   import SourceSuggestion from './SourceSuggestion.svelte';
   import ProgressTrail from './ProgressTrail.svelte';
+  import TopicAppetizer from './TopicAppetizer.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -46,6 +47,7 @@
   let currentProgress = $state(null);
   let toolHistory = $state([]);
   let trailEntryId = $state(0);
+  let appetizerData = $state(null);
 
   // Tools that fetch a specific text by reference — the only ones worth suggesting to read
   const SOURCE_PROVIDING_TOOLS = new Set([
@@ -471,11 +473,16 @@
     firstSourcePreview = null;
     sourcePreviewMessageId = null;
     trailEntryId = 0;
+    appetizerData = null;
     updateSessionActivity(sessionId);
 
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
+          if (progress?.type === 'appetizer' && progress.appetizerData) {
+            appetizerData = progress.appetizerData;
+            return;
+          }
           let displayText;
           if (progress?.type === 'status') {
             displayText = progress.text;
@@ -547,7 +554,8 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        toolHistory: [...toolHistory]
+        toolHistory: [...toolHistory],
+        appetizerData: appetizerData ? {...appetizerData} : null
       };
 
       messages = [...messages, assistantMessage];
@@ -809,6 +817,17 @@
     handleNewChat();
   }
 
+  function handleAppetizerClick(topicSlug) {
+    const el = document.querySelector('lc-chatbot');
+    if (el) {
+      el.dispatchEvent(new CustomEvent('appetizer_click', {
+        detail: { topicSlug, sessionId },
+        bubbles: true,
+        composed: true
+      }));
+    }
+  }
+
   function getEmptyStateMessage() {
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
@@ -1039,6 +1058,9 @@
               <span>{item.date}</span>
             </div>
           {:else if item.role === 'assistant'}
+            {#if item.appetizerData}
+              <TopicAppetizer data={item.appetizerData} streaming={false} onClickTopic={handleAppetizerClick} />
+            {/if}
             {#if firstSourcePreview && item.messageId === sourcePreviewMessageId}
               <SourceSuggestion preview={firstSourcePreview} streaming={false} />
             {/if}
@@ -1064,6 +1086,9 @@
 
         {#if isSending}
           <div class="message assistant">
+            {#if appetizerData}
+              <TopicAppetizer data={appetizerData} streaming={true} onClickTopic={handleAppetizerClick} />
+            {/if}
             <ProgressTrail entries={toolHistory} collapsed={false} />
           </div>
         {/if}
@@ -2046,7 +2071,7 @@ inset: 8px;
     /*  place holder */
   }
 
-  /* SourceSuggestion styles — must live here so they are injected into the shadow DOM */
+  /* SourceSuggestion styles */
   :global(.source-suggestion) {
     margin: 6px 12px 0;
     border-radius: 8px;
@@ -2111,6 +2136,75 @@ inset: 8px;
   }
   :global(.source-link:hover) {
     color: #465D7D;
+  }
+
+  /* TopicAppetizer styles */
+  :global(.topic-appetizer) {
+    margin: 6px 12px 6px;
+    border-radius: 8px;
+    border: 1px solid #e9d96a;
+    background: #fffde7;
+    font-size: 13px;
+    font-family: inherit;
+    animation: appetizer-fade-in 0.3s ease;
+  }
+  @keyframes appetizer-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  :global(.appetizer-header) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: start;
+    color: #4a4700;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  :global(.appetizer-header:hover) {
+    background: #fff9c4;
+    border-radius: 8px;
+  }
+  :global(.appetizer-icon) {
+    flex-shrink: 0;
+    color: #8a7a00;
+  }
+  :global(.appetizer-header-text) {
+    flex: 1;
+    font-weight: 500;
+  }
+  :global(.appetizer-chevron) {
+    flex-shrink: 0;
+    color: #8a7a00;
+    transition: transform 0.2s ease;
+  }
+  :global(.appetizer-chevron.rotated) {
+    transform: rotate(-90deg);
+  }
+  :global(.appetizer-body) {
+    padding: 6px 10px 10px;
+    border-top: 1px solid #f0e68c;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  :global(.appetizer-link) {
+    color: #18345D;
+    text-decoration: underline;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  :global(.appetizer-link:hover) {
+    color: #465D7D;
+  }
+  :global(.appetizer-hint) {
+    color: #8a7a00;
+    font-size: 11px;
   }
 
   :global(.progress-trail-toggle) {

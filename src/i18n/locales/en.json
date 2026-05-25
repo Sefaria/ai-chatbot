@@ -44,6 +44,8 @@
   "status.toolError": "Tool error",
   "progress.showThinking": "Show thinking ({count} steps)",
   "progress.hideThinking": "Hide thinking ({count} steps)",
+  "appetizer.whileWaiting": "While we prepare your answer, you might find this interesting",
+  "appetizer.exploreHint": "Explore this topic on Sefaria",
 
   "source.readWhileWaiting": "Found a source — read while you wait",
   "source.readOnSefaria": "Read on Sefaria",
