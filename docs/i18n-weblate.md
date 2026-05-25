@@ -120,7 +120,8 @@ In Weblate:
 
 1. Create project: `Sefaria ai-chatbot`.
 2. Add component with:
-   - Source repository: `https://${WEBLATE_GITHUB_USERNAME}:${WEBLATE_GITHUB_TOKEN}@github.com/Sefaria/ai-chatbot.git`
+   - Source repository: git@github.com:Sefaria/ai-chatbot.git
+   - Repository Push URL: git@github.com:Sefaria/ai-chatbot.git
    - Push URL: `github:Sefaria/ai-chatbot`
    - Branch: `main`
    - File mask: `src/i18n/locales/*.json`
