@@ -27,6 +27,7 @@
   "settings.title": "Agent Settings",
   "settings.loading": "Loading defaults...",
   "settings.corePromptSlug": "Core prompt slug",
+  "settings.labs": "Labs",
   "settings.save": "Save",
   "settings.reset": "Reset to defaults",
   "settings.note": "Changes apply to new messages.",

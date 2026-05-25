@@ -78,7 +78,7 @@ def decrypt_chatbot_user_token(
     except (ValueError, UnicodeDecodeError) as exc:
         raise UserTokenError("invalid payload") from exc
 
-    user_id = payload.get("id")
+    user_id = payload.get("user_id") or payload.get("id")
     expiration = payload.get("expiration")
     if not user_id or not expiration:
         raise UserTokenError("missing fields")
