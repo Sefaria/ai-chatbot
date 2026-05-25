@@ -321,6 +321,11 @@ LOGGING = {
             "level": "INFO",
             "propagate": False,
         },
+        "chat.appetizer": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
         "django": {
             "handlers": ["console"],
             "level": "INFO",
