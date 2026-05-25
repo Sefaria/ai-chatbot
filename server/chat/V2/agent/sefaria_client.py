@@ -307,7 +307,7 @@ class SefariaClient:
     async def search_topics(self, query: str, limit: int = 5) -> list[dict[str, str]]:
         """Search for topics by name. Returns [{title, slug}, ...]."""
         encoded = quote(query)
-        params = {"type": "topic", "limit": str(limit)}
+        params = {"limit": str(limit)}
         data = await self._get_json(f"api/name/{encoded}", params)
         completions = data.get("completion_objects", [])
         return [
