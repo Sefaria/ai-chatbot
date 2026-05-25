@@ -46,22 +46,22 @@
       "id": "TA-3",
       "name": "Topic appetizer is collapsible",
       "description": "The yellow box can be collapsed/expanded by clicking its header",
-      "status": "fail",
-      "notes": "Appetizer header exists (.appetizer-header), and body exists (.appetizer-body). Clicking header did not remove body element from DOM. bodyBefore=true, bodyAfter=true, no change in collapsibility after click. Header may not be wired to collapse functionality, or body is not being removed on click. Needs investigation into appetizer component collapse logic."
+      "status": "pass",
+      "notes": "Appetizer header exists (.appetizer-header) and is fully functional. Initial state was collapsed (aria-expanded=false, no .appetizer-body). First click expanded it (aria-expanded=true, .appetizer-body rendered). Second click collapsed it again (aria-expanded=false, .appetizer-body removed). Full round-trip confirmed: component toggles between expanded and collapsed states on header click."
     },
     {
       "id": "TA-4",
       "name": "Topic appetizer suppressed for translation",
       "description": "When user sends a translation prompt (e.g. 'translate this'), no topic appetizer appears",
-      "status": "skip",
-      "notes": "Skipped — TA-1 fixed, but TA-3 collapse regression indicates possible component issue. Previous test result: Sent 'translate Genesis 1:1'. Backend log confirms 'Deterministic classification successful. Routing to Translation.' No .topic-appetizer element appeared during 10s polling window. Translation response was delivered and page navigated to Genesis.1.1 on Sefaria."
+      "status": "pass",
+      "notes": "Sent 'translate Genesis 1:1' message. Backend log confirms 'Deterministic classification successful. Routing to Translation.' Appetizer count remained at 1 after 12.9s (from first discovery message). Translation response was delivered without creating a new appetizer. Correct behavior: TRANSLATION requests don't generate appetizers, only DISCOVERY requests do."
     },
     {
       "id": "TA-5",
       "name": "Topic appetizer persists after answer",
       "description": "After the final answer arrives, the topic appetizer remains visible (collapsed) above the answer",
-      "status": "skip",
-      "notes": "Skipped due to TA-3 collapse issue. Previous test result: After response completed (textarea re-enabled), .topic-appetizer still present in shadow DOM with 2 messages (user + assistant). Persists correctly."
+      "status": "pass",
+      "notes": "After both messages completed, .topic-appetizer still present in shadow DOM with 1 appetizer visible for the first (discovery) message. Appetizer persists correctly across multiple messages in the conversation. Appetizer remains collapsed initially (aria-expanded=false) and can be toggled by clicking header."
     },
     {
       "id": "SS-1",
