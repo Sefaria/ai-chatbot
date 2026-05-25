@@ -42,6 +42,8 @@
   "status.thinking": "Thinking",
   "status.done": "Done",
   "status.toolError": "Tool error",
+  "progress.showThinking": "Show thinking ({count} steps)",
+  "progress.hideThinking": "Hide thinking ({count} steps)",
 
   "source.readWhileWaiting": "Found a source — read while you wait",
   "source.readOnSefaria": "Read on Sefaria",

@@ -9,6 +9,7 @@
   import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
   import SourceSuggestion from './SourceSuggestion.svelte';
+  import ProgressTrail from './ProgressTrail.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -44,6 +45,7 @@
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
+  let trailEntryId = $state(0);
 
   // Tools that fetch a specific text by reference — the only ones worth suggesting to read
   const SOURCE_PROVIDING_TOOLS = new Set([
@@ -468,6 +470,7 @@
     toolHistory = [];
     firstSourcePreview = null;
     sourcePreviewMessageId = null;
+    trailEntryId = 0;
     updateSessionActivity(sessionId);
 
     try {
@@ -476,17 +479,20 @@
           let displayText;
           if (progress?.type === 'status') {
             displayText = progress.text;
+            toolHistory = [...toolHistory, {
+              id: trailEntryId++,
+              type: 'status',
+              text: displayText?.replace(/…|\.\.\./, '') || '',
+              status: 'running',
+              startTime: Date.now()
+            }];
           } else if (progress?.type === 'tool_start') {
             displayText = progress.description || `Running ${progress.toolName}`;
-          }
-          displayText = displayText?.replace(/…|\.\.\./, '');
-          currentProgress = {...progress, displayText};
-
-          // Track tool usage in history
-          if (progress.type === 'tool_start') {
             toolHistory = [...toolHistory, {
+              id: trailEntryId++,
+              type: 'tool',
               toolName: progress.toolName,
-              description: progress.description,
+              description: displayText?.replace(/…|\.\.\./, '') || '',
               status: 'running',
               startTime: Date.now()
             }];
@@ -497,7 +503,7 @@
               SOURCE_PROVIDING_TOOLS.has(progress.toolName)
             );
             if (isFirstSuccessfulSourceTool) {
-              const matchingTool = toolHistory[toolHistory.length - 1];
+              const matchingTool = toolHistory.findLast(t => t.type === 'tool' && t.toolName === progress.toolName);
               firstSourcePreview = {
                 toolName: progress.toolName,
                 description: matchingTool?.description || '',
@@ -505,11 +511,13 @@
               };
             }
             toolHistory = toolHistory.map((t, i) =>
-              i === toolHistory.length - 1
+              i === toolHistory.length - 1 && t.type === 'tool'
                 ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
                 : t
             );
           }
+          displayText = displayText?.replace(/…|\.\.\./, '');
+          currentProgress = {...progress, displayText};
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -538,7 +546,8 @@
         traceId: response.traceId || null,
         feedback: null,
         toolCalls: response.toolCalls,
-        stats: response.stats
+        stats: response.stats,
+        toolHistory: [...toolHistory]
       };
 
       messages = [...messages, assistantMessage];
@@ -1033,6 +1042,9 @@
             {#if firstSourcePreview && item.messageId === sourcePreviewMessageId}
               <SourceSuggestion preview={firstSourcePreview} streaming={false} />
             {/if}
+            {#if item.toolHistory?.length > 0}
+              <ProgressTrail entries={item.toolHistory} collapsed={true} />
+            {/if}
             {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
           {:else}
             <div class="message user">
@@ -1052,28 +1064,7 @@
 
         {#if isSending}
           <div class="message assistant">
-            <div class="thinking-content">
-              <!-- Progress Status -->
-              {#if currentProgress?.type === 'tool_end' }
-                <div class="status-text" class:tool-error={currentProgress.isError}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    {#if currentProgress.isError}
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="15" y1="9" x2="9" y2="15"></line>
-                      <line x1="9" y1="9" x2="15" y2="15"></line>
-                    {:else}
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                    {/if}
-                  </svg>
-                  <span>{currentProgress.isError ? $_('status.toolError') : $_('status.done')}</span>
-                </div>
-              {:else}
-                <div class="status-text">
-                  <p>{currentProgress?.displayText || $_('status.thinking')}<span class="dots"></span></p>
-                </div>
-              {/if}
-            </div>
+            <ProgressTrail entries={toolHistory} collapsed={false} />
           </div>
         {/if}
 
@@ -2120,6 +2111,68 @@ inset: 8px;
   }
   :global(.source-link:hover) {
     color: #465D7D;
+  }
+
+  :global(.progress-trail-toggle) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888;
+    font-size: 11px;
+    padding: 4px 12px;
+    font-family: inherit;
+  }
+  :global(.progress-trail-toggle:hover) {
+    color: #555;
+  }
+  :global(.progress-trail-list) {
+    list-style: none;
+    margin: 0;
+    padding: 4px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  :global(.progress-trail-entry) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #777;
+  }
+  :global(.progress-trail-entry--error) {
+    color: #c62828;
+  }
+  :global(.progress-trail-entry--complete) {
+    color: #666;
+  }
+  :global(.progress-trail-icon) {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :global(.progress-trail-spinner) {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid #ccc;
+    border-top-color: #888;
+    border-radius: 50%;
+    animation: trail-spin 0.8s linear infinite;
+  }
+  @keyframes trail-spin {
+    to { transform: rotate(360deg); }
+  }
+  :global(.progress-trail-text) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
 </style>
