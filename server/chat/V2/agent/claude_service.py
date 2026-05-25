@@ -21,6 +21,8 @@ from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server, tool
 from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
+from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
+
 from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
@@ -49,8 +51,8 @@ class ClaudeAgentService:
         api_key: str | None = None,
         model: str | None = None,
         max_iterations: int = 10,
-        max_tokens: int = 8000,
-        temperature: float = 0.7,
+        max_tokens: int = AGENT_MAX_TOKENS,
+        temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
         is_load_test: bool = False,
     ):
