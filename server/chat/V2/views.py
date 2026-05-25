@@ -409,17 +409,19 @@ def chat_stream_v2(request):
 
         def run_appetizer():
             """Background thread: fast Haiku topic lookup, parallel to main agent."""
+            logger.info("Appetizer thread started for: %s", data["text"][:50])
             try:
-                from ..router.router_service import RouterService, RouteType
+                from .router.router_service import RouterService, RouteType
 
                 if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
                     return
 
-                from ..appetizer.appetizer_service import get_appetizer_service
+                from .appetizer.appetizer_service import get_appetizer_service
 
                 appetizer_service = get_appetizer_service()
 
                 result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
+                logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
                 if result and not stream_closed:
                     update = AgentProgressUpdate(
                         type="appetizer",

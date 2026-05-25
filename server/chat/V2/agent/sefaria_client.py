@@ -305,16 +305,33 @@ class SefariaClient:
         return await self._get_json(f"api/name/{encoded_name}", params)
 
     async def search_topics(self, query: str, limit: int = 5) -> list[dict[str, str]]:
-        """Search for topics by name. Returns [{title, slug}, ...]."""
+        """Search for topics by name. Returns [{title, slug}, ...].
+
+        Tries the name autocomplete API first. If no topics are found, falls
+        back to a direct slug lookup (e.g. "Shabbat" matches the tractate in
+        autocomplete but the topic exists at api/v2/topics/shabbat).
+        """
         encoded = quote(query)
         params = {"limit": str(limit)}
         data = await self._get_json(f"api/name/{encoded}", params)
         completions = data.get("completion_objects", [])
-        return [
+        topics = [
             {"title": c.get("title", ""), "slug": c.get("key", "")}
             for c in completions
             if c.get("type") == "Topic" and c.get("key")
         ]
+        if topics:
+            return topics
+
+        slug = query.lower().replace(" ", "-")
+        try:
+            topic_data = await self._get_json(f"api/v2/topics/{quote(slug)}")
+            if topic_data.get("slug"):
+                title = topic_data.get("primaryTitle", {}).get("en", query)
+                return [{"title": title, "slug": topic_data["slug"]}]
+        except Exception:
+            pass
+        return []
 
     async def clarify_search_path_filter(self, book_name: str) -> str | None:
         """Convert a book name into a search filter path."""

@@ -71,10 +71,28 @@ async def test_search_topics_returns_first_match():
 
 
 @pytest.mark.asyncio
-async def test_search_topics_empty_result():
+async def test_search_topics_slug_fallback():
+    """When name API returns no topics, falls back to direct slug lookup."""
     client = SefariaClient(base_url="https://www.sefaria.org")
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
-        mock.return_value = {"completion_objects": []}
+        mock.side_effect = [
+            {"completion_objects": [{"title": "Shabbat 2a", "type": "ref", "key": "Shabbat.2a"}]},
+            {"slug": "shabbat", "primaryTitle": {"en": "Shabbat"}},
+        ]
+        result = await client.search_topics("Shabbat")
+        assert result == [{"title": "Shabbat", "slug": "shabbat"}]
+        assert mock.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_search_topics_empty_result():
+    """Both name API and slug fallback return nothing."""
+    client = SefariaClient(base_url="https://www.sefaria.org")
+    with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
+        mock.side_effect = [
+            {"completion_objects": []},
+            Exception("404"),
+        ]
         result = await client.search_topics("xyznonexistent")
         assert result == []
 

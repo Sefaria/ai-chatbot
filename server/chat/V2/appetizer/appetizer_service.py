@@ -72,24 +72,33 @@ class AppetizerService:
     async def _find_appetizer_inner(self, user_message: str) -> AppetizerResult | None:
         # Tier 1: direct keyword search (<500ms)
         query = _extract_query_words(user_message)
+        logger.info("Appetizer tier-1 query extracted: %r from %r", query, user_message)
         if query:
             result = await self._search_and_build(query)
+            logger.info("Appetizer tier-1 search result: %s", result)
             if result:
                 logger.info("Appetizer tier-1 hit for query=%r", query)
                 return result
 
         # Tier 2: Haiku concept extraction fallback (2-4s)
         concept = await self._extract_concept_via_haiku(user_message)
+        logger.info("Appetizer tier-2 concept extracted: %r", concept)
         if concept:
             result = await self._search_and_build(concept)
+            logger.info("Appetizer tier-2 search result: %s", result)
             if result:
                 logger.info("Appetizer tier-2 hit for concept=%r", concept)
                 return result
 
+        logger.info("Appetizer: no result from either tier")
         return None
 
     async def _search_and_build(self, query: str) -> AppetizerResult | None:
+        logger.info("Appetizer: searching for topics with query=%r", query)
         topics = await self.sefaria_client.search_topics(query, limit=3)
+        logger.info(
+            "Appetizer: search_topics returned %d topics: %s", len(topics) if topics else 0, topics
+        )
         if not topics:
             return None
         best = topics[0]
