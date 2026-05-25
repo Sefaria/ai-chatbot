@@ -44,7 +44,6 @@
   let resizeEdge = $state(null);
   
   // Agent progress state
-  let currentProgress = $state(null);
   let toolHistory = $state([]);
   let trailEntryId = $state(0);
   let appetizerData = $state(null);
@@ -306,7 +305,7 @@
     inputText = '';
     isLoadingHistory = false;
     hasMoreHistory = false;
-    currentProgress = null;
+
     toolHistory = [];
     turnCount = 0;
 
@@ -468,7 +467,7 @@
     scrollToBottom();
 
     isSending = true;
-    currentProgress = null;
+
     toolHistory = [];
     firstSourcePreview = null;
     sourcePreviewMessageId = null;
@@ -517,14 +516,17 @@
                 toolInput: progress.toolInput || null,
               };
             }
-            toolHistory = toolHistory.map((t, i) =>
-              i === toolHistory.length - 1 && t.type === 'tool'
-                ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
-                : t
+            const idx = toolHistory.findLastIndex(t =>
+              t.type === 'tool' && t.status === 'running' && t.toolName === progress.toolName
             );
+            if (idx !== -1) {
+              toolHistory = toolHistory.map((t, i) =>
+                i === idx
+                  ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
+                  : t
+              );
+            }
           }
-          displayText = displayText?.replace(/…|\.\.\./, '');
-          currentProgress = {...progress, displayText};
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -541,6 +543,11 @@
           : m
       );
 
+      // Mark any still-running trail entries as complete before persisting
+      const finalTrail = toolHistory.map(t =>
+        t.status === 'running' ? { ...t, status: 'complete' } : t
+      );
+
       // Add assistant response
       const assistantMessage = {
         messageId: response.messageId,
@@ -554,7 +561,7 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        toolHistory: [...toolHistory],
+        toolHistory: finalTrail,
         appetizerData: appetizerData ? {...appetizerData} : null
       };
 
@@ -600,7 +607,7 @@
       });
     } finally {
       isSending = false;
-      currentProgress = null;
+  
       toolHistory = [];
     }
   }
@@ -818,7 +825,7 @@
   }
 
   function handleAppetizerClick(topicSlug) {
-    const el = document.querySelector('lc-chatbot');
+    const el = $host();
     if (el) {
       el.dispatchEvent(new CustomEvent('appetizer_click', {
         detail: { topicSlug, sessionId },
@@ -1089,7 +1096,13 @@
             {#if appetizerData}
               <TopicAppetizer data={appetizerData} streaming={true} onClickTopic={handleAppetizerClick} />
             {/if}
-            <ProgressTrail entries={toolHistory} collapsed={false} />
+            {#if toolHistory.length > 0}
+              <ProgressTrail entries={toolHistory} collapsed={false} />
+            {:else}
+              <div class="thinking-fallback">
+                <span>{$_('status.thinking')}<span class="dots"></span></span>
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -1624,6 +1637,12 @@
 
   .status-text.tool-error {
     color: var(--lc-error);
+  }
+
+.thinking-fallback {
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #777;
   }
 
 .dots::after {

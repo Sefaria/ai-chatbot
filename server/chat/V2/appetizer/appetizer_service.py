@@ -74,7 +74,7 @@ class AppetizerService:
             messages=[{"role": "user", "content": user_message}],
         )
         text = response.content[0].text.strip()
-        if not text or text.upper() == "NONE":
+        if not text or text.upper().rstrip(".,!?") == "NONE":
             return None
         return text
 

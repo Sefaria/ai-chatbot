@@ -667,6 +667,7 @@ def chat_stream_v2(request):
                 except Exception:
                     pass
             executor.shutdown(wait=False)
+            appetizer_executor.shutdown(wait=False)
             # Clear the ContextVar so the next request on this reused WSGI
             # thread can't accidentally read a stale accumulator before its
             # own init_cost_accumulator() call.
