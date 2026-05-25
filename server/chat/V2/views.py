@@ -407,6 +407,39 @@ def chat_stream_v2(request):
             _mark_turn_running(user_message.id)
             future = executor.submit(ctx.run, run_agent)
 
+        def run_appetizer():
+            """Background thread: fast Haiku topic lookup, parallel to main agent."""
+            try:
+                from ..router.router_service import RouterService, RouteType
+
+                if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
+                    return
+
+                from ..appetizer.appetizer_service import get_appetizer_service
+
+                appetizer_service = get_appetizer_service()
+
+                result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
+                if result and not stream_closed:
+                    update = AgentProgressUpdate(
+                        type="appetizer",
+                        text=result.topic_title,
+                        appetizer_data={
+                            "topicSlug": result.topic_slug,
+                            "topicTitle": result.topic_title,
+                            "topicUrl": result.topic_url,
+                        },
+                    )
+                    try:
+                        progress_queue.put(update, timeout=0.5)
+                    except queue.Full:
+                        pass
+            except Exception:
+                logger.exception("Appetizer thread failed")
+
+        appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        appetizer_executor.submit(run_appetizer)
+
         try:
             # --- Stream progress events to the client ---
             while True:
@@ -433,6 +466,8 @@ def chat_stream_v2(request):
                         event_data["isError"] = update.is_error
                     if update.output_preview:
                         event_data["outputPreview"] = update.output_preview
+                    if update.appetizer_data:
+                        event_data["appetizerData"] = update.appetizer_data
 
                     _mark_turn_heartbeat(user_message.id)
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
