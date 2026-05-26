@@ -12,7 +12,7 @@
   function handleClick(e) {
     e.preventDefault();
     if (onClickTopic) onClickTopic(data.topicSlug);
-    window.open(data.topicUrl, '_blank', 'noopener,noreferrer');
+    window.location.href = data.topicUrl;
   }
 </script>
 
@@ -40,8 +40,6 @@
       <a
         class="appetizer-link"
         href={data.topicUrl}
-        target="_blank"
-        rel="noopener noreferrer"
         onclick={handleClick}
       >
         {data.topicTitle} →
