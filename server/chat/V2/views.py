@@ -468,6 +468,12 @@ def chat_stream_v2(request):
             future = executor.submit(ctx.run, run_agent)
 
         try:
+            # Flush reverse-proxy buffers. Many proxies (nginx, gunicorn,
+            # cloud load balancers) buffer the first 4-8KB before forwarding.
+            # This SSE comment is ignored by EventSource but forces the buffer
+            # to flush so subsequent events stream in real-time.
+            yield ": " + " " * 4096 + "\n\n"
+
             # --- Stream progress events to the client ---
             while True:
                 try:
