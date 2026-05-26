@@ -268,6 +268,44 @@ def chat_stream_v2(request):
     if isinstance(actor, Response):
         return actor
 
+    progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
+    stream_closed = False
+
+    def run_appetizer():
+        """Background thread: fast Haiku topic lookup, parallel to main agent."""
+        logger.info("Appetizer thread started for: %s", data["text"][:50])
+        try:
+            from .router.router_service import RouterService, RouteType
+
+            if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
+                return
+
+            from .appetizer.appetizer_service import get_appetizer_service
+
+            appetizer_service = get_appetizer_service()
+
+            result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
+            logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
+            if result and not stream_closed:
+                update = AgentProgressUpdate(
+                    type="appetizer",
+                    text=result.topic_title,
+                    appetizer_data={
+                        "topicSlug": result.topic_slug,
+                        "topicTitle": result.topic_title,
+                        "topicUrl": result.topic_url,
+                    },
+                )
+                try:
+                    progress_queue.put(update, timeout=0.5)
+                except queue.Full:
+                    pass
+        except Exception:
+            logger.exception("Appetizer thread failed")
+
+    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    appetizer_executor.submit(run_appetizer)
+
     is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
@@ -326,11 +364,10 @@ def chat_stream_v2(request):
           4. On error  → log, persist error message, yield error event
           5. On success → update summary, persist messages, yield final event
         """
-        progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
+        nonlocal stream_closed
         result_holder = {"response": None, "error": None}
         assistant_persisted = False
         final_event_sent = False
-        stream_closed = False
 
         # Initialize the auxiliary-LLM cost accumulator in the outer context so
         # the agent thread (via copy_context) can attribute guardrail/router
@@ -406,41 +443,6 @@ def chat_stream_v2(request):
             executor = _create_traced_executor()
             _mark_turn_running(user_message.id)
             future = executor.submit(ctx.run, run_agent)
-
-        def run_appetizer():
-            """Background thread: fast Haiku topic lookup, parallel to main agent."""
-            logger.info("Appetizer thread started for: %s", data["text"][:50])
-            try:
-                from .router.router_service import RouterService, RouteType
-
-                if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
-                    return
-
-                from .appetizer.appetizer_service import get_appetizer_service
-
-                appetizer_service = get_appetizer_service()
-
-                result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
-                logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
-                if result and not stream_closed:
-                    update = AgentProgressUpdate(
-                        type="appetizer",
-                        text=result.topic_title,
-                        appetizer_data={
-                            "topicSlug": result.topic_slug,
-                            "topicTitle": result.topic_title,
-                            "topicUrl": result.topic_url,
-                        },
-                    )
-                    try:
-                        progress_queue.put(update, timeout=0.5)
-                    except queue.Full:
-                        pass
-            except Exception:
-                logger.exception("Appetizer thread failed")
-
-        appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        appetizer_executor.submit(run_appetizer)
 
         try:
             # --- Stream progress events to the client ---

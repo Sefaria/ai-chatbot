@@ -9,8 +9,10 @@
     expanded = !expanded;
   }
 
-  function handleClick() {
+  function handleClick(e) {
+    e.preventDefault();
     if (onClickTopic) onClickTopic(data.topicSlug);
+    window.open(data.topicUrl, '_blank', 'noopener,noreferrer');
   }
 </script>
 
