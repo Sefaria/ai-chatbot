@@ -781,7 +781,12 @@
     }
 
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
-    console.log('[lc-chatbot] Link clicked:', href);
+
+    if (resolvedUrl.pathname.startsWith('/topics/')) {
+      window.open(resolvedUrl.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
       detail: {
         url: path,
