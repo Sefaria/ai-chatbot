@@ -270,15 +270,27 @@ def chat_stream_v2(request):
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
+    appetizer_metrics = {}
 
     def run_appetizer():
         """Background thread: fast Haiku topic lookup, parallel to main agent."""
+        t_start = time.time()
         logger.info("Appetizer thread started for: %s", data["text"][:50])
         try:
             from .router.router_service import RouterService, RouteType
 
+            t_classify = time.time()
             if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
+                appetizer_metrics.update(
+                    {
+                        "suppressed": True,
+                        "reason": "translation",
+                        "classify_ms": int((time.time() - t_classify) * 1000),
+                        "total_ms": int((time.time() - t_start) * 1000),
+                    }
+                )
                 return
+            appetizer_metrics["classify_ms"] = int((time.time() - t_classify) * 1000)
 
             from .appetizer.appetizer_service import get_appetizer_service
 
@@ -286,6 +298,15 @@ def chat_stream_v2(request):
 
             result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
             logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
+
+            appetizer_metrics["suppressed"] = False
+            appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
+            if result:
+                appetizer_metrics.update(result.metrics)
+                appetizer_metrics["topic_slug"] = result.topic_slug
+            else:
+                appetizer_metrics["topic_slug"] = None
+
             if result and not stream_closed:
                 update = AgentProgressUpdate(
                     type="appetizer",
@@ -302,6 +323,8 @@ def chat_stream_v2(request):
                     pass
         except Exception:
             logger.exception("Appetizer thread failed")
+            appetizer_metrics["error"] = True
+            appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
     appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     appetizer_executor.submit(run_appetizer)
@@ -529,6 +552,17 @@ def chat_stream_v2(request):
                     "trace_id": agent_response.trace_id,
                 },
             )
+
+            if appetizer_metrics and agent_response.trace_id:
+                try:
+                    bt_logger = _get_bt_logger()
+                    if bt_logger:
+                        bt_logger.update_span(
+                            id=agent_response.trace_id,
+                            metadata={"appetizer": appetizer_metrics},
+                        )
+                except Exception:
+                    logger.debug("Could not attach appetizer metrics to trace")
 
             # Fold aux LLM costs captured so far (guardrail + router, run on the
             # agent thread) into the turn total before persisting. Summary runs

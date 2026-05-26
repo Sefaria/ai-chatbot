@@ -11,7 +11,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 from ..agent.sefaria_client import SefariaClient
 from ..pricing import tracked_messages_create
@@ -49,6 +50,7 @@ class AppetizerResult:
     topic_slug: str
     topic_title: str
     topic_url: str
+    metrics: dict = field(default_factory=dict)
 
 
 class AppetizerService:
@@ -70,27 +72,48 @@ class AppetizerService:
             return None
 
     async def _find_appetizer_inner(self, user_message: str) -> AppetizerResult | None:
+        metrics: dict = {"tier_used": None, "topic_found": None}
+        t0 = time.monotonic()
+
         # Tier 1: direct keyword search (<500ms)
         query = _extract_query_words(user_message)
+        metrics["query_extracted"] = query
         logger.info("Appetizer tier-1 query extracted: %r from %r", query, user_message)
         if query:
+            t1 = time.monotonic()
             result = await self._search_and_build(query)
+            metrics["tier1_search_ms"] = int((time.monotonic() - t1) * 1000)
             logger.info("Appetizer tier-1 search result: %s", result)
             if result:
                 logger.info("Appetizer tier-1 hit for query=%r", query)
+                metrics["tier_used"] = "tier1"
+                metrics["topic_found"] = result.topic_slug
+                metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
+                result.metrics = metrics
                 return result
 
         # Tier 2: Haiku concept extraction fallback (2-4s)
+        t2 = time.monotonic()
         concept = await self._extract_concept_via_haiku(user_message)
+        metrics["tier2_haiku_ms"] = int((time.monotonic() - t2) * 1000)
+        metrics["tier2_concept"] = concept
         logger.info("Appetizer tier-2 concept extracted: %r", concept)
         if concept:
+            t3 = time.monotonic()
             result = await self._search_and_build(concept)
+            metrics["tier2_search_ms"] = int((time.monotonic() - t3) * 1000)
             logger.info("Appetizer tier-2 search result: %s", result)
             if result:
                 logger.info("Appetizer tier-2 hit for concept=%r", concept)
+                metrics["tier_used"] = "tier2"
+                metrics["topic_found"] = result.topic_slug
+                metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
+                result.metrics = metrics
                 return result
 
-        logger.info("Appetizer: no result from either tier")
+        metrics["tier_used"] = "none"
+        metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
+        logger.info("Appetizer: no result from either tier, metrics=%s", metrics)
         return None
 
     async def _search_and_build(self, query: str) -> AppetizerResult | None:
