@@ -1589,7 +1589,12 @@
     min-width: 200px;
     padding: 12px 16px !important;
     margin-bottom: 8px;
-}
+    direction: ltr;
+  }
+
+  .message.assistant:has(.thinking-content) {
+     align-self: revert;
+  }
 
   .status-text {
     display: flex;
