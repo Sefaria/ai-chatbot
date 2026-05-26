@@ -275,7 +275,11 @@ def chat_stream_v2(request):
     def run_appetizer():
         """Background thread: fast Haiku topic lookup, parallel to main agent."""
         t_start = time.time()
-        logger.info("Appetizer thread started for: %s", data["text"][:50])
+        logger.info(
+            "Appetizer thread started at +%dms for: %s",
+            int((t_start - start_time) * 1000),
+            data["text"][:50],
+        )
         try:
             from .router.router_service import RouterService, RouteType
 
@@ -388,6 +392,17 @@ def chat_stream_v2(request):
           5. On success → update summary, persist messages, yield final event
         """
         nonlocal stream_closed
+        sse_start = time.time()
+
+        def sse_elapsed():
+            return int((time.time() - start_time) * 1000)
+
+        logger.info(
+            "SSE generator started at +%dms (appetizer has been running for %dms)",
+            sse_elapsed(),
+            int((sse_start - start_time) * 1000),
+            extra={"session_id": data["sessionId"], "turn_id": turn_id},
+        )
         result_holder = {"response": None, "error": None}
         assistant_persisted = False
         final_event_sent = False
@@ -467,11 +482,19 @@ def chat_stream_v2(request):
             _mark_turn_running(user_message.id)
             future = executor.submit(ctx.run, run_agent)
 
+        first_event_yielded = False
+
         try:
             # Flush reverse-proxy buffers. Many proxies (nginx, gunicorn,
             # cloud load balancers) buffer the first 4-8KB before forwarding.
             # This SSE comment is ignored by EventSource but forces the buffer
             # to flush so subsequent events stream in real-time.
+            logger.info(
+                "SSE proxy flush at +%dms, queue size=%d",
+                sse_elapsed(),
+                progress_queue.qsize(),
+                extra={"session_id": data["sessionId"], "turn_id": turn_id},
+            )
             yield ": " + " " * 4096 + "\n\n"
 
             # --- Stream progress events to the client ---
@@ -482,6 +505,15 @@ def chat_stream_v2(request):
                     # None sentinel means the agent thread finished
                     if update is None:
                         break
+
+                    if not first_event_yielded:
+                        logger.info(
+                            "SSE first event at +%dms, type=%s",
+                            sse_elapsed(),
+                            update.type,
+                            extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                        )
+                        first_event_yielded = True
 
                     # Build the SSE payload, including optional tool-call fields
                     event_data = {
