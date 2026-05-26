@@ -9,10 +9,8 @@
     expanded = !expanded;
   }
 
-  function handleClick(e) {
-    e.preventDefault();
+  function handleClick() {
     if (onClickTopic) onClickTopic(data.topicSlug);
-    window.open(data.topicUrl, '_blank', 'noopener,noreferrer');
   }
 </script>
 
@@ -40,8 +38,6 @@
       <a
         class="appetizer-link"
         href={data.topicUrl}
-        target="_blank"
-        rel="noopener noreferrer"
         onclick={handleClick}
       >
         {data.topicTitle} →
