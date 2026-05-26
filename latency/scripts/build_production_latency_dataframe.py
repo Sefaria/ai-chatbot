@@ -30,7 +30,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -235,7 +235,9 @@ def build_root_span_id_filter(root_span_ids: list[str]) -> dict[str, Any]:
     return build_string_field_filter(["root_span_id"], root_span_ids)
 
 
-def build_string_field_filter(field_path: list[str], values: list[str]) -> dict[str, Any]:
+def build_string_field_filter(
+    field_path: list[str], values: list[str]
+) -> dict[str, Any]:
     if len(values) == 1:
         return {
             "op": "eq",
@@ -419,7 +421,8 @@ def fetch_experiment_object(args: SimpleNamespace) -> dict[str, Any]:
     experiments = extract_braintrust_items(response.json())
     if args.experiment_name:
         experiment = next(
-            (item for item in experiments if item.get("name") == args.experiment_name), None
+            (item for item in experiments if item.get("name") == args.experiment_name),
+            None,
         )
         if not experiment:
             raise RuntimeError(
@@ -441,7 +444,9 @@ def fetch_experiment_object(args: SimpleNamespace) -> dict[str, Any]:
     return beta_experiments[0]
 
 
-def fetch_experiment_rows(experiment_id: str, args: SimpleNamespace) -> list[dict[str, Any]]:
+def fetch_experiment_rows(
+    experiment_id: str, args: SimpleNamespace
+) -> list[dict[str, Any]]:
     query = f"""
     SELECT id, input, output, expected, metadata, tags, scores
     FROM experiment('{experiment_id}')
@@ -729,17 +734,20 @@ def build_trace_row(
     root_output = get_output_payload(root_row)
     experiment_input = (
         experiment_row.get("input")
-        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("input"), dict)
+        if isinstance(experiment_row, dict)
+        and isinstance(experiment_row.get("input"), dict)
         else {}
     )
     experiment_output = (
         experiment_row.get("output")
-        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("output"), dict)
+        if isinstance(experiment_row, dict)
+        and isinstance(experiment_row.get("output"), dict)
         else {}
     )
     experiment_metadata = (
         experiment_row.get("metadata")
-        if isinstance(experiment_row, dict) and isinstance(experiment_row.get("metadata"), dict)
+        if isinstance(experiment_row, dict)
+        and isinstance(experiment_row.get("metadata"), dict)
         else {}
     )
     root_start_s, root_end_s = get_time_range_seconds(root_row)
@@ -832,7 +840,8 @@ def build_trace_row(
         "origin": root_metadata.get("origin"),
         "model": root_metadata.get("model"),
         "route": root_metadata.get("route"),
-        "session_id": experiment_metadata.get("session_id") or root_metadata.get("session_id"),
+        "session_id": experiment_metadata.get("session_id")
+        or root_metadata.get("session_id"),
         "user_id": root_metadata.get("user_id"),
         "summary_included": experiment_metadata.get("summary_included")
         if "summary_included" in experiment_metadata
@@ -1511,7 +1520,9 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def build_output_dir(base_output_dir: Path, args: SimpleNamespace) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    experiment_slug_source = args.experiment_name or args.experiment_id or "latest-beta-baseline"
+    experiment_slug_source = (
+        args.experiment_name or args.experiment_id or "latest-beta-baseline"
+    )
     slug = "".join(
         ch.lower() if ch.isalnum() else "-"
         for ch in f"{args.project}-{experiment_slug_source}"
