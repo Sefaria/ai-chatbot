@@ -7,11 +7,17 @@ from unittest.mock import patch
 class TestCreateScorer:
     """Tests for create_scorer function."""
 
-    def test_creates_scorer_with_correct_name(self):
+    def test_creates_scorer_uses_slug_as_name_fallback(self):
         from evals.run_eval import create_scorer
 
         scorer = create_scorer("test-scorer")
-        assert scorer.__name__ == "test_scorer"
+        assert scorer.__name__ == "test-scorer"
+
+    def test_creates_scorer_uses_display_name_when_provided(self):
+        from evals.run_eval import create_scorer
+
+        scorer = create_scorer("test-scorer", name="Test Scorer")
+        assert scorer.__name__ == "Test Scorer"
 
     def test_scorer_calls_invoke_with_output(self):
         from evals.run_eval import create_scorer

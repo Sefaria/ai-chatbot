@@ -179,7 +179,7 @@ def _is_braintrust_auth_error(exc: Exception) -> bool:
     return any(needle in message for needle in _AUTH_ERROR_NEEDLES)
 
 
-def create_scorer(slug: str):
+def create_scorer(slug: str, name: str | None = None):
     """
     Create a scorer function that invokes a Braintrust UI-defined scorer.
 
@@ -187,6 +187,10 @@ def create_scorer(slug: str):
     login() and will not refresh it on its own. We force a fresh login after an
     auth-looking failure, and back off on other transient errors. Final failure
     re-raises so the Eval framework records an error row instead of a fake 0.0.
+
+    `name` should be the Braintrust display name (e.g. "Link Quote Accuracy").
+    EvalAsync uses __name__ as the score column key; invoke() logs under the
+    display name internally — so they must match to avoid duplicate columns.
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
@@ -237,7 +241,7 @@ def create_scorer(slug: str):
         assert last_exc is not None
         raise last_exc
 
-    scorer.__name__ = slug.replace("-", "_")
+    scorer.__name__ = name if name else slug
     return scorer
 
 
@@ -539,8 +543,9 @@ def get_all_scorers() -> list:
         scorers = []
         for f in scorer_funcs:
             if slug := f.get("slug"):
-                print(f"  - {slug}: {f.get('name', '')}")
-                scorers.append(create_scorer(slug))
+                display_name = f.get("name", "")
+                print(f"  - {slug}: {display_name}")
+                scorers.append(create_scorer(slug, name=display_name or None))
         return scorers
 
     except Exception as e:
