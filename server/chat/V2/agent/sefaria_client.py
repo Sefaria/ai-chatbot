@@ -31,11 +31,12 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
+
+DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
 
 def _get_default_sefaria_base_url() -> str:
-    return os.environ.get("SEFARIA_API_BASE_URL") or "https://www.sefaria.org"
+    return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
 
 
 def _get_default_sefaria_ai_base_url() -> str:
@@ -669,7 +670,7 @@ class SefariaClient:
         """Build an absolute source sheet URL when a numeric sheet id is available."""
         if sheet_id is None:
             return ""
-        return f"{DEFAULT_SEFARIA_BASE_URL}/sheets/{sheet_id}"
+        return f"{self.base_url}/sheets/{sheet_id}"
 
     async def _hydrate_source_sheet_sources(
         self, sources: list[dict[str, Any]]
