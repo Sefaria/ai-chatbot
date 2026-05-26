@@ -1912,9 +1912,13 @@ inset: 8px;
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    font-style: italic;
     color: var(--lc-sefaria-blue);
     margin: 0 0 16px 0;
+  }
+
+  .interface-hebrew .feedback-modal-subtitle {
+    font-size: var(--lc-font-size-sm);
+    font-weight: 400px;
   }
 
   .feedback-modal-field {
@@ -2077,6 +2081,10 @@ inset: 8px;
   .message-content :global(.response-signoff) {
     font-style: italic;
     line-height: 21px;
+  }
+
+  .interface-hebrew .message-content :global(.response-signoff) {
+    font-style: normal;
   }
 
   .message-content :global(.response-quote) {
