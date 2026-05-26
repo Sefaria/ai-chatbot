@@ -36,6 +36,7 @@ class TestUserTokenAuthentication:
         actor = authenticate_request(request, {"userId": token})
 
         assert actor.user_id == "user_12345"
+        assert actor.encrypted_token == token
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_valid_user_token_in_header_returns_user_actor(self, factory, secret):
@@ -46,6 +47,7 @@ class TestUserTokenAuthentication:
         actor = authenticate_request(request)
 
         assert actor.user_id == "user_12345"
+        assert actor.encrypted_token == token
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_header_takes_precedence_over_body(self, factory, secret):

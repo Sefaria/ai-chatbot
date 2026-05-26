@@ -19,7 +19,7 @@ from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .tool_runtime import ToolRuntime
-from .tool_schemas import get_all_tools
+from .tool_schemas import get_tools_for_labs
 from .trace_logger import BraintrustTraceLogger
 
 
@@ -112,9 +112,10 @@ class TurnOrchestrator:
         )
 
         tool_calls_list: list[dict[str, Any]] = []
-        tools = get_all_tools()
+        tools = get_tools_for_labs(context.labs)
         sdk_tools = self.tool_runtime.build_sdk_tools(
             tool_schemas=tools,
+            context=context,
             emit=emitter.emit,
             tool_calls_list=tool_calls_list,
         )

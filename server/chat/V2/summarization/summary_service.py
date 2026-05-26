@@ -16,12 +16,12 @@ import logging
 import os
 from typing import Any
 
-import anthropic
 from django.conf import settings
 from django.utils import timezone
 
 from ...models import ChatSession, ConversationSummary
-from ..utils import make_singleton, strip_markdown_fences
+from ..pricing import tracked_messages_create
+from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
 logger = logging.getLogger("chat.summarization")
 
@@ -74,7 +74,7 @@ class SummaryService:
         self.use_llm = use_llm and bool(self.api_key)
 
         if self.use_llm:
-            self.client = anthropic.Anthropic(api_key=self.api_key)
+            self.client = get_anthropic_client(self.api_key)
         else:
             self.client = None
 
@@ -89,12 +89,8 @@ class SummaryService:
         """
         Update the conversation summary with new messages.
 
-        Args:
-            session: Chat session to update/create summary for
-            new_user_message: Latest user message
-            new_assistant_response: Latest assistant response
-        Returns:
-            Updated ConversationSummary
+        Cost is recorded via the contextvar-bound CostAccumulator (see
+        `tracked_messages_create`) so callers don't need to thread it back.
         """
         current_summary = ConversationSummary.objects.filter(session=session).first()
 
@@ -133,7 +129,8 @@ class SummaryService:
 
             context = "\n\n".join(context_parts)
 
-            response = self.client.messages.create(
+            response = tracked_messages_create(
+                self.client,
                 model=self.model,
                 max_tokens=500,
                 temperature=0.0,
@@ -141,21 +138,19 @@ class SummaryService:
                 messages=[{"role": "user", "content": context}],
             )
 
-            # Parse JSON response
             response_text = response.content[0].text
 
             import json
 
             try:
                 data = json.loads(strip_markdown_fences(response_text))
-
                 return self._apply_summary_data(
                     session=session,
                     current_summary=current_summary,
                     data=data,
                 )
-
             except json.JSONDecodeError:
+                # The LLM call succeeded (cost was recorded) even though parsing failed.
                 logger.warning(f"Failed to parse summary JSON: {response_text[:200]}")
                 return self._simple_summarize(
                     session,

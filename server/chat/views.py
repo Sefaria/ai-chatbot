@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
-from django.conf import settings as django_settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response

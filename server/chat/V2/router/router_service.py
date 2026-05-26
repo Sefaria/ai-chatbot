@@ -16,6 +16,9 @@ from enum import Enum
 
 from django.conf import settings
 
+from chatbot_server.model_defaults import ROUTER_MAX_TOKENS, ROUTER_TEMPERATURE
+
+from ..pricing import tracked_messages_create
 from ..prompts import get_prompt_service
 from ..utils import get_anthropic_client, make_singleton, strip_markdown_fences
 
@@ -98,10 +101,11 @@ class RouterService:
             return deterministic_route
         system_prompt = self._load_prompt(settings.ROUTER_PROMPT_SLUG)
 
-        response = self.client.messages.create(
+        response = tracked_messages_create(
+            self.client,
             model=settings.ROUTER_MODEL,
-            max_tokens=256,
-            temperature=0.0,
+            max_tokens=ROUTER_MAX_TOKENS,
+            temperature=ROUTER_TEMPERATURE,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
@@ -113,7 +117,8 @@ class RouterService:
         try:
             system_prompt = self._load_prompt(settings.REWRITER_PROMPT_SLUG)
 
-            response = self.client.messages.create(
+            response = tracked_messages_create(
+                self.client,
                 model=settings.ROUTER_MODEL,
                 max_tokens=512,
                 temperature=0.0,

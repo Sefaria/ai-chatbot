@@ -226,8 +226,12 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 #
 # Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
 # (guardrail classification, summarization). Override via env vars.
-AGENT_MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5-20250929")
-GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", "claude-haiku-4-5-20251001")
+from .model_defaults import AGENT_MODEL as _AGENT_MODEL_DEFAULT
+from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
+from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
+
+AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
+GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", _GUARDRAIL_MODEL_DEFAULT)
 GUARDRAIL_OUTPUT_CONFIG = {
     "format": {
         "type": "json_schema",
@@ -248,7 +252,7 @@ GUARDRAIL_OUTPUT_CONFIG = {
         },
     }
 }
-ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "claude-haiku-4-5-20251001")
+ROUTER_MODEL = os.environ.get("ROUTER_MODEL", _ROUTER_MODEL_DEFAULT)
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
 LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 

@@ -61,6 +61,10 @@ def mock_client():
     client.get_library_index = AsyncMock(return_value=[])
     client.get_available_manuscripts = AsyncMock(return_value={"manuscripts": []})
     client.get_manuscript_image = AsyncMock(return_value={"image_url": "http://..."})
+    client.set_user_session = Mock()
+    client.search_user_source_sheets = AsyncMock(return_value={"sheets": []})
+    client.get_source_sheet = AsyncMock(return_value={"sources": []})
+    client.create_source_sheet = AsyncMock(return_value={"id": 715437, "sources": []})
     return client
 
 
@@ -156,6 +160,23 @@ class TestToolDispatch:
                 "get_manuscript_image",
                 ("http://example.com/image.jpg", "Leningrad Codex"),
             ),
+            (
+                "search_user_source_sheets",
+                {"query": "Sabbath prohibitions", "limit": 5},
+                "search_user_source_sheets",
+                ("Sabbath prohibitions", 5),
+            ),
+            ("get_source_sheet", {"sheet_id": 702510}, "get_source_sheet", (702510,)),
+            (
+                "create_source_sheet",
+                {
+                    "title": "Bereshit",
+                    "summary": "A starter sheet",
+                    "sources": [{"outsideText": "<p>hi there</p>", "node": 1}],
+                },
+                "create_source_sheet",
+                ("Bereshit", "A starter sheet", [{"outsideText": "<p>hi there</p>", "node": 1}]),
+            ),
         ],
     )
     async def test_dispatch(
@@ -230,6 +251,15 @@ class TestToolDispatch:
         )
         assert result.is_error is False
 
+    def test_set_message_context_sets_client_user_session(self, executor, mock_client):
+        from chat.V2.agent import MessageContext
+
+        context = MessageContext(user_id="186013", encrypted_user_token="encrypted-token")
+
+        executor.set_message_context(context)
+
+        mock_client.set_user_session.assert_called_once_with("186013", "encrypted-token")
+
 
 class TestErrorHandling:
     """Test error handling in tool execution."""
@@ -294,6 +324,17 @@ class TestDescribeToolCall:
                 "get_text",
                 {"reference": "Genesis 1:1", "version_language": "he"},
                 ["Genesis 1:1", "he"],
+            ),
+            (
+                "search_user_source_sheets",
+                {"query": "halacha workflow"},
+                ["user's source sheets", "halacha workflow"],
+            ),
+            ("get_source_sheet", {"sheet_id": 702510}, ["source sheet", "702510"]),
+            (
+                "create_source_sheet",
+                {"title": "Bereshit"},
+                ["Creating source sheet", "Bereshit"],
             ),
             (
                 "english_semantic_search",

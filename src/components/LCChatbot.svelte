@@ -47,10 +47,12 @@
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
-    corePromptSlug: ''
+    corePromptSlug: '',
+    labs: false
   });
   let defaultPromptSlugs = $state({
-    corePromptSlug: ''
+    corePromptSlug: '',
+    labs: false
   });
   let settingsLoaded = $state(false);
   let isLoadingSettings = $state(false);
@@ -173,7 +175,8 @@
     const savedPromptSlugs = getStorage(STORAGE_KEYS.PROMPT_SLUGS, null);
     if (savedPromptSlugs) {
       promptSlugs = {
-        corePromptSlug: savedPromptSlugs.corePromptSlug || ''
+        corePromptSlug: savedPromptSlugs.corePromptSlug || '',
+        labs: savedPromptSlugs.labs === true
       };
       settingsLoaded = true;
     }
@@ -308,10 +311,12 @@
       try {
         const defaults = await fetchPromptDefaults(apiBaseUrl);
         defaultPromptSlugs = {
-          corePromptSlug: defaults.corePromptSlug || ''
+          corePromptSlug: defaults.corePromptSlug || '',
+          labs: defaults.labs === true
         };
         promptSlugs = {
-          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug
+          corePromptSlug: promptSlugs.corePromptSlug || defaultPromptSlugs.corePromptSlug,
+          labs: promptSlugs.labs === true
         };
         settingsLoaded = true;
       } catch (e) {
@@ -329,7 +334,8 @@
 
   function saveSettings() {
     setStorage(STORAGE_KEYS.PROMPT_SLUGS, {
-      corePromptSlug: promptSlugs.corePromptSlug || ''
+      corePromptSlug: promptSlugs.corePromptSlug || '',
+      labs: promptSlugs.labs === true
     });
     settingsError = '';
   }
@@ -345,7 +351,8 @@
     try {
       const defaults = await fetchPromptDefaults(apiBaseUrl);
       defaultPromptSlugs = {
-        corePromptSlug: defaults.corePromptSlug || ''
+        corePromptSlug: defaults.corePromptSlug || '',
+        labs: defaults.labs === true
       };
       promptSlugs = { ...defaultPromptSlugs };
       setStorage(STORAGE_KEYS.PROMPT_SLUGS, { ...defaultPromptSlugs });
@@ -484,7 +491,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator, {
+      }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       });
@@ -706,13 +713,27 @@
     const anchor = e.target?.closest?.('a');
     if (!anchor) return;
 
-    const sefariaPath = anchor.getAttribute('href');
-    if (!sefariaPath) return;
+    const href = anchor.getAttribute('href');
+    if (!href) return;
 
     e.preventDefault();
 
-    const path = sefariaPath;
-    console.log('[lc-chatbot] Link clicked:', anchor.getAttribute('href'));
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(href, window.location.href);
+    } catch {
+      return;
+    }
+
+    const sheetMatch = resolvedUrl.pathname.match(/^\/sheets\/([^/?#]+)\/?$/);
+    if (sheetMatch) {
+      const rebasedSheetUrl = `${window.location.origin}/sheets/${sheetMatch[1]}`;
+      window.open(rebasedSheetUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
+    console.log('[lc-chatbot] Link clicked:', href);
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
       detail: {
         url: path,
@@ -818,6 +839,7 @@
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
+              class:panel-close-icon={mode === 'floating'}
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
               width="16"
@@ -893,6 +915,14 @@
                 placeholder="core-8fbc"
                 disabled={isLoadingSettings}
               />
+            </label>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                bind:checked={promptSlugs.labs}
+                disabled={isLoadingSettings}
+              />
+              <span>{$_('settings.labs')}</span>
             </label>
           </div>
 
@@ -1170,6 +1200,7 @@
 
   .lc-chatbot-container.interface-hebrew {
     direction: rtl;
+    font-family: Heebo;
   }
 
   .lc-chatbot-container.mode-docked.is-open {
@@ -1318,15 +1349,18 @@
     gap: 6px;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
-    font-weight: 600;
     margin: 0;
     line-height: 1.1;
     color: var(--brand-sefaria-blue);
     font-family: Roboto;
     font-style: normal;
     font-weight: 600;
+  }
+
+  .interface-hebrew .lc-chatbot-header h2 {
     line-height: normal;
   }
+
 
   .lc-chatbot-header h2 img {
     display: block;
@@ -1555,7 +1589,12 @@
     min-width: 200px;
     padding: 12px 16px !important;
     margin-bottom: 8px;
-}
+    direction: ltr;
+  }
+
+  .message.assistant:has(.thinking-content) {
+     align-self: revert;
+  }
 
   .status-text {
     display: flex;
@@ -1675,6 +1714,10 @@
     transform: scaleX(-1);
   }
 
+  .interface-hebrew .panel-close-icon {
+    transform: scaleX(-1);
+  }
+
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
   }
@@ -1744,6 +1787,24 @@
   }
 
   .settings-field input:disabled {
+    opacity: 0.6;
+  }
+
+  .settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--lc-primary);
+  }
+
+  .settings-toggle input:disabled {
     opacity: 0.6;
   }
 
@@ -1851,9 +1912,13 @@ inset: 8px;
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    font-style: italic;
     color: var(--lc-sefaria-blue);
     margin: 0 0 16px 0;
+  }
+
+  .interface-hebrew .feedback-modal-subtitle {
+    font-size: var(--lc-font-size-sm);
+    font-weight: 400px;
   }
 
   .feedback-modal-field {
@@ -1893,7 +1958,6 @@ inset: 8px;
     background-image: url("data:image/svg+xml,...");
     background-repeat: no-repeat;
     background-position: right 12px center;
-    padding-right: 36px;
   }
 
   .feedback-modal-select:focus {
@@ -1903,8 +1967,6 @@ inset: 8px;
   .feedback-modal-select.is-placeholder {
     color: var(--lc-disabled-text);
   }
-
-
 
   .feedback-modal-input:focus {
     border-color: var(--brand-sefaria-blue);
@@ -1970,17 +2032,16 @@ inset: 8px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 16px;
     font-style: normal;
-    font-weight: 700;
     line-height: normal;
+  }
+  .interface-hebrew .message-content :global(.response-title) {
+    font-weight: 700;
   }
 
   .message-content :global(.response-generic) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
     line-height: normal;
@@ -1988,8 +2049,7 @@ inset: 8px;
 
   .message-content :global(.response-section) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
@@ -1997,8 +2057,7 @@ inset: 8px;
 
   .message-content :global(.response-list) {
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
     line-height: normal;
@@ -2013,8 +2072,7 @@ inset: 8px;
     text-underline-offset: auto;
     text-underline-position: from-font;
     color: var(--brand-sefaria-blue);
-    font-family: Heebo;
-    font-size: 14px;
+    font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
@@ -2023,6 +2081,10 @@ inset: 8px;
   .message-content :global(.response-signoff) {
     font-style: italic;
     line-height: 21px;
+  }
+
+  .interface-hebrew .message-content :global(.response-signoff) {
+    font-style: normal;
   }
 
   .message-content :global(.response-quote) {
