@@ -1,16 +1,15 @@
 """Fast topic appetizer — finds a relevant Sefaria topic within 5 seconds.
 
-Two-tier approach:
-  Tier 1: Strip prompt wrappers, search Sefaria name API directly (<500ms)
-  Tier 2: If no topic found, use Haiku to extract the concept, retry (2-4s)
-Both tiers run inside a 5-second asyncio.wait_for timeout.
+Single-tier approach:
+  Use Haiku to extract the core Jewish topic from any prompt (English or Hebrew),
+  then search the Sefaria name API for that concept (total ~1.5–2.5s).
+Both steps run inside a 5-second asyncio.wait_for timeout.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from dataclasses import dataclass, field
 
@@ -23,26 +22,6 @@ logger = logging.getLogger("chat.appetizer")
 APPETIZER_TIMEOUT_SECONDS = 5
 APPETIZER_MODEL = "claude-haiku-4-5-20251001"
 SEFARIA_TOPICS_BASE_URL = "https://www.sefaria.org/topics"
-
-_STRIP_PREFIXES = [
-    r"(?:can you |please )?(?:find|show|give|get|bring)(?: me)? (?:some )?(?:sources?|texts?|references?) (?:about|on|for|regarding|related to) ",
-    r"(?:can you |please )?(?:tell|teach) me (?:about|more about) ",
-    r"what (?:does |do |did )?(?:the )?(?:torah|talmud|bible|tanakh|mishnah|gemara) (?:say|teach)s? (?:about|on|regarding) ",
-    r"what (?:is|are|was|were) (?:the )?",
-]
-_STRIP_RE = re.compile(
-    r"^(?:" + "|".join(_STRIP_PREFIXES) + r")",
-    re.IGNORECASE,
-)
-
-
-def _extract_query_words(prompt: str) -> str:
-    """Strip common natural-language prompt wrappers, return the topical core."""
-    prompt = prompt.strip()
-    if not prompt:
-        return ""
-    cleaned = _STRIP_RE.sub("", prompt).strip().rstrip("?.,!")
-    return cleaned if cleaned else prompt
 
 
 @dataclass
@@ -72,48 +51,30 @@ class AppetizerService:
             return None
 
     async def _find_appetizer_inner(self, user_message: str) -> AppetizerResult | None:
-        metrics: dict = {"tier_used": None, "topic_found": None}
+        metrics: dict = {"topic_found": None}
         t0 = time.monotonic()
 
-        # Tier 1: direct keyword search (<500ms)
-        query = _extract_query_words(user_message)
-        metrics["query_extracted"] = query
-        logger.info("Appetizer tier-1 query extracted: %r from %r", query, user_message)
-        if query:
-            t1 = time.monotonic()
-            result = await self._search_and_build(query)
-            metrics["tier1_search_ms"] = int((time.monotonic() - t1) * 1000)
-            logger.info("Appetizer tier-1 search result: %s", result)
-            if result:
-                logger.info("Appetizer tier-1 hit for query=%r", query)
-                metrics["tier_used"] = "tier1"
-                metrics["topic_found"] = result.topic_slug
-                metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
-                result.metrics = metrics
-                return result
-
-        # Tier 2: Haiku concept extraction fallback (2-4s)
-        t2 = time.monotonic()
+        # Haiku extracts the core topic (handles English, Hebrew, and any language)
+        t1 = time.monotonic()
         concept = await self._extract_concept_via_haiku(user_message)
-        metrics["tier2_haiku_ms"] = int((time.monotonic() - t2) * 1000)
-        metrics["tier2_concept"] = concept
-        logger.info("Appetizer tier-2 concept extracted: %r", concept)
+        metrics["haiku_ms"] = int((time.monotonic() - t1) * 1000)
+        metrics["haiku_concept"] = concept
+        logger.info("Appetizer haiku concept extracted: %r from %r", concept, user_message)
+
         if concept:
-            t3 = time.monotonic()
+            t2 = time.monotonic()
             result = await self._search_and_build(concept)
-            metrics["tier2_search_ms"] = int((time.monotonic() - t3) * 1000)
-            logger.info("Appetizer tier-2 search result: %s", result)
+            metrics["search_ms"] = int((time.monotonic() - t2) * 1000)
+            logger.info("Appetizer search result: %s", result)
             if result:
-                logger.info("Appetizer tier-2 hit for concept=%r", concept)
-                metrics["tier_used"] = "tier2"
+                logger.info("Appetizer hit for concept=%r", concept)
                 metrics["topic_found"] = result.topic_slug
                 metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
                 result.metrics = metrics
                 return result
 
-        metrics["tier_used"] = "none"
         metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
-        logger.info("Appetizer: no result from either tier, metrics=%s", metrics)
+        logger.info("Appetizer: no result, metrics=%s", metrics)
         return None
 
     async def _search_and_build(self, query: str) -> AppetizerResult | None:
