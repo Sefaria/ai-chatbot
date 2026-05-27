@@ -2121,6 +2121,11 @@ inset: 8px;
     text-decoration: underline;
     font-size: 14px;
     font-weight: 600;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
   }
   :global(.appetizer-link:hover) {
     color: #465D7D;

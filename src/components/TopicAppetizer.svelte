@@ -3,8 +3,7 @@
 
   let { data, streaming = false, onClickTopic } = $props();
 
-  function handleClick(e, slug) {
-    e.preventDefault();
+  function handleClick(slug) {
     if (onClickTopic) onClickTopic(slug);
   }
 </script>
@@ -23,13 +22,12 @@
   <div class="appetizer-body">
     {#each data.topics as topic, i}
       {#if i > 0}<span class="appetizer-separator">, </span>{/if}
-      <a
+      <button
         class="appetizer-link"
-        href={topic.topicUrl}
-        onclick={(e) => handleClick(e, topic.topicSlug)}
+        onclick={() => handleClick(topic.topicSlug)}
       >
         {topic.topicTitle}
-      </a>
+      </button>
     {/each}
   </div>
 </div>
