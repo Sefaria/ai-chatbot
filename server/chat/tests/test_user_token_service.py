@@ -62,7 +62,9 @@ class TestDecryptChatbotUserToken:
 
     def test_valid_token_with_user_id_field(self, secret):
         """Token payloads using user_id should be supported."""
-        token = create_test_token("legacy-id", secret, payload_override={"id": None, "user_id": 186013})
+        token = create_test_token(
+            "legacy-id", secret, payload_override={"id": None, "user_id": 186013}
+        )
         result = decrypt_chatbot_user_token(token, secret)
         assert result == "186013"
 
