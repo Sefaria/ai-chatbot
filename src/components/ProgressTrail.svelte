@@ -23,15 +23,16 @@
   }
 
   /**
-   * Return an HTML string with any single-quoted Sefaria refs turned into links.
+   * Return an HTML string with any quoted Sefaria refs turned into links.
+   * Handles both single quotes ('Pesachim 119b') and double quotes ("Mishnah Shabbat 7:2").
    * Input is plain text, so we escape it first to prevent XSS.
    */
   function linkifyRefs(text) {
     const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return escaped.replace(/'([^']+)'/g, (match, ref) => {
+    return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
       const url = refToUrl(ref);
       if (!url) return match;
-      return `'<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${ref}</a>'`;
+      return `${quote}<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${ref}</a>${quote}`;
     });
   }
 
