@@ -566,7 +566,7 @@
       };
 
       messages = [...messages, assistantMessage];
-      appetizerData = null; // dismiss "while waiting" card once answer arrives
+      firstSourcePreview = null; // dismiss source mention once answer arrives
       sourcePreviewMessageId = assistantMessage.messageId;
       saveMessagesToStorage();
       scrollToResponseStart();
