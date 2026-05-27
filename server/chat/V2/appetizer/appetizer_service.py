@@ -19,7 +19,7 @@ from ..utils import get_anthropic_client, make_singleton
 logger = logging.getLogger("chat.appetizer")
 
 APPETIZER_TIMEOUT_SECONDS = 8
-APPETIZER_MODEL = "claude-sonnet-4-5-20250929"
+APPETIZER_MODEL = "claude-haiku-4-5-20251001"
 SEFARIA_TOPICS_BASE_URL = "https://www.sefaria.org/topics"
 
 
