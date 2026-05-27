@@ -8,6 +8,33 @@
    */
   let { entries = [], collapsed = false } = $props();
 
+  /**
+   * Convert a bare Sefaria ref like "Pesachim 119b" or "Mishnah Pesachim 10:8"
+   * into a sefaria.org URL.  Returns null if the string doesn't look like a ref.
+   */
+  function refToUrl(ref) {
+    // Must end with a chapter/verse token: digits optionally followed by a letter
+    // and optionally a range like 115b-116a or a verse like 10:8
+    const m = ref.match(/^(.+?)\s+(\d[\w:.-]*)$/);
+    if (!m) return null;
+    const book = m[1].replace(/ /g, '_');
+    const chapter = m[2].replace(/:/g, '.');
+    return `https://www.sefaria.org/${book}.${chapter}`;
+  }
+
+  /**
+   * Return an HTML string with any single-quoted Sefaria refs turned into links.
+   * Input is plain text, so we escape it first to prevent XSS.
+   */
+  function linkifyRefs(text) {
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.replace(/'([^']+)'/g, (match, ref) => {
+      const url = refToUrl(ref);
+      if (!url) return match;
+      return `'<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${ref}</a>'`;
+    });
+  }
+
   let expanded = $state(false);
 
   // Show the list when streaming (collapsed=false) or when the user expands it
@@ -52,7 +79,11 @@
             {/if}
           </span>
           <span class="progress-trail-text">
-            {entry.type === 'tool' ? (entry.description ?? entry.toolName ?? '') : (entry.text ?? '')}
+            {#if entry.type === 'tool'}
+              {@html linkifyRefs(entry.description ?? entry.toolName ?? '')}
+            {:else}
+              {entry.text ?? ''}
+            {/if}
           </span>
         </li>
       {/each}

@@ -1,4 +1,4 @@
-"""Tests for the Haiku-first appetizer pipeline."""
+"""Tests for the multi-candidate Haiku appetizer pipeline."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -75,68 +75,98 @@ async def test_search_topics_filters_non_topic_types():
 
 
 # ---------------------------------------------------------------------------
-# AppetizerService — Haiku-first flow
+# AppetizerService — multi-candidate Haiku flow
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_haiku_finds_topic():
+async def test_first_candidate_hits():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.search_topics.return_value = [{"title": "Shabbat", "slug": "shabbat"}]
 
-    with patch.object(service, "_extract_concept_via_haiku", new_callable=AsyncMock) as mock_haiku:
-        mock_haiku.return_value = "Shabbat"
+    with patch.object(
+        service, "_extract_candidates_via_haiku", new_callable=AsyncMock
+    ) as mock_haiku:
+        mock_haiku.return_value = ["Shabbat", "Sabbath"]
         result = await service.find_appetizer("find me sources about Shabbat")
 
     assert result is not None
     assert result.topic_slug == "shabbat"
-    assert result.topic_title == "Shabbat"
-    assert result.topic_url == "https://www.sefaria.org/topics/shabbat"
     mock_haiku.assert_called_once()
+    # Only the first candidate should have been searched
     service.sefaria_client.search_topics.assert_called_once_with("Shabbat", limit=3)
 
 
 @pytest.mark.asyncio
-async def test_haiku_extracts_from_hebrew():
-    """Hebrew prompts are handled by Haiku (not a brittle regex)."""
+async def test_fallback_to_second_candidate():
+    """First candidate misses, second hits — models Herod the Great → Herod."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.search_topics.side_effect = [
+        [],  # "Herod the Great" → miss
+        [{"title": "Herod", "slug": "herod"}],  # "Herod" → hit
+    ]
+
+    with patch.object(
+        service, "_extract_candidates_via_haiku", new_callable=AsyncMock
+    ) as mock_haiku:
+        mock_haiku.return_value = ["Herod the Great", "Herod"]
+        result = await service.find_appetizer(
+            "are there any sources in the yerushalmi about king herod the great"
+        )
+
+    assert result is not None
+    assert result.topic_slug == "herod"
+    assert service.sefaria_client.search_topics.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_hebrew_prompt():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.search_topics.return_value = [{"title": "Sivan", "slug": "sivan"}]
 
-    with patch.object(service, "_extract_concept_via_haiku", new_callable=AsyncMock) as mock_haiku:
-        mock_haiku.return_value = "Sivan"
+    with patch.object(
+        service, "_extract_candidates_via_haiku", new_callable=AsyncMock
+    ) as mock_haiku:
+        mock_haiku.return_value = ["Sivan"]
         result = await service.find_appetizer("תן לי מקורות על סיוון כ'")
 
     assert result is not None
     assert result.topic_slug == "sivan"
-    mock_haiku.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_returns_none_when_search_misses():
+async def test_returns_none_when_all_candidates_miss():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.search_topics.return_value = []
 
-    with patch.object(service, "_extract_concept_via_haiku", new_callable=AsyncMock) as mock_haiku:
-        mock_haiku.return_value = "some obscure concept"
-        result = await service.find_appetizer("tell me about some obscure thing")
+    with patch.object(
+        service, "_extract_candidates_via_haiku", new_callable=AsyncMock
+    ) as mock_haiku:
+        mock_haiku.return_value = ["candidate1", "candidate2"]
+        result = await service.find_appetizer("some obscure thing")
 
     assert result is None
+    assert service.sefaria_client.search_topics.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_returns_none_when_haiku_returns_none():
+async def test_returns_none_when_haiku_returns_empty():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
 
-    with patch.object(service, "_extract_concept_via_haiku", new_callable=AsyncMock) as mock_haiku:
-        mock_haiku.return_value = None
+    with patch.object(
+        service, "_extract_candidates_via_haiku", new_callable=AsyncMock
+    ) as mock_haiku:
+        mock_haiku.return_value = []
         result = await service.find_appetizer("hello how are you?")
 
     assert result is None

@@ -318,7 +318,7 @@ class SefariaClient:
         topics = [
             {"title": c.get("title", ""), "slug": c.get("key", "")}
             for c in completions
-            if c.get("type") == "Topic" and c.get("key")
+            if c.get("type") in {"Topic", "PersonTopic", "AuthorTopic"} and c.get("key")
         ]
         if topics:
             return topics

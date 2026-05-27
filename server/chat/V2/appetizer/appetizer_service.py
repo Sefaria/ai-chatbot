@@ -1,9 +1,10 @@
 """Fast topic appetizer — finds a relevant Sefaria topic within 5 seconds.
 
-Single-tier approach:
-  Use Haiku to extract the core Jewish topic from any prompt (English or Hebrew),
-  then search the Sefaria name API for that concept (total ~1.5–2.5s).
-Both steps run inside a 5-second asyncio.wait_for timeout.
+Haiku-first approach:
+  Ask Haiku for up to 3 ranked topic candidates (short canonical names),
+  then try each against the Sefaria name API until one matches.
+  Multiple candidates improve accuracy and add natural "thinking time" (~2–4s).
+All steps run inside a 5-second asyncio.wait_for timeout.
 """
 
 from __future__ import annotations
@@ -54,27 +55,32 @@ class AppetizerService:
         metrics: dict = {"topic_found": None}
         t0 = time.monotonic()
 
-        # Haiku extracts the core topic (handles English, Hebrew, and any language)
+        # Haiku returns up to 3 ranked candidates (handles any language)
         t1 = time.monotonic()
-        concept = await self._extract_concept_via_haiku(user_message)
+        candidates = await self._extract_candidates_via_haiku(user_message)
         metrics["haiku_ms"] = int((time.monotonic() - t1) * 1000)
-        metrics["haiku_concept"] = concept
-        logger.info("Appetizer haiku concept extracted: %r from %r", concept, user_message)
+        metrics["haiku_candidates"] = candidates
+        logger.info("Appetizer candidates: %r from %r", candidates, user_message)
 
-        if concept:
+        for candidate in candidates:
             t2 = time.monotonic()
-            result = await self._search_and_build(concept)
-            metrics["search_ms"] = int((time.monotonic() - t2) * 1000)
-            logger.info("Appetizer search result: %s", result)
+            result = await self._search_and_build(candidate)
+            metrics.setdefault("searches", []).append(
+                {
+                    "candidate": candidate,
+                    "ms": int((time.monotonic() - t2) * 1000),
+                    "hit": result is not None,
+                }
+            )
             if result:
-                logger.info("Appetizer hit for concept=%r", concept)
+                logger.info("Appetizer hit for candidate=%r", candidate)
                 metrics["topic_found"] = result.topic_slug
                 metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
                 result.metrics = metrics
                 return result
 
         metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
-        logger.info("Appetizer: no result, metrics=%s", metrics)
+        logger.info("Appetizer: no result from any candidate, metrics=%s", metrics)
         return None
 
     async def _search_and_build(self, query: str) -> AppetizerResult | None:
@@ -92,32 +98,37 @@ class AppetizerService:
             topic_url=f"{SEFARIA_TOPICS_BASE_URL}/{best['slug']}",
         )
 
-    async def _extract_concept_via_haiku(self, user_message: str) -> str | None:
+    async def _extract_candidates_via_haiku(self, user_message: str) -> list[str]:
+        """Return up to 3 ranked topic candidates from the user's message."""
         try:
             response = await asyncio.to_thread(
                 tracked_messages_create,
                 self.client,
                 model=APPETIZER_MODEL,
-                max_tokens=50,
+                max_tokens=80,
                 temperature=0.0,
                 system=(
-                    "Extract the single most important topic, concept, or figure from "
-                    "the user's question that could appear in the Sefaria library — "
-                    "a Jewish text library covering Torah, Talmud, halacha, and all "
-                    "areas of Jewish thought including universal topics like parenting, "
-                    "money, relationships, health, and ethics. Return ONLY the topic "
-                    "name in English, nothing else. If there is no clear topic (e.g. "
-                    "greetings, technical questions), return NONE."
+                    "Identify up to 3 topics, concepts, or figures from the user's "
+                    "question that could appear in the Sefaria library — a Jewish text "
+                    "library covering Torah, Talmud, halacha, and all areas of Jewish "
+                    "thought including universal topics like parenting, money, "
+                    "relationships, health, and ethics. "
+                    "Return a comma-separated list, most relevant first. "
+                    "Use the shortest canonical English name for each "
+                    "(e.g. 'Herod' not 'Herod the Great', 'Moses' not 'Moses our Teacher'). "
+                    "If there is no clear topic (e.g. greetings, technical questions), "
+                    "return NONE."
                 ),
                 messages=[{"role": "user", "content": user_message}],
             )
             text = response.content[0].text.strip()
             if not text or text.upper().rstrip(".,!?") == "NONE":
-                return None
-            return text
+                return []
+            candidates = [c.strip() for c in text.split(",") if c.strip()]
+            return candidates[:3]
         except Exception:
-            logger.exception("Haiku concept extraction failed")
-            return None
+            logger.exception("Haiku candidate extraction failed")
+            return []
 
 
 get_appetizer_service, reset_appetizer_service = make_singleton(AppetizerService)
