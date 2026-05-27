@@ -1,0 +1,61 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "LC Chatbot" [level=1] [ref=e3]
+    - paragraph [ref=e4]: A beautiful, embeddable chat widget for any website
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "💬 Markdown Support" [level=3] [ref=e7]
+        - paragraph [ref=e8]: Renders rich markdown responses including code blocks, lists, and links.
+      - generic [ref=e9]:
+        - heading "📐 Resizable" [level=3] [ref=e10]
+        - paragraph [ref=e11]: Drag to resize the chat panel. Size is remembered across sessions.
+      - generic [ref=e12]:
+        - heading "📜 History" [level=3] [ref=e13]
+        - paragraph [ref=e14]: Infinite scroll to load older messages with date markers.
+      - generic [ref=e15]:
+        - heading "🎨 Themeable" [level=3] [ref=e16]
+        - paragraph [ref=e17]: Customize colors and styles with CSS custom properties.
+    - generic [ref=e18]:
+      - heading "Demo Controls" [level=2] [ref=e19]
+      - generic [ref=e20]:
+        - button "Position Right" [ref=e21] [cursor=pointer]
+        - button "Position Left" [ref=e22] [cursor=pointer]
+        - button "Clear Storage" [ref=e23] [cursor=pointer]
+    - generic [ref=e24]:
+      - strong [ref=e25]: "Note:"
+      - text: This demo uses a mock API endpoint. To connect to a real backend, update the
+      - code [ref=e26]: api-base-url
+      - text: "attribute. The widget expects:"
+      - text: •
+      - code [ref=e27]: POST /chat
+      - text: "- Send message, receive markdown response"
+      - text: •
+      - code [ref=e28]: GET /history
+      - text: "- Load conversation history"
+  - dialog "Chat window" [ref=e30]:
+    - banner [ref=e39]:
+      - heading "Library Assistant" [level=2] [ref=e41]:
+        - text: Library Assistant
+        - img [ref=e42]
+      - generic [ref=e43]:
+        - button "Dock assistant to side" [ref=e44] [cursor=pointer]
+        - button "More options" [ref=e46] [cursor=pointer]
+        - button "Close assistant" [ref=e47] [cursor=pointer]:
+          - img [ref=e48]
+    - log "Chat messages" [ref=e51]:
+      - generic [ref=e54]:
+        - paragraph [ref=e55]:
+          - strong [ref=e56]: "Welcome! I’m the Library Assistant, an experimental AI-powered tool to help you explore the Sefaria Library. To get started, you can:"
+        - list [ref=e57]:
+          - listitem [ref=e58]: Ask me to find sources about a topic or theme
+          - listitem [ref=e59]: Get help understanding a text
+          - listitem [ref=e60]: Request a translation of a passage
+        - paragraph [ref=e61]:
+          - emphasis [ref=e62]: Like any AI system, I can make mistakes. Please verify responses with the original sources.
+        - paragraph [ref=e63]:
+          - emphasis [ref=e64]: Your feedback helps us improve. Use the 👍/👎 buttons to rate the quality of my responses.
+    - contentinfo [ref=e65]:
+      - textbox "Prompt input" [ref=e66]:
+        - /placeholder: What are you learning today?
+      - button "Send message" [disabled] [ref=e67]:
+        - img [ref=e68]
