@@ -307,18 +307,23 @@ def chat_stream_v2(request):
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
             if result:
                 appetizer_metrics.update(result.metrics)
-                appetizer_metrics["topic_slug"] = result.topic_slug
+                appetizer_metrics["topic_slugs"] = [t.topic_slug for t in result.topics]
             else:
-                appetizer_metrics["topic_slug"] = None
+                appetizer_metrics["topic_slugs"] = []
 
             if result and not stream_closed:
                 update = AgentProgressUpdate(
                     type="appetizer",
-                    text=result.topic_title,
+                    text=", ".join(t.topic_title for t in result.topics),
                     appetizer_data={
-                        "topicSlug": result.topic_slug,
-                        "topicTitle": result.topic_title,
-                        "topicUrl": result.topic_url,
+                        "topics": [
+                            {
+                                "topicSlug": t.topic_slug,
+                                "topicTitle": t.topic_title,
+                                "topicUrl": t.topic_url,
+                            }
+                            for t in result.topics
+                        ],
                     },
                 )
                 try:

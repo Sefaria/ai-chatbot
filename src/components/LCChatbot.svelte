@@ -805,7 +805,17 @@
     handleNewChat();
   }
 
+  function normalizeAppetizerData(raw) {
+    if (!raw) return null;
+    if (raw.topics) return raw;
+    return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
+  }
+
   function handleAppetizerClick(topicSlug) {
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
+      detail: { url: `/topics/${topicSlug}` }
+    }));
+
     const el = $host();
     if (el) {
       el.dispatchEvent(new CustomEvent('appetizer_click', {
@@ -1047,7 +1057,7 @@
             </div>
           {:else if item.role === 'assistant'}
             {#if item.appetizerData}
-              <TopicAppetizer data={item.appetizerData} streaming={false} onClickTopic={handleAppetizerClick} />
+              <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={false} onClickTopic={handleAppetizerClick} />
             {/if}
             {#if item.toolHistory?.length > 0}
               <ProgressTrail entries={item.toolHistory} collapsed={true} />
@@ -1072,7 +1082,7 @@
         {#if isSending}
           <div class="message assistant">
             {#if appetizerData}
-              <TopicAppetizer data={appetizerData} streaming={true} onClickTopic={handleAppetizerClick} />
+              <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
             {/if}
             {#if toolHistory.length > 0}
               <ProgressTrail entries={toolHistory} collapsed={false} />
@@ -2086,15 +2096,10 @@ inset: 8px;
     padding: 8px 10px;
     background: none;
     border: none;
-    cursor: pointer;
     text-align: start;
     color: #4a4700;
     font-size: 12px;
     font-family: inherit;
-  }
-  :global(.appetizer-header:hover) {
-    background: #fff9c4;
-    border-radius: 8px;
   }
   :global(.appetizer-icon) {
     flex-shrink: 0;
@@ -2104,20 +2109,12 @@ inset: 8px;
     flex: 1;
     font-weight: 500;
   }
-  :global(.appetizer-chevron) {
-    flex-shrink: 0;
-    color: #8a7a00;
-    transition: transform 0.2s ease;
-  }
-  :global(.appetizer-chevron.rotated) {
-    transform: rotate(-90deg);
-  }
   :global(.appetizer-body) {
-    padding: 6px 10px 10px;
+    padding: 4px 10px 10px;
     border-top: 1px solid #f0e68c;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-wrap: wrap;
+    align-items: baseline;
   }
   :global(.appetizer-link) {
     color: #18345D;
@@ -2128,9 +2125,9 @@ inset: 8px;
   :global(.appetizer-link:hover) {
     color: #465D7D;
   }
-  :global(.appetizer-hint) {
+  :global(.appetizer-separator) {
     color: #8a7a00;
-    font-size: 11px;
+    font-size: 14px;
   }
 
   :global(.progress-trail-toggle) {
@@ -2193,6 +2190,24 @@ inset: 8px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  :global(.trail-ref-link) {
+    color: #18345D;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-underline-offset: 2px;
+  }
+  :global(.trail-ref-link:hover) {
+    color: #465D7D;
+    text-decoration-color: rgba(70, 93, 125, 0.6);
+  }
+  :global(.trail-ref-icon) {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 2px;
+    color: #18345D;
+    opacity: 0.6;
   }
 
 </style>
