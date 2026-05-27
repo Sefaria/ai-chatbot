@@ -811,10 +811,18 @@
     return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
   }
 
-  function handleAppetizerClick(topicSlug) {
-    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-      detail: { url: `/topics/${topicSlug}` }
-    }));
+  function handleAppetizerClick(topicSlug, topicUrl) {
+    const onSefaria = window.location.hostname.includes('sefaria.org');
+
+    if (onSefaria) {
+      // In-page navigation via ReaderApp's existing event listener
+      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
+        detail: { url: `/topics/${topicSlug}` }
+      }));
+    } else {
+      // Off-site: open topic page in new tab
+      window.open(topicUrl || `https://www.sefaria.org/topics/${topicSlug}`, '_blank');
+    }
 
     const el = $host();
     if (el) {
@@ -2121,11 +2129,6 @@ inset: 8px;
     text-decoration: underline;
     font-size: 14px;
     font-weight: 600;
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-family: inherit;
   }
   :global(.appetizer-link:hover) {
     color: #465D7D;

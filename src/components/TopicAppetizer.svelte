@@ -3,8 +3,16 @@
 
   let { data, streaming = false, onClickTopic } = $props();
 
-  function handleClick(slug) {
-    if (onClickTopic) onClickTopic(slug);
+  function attachClickHandler(node, topic) {
+    function handler(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onClickTopic) onClickTopic(topic.topicSlug, topic.topicUrl);
+    }
+    node.addEventListener('click', handler);
+    return {
+      destroy() { node.removeEventListener('click', handler); }
+    };
   }
 </script>
 
@@ -22,12 +30,13 @@
   <div class="appetizer-body">
     {#each data.topics as topic, i}
       {#if i > 0}<span class="appetizer-separator">, </span>{/if}
-      <button
+      <a
         class="appetizer-link"
-        onclick={() => handleClick(topic.topicSlug)}
+        href={topic.topicUrl}
+        use:attachClickHandler={topic}
       >
         {topic.topicTitle}
-      </button>
+      </a>
     {/each}
   </div>
 </div>
