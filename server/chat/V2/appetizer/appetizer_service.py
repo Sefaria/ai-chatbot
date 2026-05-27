@@ -122,9 +122,14 @@ class AppetizerService:
                 messages=[{"role": "user", "content": user_message}],
             )
             text = response.content[0].text.strip()
+            logger.info("Appetizer Haiku raw response: %r for prompt: %r", text, user_message)
             if not text or text.upper().rstrip(".,!?") == "NONE":
+                logger.info("Appetizer Haiku decided: no topic (NONE) for prompt: %r", user_message)
                 return []
             candidates = [c.strip() for c in text.split(",") if c.strip()]
+            logger.info(
+                "Appetizer Haiku decided: candidates=%r for prompt: %r", candidates, user_message
+            )
             return candidates[:3]
         except Exception:
             logger.exception("Haiku candidate extraction failed")
