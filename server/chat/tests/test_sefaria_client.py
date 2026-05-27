@@ -72,61 +72,11 @@ class TestSefariaClientInit:
 
 
 class TestGetTextVersionLanguage:
-    """Test get_text version_language parameter handling."""
+    """Test get_text parameter handling."""
 
     @pytest.mark.asyncio
-    async def test_version_language_both_uses_multiple_params(self, client, mock_http_client):
-        """When version_language='both', should send version=english&version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="both")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            # The URL should have version=english&version=source, not version=english|source
-            assert "version=english" in url, f"URL should contain 'version=english', got: {url}"
-            assert "version=source" in url, f"URL should contain 'version=source', got: {url}"
-            assert "english|source" not in url, (
-                f"URL should NOT contain 'english|source', got: {url}"
-            )
-
-    @pytest.mark.asyncio
-    async def test_version_language_english_uses_single_param(self, client, mock_http_client):
-        """When version_language='english', should send version=english."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="english")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=english" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_source_uses_single_param(self, client, mock_http_client):
-        """When version_language='source', should send version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="source")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=source" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_none_omits_param(self, client, mock_http_client):
-        """When version_language is None, should not include version param."""
+    async def test_omits_version_param(self, client, mock_http_client):
+        """get_text should not include a version param in the URL."""
         mock_http_client.get.return_value.json = AsyncMock(
             return_value={"versions": [], "available_versions": []}
         )
@@ -271,7 +221,7 @@ class TestOptimizeTextResponse:
 
         assert "ref" in result
         assert "versions" in result
-        assert "available_versions" in result
+        assert "available_versions" not in result
         assert "extra_field" not in result
         assert "another_extra" not in result
 
@@ -463,6 +413,8 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
 class TestSearchUserSourceSheets:
     """Test authenticated source sheet search."""
 
@@ -662,7 +614,7 @@ class TestCreateSourceSheet:
                     ],
                 )
 
-        mock_get_text.assert_awaited_once_with("Genesis 3:1", "both")
+        mock_get_text.assert_awaited_once_with("Genesis 3:1")
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert call_args.args[0] == f"{client.base_url}/api/sheets/"
@@ -675,7 +627,10 @@ class TestCreateSourceSheet:
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
         assert posted_payload["sources"][2]["node"] == 3
-        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert (
+            posted_payload["sources"][2]["text"]["en"]
+            == "<p>Now the serpent was the shrewdest.</p>"
+        )
         assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
         assert posted_payload["nextNode"] == 4
 
@@ -683,6 +638,7 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""

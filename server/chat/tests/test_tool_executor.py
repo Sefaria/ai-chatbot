@@ -81,13 +81,7 @@ class TestToolDispatch:
     @pytest.mark.parametrize(
         "tool_name,args,expected_method,expected_args",
         [
-            (
-                "get_text",
-                {"reference": "Genesis 1:1", "version_language": "en"},
-                "get_text",
-                ("Genesis 1:1", "en"),
-            ),
-            ("get_text", {"reference": "Genesis 1:1"}, "get_text", ("Genesis 1:1", None)),
+            ("get_text", {"reference": "Genesis 1:1"}, "get_text", ("Genesis 1:1",)),
             (
                 "text_search",
                 {"query": "shabbat", "filters": "Talmud", "size": 20},
@@ -320,11 +314,6 @@ class TestDescribeToolCall:
             ("text_search", {"query": "shabbat"}, ["Searching texts", "shabbat"]),
             ("text_search", {"query": "prayer", "filters": "Talmud"}, ["prayer", "Talmud"]),
             ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
-            (
-                "get_text",
-                {"reference": "Genesis 1:1", "version_language": "he"},
-                ["Genesis 1:1", "he"],
-            ),
             (
                 "search_user_source_sheets",
                 {"query": "halacha workflow"},

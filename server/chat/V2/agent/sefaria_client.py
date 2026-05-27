@@ -113,19 +113,11 @@ class SefariaClient:
         self._client_loop = loop
         return self._client
 
-    async def get_text(self, reference: str, version_language: str | None = None) -> dict[str, Any]:
+    async def get_text(self, reference: str) -> dict[str, Any]:
         """Retrieve text content from a specific reference."""
         encoded_ref = quote(reference)
-        params = {}
 
-        if version_language == "source":
-            params["version"] = "source"
-        elif version_language == "english":
-            params["version"] = "english"
-        elif version_language == "both":
-            params["version"] = ["english", "source"]
-
-        data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
+        data = await self._get_json(f"api/v3/texts/{encoded_ref}", {})
         return self._optimize_text_response(data)
 
     async def text_search(
@@ -508,14 +500,10 @@ class SefariaClient:
         essential_fields = {
             "ref",
             "versions",
-            "available_versions",
-            "requestedRef",
             "spanningRefs",
-            "textType",
             "sectionRef",
             "he",
             "text",
-            "primary_title",
         }
 
         optimized = {k: v for k, v in data.items() if k in essential_fields}
@@ -529,15 +517,6 @@ class SefariaClient:
                     "versionSource": v.get("versionSource", ""),
                 }
                 for v in optimized["versions"]
-            ]
-
-        if isinstance(optimized.get("available_versions"), list):
-            optimized["available_versions"] = [
-                {
-                    "versionTitle": v.get("versionTitle", ""),
-                    "languageFamilyName": v.get("languageFamilyName", ""),
-                }
-                for v in optimized["available_versions"]
             ]
 
         return optimized
@@ -676,15 +655,17 @@ class SefariaClient:
     ) -> list[dict[str, Any]]:
         """Fill in source text HTML for ref sources before sheet creation."""
         normalized_sources = prepare_source_sheet_sources(sources)
-        ref_indices = [index for index, source in enumerate(normalized_sources) if source.get("ref")]
+        ref_indices = [
+            index for index, source in enumerate(normalized_sources) if source.get("ref")
+        ]
         if not ref_indices:
             return normalized_sources
 
         ref_payloads = await asyncio.gather(
-            *[self.get_text(normalized_sources[index]["ref"], "both") for index in ref_indices]
+            *[self.get_text(normalized_sources[index]["ref"]) for index in ref_indices]
         )
 
-        for index, ref_payload in zip(ref_indices, ref_payloads):
+        for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
             normalized_sources[index]["text"] = self._build_sheet_text_block(ref_payload)
 
         return normalized_sources
@@ -861,7 +842,9 @@ class SefariaClient:
         if not value:
             return False
         normalized_value = value.casefold()
-        return normalized_query in normalized_value or any(term in normalized_value for term in terms)
+        return normalized_query in normalized_value or any(
+            term in normalized_value for term in terms
+        )
 
     @staticmethod
     def _normalize_sheet_limit(limit: Any) -> int:
