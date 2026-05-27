@@ -2116,6 +2116,7 @@ inset: 8px;
   :global(.appetizer-header-text) {
     flex: 1;
     font-weight: 500;
+    line-height: 1.3;
   }
   :global(.appetizer-body) {
     padding: 4px 10px 10px;
@@ -2136,6 +2137,7 @@ inset: 8px;
   :global(.appetizer-separator) {
     color: #8a7a00;
     font-size: 14px;
+    margin-right: 4px;
   }
 
   :global(.progress-trail-toggle) {
