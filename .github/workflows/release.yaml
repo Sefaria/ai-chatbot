@@ -109,6 +109,16 @@ jobs:
           file: ./Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Determine deploy environment
+        id: deploy_env
+        run: |
+          if [[ "$GITHUB_REF" == *"production"* ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == *"beta"* ]]; then
+            echo "environment=beta" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
       - name: Deploy server
         run: |
           curl \
@@ -116,4 +126,4 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
           https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/chatbot-deploy.yml/dispatches \
-          -d '{"ref":"main", "inputs": { "environment": "${{ contains(github.ref, 'production') && 'prod' || contains(github.ref, 'beta') && 'beta' || 'dev' }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
+          -d '{"ref":"main", "inputs": { "environment": "${{ steps.deploy_env.outputs.environment }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
