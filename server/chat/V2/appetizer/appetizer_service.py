@@ -101,10 +101,13 @@ class AppetizerService:
                 max_tokens=50,
                 temperature=0.0,
                 system=(
-                    "Extract the single most important Jewish topic, concept, or figure "
-                    "from the user's question. Return ONLY the topic name in English, "
-                    "nothing else. If the question is not about Jewish texts/topics, "
-                    "return NONE."
+                    "Extract the single most important topic, concept, or figure from "
+                    "the user's question that could appear in the Sefaria library — "
+                    "a Jewish text library covering Torah, Talmud, halacha, and all "
+                    "areas of Jewish thought including universal topics like parenting, "
+                    "money, relationships, health, and ethics. Return ONLY the topic "
+                    "name in English, nothing else. If there is no clear topic (e.g. "
+                    "greetings, technical questions), return NONE."
                 ),
                 messages=[{"role": "user", "content": user_message}],
             )
