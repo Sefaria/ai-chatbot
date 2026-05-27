@@ -15,6 +15,7 @@
     "assistant.menu.feedback": "Give feedback",
     "assistant.menu.feedbackURL": "https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation",
     "assistant.menu.help": "Help",
+    "assistant.menu.helpURL": "https://help.sefaria.org/hc/en-us/articles/26006423836828",
     "assistant.menu.optout": "Opt out in Settings",
     "assistant.menu.settings": "Settings",
     "assistant.menu.settings.aria": "Open settings",

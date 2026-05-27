@@ -869,7 +869,7 @@
                   {@html FEEDBACK_ICON}
                   {$_('assistant.menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
