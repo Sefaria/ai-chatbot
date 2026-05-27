@@ -756,6 +756,18 @@
       return;
     }
 
+    // Only dispatch in-page navigation for Sefaria URLs on a Sefaria host.
+    // External links and off-Sefaria embeds fall back to a new tab.
+    const isSefariaDomain = (h) => h === '' || h.includes('sefaria.org');
+    if (!isSefariaDomain(resolvedUrl.hostname)) {
+      window.open(resolvedUrl.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!isSefariaDomain(window.location.hostname)) {
+      window.open(`https://www.sefaria.org${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
 
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
