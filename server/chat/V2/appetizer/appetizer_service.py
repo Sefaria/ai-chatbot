@@ -19,8 +19,32 @@ from ..utils import get_anthropic_client, make_singleton
 logger = logging.getLogger("chat.appetizer")
 
 APPETIZER_TIMEOUT_SECONDS = 8
-APPETIZER_MODEL = "claude-haiku-4-5-20251001"
+APPETIZER_MODEL = "claude-sonnet-4-5-20250929"
 SEFARIA_TOPICS_BASE_URL = "https://www.sefaria.org/topics"
+
+TOPIC_EXTRACTION_TOOL = {
+    "name": "extract_topics",
+    "description": (
+        "Extract topic names from the user's message that could appear in the Sefaria library."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "topics": {
+                "type": "string",
+                "description": (
+                    "Always return exactly 3 comma-separated topic names, most relevant first. "
+                    "Use shortest canonical English name for each "
+                    "(e.g. 'Herod' not 'Herod the Great'). "
+                    "Return 'NONE' only if there is genuinely no topic "
+                    "(e.g. greetings, technical questions). "
+                    "Example: 'Shabbat, Kiddush, Havdalah'"
+                ),
+            },
+        },
+        "required": ["topics"],
+    },
+}
 
 
 @dataclass
@@ -109,32 +133,34 @@ class AppetizerService:
         )
 
     async def _extract_candidates_via_llm(self, user_message: str) -> list[str]:
-        """Return up to 3 ranked topic candidates from the user's message."""
+        """Return up to 3 ranked topic candidates from the user's message.
+
+        Uses tool-forcing to constrain Sonnet's output to structured data,
+        preventing it from entering "assistant mode" with markdown/XML.
+        """
         try:
             response = await asyncio.to_thread(
                 tracked_messages_create,
                 self.client,
                 model=APPETIZER_MODEL,
-                max_tokens=80,
+                max_tokens=200,
                 temperature=0.0,
                 system=(
-                    "Identify up to 3 topics, concepts, or figures from the user's "
-                    "question that could appear in the Sefaria library — a Jewish text "
+                    "You are a topic extractor for the Sefaria library — a Jewish text "
                     "library covering Torah, Talmud, halacha, and all areas of Jewish "
                     "thought including universal topics like parenting, money, "
                     "relationships, health, and ethics. "
-                    "Return a comma-separated list, most relevant first. "
-                    "Use the shortest canonical English name for each "
-                    "(e.g. 'Herod' not 'Herod the Great', 'Moses' not 'Moses our Teacher'). "
+                    "Extract up to 3 topics from the user's message. "
                     "Prefer specific named topics over abstract meta-topics "
                     "(e.g. 'Shabbat' over 'Jewish Law', 'Moses' over 'Leadership'). "
-                    "Each candidate should be distinct — don't return near-synonyms. "
-                    "If there is no clear topic (e.g. greetings, technical questions), "
-                    "return NONE."
+                    "Each candidate should be distinct — don't return near-synonyms."
                 ),
                 messages=[{"role": "user", "content": user_message}],
+                tools=[TOPIC_EXTRACTION_TOOL],
+                tool_choice={"type": "tool", "name": "extract_topics"},
             )
-            text = response.content[0].text.strip()
+            tool_input = response.content[0].input
+            text = tool_input.get("topics", "").strip()
             logger.info("Appetizer LLM raw response: %r for prompt: %r", text, user_message)
             if not text or text.upper().rstrip(".,!?") == "NONE":
                 logger.info("Appetizer LLM decided: no topic (NONE) for prompt: %r", user_message)
