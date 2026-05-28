@@ -270,18 +270,18 @@ def fetch_pinned_experiment() -> dict | None:
 
 
 def fetch_experiment_scores(experiment_id: str) -> dict:
-    """Fetch per-scorer pass rates for a given experiment from the Braintrust
-    summary endpoint. Returns a dict of scorer name → score stats."""
+    """Fetch per-scorer means for a given experiment from Braintrust. Returns a
+    dict of scorer name → score stats.
+
+    Uses the `experiment-comparison2` endpoint that the SDK's summarize() relies
+    on. There is no /v1/experiment/{id}/summary REST route — hitting it returns
+    403 (unrecognized path), which silently skipped baseline comparison."""
     try:
-        response = braintrust.api_conn().get(f"/v1/experiment/{experiment_id}/summary")
-        if not response.ok:
-            print(
-                f"WARNING: Could not fetch experiment scores for {experiment_id}: "
-                f"HTTP {response.status_code}",
-                file=sys.stderr,
-            )
-            return {}
-        return response.json().get("scores", {})
+        summary = braintrust.api_conn().get_json(
+            "experiment-comparison2",
+            args={"experiment_id": experiment_id},
+        )
+        return summary.get("scores", {})
     except Exception as e:
         print(
             f"WARNING: Could not fetch experiment scores for {experiment_id}: "
@@ -293,16 +293,24 @@ def fetch_experiment_scores(experiment_id: str) -> dict:
 
 def _get_mean(score_val) -> float | None:
     """Extract a scalar mean from a score value regardless of its shape.
-    The SDK returns objects with a .mean attribute; the REST API returns dicts
-    with a 'mean' key. Both are handled here so callers don't need to care."""
+
+    The SDK returns ScoreSummary/MetricSummary objects whose mean lives on
+    `.score` / `.metric` respectively (older SDKs used `.mean`). The REST API
+    returns dicts keyed the same way. Handling all shapes here means callers
+    don't have to care — and missing this previously caused analyze_threshold
+    to silently treat every current score as None and print READY TO MERGE."""
     if score_val is None:
         return None
     if isinstance(score_val, (int, float)):
         return float(score_val)
     if isinstance(score_val, dict):
-        return score_val["mean"] if "mean" in score_val else score_val.get("score")
-    if hasattr(score_val, "mean"):
-        return _get_mean(score_val.mean)
+        for key in ("mean", "score", "metric"):
+            if key in score_val:
+                return score_val[key]
+        return None
+    for attr in ("mean", "score", "metric"):
+        if hasattr(score_val, attr):
+            return _get_mean(getattr(score_val, attr))
     try:
         return float(score_val)
     except (TypeError, ValueError):

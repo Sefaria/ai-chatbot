@@ -1,7 +1,7 @@
 """Tests for the evaluation script."""
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class TestCreateScorer:
@@ -265,6 +265,116 @@ class TestChatbotClientChat:
             "totalCostUsd": None,
             "latencyMs": None,
         }
+
+
+class TestGetMean:
+    """Tests for _get_mean — must accept every shape Braintrust uses.
+
+    Missing the ScoreSummary `.score` attribute previously caused
+    analyze_threshold to treat every current score as None, print an empty
+    table, and announce READY TO MERGE regardless of actual regression."""
+
+    def test_none_returns_none(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean(None) is None
+
+    def test_float_passes_through(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean(0.5) == 0.5
+
+    def test_int_coerced_to_float(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean(1) == 1.0
+
+    def test_dict_with_mean_key(self):
+        from evals.run_eval import _get_mean
+
+        # Older SDK / REST shape — mean key wins over score key.
+        assert _get_mean({"mean": 0.8, "score": 0.4}) == 0.8
+
+    def test_dict_with_score_key(self):
+        from evals.run_eval import _get_mean
+
+        # experiment-comparison2 returns ScoreSummary dicts keyed by `score`.
+        assert _get_mean({"score": 0.42, "improvements": 3}) == 0.42
+
+    def test_dict_with_metric_key(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean({"metric": 4.2, "unit": "s"}) == 4.2
+
+    def test_empty_dict_returns_none(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean({}) is None
+
+    def test_score_summary_object(self):
+        from evals.run_eval import _get_mean
+
+        # Regression guard: ScoreSummary exposes `.score`, not `.mean`. The
+        # object branch must find it instead of falling through to float().
+        score_summary = MagicMock(spec=["score", "name", "improvements"])
+        score_summary.score = 0.73
+        assert _get_mean(score_summary) == 0.73
+
+    def test_metric_summary_object(self):
+        from evals.run_eval import _get_mean
+
+        metric_summary = MagicMock(spec=["metric", "name", "unit"])
+        metric_summary.metric = 4.2
+        assert _get_mean(metric_summary) == 4.2
+
+    def test_object_with_mean_attribute(self):
+        from evals.run_eval import _get_mean
+
+        obj = MagicMock(spec=["mean"])
+        obj.mean = 0.9
+        assert _get_mean(obj) == 0.9
+
+    def test_unhandleable_object_returns_none(self):
+        from evals.run_eval import _get_mean
+
+        assert _get_mean(object()) is None
+
+
+class TestFetchExperimentScores:
+    """Tests for fetch_experiment_scores — the wrong endpoint silently 403'd
+    and skipped baseline comparison. Pin the right one with a unit test."""
+
+    def test_calls_experiment_comparison2_endpoint(self):
+        from evals.run_eval import fetch_experiment_scores
+
+        fake_conn = MagicMock()
+        fake_conn.get_json.return_value = {"scores": {"acc": {"score": 0.9}}}
+        with patch("evals.run_eval.braintrust.api_conn", return_value=fake_conn):
+            result = fetch_experiment_scores("exp-123")
+
+        fake_conn.get_json.assert_called_once_with(
+            "experiment-comparison2", args={"experiment_id": "exp-123"}
+        )
+        assert result == {"acc": {"score": 0.9}}
+
+    def test_returns_empty_when_response_has_no_scores(self):
+        from evals.run_eval import fetch_experiment_scores
+
+        fake_conn = MagicMock()
+        fake_conn.get_json.return_value = {"metrics": {}}
+        with patch("evals.run_eval.braintrust.api_conn", return_value=fake_conn):
+            assert fetch_experiment_scores("exp-123") == {}
+
+    def test_returns_empty_on_exception(self, capsys):
+        from evals.run_eval import fetch_experiment_scores
+
+        fake_conn = MagicMock()
+        fake_conn.get_json.side_effect = RuntimeError("boom")
+        with patch("evals.run_eval.braintrust.api_conn", return_value=fake_conn):
+            assert fetch_experiment_scores("exp-123") == {}
+
+        # User-visible warning so a silent skip can't masquerade as success.
+        assert "Could not fetch experiment scores" in capsys.readouterr().err
 
 
 class TestTaskMetricLogging:
