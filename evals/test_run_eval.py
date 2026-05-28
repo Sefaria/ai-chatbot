@@ -274,42 +274,36 @@ class TestGetMean:
     analyze_threshold to treat every current score as None, print an empty
     table, and announce READY TO MERGE regardless of actual regression."""
 
-    def test_none_returns_none(self):
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (None, None),
+            (0.5, 0.5),
+            (1, 1.0),  # int coerced to float
+            ({}, None),  # empty dict — no recognized key
+            (object(), None),  # opaque object — no recognized attr or float()
+        ],
+    )
+    def test_scalar_and_edge_inputs(self, value, expected):
         from evals.run_eval import _get_mean
 
-        assert _get_mean(None) is None
+        assert _get_mean(value) == expected
 
-    def test_float_passes_through(self):
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            # Older SDK / REST shape — `mean` wins over `score`.
+            ({"mean": 0.8, "score": 0.4}, 0.8),
+            # experiment-comparison2 returns ScoreSummary dicts keyed by `score`.
+            ({"score": 0.42, "improvements": 3}, 0.42),
+            # MetricSummary dicts use `metric`.
+            ({"metric": 4.2, "unit": "s"}, 4.2),
+        ],
+    )
+    def test_dict_shapes(self, value, expected):
         from evals.run_eval import _get_mean
 
-        assert _get_mean(0.5) == 0.5
-
-    def test_int_coerced_to_float(self):
-        from evals.run_eval import _get_mean
-
-        assert _get_mean(1) == 1.0
-
-    def test_dict_with_mean_key(self):
-        from evals.run_eval import _get_mean
-
-        # Older SDK / REST shape — mean key wins over score key.
-        assert _get_mean({"mean": 0.8, "score": 0.4}) == 0.8
-
-    def test_dict_with_score_key(self):
-        from evals.run_eval import _get_mean
-
-        # experiment-comparison2 returns ScoreSummary dicts keyed by `score`.
-        assert _get_mean({"score": 0.42, "improvements": 3}) == 0.42
-
-    def test_dict_with_metric_key(self):
-        from evals.run_eval import _get_mean
-
-        assert _get_mean({"metric": 4.2, "unit": "s"}) == 4.2
-
-    def test_empty_dict_returns_none(self):
-        from evals.run_eval import _get_mean
-
-        assert _get_mean({}) is None
+        assert _get_mean(value) == expected
 
     def test_score_summary_object(self):
         from evals.run_eval import _get_mean
@@ -333,11 +327,6 @@ class TestGetMean:
         obj = MagicMock(spec=["mean"])
         obj.mean = 0.9
         assert _get_mean(obj) == 0.9
-
-    def test_unhandleable_object_returns_none(self):
-        from evals.run_eval import _get_mean
-
-        assert _get_mean(object()) is None
 
 
 class TestFetchExperimentScores:
@@ -375,6 +364,37 @@ class TestFetchExperimentScores:
 
         # User-visible warning so a silent skip can't masquerade as success.
         assert "Could not fetch experiment scores" in capsys.readouterr().err
+
+
+class TestPinExperiment:
+    """Regression guard: pin_experiment must PATCH against the SDK conn's
+    configured base_url, not a hardcoded api.braintrust.dev — otherwise
+    self-hosted Braintrust deployments break, and we'd quietly skip the auth
+    header that the conn's session already sets."""
+
+    def test_patches_via_conn_session_with_conn_base_url(self):
+        from evals import run_eval
+
+        fake_resp_get = MagicMock(ok=True)
+        fake_resp_get.json.return_value = {
+            "objects": [{"id": "proj-123", "name": run_eval.PROJECT}]
+        }
+        fake_resp_patch = MagicMock(ok=True)
+
+        fake_conn = MagicMock()
+        fake_conn.base_url = "https://braintrust.example.com"
+        fake_conn.get.return_value = fake_resp_get
+        fake_conn.session.patch.return_value = fake_resp_patch
+
+        with patch("evals.run_eval.braintrust.api_conn", return_value=fake_conn):
+            assert run_eval.pin_experiment("exp-9", "My Run") is True
+
+        # URL must come from conn.base_url + the routes constant, not a hardcoded host.
+        called_url = fake_conn.session.patch.call_args.args[0]
+        assert called_url == "https://braintrust.example.com/v1/project/proj-123"
+        assert fake_conn.session.patch.call_args.kwargs["json"] == {
+            "settings": {"baseline_experiment_id": "exp-9"}
+        }
 
 
 class TestTaskMetricLogging:

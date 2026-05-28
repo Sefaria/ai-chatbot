@@ -63,6 +63,15 @@ LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 
+# Braintrust REST routes. Centralized so we have one place to edit if the API
+# version changes, and so the comparison-summary path (which sits outside /v1)
+# can't drift back to a /v1 guess the way it did before.
+BT_PROJECT_PATH = "/v1/project"
+BT_EXPERIMENT_PATH = "/v1/experiment"
+BT_FUNCTION_PATH = "/v1/function"
+BT_DATASET_PATH = "/v1/dataset"
+BT_EXPERIMENT_COMPARISON_PATH = "experiment-comparison2"
+
 # Braintrust's SDK caches a short-lived JWT after the first login() call and
 # never refreshes it unless force_login=True. Long eval runs outlive the JWT,
 # so we retry auth failures with a forced re-login and back off on other
@@ -249,7 +258,7 @@ def fetch_pinned_experiment() -> dict | None:
     Braintrust. The baseline is stored in project settings as baseline_experiment_id."""
     try:
         conn = braintrust.api_conn()
-        r = conn.get("/v1/project", params={"project_name": PROJECT})
+        r = conn.get(BT_PROJECT_PATH, params={"project_name": PROJECT})
         if not r.ok:
             return None
         projects = extract_braintrust_items(r.json())
@@ -259,7 +268,7 @@ def fetch_pinned_experiment() -> dict | None:
         baseline_id = (project.get("settings") or {}).get("baseline_experiment_id")
         if not baseline_id:
             return None
-        r2 = conn.get(f"/v1/experiment/{baseline_id}")
+        r2 = conn.get(f"{BT_EXPERIMENT_PATH}/{baseline_id}")
         return r2.json() if r2.ok else None
     except Exception as e:
         print(
@@ -278,7 +287,7 @@ def fetch_experiment_scores(experiment_id: str) -> dict:
     403 (unrecognized path), which silently skipped baseline comparison."""
     try:
         summary = braintrust.api_conn().get_json(
-            "experiment-comparison2",
+            BT_EXPERIMENT_COMPARISON_PATH,
             args={"experiment_id": experiment_id},
         )
         return summary.get("scores", {})
@@ -424,11 +433,11 @@ def analyze_threshold(current_scores: dict) -> bool:
 def resolve_experiment(name_or_id: str) -> dict | None:
     """Fetch an experiment by name or ID from Braintrust."""
     conn = braintrust.api_conn()
-    r = conn.get(f"/v1/experiment/{name_or_id}")
+    r = conn.get(f"{BT_EXPERIMENT_PATH}/{name_or_id}")
     if r.ok:
         return r.json()
     r = conn.get(
-        "/v1/experiment",
+        BT_EXPERIMENT_PATH,
         params={"project_name": PROJECT, "experiment_name": name_or_id},
     )
     if r.ok:
@@ -443,7 +452,7 @@ def pin_experiment(experiment_id: str, experiment_name: str) -> bool:
     """Pin an experiment as the project baseline. Returns True on success."""
     try:
         conn = braintrust.api_conn()
-        r = conn.get("/v1/project", params={"project_name": PROJECT})
+        r = conn.get(BT_PROJECT_PATH, params={"project_name": PROJECT})
         if not r.ok:
             print(f"ERROR: Could not fetch project: {r.status_code}", file=sys.stderr)
             return False
@@ -453,12 +462,15 @@ def pin_experiment(experiment_id: str, experiment_name: str) -> bool:
             print(f"ERROR: Project '{PROJECT}' not found", file=sys.stderr)
             return False
 
-        resp = httpx.patch(
-            f"https://api.braintrust.dev/v1/project/{project['id']}",
+        # HTTPConnection doesn't expose .patch(), so we drive its requests
+        # Session directly. This keeps the SDK's configured base_url + auth
+        # header instead of hardcoding api.braintrust.dev — which would break
+        # against custom (e.g. self-hosted) Braintrust endpoints.
+        resp = conn.session.patch(
+            f"{conn.base_url}{BT_PROJECT_PATH}/{project['id']}",
             json={"settings": {"baseline_experiment_id": experiment_id}},
-            headers={"Authorization": f"Bearer {os.environ['BRAINTRUST_API_KEY']}"},
         )
-        if resp.is_success:
+        if resp.ok:
             print(f"Pinned '{experiment_name}' as the new baseline.")
             return True
         print(
@@ -481,7 +493,7 @@ def get_available_scorer_slugs() -> set:
     """
     try:
         braintrust.login()
-        response = braintrust.api_conn().get("/v1/function")
+        response = braintrust.api_conn().get(BT_FUNCTION_PATH)
         if not response.ok:
             return set()
 
@@ -509,7 +521,7 @@ def get_all_scorers() -> list:
 
     try:
         braintrust.login()
-        response = braintrust.api_conn().get("/v1/function")
+        response = braintrust.api_conn().get(BT_FUNCTION_PATH)
         if not response.ok:
             print(f"Error fetching functions: {response.status_code}")
             return []
@@ -568,7 +580,7 @@ def validate_dataset(dataset_name: str) -> bool:
     try:
         braintrust.login()
         response = braintrust.api_conn().get(
-            "/v1/dataset", params={"project_name": PROJECT}
+            BT_DATASET_PATH, params={"project_name": PROJECT}
         )
         if not response.ok:
             print("ERROR: Could not fetch datasets from Braintrust", file=sys.stderr)
