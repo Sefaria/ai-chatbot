@@ -1,8 +1,8 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
 import json
-from unittest.mock import AsyncMock, Mock, patch
 import os
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -37,19 +37,26 @@ class TestSefariaClientInit:
     """Test SefariaClient initialization."""
 
     def test_default_base_url(self):
-        client = SefariaClient()
-        assert client.base_url == DEFAULT_SEFARIA_BASE_URL
         with patch.dict(
             os.environ,
             {
                 "SEFARIA_API_BASE_URL": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT": "",
-                "SEFARIA_AI_BASE_URL": "",
             },
         ):
             client = SefariaClient()
         assert client.base_url == "https://www.sefaria.org"
+        assert client.base_url == DEFAULT_SEFARIA_BASE_URL
+
+    def test_env_base_url(self):
+        with patch.dict(
+            os.environ,
+            {
+                "SEFARIA_API_BASE_URL": "https://www.personalization.cauldron.sefaria.org",
+            },
+        ):
+            client = SefariaClient()
+
+        assert client.base_url == "https://www.personalization.cauldron.sefaria.org"
 
     def test_custom_base_url(self):
         client = SefariaClient(base_url="https://custom.sefaria.org/")
@@ -456,6 +463,8 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
 class TestSearchUserSourceSheets:
     """Test authenticated source sheet search."""
 
@@ -668,14 +677,18 @@ class TestCreateSourceSheet:
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
         assert posted_payload["sources"][2]["node"] == 3
-        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert (
+            posted_payload["sources"][2]["text"]["en"]
+            == "<p>Now the serpent was the shrewdest.</p>"
+        )
         assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
         assert posted_payload["nextNode"] == 4
 
         assert result["id"] == 715437
-        assert result["sheetUrl"] == f"{DEFAULT_SEFARIA_BASE_URL}/sheets/715437"
+        assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""
@@ -697,4 +710,3 @@ class TestSearchInBook:
             await client.search_in_book("פרעה", "Likutei Moharan", 10)
 
         mock_text_search.assert_awaited_once_with("פרעה", ["Chasidut/Breslov/Likutei Moharan"], 10)
-

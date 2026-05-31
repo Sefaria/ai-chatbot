@@ -31,12 +31,12 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get(
-    "SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org"
-)
+
+DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
+
 
 def _get_default_sefaria_base_url() -> str:
-    return os.environ.get("SEFARIA_API_BASE_URL") or "https://www.sefaria.org"
+    return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
 
 
 def _get_default_sefaria_ai_base_url() -> str:
@@ -670,14 +670,16 @@ class SefariaClient:
         """Build an absolute source sheet URL when a numeric sheet id is available."""
         if sheet_id is None:
             return ""
-        return f"{DEFAULT_SEFARIA_BASE_URL}/sheets/{sheet_id}"
+        return f"{self.base_url}/sheets/{sheet_id}"
 
     async def _hydrate_source_sheet_sources(
         self, sources: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Fill in source text HTML for ref sources before sheet creation."""
         normalized_sources = prepare_source_sheet_sources(sources)
-        ref_indices = [index for index, source in enumerate(normalized_sources) if source.get("ref")]
+        ref_indices = [
+            index for index, source in enumerate(normalized_sources) if source.get("ref")
+        ]
         if not ref_indices:
             return normalized_sources
 
@@ -685,7 +687,7 @@ class SefariaClient:
             *[self.get_text(normalized_sources[index]["ref"], "both") for index in ref_indices]
         )
 
-        for index, ref_payload in zip(ref_indices, ref_payloads):
+        for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
             normalized_sources[index]["text"] = self._build_sheet_text_block(ref_payload)
 
         return normalized_sources
@@ -862,7 +864,9 @@ class SefariaClient:
         if not value:
             return False
         normalized_value = value.casefold()
-        return normalized_query in normalized_value or any(term in normalized_value for term in terms)
+        return normalized_query in normalized_value or any(
+            term in normalized_value for term in terms
+        )
 
     @staticmethod
     def _normalize_sheet_limit(limit: Any) -> int:

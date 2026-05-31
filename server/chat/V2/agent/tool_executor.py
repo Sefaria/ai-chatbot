@@ -15,9 +15,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-
-from .contracts import MessageContext
 from .catalog_service import CatalogService
+from .contracts import MessageContext
 from .sefaria_client import SefariaClient
 
 logger = logging.getLogger("chat.agent")
