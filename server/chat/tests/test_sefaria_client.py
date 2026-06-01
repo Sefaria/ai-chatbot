@@ -463,6 +463,8 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
 class TestSearchUserSourceSheets:
     """Test authenticated source sheet search."""
 
@@ -675,7 +677,10 @@ class TestCreateSourceSheet:
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
         assert posted_payload["sources"][2]["node"] == 3
-        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert (
+            posted_payload["sources"][2]["text"]["en"]
+            == "<p>Now the serpent was the shrewdest.</p>"
+        )
         assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
         assert posted_payload["nextNode"] == 4
 
@@ -683,6 +688,7 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""

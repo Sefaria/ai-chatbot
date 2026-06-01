@@ -27,3 +27,6 @@ branches:
   - name: "main"
     channel: "dev"
     prerelease: "dev"
+  - name: "beta"
+    channel: "beta"
+    prerelease: "beta"

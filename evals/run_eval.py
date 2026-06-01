@@ -12,6 +12,7 @@ Usage:
     python evals/run_eval.py --all-scorers                    # Run with all project scorers
     python evals/run_eval.py --scorers accuracy-374376eb2     # Run with specific scorer slugs
     python evals/run_eval.py --local                          # Test against local server
+    python evals/run_eval.py --beta                           # Test against beta server
     python evals/run_eval.py -d "My Dataset" -e "Test Run"    # Custom dataset/experiment
 
 Environment Variables:
@@ -60,6 +61,7 @@ PROJECT = os.environ.get("BRAINTRUST_PROJECT", "On Site Agent")
 DEFAULT_DATASET = "Benchmark"
 DEV_API_URL = "https://chat-dev.sefaria.org"  # main branch → dev deploy
 PROD_API_URL = "https://chat.sefaria.org"  # production branch → prod deploy
+BETA_API_URL = "https://chat-beta.sefaria.org"  # beta branch → beta deploy
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
@@ -713,6 +715,11 @@ def main():
         help=f"Run against local dev server ({LOCAL_API_URL})",
     )
     parser.add_argument(
+        "--beta",
+        action="store_true",
+        help=f"Run against beta dev server ({BETA_API_URL})",
+    )
+    parser.add_argument(
         "--scorers", "-s", help="Comma-separated list of Braintrust scorer slugs"
     )
     parser.add_argument(
@@ -756,6 +763,8 @@ def main():
         base_url = LOCAL_API_URL
     elif args.prod:
         base_url = PROD_API_URL
+    elif args.beta:
+        base_url = BETA_API_URL
     else:
         base_url = DEV_API_URL
     client = ChatbotClient(base_url=base_url)
