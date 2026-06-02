@@ -72,5 +72,6 @@
     "assistant.status.toolError": "שגיאת כלי",
     "assistant.limit.reached": "השיחה הגיעה למגבלתה.",
     "assistant.limit.startNew": "התחלת שיחה מחדש על מנת להמשיך לחקור.",
-    "assistant.limit.maxTurnsRestart.aria": "התחלת שיחה מחדש עקב הגעה למגבלה"
+    "assistant.limit.maxTurnsRestart.aria": "התחלת שיחה מחדש עקב הגעה למגבלה",
+    "assistant.loading.thinking": "test"
 }
