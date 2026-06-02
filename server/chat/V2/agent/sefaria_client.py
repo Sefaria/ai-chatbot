@@ -114,19 +114,11 @@ class SefariaClient:
         self._client_loop = loop
         return self._client
 
-    async def get_text(self, reference: str, version_language: str | None = None) -> dict[str, Any]:
+    async def get_text(self, reference: str) -> dict[str, Any]:
         """Retrieve text content from a specific reference."""
         encoded_ref = quote(reference)
-        params = {}
 
-        if version_language == "source":
-            params["version"] = "source"
-        elif version_language == "english":
-            params["version"] = "english"
-        elif version_language == "both":
-            params["version"] = ["english", "source"]
-
-        data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
+        data = await self._get_json(f"api/v3/texts/{encoded_ref}", {})
         return self._optimize_text_response(data)
 
     async def text_search(
@@ -509,14 +501,10 @@ class SefariaClient:
         essential_fields = {
             "ref",
             "versions",
-            "available_versions",
-            "requestedRef",
             "spanningRefs",
-            "textType",
             "sectionRef",
             "he",
             "text",
-            "primary_title",
         }
 
         optimized = {k: v for k, v in data.items() if k in essential_fields}
@@ -530,15 +518,6 @@ class SefariaClient:
                     "versionSource": v.get("versionSource", ""),
                 }
                 for v in optimized["versions"]
-            ]
-
-        if isinstance(optimized.get("available_versions"), list):
-            optimized["available_versions"] = [
-                {
-                    "versionTitle": v.get("versionTitle", ""),
-                    "languageFamilyName": v.get("languageFamilyName", ""),
-                }
-                for v in optimized["available_versions"]
             ]
 
         return optimized
@@ -684,7 +663,7 @@ class SefariaClient:
             return normalized_sources
 
         ref_payloads = await asyncio.gather(
-            *[self.get_text(normalized_sources[index]["ref"], "both") for index in ref_indices]
+            *[self.get_text(normalized_sources[index]["ref"]) for index in ref_indices]
         )
 
         for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
