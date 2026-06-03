@@ -25,7 +25,6 @@ import argparse
 import asyncio
 import json
 import os
-import subprocess
 import sys
 import time
 import uuid
@@ -65,6 +64,15 @@ BETA_API_URL = "https://chat-beta.sefaria.org"  # beta branch → beta deploy
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
+
+# Braintrust REST routes. Centralized so we have one place to edit if the API
+# version changes, and so the comparison-summary path (which sits outside /v1)
+# can't drift back to a /v1 guess the way it did before.
+BT_PROJECT_PATH = "/v1/project"
+BT_EXPERIMENT_PATH = "/v1/experiment"
+BT_FUNCTION_PATH = "/v1/function"
+BT_DATASET_PATH = "/v1/dataset"
+BT_EXPERIMENT_COMPARISON_PATH = "experiment-comparison2"
 
 # Braintrust's SDK caches a short-lived JWT after the first login() call and
 # never refreshes it unless force_login=True. Long eval runs outlive the JWT,
@@ -181,7 +189,7 @@ def _is_braintrust_auth_error(exc: Exception) -> bool:
     return any(needle in message for needle in _AUTH_ERROR_NEEDLES)
 
 
-def create_scorer(slug: str):
+def create_scorer(slug: str, name: str | None = None):
     """
     Create a scorer function that invokes a Braintrust UI-defined scorer.
 
@@ -189,6 +197,10 @@ def create_scorer(slug: str):
     login() and will not refresh it on its own. We force a fresh login after an
     auth-looking failure, and back off on other transient errors. Final failure
     re-raises so the Eval framework records an error row instead of a fake 0.0.
+
+    `name` should be the Braintrust display name (e.g. "Link Quote Accuracy").
+    EvalAsync uses __name__ as the score column key; invoke() logs under the
+    display name internally — so they must match to avoid duplicate columns.
     """
 
     def scorer(output, expected=None, input=None, metadata=None):
@@ -239,23 +251,8 @@ def create_scorer(slug: str):
         assert last_exc is not None
         raise last_exc
 
-    scorer.__name__ = slug.replace("-", "_")
+    scorer.__name__ = name if name else slug
     return scorer
-
-
-def get_current_branch() -> str:
-    """Return the current git branch name, embedded in experiment metadata so
-    CI can find this run again on merge and pin it as the new baseline."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def fetch_pinned_experiment() -> dict | None:
@@ -263,7 +260,7 @@ def fetch_pinned_experiment() -> dict | None:
     Braintrust. The baseline is stored in project settings as baseline_experiment_id."""
     try:
         conn = braintrust.api_conn()
-        r = conn.get("/v1/project", params={"project_name": PROJECT})
+        r = conn.get(BT_PROJECT_PATH, params={"project_name": PROJECT})
         if not r.ok:
             return None
         projects = extract_braintrust_items(r.json())
@@ -273,7 +270,7 @@ def fetch_pinned_experiment() -> dict | None:
         baseline_id = (project.get("settings") or {}).get("baseline_experiment_id")
         if not baseline_id:
             return None
-        r2 = conn.get(f"/v1/experiment/{baseline_id}")
+        r2 = conn.get(f"{BT_EXPERIMENT_PATH}/{baseline_id}")
         return r2.json() if r2.ok else None
     except Exception as e:
         print(
@@ -284,18 +281,18 @@ def fetch_pinned_experiment() -> dict | None:
 
 
 def fetch_experiment_scores(experiment_id: str) -> dict:
-    """Fetch per-scorer pass rates for a given experiment from the Braintrust
-    summary endpoint. Returns a dict of scorer name → score stats."""
+    """Fetch per-scorer means for a given experiment from Braintrust. Returns a
+    dict of scorer name → score stats.
+
+    Uses the `experiment-comparison2` endpoint that the SDK's summarize() relies
+    on. There is no /v1/experiment/{id}/summary REST route — hitting it returns
+    403 (unrecognized path), which silently skipped baseline comparison."""
     try:
-        response = braintrust.api_conn().get(f"/v1/experiment/{experiment_id}/summary")
-        if not response.ok:
-            print(
-                f"WARNING: Could not fetch experiment scores for {experiment_id}: "
-                f"HTTP {response.status_code}",
-                file=sys.stderr,
-            )
-            return {}
-        return response.json().get("scores", {})
+        summary = braintrust.api_conn().get_json(
+            BT_EXPERIMENT_COMPARISON_PATH,
+            args={"experiment_id": experiment_id},
+        )
+        return summary.get("scores", {})
     except Exception as e:
         print(
             f"WARNING: Could not fetch experiment scores for {experiment_id}: "
@@ -307,16 +304,24 @@ def fetch_experiment_scores(experiment_id: str) -> dict:
 
 def _get_mean(score_val) -> float | None:
     """Extract a scalar mean from a score value regardless of its shape.
-    The SDK returns objects with a .mean attribute; the REST API returns dicts
-    with a 'mean' key. Both are handled here so callers don't need to care."""
+
+    The SDK returns ScoreSummary/MetricSummary objects whose mean lives on
+    `.score` / `.metric` respectively (older SDKs used `.mean`). The REST API
+    returns dicts keyed the same way. Handling all shapes here means callers
+    don't have to care — and missing this previously caused analyze_threshold
+    to silently treat every current score as None and print READY TO MERGE."""
     if score_val is None:
         return None
     if isinstance(score_val, (int, float)):
         return float(score_val)
     if isinstance(score_val, dict):
-        return score_val["mean"] if "mean" in score_val else score_val.get("score")
-    if hasattr(score_val, "mean"):
-        return _get_mean(score_val.mean)
+        for key in ("mean", "score", "metric"):
+            if key in score_val:
+                return score_val[key]
+        return None
+    for attr in ("mean", "score", "metric"):
+        if hasattr(score_val, attr):
+            return _get_mean(getattr(score_val, attr))
     try:
         return float(score_val)
     except (TypeError, ValueError):
@@ -330,7 +335,7 @@ def _normalize(name: str) -> str:
     return name.replace("-", "_").lower()
 
 
-def analyze_threshold(current_scores: dict) -> None:
+def analyze_threshold(current_scores: dict) -> bool:
     """Compare the current eval run's scores against the pinned baseline and
     print a pass/fail table. Each scorer is checked against REGRESSION_TOLERANCE
     (default 10%); per-scorer overrides can be set in SCORER_TOLERANCES.
@@ -369,7 +374,7 @@ def analyze_threshold(current_scores: dict) -> None:
 
     if not current_scores:
         print("No scores available for analysis.")
-        return
+        return False
 
     failures: list[str] = []
     col = 35
@@ -418,73 +423,68 @@ def analyze_threshold(current_scores: dict) -> None:
             f"NOTE: The code changes must be reviewed by a member of the eval team "
             f"before merging due to this regression."
         )
+        return False
     elif baseline:
         print("READY TO MERGE: All scorers within tolerance.")
+        return True
     else:
-        print(
-            "No baseline to compare against — this run will become the baseline on merge."
-        )
+        print("No baseline set — use --pin to establish one after reviewing results.")
+        return False
 
 
-def pin_baseline_for_branch(branch: str) -> None:
-    """Pin the most recent experiment for a given branch as the project baseline.
-
-    Called by CI on merge to main. Looks up all experiments whose metadata
-    includes the source branch name, picks the latest by creation date, unpins
-    the previous baseline, and pins the new one. If no experiment exists for the
-    branch (i.e. the developer never ran evals), the baseline is left unchanged."""
-    braintrust.login()
-
-    response = braintrust.api_conn().get(
-        "/v1/experiment", params={"project_name": PROJECT}
-    )
-    if not response.ok:
-        print(
-            f"ERROR: Could not fetch experiments: {response.status_code}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    experiments = extract_braintrust_items(response.json())
-    branch_experiments = [
-        e for e in experiments if (e.get("metadata") or {}).get("branch") == branch
-    ]
-
-    if not branch_experiments:
-        print(f"No experiments found for branch '{branch}'. Baseline unchanged.")
-        return
-
-    branch_experiments.sort(key=lambda e: e.get("created", ""), reverse=True)
-    latest = branch_experiments[0]
-
-    r_project = braintrust.api_conn().get(
-        "/v1/project", params={"project_name": PROJECT}
-    )
-    if not r_project.ok:
-        print(
-            f"ERROR: Could not fetch project: {r_project.status_code}", file=sys.stderr
-        )
-        sys.exit(1)
-    projects = extract_braintrust_items(r_project.json())
-    project = next((p for p in projects if p.get("name") == PROJECT), None)
-    if not project:
-        print(f"ERROR: Project '{PROJECT}' not found", file=sys.stderr)
-        sys.exit(1)
-
+def resolve_experiment(name_or_id: str) -> dict | None:
+    """Fetch an experiment by name or ID from Braintrust."""
     conn = braintrust.api_conn()
-    resp = conn.session.patch(
-        conn.base_url.rstrip("/") + f"/v1/project/{project['id']}",
-        json={"settings": {"baseline_experiment_id": latest["id"]}},
-        headers={"Authorization": f"Bearer {conn.token}"},
+    r = conn.get(f"{BT_EXPERIMENT_PATH}/{name_or_id}")
+    if r.ok:
+        return r.json()
+    r = conn.get(
+        BT_EXPERIMENT_PATH,
+        params={"project_name": PROJECT, "experiment_name": name_or_id},
     )
-    if resp.ok:
-        print(f"Pinned '{latest.get('name', latest['id'])}' as the new baseline.")
-    else:
+    if r.ok:
+        experiments = extract_braintrust_items(r.json())
+        if experiments:
+            return experiments[0]
+    print(f"ERROR: Could not find experiment '{name_or_id}'", file=sys.stderr)
+    return None
+
+
+def pin_experiment(experiment_id: str, experiment_name: str) -> bool:
+    """Pin an experiment as the project baseline. Returns True on success."""
+    try:
+        conn = braintrust.api_conn()
+        r = conn.get(BT_PROJECT_PATH, params={"project_name": PROJECT})
+        if not r.ok:
+            print(f"ERROR: Could not fetch project: {r.status_code}", file=sys.stderr)
+            return False
+        projects = extract_braintrust_items(r.json())
+        project = next((p for p in projects if p.get("name") == PROJECT), None)
+        if not project:
+            print(f"ERROR: Project '{PROJECT}' not found", file=sys.stderr)
+            return False
+
+        # HTTPConnection doesn't expose .patch(), so we drive its requests
+        # Session directly. This keeps the SDK's configured base_url + auth
+        # header instead of hardcoding api.braintrust.dev — which would break
+        # against custom (e.g. self-hosted) Braintrust endpoints.
+        resp = conn.session.patch(
+            f"{conn.base_url}{BT_PROJECT_PATH}/{project['id']}",
+            json={"settings": {"baseline_experiment_id": experiment_id}},
+        )
+        if resp.ok:
+            print(f"Pinned '{experiment_name}' as the new baseline.")
+            return True
         print(
             f"ERROR: Could not pin experiment: {resp.status_code} {resp.text[:200]}",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return False
+    except Exception as e:
+        print(
+            f"ERROR: Could not pin experiment: {type(e).__name__}: {e}", file=sys.stderr
+        )
+        return False
 
 
 def get_available_scorer_slugs() -> set:
@@ -495,7 +495,7 @@ def get_available_scorer_slugs() -> set:
     """
     try:
         braintrust.login()
-        response = braintrust.api_conn().get("/v1/function")
+        response = braintrust.api_conn().get(BT_FUNCTION_PATH)
         if not response.ok:
             return set()
 
@@ -523,7 +523,7 @@ def get_all_scorers() -> list:
 
     try:
         braintrust.login()
-        response = braintrust.api_conn().get("/v1/function")
+        response = braintrust.api_conn().get(BT_FUNCTION_PATH)
         if not response.ok:
             print(f"Error fetching functions: {response.status_code}")
             return []
@@ -541,8 +541,9 @@ def get_all_scorers() -> list:
         scorers = []
         for f in scorer_funcs:
             if slug := f.get("slug"):
-                print(f"  - {slug}: {f.get('name', '')}")
-                scorers.append(create_scorer(slug))
+                display_name = f.get("name", "")
+                print(f"  - {slug}: {display_name}")
+                scorers.append(create_scorer(slug, name=display_name or None))
         return scorers
 
     except Exception as e:
@@ -580,7 +581,9 @@ def validate_dataset(dataset_name: str) -> bool:
     """
     try:
         braintrust.login()
-        response = braintrust.api_conn().get("/v1/dataset")
+        response = braintrust.api_conn().get(
+            BT_DATASET_PATH, params={"project_name": PROJECT}
+        )
         if not response.ok:
             print("ERROR: Could not fetch datasets from Braintrust", file=sys.stderr)
             return False
@@ -618,6 +621,21 @@ async def run_evaluation(
         experiment_name = (
             f"{DEFAULT_EXPERIMENT_NAME} - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         )
+
+    # Pre-run: always show the current baseline and let the dev proceed or swap it.
+    if sys.stdin.isatty():
+        baseline = fetch_pinned_experiment()
+        baseline_name = baseline.get("name", baseline["id"]) if baseline else "None"
+        print(f"\nBaseline for comparison: {baseline_name}")
+        answer = input(
+            "Press Enter to proceed, or type an experiment name/ID to use a different baseline: "
+        ).strip()
+        if answer:
+            exp = resolve_experiment(answer)
+            if exp:
+                pin_experiment(exp["id"], exp.get("name", answer))
+            else:
+                print("Keeping current baseline.", file=sys.stderr)
 
     async def task(input_data):
         # Dataset rows may use different field names for the prompt
@@ -665,18 +683,34 @@ async def run_evaluation(
             metadata={
                 "api_url": client.base_url,
                 "timestamp": datetime.now().isoformat(),
-                "branch": get_current_branch(),
             },
             max_concurrency=max_concurrency,
         )
         print(f"\nComplete! View results in Braintrust: {PROJECT} / {experiment_name}")
+
+        passed = False
         if result and hasattr(result, "summary") and result.summary:
-            analyze_threshold(result.summary.scores)
+            passed = analyze_threshold(result.summary.scores)
         else:
             print(
                 "WARNING: Could not retrieve scores for threshold analysis.",
                 file=sys.stderr,
             )
+
+        print(
+            f'\nTo pin this run as baseline:  python run_eval.py --pin "{experiment_name}"'
+        )
+
+        if passed and sys.stdin.isatty():
+            answer = (
+                input("Pin this experiment as the new baseline? [y/N]: ")
+                .strip()
+                .lower()
+            )
+            if answer == "y":
+                exp = resolve_experiment(experiment_name)
+                if exp:
+                    pin_experiment(exp["id"], experiment_name)
     finally:
         await client.close()
 
@@ -728,9 +762,9 @@ def main():
         help="Use all scorers defined in Braintrust for this project",
     )
     parser.add_argument(
-        "--pin-baseline",
-        metavar="BRANCH",
-        help="Pin the latest experiment for BRANCH as the baseline (used by CI on merge)",
+        "--pin",
+        metavar="EXPERIMENT",
+        help="Pin an existing experiment as the baseline by name or ID (no eval run)",
     )
     args = parser.parse_args()
 
@@ -738,8 +772,12 @@ def main():
         print("ERROR: BRAINTRUST_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
-    if args.pin_baseline:
-        pin_baseline_for_branch(args.pin_baseline)
+    if args.pin:
+        braintrust.login()
+        exp = resolve_experiment(args.pin)
+        if not exp:
+            sys.exit(1)
+        pin_experiment(exp["id"], exp.get("name", args.pin))
         return
 
     braintrust.login()
