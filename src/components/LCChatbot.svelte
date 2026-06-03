@@ -25,7 +25,10 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModerator = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    // Forces in-page navigation (sefaria:bootstrap-url) even when not on sefaria.org.
+    // Set this on cauldron/staging embeds to test topic and source navigation without prod deployment.
+    'in-page-nav': inPageNav = false,
   } = $props();
 
   // State
@@ -758,12 +761,13 @@
 
     // Only dispatch in-page navigation for Sefaria URLs on a Sefaria host.
     // External links and off-Sefaria embeds fall back to a new tab.
+    // inPageNav bypasses the hostname check for cauldron/staging test environments.
     const isSefariaDomain = (h) => h === '' || h.includes('sefaria.org');
     if (!isSefariaDomain(resolvedUrl.hostname)) {
       window.open(resolvedUrl.href, '_blank', 'noopener,noreferrer');
       return;
     }
-    if (!isSefariaDomain(window.location.hostname)) {
+    if (!inPageNav && !isSefariaDomain(window.location.hostname)) {
       window.open(`https://www.sefaria.org${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -821,7 +825,7 @@
   function handleAppetizerClick(topicSlug, topicUrl) {
     const onSefaria = window.location.hostname.includes('sefaria.org');
 
-    if (onSefaria) {
+    if (onSefaria || inPageNav) {
       // In-page navigation via ReaderApp's existing event listener
       document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
         detail: { url: `/topics/${topicSlug}` }

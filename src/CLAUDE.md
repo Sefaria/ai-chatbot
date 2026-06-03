@@ -50,6 +50,7 @@ npm run build    # Build bundle to dist/
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag — shows settings gear and logged to Braintrust metadata |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `in-page-nav` | boolean | No | Force in-page navigation (sefaria:bootstrap-url) even off sefaria.org — cauldron/staging test only, do not deploy |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
