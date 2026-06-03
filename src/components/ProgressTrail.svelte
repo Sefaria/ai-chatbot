@@ -13,8 +13,6 @@
    * into a sefaria.org URL.  Returns null if the string doesn't look like a ref.
    */
   function refToUrl(ref) {
-    // Must end with a chapter/verse token: digits optionally followed by a letter
-    // and optionally a range like 115b-116a or a verse like 10:8
     const m = ref.match(/^(.+?)\s+(\d[\w:.-]*)$/);
     if (!m) return null;
     const book = m[1].replace(/ /g, '_');
@@ -24,8 +22,6 @@
 
   /**
    * Return an HTML string with any quoted Sefaria refs turned into links.
-   * Handles both single quotes ('Pesachim 119b') and double quotes ("Mishnah Shabbat 7:2").
-   * Input is plain text, so we escape it first to prevent XSS.
    */
   function linkifyRefs(text) {
     const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -37,9 +33,13 @@
     });
   }
 
-  let expanded = $state(false);
+  function entryTooltip(entry) {
+    return entry.type === 'tool'
+      ? (entry.description ?? entry.toolName ?? '')
+      : (entry.text ?? '');
+  }
 
-  // Show the list when streaming (collapsed=false) or when the user expands it
+  let expanded = $state(false);
   let showList = $derived(!collapsed || expanded);
 
   function toggle() {
@@ -50,29 +50,44 @@
 {#if entries.length > 0}
   {#if collapsed}
     <button class="progress-trail-toggle" onclick={toggle} aria-expanded={expanded}>
-      {#if expanded}
-        {$_('progress.hideThinking', { values: { count: entries.length } })}
-      {:else}
-        {$_('progress.showThinking', { values: { count: entries.length } })}
-      {/if}
+      <span class="toggle-label">{entries.length} {entries.length === 1 ? 'step' : 'steps'}</span>
+      <svg
+        class="toggle-chevron"
+        class:toggle-chevron--up={expanded}
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </button>
   {/if}
 
   {#if showList}
     <ol class="progress-trail-list">
       {#each entries as entry (entry.id)}
-        <li class="progress-trail-entry progress-trail-entry--{entry.status}">
+        <li
+          class="progress-trail-entry progress-trail-entry--{entry.status}"
+          data-tooltip={entryTooltip(entry)}
+        >
           <span class="progress-trail-icon">
             {#if entry.status === 'running'}
-              <span class="progress-trail-spinner" aria-hidden="true"></span>
+              <!-- Lucide loader-circle with CSS spin -->
+              <svg class="trail-icon-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
             {:else if entry.status === 'complete'}
-              <!-- Checkmark — matches LCChatbot.svelte lines ~1038-1040 -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
             {:else}
-              <!-- X / error — matches LCChatbot.svelte lines ~1033-1037 -->
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="15" y1="9" x2="9" y2="15"></line>

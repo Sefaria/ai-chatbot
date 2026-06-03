@@ -15,9 +15,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-
-from .contracts import MessageContext
 from .catalog_service import CatalogService
+from .contracts import MessageContext
 from .sefaria_client import SefariaClient
 
 logger = logging.getLogger("chat.agent")
@@ -226,14 +225,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "search_in_dictionaries": lambda: (
             f"Searching dictionaries for {q(tool_input.get('query'))}"
         ),
-        "get_text": lambda: (
-            f"Fetching text {q(tool_input.get('reference'))}"
-            + (
-                f" ({q(tool_input.get('version_language'))})"
-                if tool_input.get("version_language")
-                else ""
-            )
-        ),
+        "get_text": lambda: f"Fetching text {q(tool_input.get('reference'))}",
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
