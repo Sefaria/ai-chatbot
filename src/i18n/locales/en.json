@@ -71,5 +71,8 @@
   "feedback.reason.unhelpful": "Not helpful or unclear",
   "feedback.reason.overlyDefinitive": "Overly definitive",
   "feedback.reason.techIssue": "Technical issue",
-  "feedback.reason.other": "Other"
+  "feedback.reason.other": "Other",
+
+  "chip.readingNow": "reading now -",
+  "chip.return": "Return to"
 }

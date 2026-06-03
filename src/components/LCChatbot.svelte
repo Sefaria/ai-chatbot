@@ -47,6 +47,81 @@
   let trailEntryId = $state(0);
   let appetizerData = $state(null);
 
+  // Context chip — tracks the Sefaria text ref visible when the chatbot opened
+  function parseSefariaRef(href) {
+    try {
+      const url = new URL(href);
+      if (!url.hostname.includes('sefaria.org')) return null;
+      const path = decodeURIComponent(url.pathname).replace(/^\//, '');
+      if (!path) return null;
+      const nonText = ['topics', 'sheets', 'search', 'profile', 'groups', 'collections',
+                       'community', 'calendars', 'donate', 'account', 'login', 'register'];
+      if (nonText.some(p => path.startsWith(p))) return null;
+      const dotIdx = path.indexOf('.');
+      if (dotIdx === -1) return null;
+      if (!/^\d/.test(path.slice(dotIdx + 1))) return null;
+      const parts = path.split('.');
+      return `${parts[0].replace(/_/g, ' ')} ${parts.slice(1).join(':')}`;
+    } catch { return null; }
+  }
+
+  // Resolve the Sefaria text URL currently open in the reader. In production the
+  // embed lives on the reader page, so window.location is authoritative. The
+  // ?lc-ref= query param is a dev affordance for testing off-Sefaria
+  // (e.g. http://localhost:5173/?lc-ref=Genesis.1.1).
+  function toReadingUrl(href) {
+    if (parseSefariaRef(href)) return href;
+    try {
+      const devRef = new URL(href).searchParams.get('lc-ref');
+      if (devRef) {
+        const u = `https://www.sefaria.org/${devRef.replace(/^\//, '')}`;
+        if (parseSefariaRef(u)) return u;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  let liveUrl = $state(window.location.href);
+  let liveReadingUrl = $derived(toReadingUrl(liveUrl));
+  let liveReadingRef = $derived(liveReadingUrl ? parseSefariaRef(liveReadingUrl) : null);
+
+  $effect(() => {
+    const onNav = () => { liveUrl = window.location.href; };
+    window.addEventListener('popstate', onNav);
+    window.addEventListener('hashchange', onNav);
+    window.addEventListener('lc:locationchange', onNav);
+    // Sefaria's reader is an SPA that often navigates via history.pushState,
+    // which fires no native event. Patch it once (per page) to emit a synthetic
+    // event so the "reading now" indicator drops when the user moves to another text.
+    if (!window.__lcHistoryPatched) {
+      window.__lcHistoryPatched = true;
+      for (const method of ['pushState', 'replaceState']) {
+        const orig = history[method];
+        history[method] = function (...args) {
+          const result = orig.apply(this, args);
+          window.dispatchEvent(new Event('lc:locationchange'));
+          return result;
+        };
+      }
+    }
+    return () => {
+      window.removeEventListener('popstate', onNav);
+      window.removeEventListener('hashchange', onNav);
+      window.removeEventListener('lc:locationchange', onNav);
+    };
+  });
+
+  function navigateToReadingRef(url) {
+    if (window.location.hostname.includes('sefaria.org') || inPageNav) {
+      const u = new URL(url);
+      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
+        detail: { url: u.pathname + u.search + u.hash, replaceHistory: true }
+      }));
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
@@ -451,7 +526,9 @@
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
-      status: 'sending'
+      status: 'sending',
+      // Snapshot the text open in the reader when this prompt was sent
+      readingRefUrl: liveReadingUrl
     };
 
     messages = [...messages, userMessage];
@@ -1083,6 +1160,23 @@
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
+              {#if item.readingRefUrl}
+                {@const itemRef = parseSefariaRef(item.readingRefUrl)}
+                {@const readingNow = !!liveReadingRef && liveReadingRef === itemRef}
+                {#if itemRef}
+                  <button
+                    class="context-chip"
+                    class:context-chip--reading={readingNow}
+                    onclick={() => navigateToReadingRef(item.readingRefUrl)}
+                    disabled={readingNow}
+                    aria-label={readingNow ? `${$_('chip.readingNow')} ${itemRef}` : `${$_('chip.return')} ${itemRef}`}
+                  >
+                    <span class="chip-indicator" class:chip-indicator--active={readingNow}></span>
+                    {#if readingNow}<span class="chip-reading-label">{$_('chip.readingNow')}</span>{/if}
+                    <span class="chip-ref-text">{itemRef}</span>
+                  </button>
+                {/if}
+              {/if}
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
                   <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(item.messageId)}>
@@ -1125,16 +1219,18 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('input.placeholder')}
-          aria-label={$_('input.aria')}
-          rows="1"
-          disabled={isSending || limitReached}
-        ></textarea>
+        <div class="input-wrapper">
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            maxlength={effectiveMaxInputChars}
+            placeholder={limitReached ? "" : $_('input.placeholder')}
+            aria-label={$_('input.aria')}
+            rows="1"
+            disabled={isSending || limitReached}
+          ></textarea>
+        </div>
         <button
           class="send-btn"
           onclick={handleSend}
@@ -1686,13 +1782,69 @@
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    padding: 16px 16px 16px 18px;
+    padding: 12px 16px 12px 18px;
     background: transparent;
     border-top: 1px solid var(--lc-border);
   }
 
-  .lc-chatbot-input textarea {
+  .input-wrapper {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  /* Reading-context chip — shown below each user message */
+  .message.user .context-chip {
+    align-self: flex-end;
+    margin-top: 6px;
+    max-width: 100%;
+  }
+
+  .context-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--lc-assistant-bg);
+    color: var(--lc-primary);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px 3px 6px;
+    border-radius: 20px;
+    border: 1px solid rgba(24,52,93,0.15);
+    cursor: pointer;
+    transition: background 0.15s;
+    max-width: 220px;
+    min-width: 0;
+  }
+
+  .context-chip:not(:disabled):hover { background: #e3e9f2; }
+  .context-chip:disabled { cursor: default; }
+
+  .chip-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--lc-text-muted);
+    flex-shrink: 0;
+  }
+  .chip-indicator--active { background: #22c55e; }
+
+  .chip-reading-label {
+    color: var(--lc-text-muted);
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+
+  .chip-ref-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lc-chatbot-input textarea {
     min-height: 40px;
     max-height: 120px;
     padding: 10px 14px;
@@ -2092,9 +2244,10 @@ inset: 8px;
   /* TopicAppetizer styles */
   :global(.topic-appetizer) {
     margin: 6px 12px 6px;
-    border-radius: 8px;
-    border: 1px solid #e9d96a;
-    background: #fffde7;
+    border-radius: 0 8px 8px 0;
+    border: 1px solid #c5d7ea;
+    border-left: 3px solid var(--lc-primary, #18345D);
+    background: #eef4fa;
     font-size: 13px;
     font-family: inherit;
     animation: appetizer-fade-in 0.3s ease;
@@ -2112,13 +2265,13 @@ inset: 8px;
     background: none;
     border: none;
     text-align: start;
-    color: #4a4700;
+    color: #2a4a73;
     font-size: 12px;
     font-family: inherit;
   }
   :global(.appetizer-icon) {
     flex-shrink: 0;
-    color: #8a7a00;
+    color: var(--lc-primary, #18345D);
   }
   :global(.appetizer-header-text) {
     flex: 1;
@@ -2127,7 +2280,7 @@ inset: 8px;
   }
   :global(.appetizer-body) {
     padding: 4px 10px 10px;
-    border-top: 1px solid #f0e68c;
+    border-top: 1px solid #d6e3f0;
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -2142,7 +2295,7 @@ inset: 8px;
     color: #465D7D;
   }
   :global(.appetizer-separator) {
-    color: #8a7a00;
+    color: #6b87a8;
     font-size: 14px;
     margin-right: 4px;
   }
@@ -2150,7 +2303,7 @@ inset: 8px;
   :global(.progress-trail-toggle) {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     background: none;
     border: none;
     cursor: pointer;
@@ -2159,9 +2312,14 @@ inset: 8px;
     padding: 4px 12px;
     font-family: inherit;
   }
-  :global(.progress-trail-toggle:hover) {
-    color: #555;
+  :global(.progress-trail-toggle:hover) { color: #555; }
+  :global(.toggle-label) { flex-shrink: 0; }
+  :global(.toggle-chevron) {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
   }
+  :global(.toggle-chevron--up) { transform: rotate(180deg); }
+
   :global(.progress-trail-list) {
     list-style: none;
     margin: 0;
@@ -2171,19 +2329,47 @@ inset: 8px;
     gap: 3px;
   }
   :global(.progress-trail-entry) {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 12px;
     line-height: 1.4;
     color: #777;
+    min-width: 0;
   }
-  :global(.progress-trail-entry--error) {
-    color: #c62828;
+  :global(.progress-trail-entry--error) { color: #c62828; }
+  :global(.progress-trail-entry--complete) { color: #666; }
+
+  /* Styled tooltip — on li so it's not clipped by the text span's overflow:hidden */
+  :global(.progress-trail-entry[data-tooltip]::before) {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 0;
+    background: var(--lc-primary, #18345D);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 5px 8px;
+    border-radius: 6px;
+    white-space: normal;
+    max-width: 240px;
+    width: max-content;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    z-index: 20;
   }
-  :global(.progress-trail-entry--complete) {
-    color: #666;
+  :global(.progress-trail-entry[data-tooltip]:hover::before) {
+    opacity: 1;
+    transform: translateY(0);
+    /* Delay appearance by 300ms; hiding (base rule) stays instant */
+    transition: opacity 0.12s ease 0.3s, transform 0.12s ease 0.3s;
   }
+
   :global(.progress-trail-icon) {
     flex-shrink: 0;
     width: 14px;
@@ -2192,18 +2378,18 @@ inset: 8px;
     align-items: center;
     justify-content: center;
   }
-  :global(.progress-trail-spinner) {
-    width: 10px;
-    height: 10px;
-    border: 1.5px solid #ccc;
-    border-top-color: #888;
-    border-radius: 50%;
+  /* Lucide loader-circle spinner */
+  :global(.trail-icon-spinner) {
     animation: trail-spin 0.8s linear infinite;
+    transform-origin: center;
+    color: #888;
   }
   @keyframes trail-spin {
     to { transform: rotate(360deg); }
   }
   :global(.progress-trail-text) {
+    flex: 1 1 auto;
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
