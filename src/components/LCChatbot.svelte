@@ -295,6 +295,17 @@
         el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
       );
       if (isToggle) return;
+      // Explicit analytics label wins over the generic link/aria-label logic
+      // below (e.g. appetizer topic links, thinking-step links are <a> elements).
+      const labelled = path.find(
+        el => el instanceof Element && el.getAttribute('data-feature-name')
+      );
+      if (labelled) {
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name') });
+        }
+        return;
+      }
       // If a response link was clicked — capture the link text
       const link = path.find(
         el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
@@ -1169,6 +1180,7 @@
                     class:context-chip--reading={readingNow}
                     onclick={() => navigateToReadingRef(item.readingRefUrl)}
                     disabled={readingNow}
+                    data-feature-name="initial_location_link"
                     aria-label={readingNow ? `${$_('chip.readingNow')} ${itemRef}` : `${$_('chip.return')} ${itemRef}`}
                   >
                     <span class="chip-indicator" class:chip-indicator--active={readingNow}></span>

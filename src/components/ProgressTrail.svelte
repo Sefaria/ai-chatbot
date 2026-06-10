@@ -29,7 +29,7 @@
     return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
       const url = refToUrl(ref);
       if (!url) return match;
-      return `${quote}${icon}<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${ref}</a>${quote}`;
+      return `${quote}${icon}<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link">${ref}</a>${quote}`;
     });
   }
 
@@ -49,7 +49,7 @@
 
 {#if entries.length > 0}
   {#if collapsed}
-    <button class="progress-trail-toggle" onclick={toggle} aria-expanded={expanded}>
+    <button class="progress-trail-toggle" onclick={toggle} aria-expanded={expanded} data-feature-name="thinking_steps_toggle">
       <span class="toggle-label">{entries.length} {entries.length === 1 ? 'step' : 'steps'}</span>
       <svg
         class="toggle-chevron"
