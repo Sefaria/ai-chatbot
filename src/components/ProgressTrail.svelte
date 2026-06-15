@@ -6,7 +6,7 @@
    *                     status: 'running'|'complete'|'error', startTime, duration? }
    * collapsed: boolean — true after streaming ends; false while streaming
    */
-  let { entries = [], collapsed = false } = $props();
+  let { entries = [], collapsed = false, showToggle = true } = $props();
 
   /**
    * Convert a bare Sefaria ref like "Pesachim 119b" or "Mishnah Pesachim 10:8"
@@ -62,7 +62,7 @@
 </script>
 
 {#if entries.length > 0}
-  {#if collapsed}
+  {#if collapsed && showToggle}
     <button class="progress-trail-toggle" onclick={toggle} aria-expanded={expanded}>
       {#if expanded}
         {$_('progress.hideThinking', { values: { count: entries.length } })}
@@ -72,7 +72,7 @@
     </button>
   {/if}
 
-  {#if showList}
+  {#if showList || !showToggle}
     <ol class="progress-trail-list">
       {#each entries as entry (entry.id)}
         {@const isFailed = entry.status === 'error'}

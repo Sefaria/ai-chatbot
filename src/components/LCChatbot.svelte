@@ -69,6 +69,8 @@
   let isLoadingSettings = $state(false);
   let settingsError = $state('');
 
+  let expandedSections = $state({});
+
   let isClearing = $state(false);
   let isFirstTimeUser = $state(true);
   let isRestarted = $state(false);
@@ -581,9 +583,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats,
         toolHistory: finalTrail,
-        appetizerData: appetizerData ? {...appetizerData} : null,
-        topicsExpanded: false,
-        thoughtExpanded: false
+        appetizerData: appetizerData ? {...appetizerData} : null
       };
 
       messages = [...messages, assistantMessage];
@@ -1168,13 +1168,13 @@
           {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
-                <Accordion kind="topics" bind:expanded={item.topicsExpanded}>
+                <Accordion kind="topics" bind:expanded={expandedSections[`${item.messageId}_topics`]}>
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
               {#if item.toolHistory?.length > 0}
-                <Accordion kind="thought" bind:expanded={item.thoughtExpanded}>
-                  <ProgressTrail entries={item.toolHistory} />
+                <Accordion kind="thought" bind:expanded={expandedSections[`${item.messageId}_thought`]}>
+                  <ProgressTrail entries={item.toolHistory} showToggle={false} />
                 </Accordion>
               {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
