@@ -93,10 +93,10 @@
 
   {#if showList || !showToggle}
     <ol class="progress-trail-list">
-      {#each entries as entry (entry.id)}
+      {#each entries as entry, i (entry.id)}
         {@const isFailed = entry.status === 'error'}
         {@const isRunning = entry.status === 'running'}
-        {@const hasIcon = entry.type === 'tool' && isRunning}
+        {@const hasIcon = !collapsed && isRunning && i === entries.length - 1}
         <li
           class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
           style="width: 100%;"
@@ -104,7 +104,9 @@
           <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}>
             {#if hasIcon}
               <span class="progress-trail-icon">
-                <span class="progress-trail-spinner" aria-hidden="true"></span>
+                <svg class="trail-loader" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
               </span>
             {/if}
             <span class="progress-trail-text">
@@ -229,15 +231,14 @@
     pointer-events: none;
   }
 
-  /* ── Spinner animation ── */
-  .progress-trail-spinner {
+  /* ── Lucide loader-circle, animated, on the active step ── */
+  .trail-loader {
     display: block;
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--lc-icon-primary, #666666);
-    border-top-color: transparent;
-    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    color: var(--functional-icon-icon-primary, #666666);
     animation: trail-spin 1s linear infinite;
+    transform-origin: center;
   }
 
   @keyframes trail-spin {

@@ -72,12 +72,12 @@
   .topic-appetizer {
     display: flex;
     align-items: flex-start;
-    align-self: stretch;
     padding: var(--global-dimension-100, 8px) var(--global-dimension-150, 12px);
     border-radius: var(--global-dimension-0, 0);
     border-inline-start: 2px solid var(--semantic-action-primary, #18345D);
     background: var(--core-blue-tbr-100, #F0F7FF);
-    width: 100%;
+    width: 252px;
+    max-width: 100%;
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -94,7 +94,9 @@
     flex: 1 0 0;
     min-width: 0;
     margin: 0;
-    font: 12px/20px;
+    font-family: Roboto, sans-serif;
+    font-size: 12px;
+    line-height: var(--global-dimension-250, 20px);
     color: var(--semantic-text-secondary, #575757);
   }
 
