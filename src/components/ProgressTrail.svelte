@@ -37,6 +37,20 @@
     });
   }
 
+  /**
+   * Return an HTML string with quoted refs rendered as plain text (no links).
+   * Used for failed entries where refs should not be clickable.
+   */
+  function plainRefs(text) {
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Strip the surrounding quotes but keep the ref text as-is
+    return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
+      const url = refToUrl(ref);
+      if (!url) return match;
+      return `${quote}${ref}${quote}`;
+    });
+  }
+
   let expanded = $state(false);
 
   // Show the list when streaming (collapsed=false) or when the user expands it
@@ -61,27 +75,23 @@
   {#if showList}
     <ol class="progress-trail-list">
       {#each entries as entry (entry.id)}
-        <li class="progress-trail-entry progress-trail-entry--{entry.status}">
-          <span class="progress-trail-icon">
-            {#if entry.status === 'running'}
+        {@const isFailed = entry.status === 'error'}
+        {@const isRunning = entry.status === 'running'}
+        {@const hasIcon = entry.type === 'tool' && isRunning}
+        <li
+          class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
+          data-tooltip={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}
+        >
+          {#if hasIcon}
+            <span class="progress-trail-icon">
               <span class="progress-trail-spinner" aria-hidden="true"></span>
-            {:else if entry.status === 'complete'}
-              <!-- Checkmark — matches LCChatbot.svelte lines ~1038-1040 -->
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
-            {:else}
-              <!-- X / error — matches LCChatbot.svelte lines ~1033-1037 -->
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="15" y1="9" x2="9" y2="15"></line>
-                <line x1="9" y1="9" x2="15" y2="15"></line>
-              </svg>
-            {/if}
-          </span>
+            </span>
+          {/if}
           <span class="progress-trail-text">
-            {#if entry.type === 'tool'}
+            {#if isFailed}
+              <span class="trail-failed-prefix">{$_('progress.failed')}</span>
+              {@html plainRefs(entry.description ?? entry.toolName ?? entry.text ?? '')}
+            {:else if entry.type === 'tool'}
               {@html linkifyRefs(entry.description ?? entry.toolName ?? '')}
             {:else}
               {entry.text ?? ''}
@@ -92,3 +102,106 @@
     </ol>
   {/if}
 {/if}
+
+<style>
+  .progress-trail-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .progress-trail-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--lc-text-secondary);
+    min-height: 20px;
+  }
+
+  .progress-trail-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+  }
+
+  .progress-trail-text {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Tooltip via data-tooltip on the li */
+  .progress-trail-entry[data-tooltip]::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    background: #333;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 10;
+  }
+
+  .progress-trail-entry[data-tooltip]:hover::before {
+    opacity: 1;
+  }
+
+  /* Ref links in normal (non-failed) steps */
+  :global(.trail-ref-link) {
+    color: var(--lc-primary);
+    text-decoration: none;
+  }
+
+  :global(.trail-ref-icon) {
+    flex-shrink: 0;
+    color: var(--lc-primary);
+  }
+
+  /* Failed prefix label */
+  .trail-failed-prefix {
+    flex-shrink: 0;
+  }
+
+  /* Failed variant: override any link styling inside to secondary color */
+  .progress-trail-entry.failed :global(a),
+  .progress-trail-entry.failed :global(.trail-ref-link),
+  .progress-trail-entry.failed :global(.trail-ref-icon) {
+    color: var(--lc-text-secondary);
+    text-decoration: none;
+  }
+
+  /* Spinner animation */
+  .progress-trail-spinner {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--lc-text-secondary);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: trail-spin 1s linear infinite;
+  }
+
+  @keyframes trail-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
