@@ -1340,14 +1340,33 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    --lc-primary: #18345D;
+    /* Figma design tokens (canonical) */
+    --global-dimension-0: 0px;
+    --global-dimension-100: 8px;
+    --global-dimension-150: 12px;
+    --global-dimension-200: 16px;
+    --global-dimension-250: 20px;
+    --global-dimension-300: 24px;
+    --space-1: 4px;
+    --semantic-action-primary: #18345D;
+    --semantic-text-link: #18345D;
+    --semantic-text-secondary: #575757;
+    --semantic-text-muted: #707070;
+    --core-blue-tbr-100: #F0F7FF;
+    --core-base-white: #FFFFFF;
+    --core-neutral-gray-100: #EEEEEE;
+    --core-neutral-gray-300: #CCCCCC;
+    --functional-icon-icon-primary: #666666;
+
+    /* Component tokens — aliased to Figma tokens where applicable */
+    --lc-primary: var(--semantic-action-primary);
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
-    --lc-text-secondary: #64748b;
+    --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
     --lc-user-bg: #18345D;
@@ -1369,10 +1388,11 @@
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
-    --lc-border-strong: #ccc;
-    --lc-bg-hover: #eee;
-    --lc-on-primary: #fff;
-    --lc-icon-primary: #666666;
+    --lc-border-strong: var(--core-neutral-gray-300);
+    --lc-bg-hover: var(--core-neutral-gray-100);
+    --lc-on-primary: var(--core-base-white);
+    --lc-icon-primary: var(--functional-icon-icon-primary);
+    --lc-topics-bg: var(--core-blue-tbr-100);
 
     display: block;
     font-family: var(--lc-font);
