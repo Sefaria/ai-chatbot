@@ -70,12 +70,13 @@
 
 <style>
   .topic-appetizer {
-    --topics-bg: #f0f7ff;
-    background: var(--topics-bg);
+    background: var(--lc-topics-bg, #f0f7ff);
     border-inline-start: 2px solid var(--lc-primary, #18345d);
     padding: 8px 12px;
     width: 100%;
     box-sizing: border-box;
+    height: auto;
+    overflow: visible;
     animation: fadeIn 0.3s ease-in;
   }
 
@@ -83,6 +84,8 @@
     background: none;
     border-inline-start: none;
     padding: 0;
+    height: auto;
+    overflow: visible;
   }
 
   .appetizer-sentence {
@@ -97,9 +100,9 @@
     border: none;
     padding: 0;
     cursor: pointer;
-    font-size: inherit;
-    line-height: inherit;
-    font-family: inherit;
+    font-size: 12px;
+    line-height: 20px;
+    font-family: Roboto, sans-serif;
     color: var(--lc-primary, #18345d);
     text-decoration: underline;
     text-decoration-style: solid;
@@ -108,7 +111,8 @@
   }
 
   :global(.interface-hebrew) :global(.lc-topic-link) {
-    font-weight: 700;
+    font-family: Heebo, sans-serif;
+    font-weight: 600;
   }
 
   @keyframes fadeIn {
