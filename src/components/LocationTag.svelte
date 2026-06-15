@@ -48,7 +48,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: var(--lc-primary);
-    color: #fff;
+    color: var(--lc-on-primary, #fff);
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 12px;
