@@ -1339,6 +1339,7 @@
     --lc-docked-top-offset: 60px;
     --lc-border-strong: #ccc;
     --lc-bg-hover: #eee;
+    --lc-on-primary: #fff;
 
     display: block;
     font-family: var(--lc-font);

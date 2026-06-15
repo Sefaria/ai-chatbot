@@ -149,8 +149,8 @@
     position: absolute;
     bottom: calc(100% + 4px);
     left: 0;
-    background: #333;
-    color: #fff;
+    background: var(--lc-primary);
+    color: var(--lc-on-primary, #fff);
     font-size: 11px;
     line-height: 1.4;
     padding: 4px 8px;
