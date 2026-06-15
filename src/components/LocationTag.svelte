@@ -1,0 +1,63 @@
+<script>
+  let { label = '', href = '', onActivate } = $props();
+  function activate(e) { e.preventDefault(); onActivate?.(href); }
+</script>
+
+<!-- svelte-ignore a11y_missing_content -->
+<a class="lc-location-tag" {href} data-tooltip={label} onclick={activate} dir="auto">
+  <svg class="lc-location-pin" width="18" height="18" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+  </svg>
+  <span class="lc-location-ref">{label}</span>
+</a>
+
+<style>
+  .lc-location-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    border: 1px solid var(--lc-border-strong, #ccc);
+    border-radius: 16px;
+    color: var(--lc-text-secondary);
+    text-decoration: none;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    line-height: 20px;
+    position: relative;
+    cursor: pointer;
+  }
+  .lc-location-tag:hover {
+    background: var(--lc-bg-hover, #eee);
+  }
+  .lc-location-pin {
+    flex: none;
+  }
+  .lc-location-ref {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lc-location-tag[data-tooltip]:hover::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--lc-primary);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+    margin-bottom: 4px;
+  }
+  :global(.interface-hebrew) .lc-location-tag {
+    flex-direction: row-reverse;
+  }
+</style>

@@ -10,6 +10,7 @@
   import HeaderButton from './HeaderButton.svelte';
   import ProgressTrail from './ProgressTrail.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
+  import LocationTag from './LocationTag.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -444,6 +445,7 @@
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
     // Create user message
+    const locationRef = parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
       sessionId,
@@ -451,7 +453,8 @@
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
-      status: 'sending'
+      status: 'sending',
+      locationRef
     };
 
     messages = [...messages, userMessage];
@@ -818,6 +821,53 @@
     return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
   }
 
+  function parseSefariaRef(href) {
+    try {
+      const url = new URL(href);
+      const hostname = url.hostname;
+      // Only activate on sefaria.org hostnames
+      if (!hostname.endsWith('.sefaria.org') && hostname !== 'sefaria.org' && !hostname.endsWith('.sefaria.org.il') && hostname !== 'sefaria.org.il') {
+        return null;
+      }
+      const path = decodeURIComponent(url.pathname).replace(/^\//, '');
+      if (!path) return null;
+      // Skip non-text paths
+      if (/^(topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)\//i.test(path) || path === '/') {
+        return null;
+      }
+      // Must have a dot followed by a digit somewhere (e.g. Genesis.1.1, Berakhot.2a)
+      const dotIdx = path.indexOf('.');
+      if (dotIdx === -1) return null;
+      if (!/^\d/.test(path.slice(dotIdx + 1))) return null;
+      const parts = path.split('.');
+      const book = parts[0].replace(/_/g, ' ');
+      if (parts.length === 2) {
+        // e.g. Berakhot.2a -> "Berakhot 2a"
+        return { label: `${book} ${parts[1]}`, url: href };
+      } else if (parts.length >= 3) {
+        // e.g. Genesis.1.1 -> "Genesis 1:1"
+        return { label: `${book} ${parts[1]}:${parts.slice(2).join(':')}`, url: href };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function handleLocationClick(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      if (hostname === 'sefaria.org' || hostname.endsWith('.sefaria.org') || hostname === 'sefaria.org.il' || hostname.endsWith('.sefaria.org.il')) {
+        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch {
+      window.open(url, '_blank');
+    }
+  }
+
   function handleAppetizerClick(topicSlug, topicUrl) {
     const onSefaria = window.location.hostname.includes('sefaria.org');
 
@@ -1090,6 +1140,11 @@
                   </button>
                 {/if}
               </div>
+              {#if item.locationRef}
+                <div class="message-location-tag">
+                  <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+                </div>
+              {/if}
             </div>
           {/if}
         {/each}
@@ -1229,6 +1284,8 @@
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
+    --lc-border-strong: #ccc;
+    --lc-bg-hover: #eee;
 
     display: block;
     font-family: var(--lc-font);
@@ -1571,6 +1628,13 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
+  }
+
+  .message-location-tag {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+    max-width: 100%;
   }
 
   .message-status {
