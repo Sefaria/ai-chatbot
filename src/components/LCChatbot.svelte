@@ -47,6 +47,11 @@
   // Agent progress state
   let toolHistory = $state([]);
   let trailEntryId = $state(0);
+  let displayTrail = $derived.by(() => {
+    const firstTool = toolHistory.findIndex(e => e.type === 'tool');
+    if (firstTool === -1) return toolHistory;
+    return toolHistory.filter((e, idx) => !(e.type === 'status' && idx < firstTool));
+  });
   let appetizerData = $state(null);
 
   // Auto-scroll controller
@@ -1239,11 +1244,11 @@
                 <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
               {/if}
               {#if toolHistory.length > 0}
-                <ProgressTrail entries={toolHistory} collapsed={false} />
+                <ProgressTrail entries={displayTrail} collapsed={false} />
               {:else}
-                <div class="thinking-fallback">
-                  <span>{$_('status.thinking')}<span class="dots"></span></span>
-                </div>
+                <span class="lc-loading-spinner" aria-label={$_('status.thinking')}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
+                </span>
               {/if}
             </div>
           </div>
@@ -1348,6 +1353,8 @@
     --global-dimension-250: 20px;
     --global-dimension-300: 24px;
     --space-1: 4px;
+    --spacing-spacing-large: 16px;
+    --spacing-spacing-medium: 12px;
     --semantic-action-primary: #18345D;
     --semantic-text-link: #18345D;
     --semantic-text-secondary: #575757;
@@ -1635,10 +1642,10 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
-    padding: 16px;
+    padding: var(--space-1, 4px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--spacing-spacing-large, 16px);
     scroll-behavior: smooth;
   }
 
@@ -1837,6 +1844,23 @@
   75%  { content: '...'; }
   100% { content: ''; }
 }
+
+  .lc-loading-spinner {
+    display: inline-flex;
+    color: var(--functional-icon-icon-primary, #666666);
+    animation: lc-loading-spin 0.8s linear infinite;
+    transform-origin: center;
+  }
+  @keyframes lc-loading-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .lc-loading-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-spacing-large, 16px);
+  }
 
   /* Loading Indicator */
   .loading-indicator {
