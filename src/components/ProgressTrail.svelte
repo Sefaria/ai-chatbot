@@ -1,5 +1,6 @@
 <script>
   import { _ } from '../i18n/index.js';
+  import Tooltip from './Tooltip.svelte';
 
   /**
    * entries: array of { id, type: 'tool'|'status', toolName?, description?, text?,
@@ -57,8 +58,7 @@
    * Return an HTML string with quoted refs rendered as plain (non-clickable) spans.
    * Used for failed entries where refs must not look clickable.
    * Wraps each ref in a <span class="trail-failed-ref"> so it can be styled
-   * with muted/secondary color and no underline, while the tooltip on the
-   * parent <li data-tooltip> still works (it lives outside the overflow clip).
+   * with muted/secondary color and no underline.
    */
   function plainRefs(text) {
     const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -98,24 +98,25 @@
         {@const hasIcon = entry.type === 'tool' && isRunning}
         <li
           class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
-          data-tooltip={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}
           style="width: 100%;"
         >
-          {#if hasIcon}
-            <span class="progress-trail-icon">
-              <span class="progress-trail-spinner" aria-hidden="true"></span>
-            </span>
-          {/if}
-          <span class="progress-trail-text">
-            {#if isFailed}
-              <span class="trail-failed-prefix">{$_('progress.failed')}</span>
-              {@html plainRefs(entry.description ?? entry.toolName ?? entry.text ?? '')}
-            {:else if entry.type === 'tool'}
-              {@html linkifyRefs(entry.description ?? entry.toolName ?? '')}
-            {:else}
-              {entry.text ?? ''}
+          <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}>
+            {#if hasIcon}
+              <span class="progress-trail-icon">
+                <span class="progress-trail-spinner" aria-hidden="true"></span>
+              </span>
             {/if}
-          </span>
+            <span class="progress-trail-text">
+              {#if isFailed}
+                <span class="trail-failed-prefix">{$_('progress.failed')}</span>
+                {@html plainRefs(entry.description ?? entry.toolName ?? entry.text ?? '')}
+              {:else if entry.type === 'tool'}
+                {@html linkifyRefs(entry.description ?? entry.toolName ?? '')}
+              {:else}
+                {entry.text ?? ''}
+              {/if}
+            </span>
+          </Tooltip>
         </li>
       {/each}
     </ol>
@@ -150,8 +151,6 @@
     /* Each row fills the container; required for truncation to work */
     width: 100%;
     box-sizing: border-box;
-    /* Needed so the ::before tooltip can be absolutely positioned */
-    position: relative;
     /* Explicit LTR per-row so nested RTL elements can't flip it */
     direction: ltr;
     text-align: left;
@@ -178,36 +177,7 @@
     white-space: nowrap;
   }
 
-  /* ── Fast CSS tooltip (~120ms) on the li — stays visible outside any overflow clip ── */
-  .progress-trail-entry[data-tooltip] {
-    /* overflow must NOT be hidden on the li itself, so the tooltip is not clipped */
-    overflow: visible;
-  }
-
-  .progress-trail-entry[data-tooltip]::before {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 0;
-    background: var(--lc-primary, #18345d);
-    color: var(--lc-on-primary, #fff);
-    font-size: 11px;
-    line-height: 1.4;
-    padding: 4px 8px;
-    border-radius: 4px;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    /* 120ms fast fade — matches app tooltip speed */
-    transition: opacity 0.12s ease;
-    z-index: 10;
-  }
-
-  .progress-trail-entry[data-tooltip]:hover::before {
-    opacity: 1;
-  }
-
-  /* ── Ref links in normal (non-failed) steps ── */
+/* ── Ref links in normal (non-failed) steps ── */
   :global(.trail-ref-link) {
     flex: 1 0 0;
     min-width: 0;
