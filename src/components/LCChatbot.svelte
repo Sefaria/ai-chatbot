@@ -1695,7 +1695,8 @@
     display: flex;
     justify-content: flex-end;
     margin-top: 4px;
-    max-width: 100%;
+    max-width: 560px;
+    align-self: flex-end;
   }
 
   .message-status {
