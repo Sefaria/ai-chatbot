@@ -70,14 +70,16 @@
 
 <style>
   .topic-appetizer {
-    background: var(--lc-topics-bg, #f0f7ff);
-    border-inline-start: 2px solid var(--lc-primary, #18345d);
-    padding: 8px 12px;
+    display: flex;
+    align-items: flex-start;
+    align-self: stretch;
+    padding: var(--global-dimension-100, 8px) var(--global-dimension-150, 12px);
+    border-radius: var(--global-dimension-0, 0);
+    border-inline-start: 2px solid var(--semantic-action-primary, #18345D);
+    background: var(--core-blue-tbr-100, #F0F7FF);
     width: 100%;
     box-sizing: border-box;
-    height: auto;
-    overflow: visible;
-    animation: fadeIn 0.3s ease-in;
+    overflow: hidden;
   }
 
   .topic-appetizer--collapsed {
@@ -89,34 +91,30 @@
   }
 
   .appetizer-sentence {
+    flex: 1 0 0;
+    min-width: 0;
     margin: 0;
-    font-size: 12px;
-    line-height: 20px;
-    color: var(--lc-text-secondary, #575757);
+    font: 12px/20px;
+    color: var(--semantic-text-secondary, #575757);
   }
 
   :global(.lc-topic-link) {
+    color: var(--semantic-text-link, #18345D);
+    font-family: Roboto;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: var(--global-dimension-250, 20px);
+    text-decoration: underline;
+    text-decoration-style: solid;
+    text-underline-position: from-font;
     background: none;
     border: none;
     padding: 0;
     cursor: pointer;
-    font-size: 12px;
-    line-height: 20px;
-    font-family: Roboto, sans-serif;
-    color: var(--lc-primary, #18345d);
-    text-decoration: underline;
-    text-decoration-style: solid;
-    text-underline-position: from-font;
-    font-weight: 600;
   }
 
   :global(.interface-hebrew) :global(.lc-topic-link) {
-    font-family: Heebo, sans-serif;
+    font-family: Heebo;
     font-weight: 600;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
   }
 </style>

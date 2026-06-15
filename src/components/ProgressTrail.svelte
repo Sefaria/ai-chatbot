@@ -130,7 +130,10 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1, 4px);
+    align-items: flex-start;
+    align-self: stretch;
+    width: 100%;
     /* Force LTR for thinking steps regardless of interface language */
     direction: ltr;
     text-align: left;
@@ -206,13 +209,21 @@
 
   /* ── Ref links in normal (non-failed) steps ── */
   :global(.trail-ref-link) {
-    color: var(--lc-primary, #18345d);
-    text-decoration: none;
-    /* Truncation: a link inside the flex text row should also truncate */
+    flex: 1 0 0;
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
+    color: var(--semantic-text-link, #18345D);
+    font-family: Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: var(--global-dimension-250, 20px);
+    text-decoration: underline;
+    text-decoration-style: solid;
+    text-underline-position: from-font;
   }
 
   :global(.trail-ref-icon) {
