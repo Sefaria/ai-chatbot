@@ -1400,6 +1400,7 @@
     --lc-on-primary: var(--core-base-white);
     --lc-icon-primary: var(--functional-icon-icon-primary);
     --lc-topics-bg: var(--core-blue-tbr-100);
+    --lc-tooltip-bg: #3a3a3a;
 
     display: block;
     font-family: var(--lc-font);

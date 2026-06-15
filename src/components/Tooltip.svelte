@@ -17,33 +17,46 @@
 </span>
 
 <style>
-  .lc-tooltip {
-    position: relative;
-    display: inline-flex;
-    overflow: visible;
-    max-width: 100%;
-  }
+  .lc-tooltip { position: relative; display: inline-flex; overflow: visible; max-width: 100%; }
 
-  /* Bubble — only present when data-tooltip attribute is set (non-empty text) */
+  /* Tooltip bubble — appears BELOW the trigger, dark charcoal, wraps long text */
   .lc-tooltip[data-tooltip]::after {
     content: attr(data-tooltip);
     position: absolute;
-    bottom: calc(100% + 4px);
+    top: calc(100% + 8px);
     left: 0;
-    background: var(--lc-primary, #18345D);
-    color: var(--lc-on-primary, #fff);
-    font-size: 11px;
+    background: var(--lc-tooltip-bg, #3a3a3a);
+    color: #fff;
+    font-family: var(--lc-font, inherit);
+    font-size: 12px;
     line-height: 1.4;
-    padding: 4px 8px;
-    border-radius: 4px;
-    white-space: nowrap;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 252px;
+    width: max-content;
+    white-space: normal;
+    word-break: break-word;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.12s ease;
-    z-index: 10;
+    z-index: 20;
   }
 
-  .lc-tooltip[data-tooltip]:hover::after {
-    opacity: 1;
+  /* Caret — small triangle pointing UP toward the trigger */
+  .lc-tooltip[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 16px;
+    border: 6px solid transparent;
+    border-bottom-color: var(--lc-tooltip-bg, #3a3a3a);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 20;
   }
+
+  .lc-tooltip[data-tooltip]:hover::after,
+  .lc-tooltip[data-tooltip]:hover::before { opacity: 1; }
 </style>
