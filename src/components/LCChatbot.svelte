@@ -70,6 +70,7 @@
   let settingsError = $state('');
 
   let expandedSections = $state({});
+  function toggleSection(key) { expandedSections[key] = !expandedSections[key]; }
 
   let isClearing = $state(false);
   let isFirstTimeUser = $state(true);
@@ -870,8 +871,9 @@
     try {
       const url = new URL(href);
       const hostname = url.hostname;
-      // Only activate on sefaria.org hostnames
-      if (!hostname.endsWith('.sefaria.org') && hostname !== 'sefaria.org' && !hostname.endsWith('.sefaria.org.il') && hostname !== 'sefaria.org.il') {
+      // Only activate on sefaria.org hostnames (localhost/127.0.0.1 allowed for local dev)
+      const isLocalDev = hostname === 'localhost' || hostname === '127.0.0.1';
+      if (!isLocalDev && !hostname.endsWith('.sefaria.org') && hostname !== 'sefaria.org' && !hostname.endsWith('.sefaria.org.il') && hostname !== 'sefaria.org.il') {
         return null;
       }
       const path = decodeURIComponent(url.pathname).replace(/^\//, '');
@@ -1168,12 +1170,16 @@
           {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
-                <Accordion kind="topics" bind:expanded={expandedSections[`${item.messageId}_topics`]}>
+                <Accordion kind="topics"
+                  expanded={!!expandedSections[`${item.messageId}_topics`]}
+                  onToggle={() => toggleSection(`${item.messageId}_topics`)}>
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
               {#if item.toolHistory?.length > 0}
-                <Accordion kind="thought" bind:expanded={expandedSections[`${item.messageId}_thought`]}>
+                <Accordion kind="thought"
+                  expanded={!!expandedSections[`${item.messageId}_thought`]}
+                  onToggle={() => toggleSection(`${item.messageId}_thought`)}>
                   <ProgressTrail entries={item.toolHistory} showToggle={false} />
                 </Accordion>
               {/if}
