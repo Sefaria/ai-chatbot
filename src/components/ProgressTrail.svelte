@@ -237,7 +237,7 @@
     width: 16px;
     height: 16px;
     color: var(--functional-icon-icon-primary, #666666);
-    animation: trail-spin 1s linear infinite;
+    animation: trail-spin 0.8s linear infinite;
     transform-origin: center;
   }
 
