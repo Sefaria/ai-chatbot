@@ -65,10 +65,16 @@ class AppetizerService:
         self.client = get_anthropic_client()
         self.sefaria_client = SefariaClient()
 
-    async def find_appetizer(self, user_message: str) -> AppetizerResult | None:
+    async def find_appetizer(
+        self,
+        user_message: str,
+        interface_lang: str = "en",
+        host: str = "",
+    ) -> AppetizerResult | None:
+        use_hebrew = interface_lang == "he" or (host or "").endswith(".org.il")
         try:
             return await asyncio.wait_for(
-                self._find_appetizer_inner(user_message),
+                self._find_appetizer_inner(user_message, use_hebrew=use_hebrew),
                 timeout=APPETIZER_TIMEOUT_SECONDS,
             )
         except TimeoutError:
@@ -78,7 +84,9 @@ class AppetizerService:
             logger.exception("Appetizer failed")
             return None
 
-    async def _find_appetizer_inner(self, user_message: str) -> AppetizerResult | None:
+    async def _find_appetizer_inner(
+        self, user_message: str, use_hebrew: bool = False
+    ) -> AppetizerResult | None:
         metrics: dict = {"topics_found": []}
         t0 = time.monotonic()
 
@@ -93,7 +101,7 @@ class AppetizerService:
 
         for candidate in candidates:
             t2 = time.monotonic()
-            topic_info = await self._search_and_build(candidate)
+            topic_info = await self._search_and_build(candidate, use_hebrew=use_hebrew)
             metrics.setdefault("searches", []).append(
                 {
                     "candidate": candidate,
@@ -115,7 +123,7 @@ class AppetizerService:
         logger.info("Appetizer: found %d topics, metrics=%s", len(topics), metrics)
         return AppetizerResult(topics=topics, metrics=metrics)
 
-    async def _search_and_build(self, query: str) -> TopicInfo | None:
+    async def _search_and_build(self, query: str, use_hebrew: bool = False) -> TopicInfo | None:
         logger.info("Appetizer: searching for topics with query=%r", query)
         topics = await self.sefaria_client.search_topics(query, limit=3)
         logger.info(
@@ -126,9 +134,13 @@ class AppetizerService:
         if not topics:
             return None
         best = topics[0]
+        if use_hebrew:
+            title = best.get("he") or best.get("title", "")
+        else:
+            title = best.get("title", "")
         return TopicInfo(
             topic_slug=best["slug"],
-            topic_title=best["title"],
+            topic_title=title,
             topic_url=f"{SEFARIA_TOPICS_BASE_URL}/{best['slug']}",
         )
 

@@ -300,7 +300,13 @@ def chat_stream_v2(request):
 
             appetizer_service = get_appetizer_service()
 
-            result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
+            result = asyncio.run(
+                appetizer_service.find_appetizer(
+                    data["text"],
+                    interface_lang=context.get("locale", ""),
+                    host=request.get_host(),
+                )
+            )
             logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
 
             appetizer_metrics["suppressed"] = False
