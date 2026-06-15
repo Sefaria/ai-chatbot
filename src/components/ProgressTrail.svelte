@@ -236,7 +236,7 @@
     display: block;
     width: 18px;
     height: 18px;
-    border: 2px solid var(--lc-text-secondary, #575757);
+    border: 2px solid var(--lc-icon-primary, #666666);
     border-top-color: transparent;
     border-radius: 50%;
     animation: trail-spin 1s linear infinite;

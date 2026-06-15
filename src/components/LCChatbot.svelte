@@ -460,11 +460,37 @@
   async function scrollToLoadingElement() {
     if (!autoScrollEnabled || !messageListRef) return;
     await tick();
-    // Scroll so the loading wrapper (topics box + trail) bottom is visible
+    // Scroll so the bottom of the loading wrapper (newest step) is always visible.
+    // When the topics box is the only/newest element, keep the entire wrapper in view
+    // by preferring block:'end' — this brings the wrapper bottom to the container bottom.
     const el = loadingWrapperRef || messageListRef.querySelector('.lc-loading-wrapper');
     if (el) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      lastAutoScrollTop = messageListRef.scrollTop;
+      const containerRect = messageListRef.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const elBottom = messageListRef.scrollTop + elRect.bottom - containerRect.top;
+      const elTop = messageListRef.scrollTop + elRect.top - containerRect.top;
+      const containerHeight = messageListRef.clientHeight;
+
+      if (elRect.height <= containerHeight) {
+        // Wrapper fits in container: keep the WHOLE wrapper visible.
+        // If the bottom is below the viewport, scroll so the bottom is flush.
+        if (elRect.bottom > containerRect.bottom) {
+          const newScrollTop = elBottom - containerHeight;
+          lastAutoScrollTop = Math.max(0, newScrollTop);
+          messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
+        } else if (elRect.top < containerRect.top) {
+          // Top is above viewport — scroll top into view
+          lastAutoScrollTop = Math.max(0, elTop);
+          messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
+        } else {
+          lastAutoScrollTop = messageListRef.scrollTop;
+        }
+      } else {
+        // Wrapper is taller than container: scroll so the BOTTOM (newest step) is visible
+        const newScrollTop = elBottom - containerHeight;
+        lastAutoScrollTop = Math.max(0, newScrollTop);
+        messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
+      }
     }
   }
 
@@ -1346,6 +1372,7 @@
     --lc-border-strong: #ccc;
     --lc-bg-hover: #eee;
     --lc-on-primary: #fff;
+    --lc-icon-primary: #666666;
 
     display: block;
     font-family: var(--lc-font);
