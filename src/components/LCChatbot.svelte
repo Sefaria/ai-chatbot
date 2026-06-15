@@ -442,7 +442,7 @@
       const pkgRect = pkgEl.getBoundingClientRect();
       const targetScrollTop = messageListRef.scrollTop + pkgRect.top - containerRect.top - RESPONSE_PACKAGE_TOP_OFFSET;
       lastAutoScrollTop = Math.max(0, targetScrollTop);
-      messageListRef.scrollTop = lastAutoScrollTop;
+      messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
     } else {
       // Fallback: scroll to last assistant message top
       const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
@@ -452,7 +452,7 @@
         const msgRect = lastResponse.getBoundingClientRect();
         const targetScrollTop = messageListRef.scrollTop + msgRect.top - containerRect.top;
         lastAutoScrollTop = Math.max(0, targetScrollTop);
-        messageListRef.scrollTop = lastAutoScrollTop;
+        messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
       }
     }
   }
@@ -1664,6 +1664,14 @@
 
   .message.assistant {
     align-self: flex-start;
+  }
+
+  /* Response package: stacks topics accordion → thought accordion → answer bubble
+     with 16px gap between each layer, matching the Figma "Final Response Ready" spec. */
+  .lc-response-package {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
 
   .empty-state .message.assistant .message-content,
