@@ -216,3 +216,4 @@ public
 .yarn/install-state.gz
 .pnp.*
 .worktrees/
+.figma-cache/
