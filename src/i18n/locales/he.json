@@ -2,5 +2,7 @@
   "accordion.showTopics": "הצג נושאים קשורים",
   "accordion.hideTopics": "הסתר נושאים קשורים",
   "accordion.showThought": "הצג תהליך חשיבה",
-  "accordion.hideThought": "הסתר תהליך חשיבה"
+  "accordion.hideThought": "הסתר תהליך חשיבה",
+  "appetizer.sentence": "בזמן שממתינים לתשובה הסופית, אפשר לעיין במקורות על {topics}.",
+  "appetizer.or": "או"
 }
