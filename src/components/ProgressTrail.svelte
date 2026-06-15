@@ -38,16 +38,18 @@
   }
 
   /**
-   * Return an HTML string with quoted refs rendered as plain text (no links).
-   * Used for failed entries where refs should not be clickable.
+   * Return an HTML string with quoted refs rendered as plain (non-clickable) spans.
+   * Used for failed entries where refs must not look clickable.
+   * Wraps each ref in a <span class="trail-failed-ref"> so it can be styled
+   * with muted/secondary color and no underline, while the tooltip on the
+   * parent <li data-tooltip> still works (it lives outside the overflow clip).
    */
   function plainRefs(text) {
     const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // Strip the surrounding quotes but keep the ref text as-is
     return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
       const url = refToUrl(ref);
       if (!url) return match;
-      return `${quote}${ref}${quote}`;
+      return `${quote}<span class="trail-failed-ref">${ref}</span>${quote}`;
     });
   }
 
@@ -81,6 +83,7 @@
         <li
           class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
           data-tooltip={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}
+          style="width: 100%;"
         >
           {#if hasIcon}
             <span class="progress-trail-icon">
@@ -104,6 +107,7 @@
 {/if}
 
 <style>
+  /* ── Container: always LTR, left-aligned — even in Hebrew/RTL interface ── */
   .progress-trail-list {
     list-style: none;
     margin: 0;
@@ -111,6 +115,9 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* Force LTR for thinking steps regardless of interface language */
+    direction: ltr;
+    text-align: left;
   }
 
   .progress-trail-entry {
@@ -119,8 +126,16 @@
     gap: 8px;
     font-size: 12px;
     line-height: 20px;
-    color: var(--lc-text-secondary);
+    color: var(--lc-text-secondary, #575757);
     min-height: 20px;
+    /* Each row fills the container; required for truncation to work */
+    width: 100%;
+    box-sizing: border-box;
+    /* Needed so the ::before tooltip can be absolutely positioned */
+    position: relative;
+    /* Explicit LTR per-row so nested RTL elements can't flip it */
+    direction: ltr;
+    text-align: left;
   }
 
   .progress-trail-icon {
@@ -138,18 +153,24 @@
     gap: 4px;
     flex: 1;
     min-width: 0;
+    /* Truncate the text row as a whole when it overflows */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* Tooltip via data-tooltip on the li */
+  /* ── Fast CSS tooltip (~120ms) on the li — stays visible outside any overflow clip ── */
+  .progress-trail-entry[data-tooltip] {
+    /* overflow must NOT be hidden on the li itself, so the tooltip is not clipped */
+    overflow: visible;
+  }
+
   .progress-trail-entry[data-tooltip]::before {
     content: attr(data-tooltip);
     position: absolute;
     bottom: calc(100% + 4px);
     left: 0;
-    background: var(--lc-primary);
+    background: var(--lc-primary, #18345d);
     color: var(--lc-on-primary, #fff);
     font-size: 11px;
     line-height: 1.4;
@@ -158,7 +179,8 @@
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.15s;
+    /* 120ms fast fade — matches app tooltip speed */
+    transition: opacity 0.12s ease;
     z-index: 10;
   }
 
@@ -166,36 +188,55 @@
     opacity: 1;
   }
 
-  /* Ref links in normal (non-failed) steps */
+  /* ── Ref links in normal (non-failed) steps ── */
   :global(.trail-ref-link) {
-    color: var(--lc-primary);
+    color: var(--lc-primary, #18345d);
     text-decoration: none;
+    /* Truncation: a link inside the flex text row should also truncate */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   :global(.trail-ref-icon) {
     flex-shrink: 0;
-    color: var(--lc-primary);
+    color: var(--lc-primary, #18345d);
   }
 
-  /* Failed prefix label */
+  /* ── Failed prefix label ── */
   .trail-failed-prefix {
     flex-shrink: 0;
   }
 
-  /* Failed variant: override any link styling inside to secondary color */
+  /* ── Failed ref span: muted color, no underline, not clickable ── */
+  :global(.trail-failed-ref) {
+    color: var(--lc-text-secondary, #575757);
+    text-decoration: none;
+    cursor: default;
+    /* Truncation in failed refs */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* Ensure no link-like styling leaks onto any element inside a failed entry */
   .progress-trail-entry.failed :global(a),
   .progress-trail-entry.failed :global(.trail-ref-link),
   .progress-trail-entry.failed :global(.trail-ref-icon) {
-    color: var(--lc-text-secondary);
+    color: var(--lc-text-secondary, #575757);
     text-decoration: none;
+    cursor: default;
+    pointer-events: none;
   }
 
-  /* Spinner animation */
+  /* ── Spinner animation ── */
   .progress-trail-spinner {
     display: block;
     width: 18px;
     height: 18px;
-    border: 2px solid var(--lc-text-secondary);
+    border: 2px solid var(--lc-text-secondary, #575757);
     border-top-color: transparent;
     border-radius: 50%;
     animation: trail-spin 1s linear infinite;
