@@ -333,6 +333,9 @@ def chat_stream_v2(request):
                 )
                 try:
                     progress_queue.put(update, timeout=0.5)
+                    # User-perceived latency: request receipt → appetizer served.
+                    # Seconds, one decimal. Only set when actually served.
+                    appetizer_metrics["time_to_appetizer"] = round(time.time() - start_time, 1)
                 except queue.Full:
                     pass
         except Exception:
@@ -607,10 +610,14 @@ def chat_stream_v2(request):
                 try:
                     bt_logger = _get_bt_logger()
                     if bt_logger:
-                        bt_logger.update_span(
-                            id=agent_response.trace_id,
-                            metadata={"appetizer": appetizer_metrics},
-                        )
+                        span_kwargs = {"metadata": {"appetizer": appetizer_metrics}}
+                        # Emit time_to_appetizer as an aggregatable numeric metric
+                        # (avg/percentiles in Braintrust), not just a metadata blob.
+                        if "time_to_appetizer" in appetizer_metrics:
+                            span_kwargs["metrics"] = {
+                                "time_to_appetizer": appetizer_metrics["time_to_appetizer"]
+                            }
+                        bt_logger.update_span(id=agent_response.trace_id, **span_kwargs)
                 except Exception:
                     logger.debug("Could not attach appetizer metrics to trace")
 
