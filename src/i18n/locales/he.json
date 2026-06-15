@@ -1,1 +1,6 @@
-{}
+{
+  "accordion.showTopics": "הצג נושאים קשורים",
+  "accordion.hideTopics": "הסתר נושאים קשורים",
+  "accordion.showThought": "הצג תהליך חשיבה",
+  "accordion.hideThought": "הסתר תהליך חשיבה"
+}

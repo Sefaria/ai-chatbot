@@ -71,5 +71,10 @@
   "feedback.reason.unhelpful": "Not helpful or unclear",
   "feedback.reason.overlyDefinitive": "Overly definitive",
   "feedback.reason.techIssue": "Technical issue",
-  "feedback.reason.other": "Other"
+  "feedback.reason.other": "Other",
+
+  "accordion.showTopics": "Show related topics",
+  "accordion.hideTopics": "Hide related topics",
+  "accordion.showThought": "Show thought process",
+  "accordion.hideThought": "Hide thought process"
 }
