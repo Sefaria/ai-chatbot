@@ -11,6 +11,7 @@
   import ProgressTrail from './ProgressTrail.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
+  import Accordion from './Accordion.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -47,6 +48,12 @@
   let toolHistory = $state([]);
   let trailEntryId = $state(0);
   let appetizerData = $state(null);
+
+  // Auto-scroll controller
+  let autoScrollEnabled = $state(true);
+  let lastAutoScrollTop = -1;
+  const RESPONSE_PACKAGE_TOP_OFFSET = 80;
+  let loadingWrapperRef = $state(null);
 
   // Settings state
   let showSettings = $state(false);
@@ -416,19 +423,45 @@
   async function scrollToBottom() {
     await tick();
     if (messageListRef) {
-      messageListRef.scrollTop = messageListRef.scrollHeight;
+      lastAutoScrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
+      messageListRef.scrollTop = lastAutoScrollTop;
     }
   }
 
   async function scrollToResponseStart() {
     await tick();
-    if (!messageListRef) return;
-    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
-    const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
-    if (lastResponse) {
+    if (!messageListRef || !autoScrollEnabled) return;
+    // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top
+    const pkgEls = messageListRef.querySelectorAll('.lc-response-package');
+    const pkgEl = pkgEls[pkgEls.length - 1];
+    if (pkgEl) {
       const containerRect = messageListRef.getBoundingClientRect();
-      const msgRect = lastResponse.getBoundingClientRect();
-      messageListRef.scrollTop += msgRect.top - containerRect.top;
+      const pkgRect = pkgEl.getBoundingClientRect();
+      const targetScrollTop = messageListRef.scrollTop + pkgRect.top - containerRect.top - RESPONSE_PACKAGE_TOP_OFFSET;
+      lastAutoScrollTop = Math.max(0, targetScrollTop);
+      messageListRef.scrollTop = lastAutoScrollTop;
+    } else {
+      // Fallback: scroll to last assistant message top
+      const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
+      const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
+      if (lastResponse) {
+        const containerRect = messageListRef.getBoundingClientRect();
+        const msgRect = lastResponse.getBoundingClientRect();
+        const targetScrollTop = messageListRef.scrollTop + msgRect.top - containerRect.top;
+        lastAutoScrollTop = Math.max(0, targetScrollTop);
+        messageListRef.scrollTop = lastAutoScrollTop;
+      }
+    }
+  }
+
+  async function scrollToLoadingElement() {
+    if (!autoScrollEnabled || !messageListRef) return;
+    await tick();
+    // Scroll so the loading wrapper (topics box + trail) bottom is visible
+    const el = loadingWrapperRef || messageListRef.querySelector('.lc-loading-wrapper');
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      lastAutoScrollTop = messageListRef.scrollTop;
     }
   }
 
@@ -437,6 +470,9 @@
     const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
+    // Reset auto-scroll on each new send
+    autoScrollEnabled = true;
+    lastAutoScrollTop = -1;
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -473,6 +509,7 @@
         onProgress: (progress) => {
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
+            scrollToLoadingElement();
             return;
           }
           let displayText;
@@ -485,6 +522,7 @@
               status: 'running',
               startTime: Date.now()
             }];
+            scrollToLoadingElement();
           } else if (progress?.type === 'tool_start') {
             displayText = progress.description || `Running ${progress.toolName}`;
             toolHistory = [...toolHistory, {
@@ -495,6 +533,7 @@
               status: 'running',
               startTime: Date.now()
             }];
+            scrollToLoadingElement();
           } else if (progress.type === 'tool_end') {
             const idx = toolHistory.findLastIndex(t =>
               t.type === 'tool' && t.status === 'running' && t.toolName === progress.toolName
@@ -542,7 +581,9 @@
         toolCalls: response.toolCalls,
         stats: response.stats,
         toolHistory: finalTrail,
-        appetizerData: appetizerData ? {...appetizerData} : null
+        appetizerData: appetizerData ? {...appetizerData} : null,
+        topicsExpanded: false,
+        thoughtExpanded: false
       };
 
       messages = [...messages, assistantMessage];
@@ -649,6 +690,10 @@
     // Load more when near top (within 50px)
     if (el.scrollTop < 50 && hasMoreHistory && !isLoadingHistory) {
       loadMoreHistory();
+    }
+    // Detect user-initiated scrolls during generation — disable auto-scroll
+    if (isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > 5) {
+      autoScrollEnabled = false;
     }
   }
 
@@ -1121,13 +1166,19 @@
               <span>{item.date}</span>
             </div>
           {:else if item.role === 'assistant'}
-            {#if item.appetizerData}
-              <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={false} onClickTopic={handleAppetizerClick} />
-            {/if}
-            {#if item.toolHistory?.length > 0}
-              <ProgressTrail entries={item.toolHistory} collapsed={true} />
-            {/if}
-            {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+            <div class="lc-response-package">
+              {#if item.appetizerData}
+                <Accordion kind="topics" bind:expanded={item.topicsExpanded}>
+                  <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
+                </Accordion>
+              {/if}
+              {#if item.toolHistory?.length > 0}
+                <Accordion kind="thought" bind:expanded={item.thoughtExpanded}>
+                  <ProgressTrail entries={item.toolHistory} />
+                </Accordion>
+              {/if}
+              {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+            </div>
           {:else}
             <div class="message user">
               <div class="message-content">
@@ -1151,16 +1202,18 @@
 
         {#if isSending}
           <div class="message assistant">
-            {#if appetizerData}
-              <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
-            {/if}
-            {#if toolHistory.length > 0}
-              <ProgressTrail entries={toolHistory} collapsed={false} />
-            {:else}
-              <div class="thinking-fallback">
-                <span>{$_('status.thinking')}<span class="dots"></span></span>
-              </div>
-            {/if}
+            <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
+              {#if appetizerData}
+                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+              {/if}
+              {#if toolHistory.length > 0}
+                <ProgressTrail entries={toolHistory} collapsed={false} />
+              {:else}
+                <div class="thinking-fallback">
+                  <span>{$_('status.thinking')}<span class="dots"></span></span>
+                </div>
+              {/if}
+            </div>
           </div>
         {/if}
 
@@ -1532,6 +1585,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    scroll-behavior: smooth;
   }
 
   /* Date Markers */
