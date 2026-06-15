@@ -13,13 +13,28 @@
    * into a sefaria.org URL.  Returns null if the string doesn't look like a ref.
    */
   function refToUrl(ref) {
-    // Must end with a chapter/verse token: digits optionally followed by a letter
-    // and optionally a range like 115b-116a or a verse like 10:8
-    const m = ref.match(/^(.+?)\s+(\d[\w:.-]*)$/);
-    if (!m) return null;
-    const book = m[1].replace(/ /g, '_');
-    const chapter = m[2].replace(/:/g, '.');
-    return `https://www.sefaria.org/${book}.${chapter}`;
+    // Space form: "Genesis 2:1-3", "Mishnah Shabbat 7:2"
+    let m = ref.match(/^(.+?)\s+(\d[\w:.\-–]*)$/);
+    if (m) {
+      const book = m[1].trim().replace(/\s+/g, '_');
+      return `https://www.sefaria.org/${book}.${m[2].replace(/:/g, '.')}`;
+    }
+    // Dotted / API form: "Genesis.2.2-3", "Mishnah_Shabbat.7.2", "Berakhot.2a"
+    m = ref.match(/^(.+?)\.(\d[\w:.\-–]*)$/);
+    if (m) {
+      const book = m[1].replace(/\s+/g, '_');
+      return `https://www.sefaria.org/${book}.${m[2]}`;
+    }
+    return null;
+  }
+
+  /** Prettify a ref for display: dotted API form → "Book chapter:verse". */
+  function refLabel(ref) {
+    if (!/\s/.test(ref)) {
+      const m = ref.match(/^(.+?)\.(\d[\w.\-–]*)$/);
+      if (m) return `${m[1].replace(/_/g, ' ')} ${m[2].replace(/\./g, ':')}`;
+    }
+    return ref;
   }
 
   /**
@@ -33,7 +48,8 @@
     return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
       const url = refToUrl(ref);
       if (!url) return match;
-      return `${quote}${icon}<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${ref}</a>${quote}`;
+      const label = refLabel(ref);
+      return `${quote}${icon}<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>${quote}`;
     });
   }
 
@@ -49,7 +65,7 @@
     return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
       const url = refToUrl(ref);
       if (!url) return match;
-      return `${quote}<span class="trail-failed-ref">${ref}</span>${quote}`;
+      return `${quote}<span class="trail-failed-ref">${refLabel(ref)}</span>${quote}`;
     });
   }
 
