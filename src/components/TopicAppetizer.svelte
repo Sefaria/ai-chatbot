@@ -31,24 +31,17 @@
    * Returns an array of { type: 'topic'|'sep', value } objects.
    */
   function buildTopicSegments(topics, orWord) {
+    const last = topics.length - 1;
     const segments = [];
-    for (let i = 0; i < topics.length; i++) {
-      segments.push({ type: 'topic', topic: topics[i] });
-      if (i < topics.length - 1) {
-        if (i < topics.length - 2) {
-          // between non-final items: ", "
-          segments.push({ type: 'sep', value: ', ' });
-        } else {
-          // before the last item: ", or " (EN) / " או " (HE)
-          // For 2 topics: " or T2" (no leading comma); for 3: ", or T3"
-          if (topics.length === 2) {
-            segments.push({ type: 'sep', value: ' ' + orWord + ' ' });
-          } else {
-            segments.push({ type: 'sep', value: ', ' + orWord + ' ' });
-          }
-        }
+    topics.forEach((topic, i) => {
+      if (i > 0) {
+        // ", " between items; " {or} " before the last (with a leading
+        // comma only when there are 3+ topics): "A, B, or C" / "A or B".
+        const sep = i === last ? `${topics.length > 2 ? ', ' : ' '}${orWord} ` : ', ';
+        segments.push({ type: 'sep', value: sep });
       }
-    }
+      segments.push({ type: 'topic', topic });
+    });
     return segments;
   }
 

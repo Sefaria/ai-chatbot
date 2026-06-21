@@ -940,11 +940,11 @@
     try {
       const url = new URL(href);
       const hostname = url.hostname;
-      // Only activate on sefaria.org hostnames (localhost/127.0.0.1 allowed for local dev)
-      const isLocalDev = hostname === 'localhost' || hostname === '127.0.0.1';
-      if (!isLocalDev && !hostname.endsWith('.sefaria.org') && hostname !== 'sefaria.org' && !hostname.endsWith('.sefaria.org.il') && hostname !== 'sefaria.org.il') {
-        return null;
-      }
+      // Only activate on sefaria.org / sefaria.org.il hostnames
+      const isSefaria =
+        hostname === 'sefaria.org' || hostname.endsWith('.sefaria.org') ||
+        hostname === 'sefaria.org.il' || hostname.endsWith('.sefaria.org.il');
+      if (!isSefaria) return null;
       const path = decodeURIComponent(url.pathname).replace(/^\//, '');
       if (!path) return null;
       // Skip non-text paths
