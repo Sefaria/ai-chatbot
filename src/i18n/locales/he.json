@@ -1,9 +1,9 @@
 {
   "progress.failed": "נכשל:",
-  "accordion.showTopics": "הצג נושאים קשורים",
-  "accordion.hideTopics": "הסתר נושאים קשורים",
-  "accordion.showThought": "הצג תהליך חשיבה",
-  "accordion.hideThought": "הסתר תהליך חשיבה",
-  "appetizer.sentence": "בזמן שממתינים לתשובה הסופית, אפשר לעיין במקורות על {topics}.",
+  "accordion.showTopics": "הצגת נושאים קשורים",
+  "accordion.hideTopics": "הסתרת נושאים קשורים",
+  "accordion.showThought": "הצגת תהליך חשיבה",
+  "accordion.hideThought": "הסתרת תהליך חשיבה",
+  "appetizer.sentence": "בזמן שממתינים לתשובה, אפשר לעיין במקורות העוסקים ב{topics}.",
   "appetizer.or": "או"
 }

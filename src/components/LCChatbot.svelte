@@ -47,11 +47,10 @@
   // Agent progress state
   let toolHistory = $state([]);
   let trailEntryId = $state(0);
-  let displayTrail = $derived.by(() => {
-    const firstTool = toolHistory.findIndex(e => e.type === 'tool');
-    if (firstTool === -1) return toolHistory;
-    return toolHistory.filter((e, idx) => !(e.type === 'status' && idx < firstTool));
-  });
+  // The trail is the record of tools only. Status events ("Thinking...",
+  // "Synthesizing response...") are excluded — until the first tool runs we show
+  // the standalone spinner, and once tools appear we show only the tool record.
+  let displayTrail = $derived(toolHistory.filter(e => e.type === 'tool'));
   let appetizerData = $state(null);
 
   // Auto-scroll controller
@@ -59,6 +58,9 @@
   let lastAutoScrollTop = -1;
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
   let loadingWrapperRef = $state(null);
+  // Suppresses the scroll-event check while a programmatic scroll is animating
+  let suppressScrollDetection = false;
+  let suppressScrollFallbackTimer = null;
 
   // Settings state
   let showSettings = $state(false);
@@ -432,6 +434,7 @@
     await tick();
     if (messageListRef) {
       lastAutoScrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
+      beginProgrammaticScroll();
       messageListRef.scrollTop = lastAutoScrollTop;
     }
   }
@@ -447,6 +450,7 @@
       const pkgRect = pkgEl.getBoundingClientRect();
       const targetScrollTop = messageListRef.scrollTop + pkgRect.top - containerRect.top - RESPONSE_PACKAGE_TOP_OFFSET;
       lastAutoScrollTop = Math.max(0, targetScrollTop);
+      beginProgrammaticScroll();
       messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
     } else {
       // Fallback: scroll to last assistant message top
@@ -457,9 +461,16 @@
         const msgRect = lastResponse.getBoundingClientRect();
         const targetScrollTop = messageListRef.scrollTop + msgRect.top - containerRect.top;
         lastAutoScrollTop = Math.max(0, targetScrollTop);
+        beginProgrammaticScroll();
         messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
       }
     }
+  }
+
+  function beginProgrammaticScroll() {
+    suppressScrollDetection = true;
+    clearTimeout(suppressScrollFallbackTimer);
+    suppressScrollFallbackTimer = setTimeout(() => { suppressScrollDetection = false; }, 700);
   }
 
   async function scrollToLoadingElement() {
@@ -482,10 +493,12 @@
         if (elRect.bottom > containerRect.bottom) {
           const newScrollTop = elBottom - containerHeight;
           lastAutoScrollTop = Math.max(0, newScrollTop);
+          beginProgrammaticScroll();
           messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
         } else if (elRect.top < containerRect.top) {
           // Top is above viewport — scroll top into view
           lastAutoScrollTop = Math.max(0, elTop);
+          beginProgrammaticScroll();
           messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
         } else {
           lastAutoScrollTop = messageListRef.scrollTop;
@@ -494,6 +507,7 @@
         // Wrapper is taller than container: scroll so the BOTTOM (newest step) is visible
         const newScrollTop = elBottom - containerHeight;
         lastAutoScrollTop = Math.max(0, newScrollTop);
+        beginProgrammaticScroll();
         messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
       }
     }
@@ -596,10 +610,11 @@
           : m
       );
 
-      // Mark any still-running trail entries as complete before persisting
-      const finalTrail = toolHistory.map(t =>
-        t.status === 'running' ? { ...t, status: 'complete' } : t
-      );
+      // Persist only the tool record (no status entries), marking any
+      // still-running tool entries as complete.
+      const finalTrail = toolHistory
+        .filter(t => t.type === 'tool')
+        .map(t => (t.status === 'running' ? { ...t, status: 'complete' } : t));
 
       // Add assistant response
       const assistantMessage = {
@@ -723,11 +738,34 @@
     if (el.scrollTop < 50 && hasMoreHistory && !isLoadingHistory) {
       loadMoreHistory();
     }
-    // Detect user-initiated scrolls during generation — disable auto-scroll
-    if (isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > 5) {
+    // Detect user-initiated scrolls during generation — disable auto-scroll.
+    // Skip while a programmatic scroll animation is in flight.
+    if (!suppressScrollDetection && isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > 5) {
       autoScrollEnabled = false;
     }
   }
+
+  function handleWheel() {
+    if (isSending) autoScrollEnabled = false;
+  }
+
+  function handleTouchMove() {
+    if (isSending) autoScrollEnabled = false;
+  }
+
+  // Wire up 'scrollend' on the messages container to clear the suppression flag
+  // after each programmatic scroll animation completes.
+  $effect(() => {
+    const el = messageListRef;
+    if (!el) return;
+    function onScrollEnd() {
+      lastAutoScrollTop = el.scrollTop;
+      clearTimeout(suppressScrollFallbackTimer);
+      suppressScrollDetection = false;
+    }
+    el.addEventListener('scrollend', onScrollEnd);
+    return () => el.removeEventListener('scrollend', onScrollEnd);
+  });
 
   async function retryMessage(messageId) {
     const failedMessage = messages.find(m => m.messageId === messageId && m.status === STATUS_FAILED);
@@ -1135,6 +1173,8 @@
         class:clearing={isClearing}
         bind:this={messageListRef}
         onscroll={handleScroll}
+        onwheel={handleWheel}
+        ontouchmove={handleTouchMove}
         onclick={handleMessageLinkClick}
         role="log"
         aria-label={$_('messages.aria')}
@@ -1211,7 +1251,7 @@
                 <Accordion kind="thought"
                   expanded={!!expandedSections[`${item.messageId}_thought`]}
                   onToggle={() => toggleSection(`${item.messageId}_thought`)}>
-                  <ProgressTrail entries={item.toolHistory} showToggle={false} />
+                  <ProgressTrail entries={item.toolHistory} />
                 </Accordion>
               {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
@@ -1243,12 +1283,15 @@
               {#if appetizerData}
                 <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
               {/if}
-              {#if toolHistory.length > 0}
-                <ProgressTrail entries={displayTrail} collapsed={false} />
+              {#if displayTrail.length > 0}
+                <ProgressTrail entries={displayTrail} />
               {:else}
-                <span class="lc-loading-spinner" aria-label={$_('status.thinking')}>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
-                </span>
+                <div class="lc-thinking-step">
+                  <span class="lc-loading-spinner" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
+                  </span>
+                  <span class="lc-thinking-label">{$_('status.thinking')}</span>
+                </div>
               {/if}
             </div>
           </div>
@@ -1846,8 +1889,20 @@
   100% { content: ''; }
 }
 
+  .lc-thinking-step {
+    display: flex;
+    align-items: center;
+    gap: var(--global-dimension-100, 8px);
+  }
+  .lc-thinking-label {
+    font-family: 'Roboto', sans-serif;
+    font-size: 12px;
+    line-height: var(--global-dimension-250, 20px);
+    color: var(--semantic-text-secondary, #575757);
+  }
   .lc-loading-spinner {
     display: inline-flex;
+    flex-shrink: 0;
     color: var(--functional-icon-icon-primary, #666666);
     animation: lc-loading-spin 0.8s linear infinite;
     transform-origin: center;

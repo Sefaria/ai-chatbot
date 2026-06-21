@@ -42,8 +42,6 @@
   "status.thinking": "Thinking",
   "status.done": "Done",
   "status.toolError": "Tool error",
-  "progress.showThinking": "Show thinking ({count} steps)",
-  "progress.hideThinking": "Hide thinking ({count} steps)",
   "progress.failed": "Failed:",
   "appetizer.whileWaiting": "Discover sources on related topics",
   "appetizer.sentence": "While you wait, explore sources about {topics}.",
