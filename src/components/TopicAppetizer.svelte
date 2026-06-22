@@ -37,19 +37,18 @@
     const last = topics.length - 1;
     const segments = [];
     topics.forEach((topic, i) => {
-      if (i > 0) {
-        let sep;
-        if (i === last) {
-          // Final connector: Hebrew always uses spaces only; English uses
-          // Oxford comma for 3+ items.
-          sep = isHebrew || topics.length <= 2
-            ? ` ${orWord} `
-            : `, ${orWord} `;
-        } else {
-          sep = ', ';
-        }
-        segments.push({ type: 'sep', value: sep });
+      if (i === 0) {
+        segments.push({ type: 'topic', topic });
+        return;
       }
+      // Final connector: Hebrew always uses spaces only; English uses the
+      // Oxford comma for 3+ items. Otherwise a plain ", " between items.
+      const isFinalConnector = i === last;
+      const useSpacesOnly = isHebrew || topics.length <= 2;
+      const sep = isFinalConnector
+        ? (useSpacesOnly ? ` ${orWord} ` : `, ${orWord} `)
+        : ', ';
+      segments.push({ type: 'sep', value: sep });
       segments.push({ type: 'topic', topic });
     });
     return segments;

@@ -63,6 +63,11 @@ LEXICON_MAP = {
 
 LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 
+# Upper bound on the per-instance ref-resolution cache. Once this many distinct
+# refs are cached, new refs are still resolved but no longer stored, so the cache
+# of a long-lived client cannot grow without bound.
+REF_CACHE_MAX_SIZE = 512
+
 
 class SefariaClient:
     """Async HTTP client for the Sefaria REST API.
@@ -468,7 +473,7 @@ class SefariaClient:
         if tref in self._ref_cache:
             return self._ref_cache[tref]
         result = await self._fetch_ref(tref)
-        if len(self._ref_cache) < 512:
+        if len(self._ref_cache) < REF_CACHE_MAX_SIZE:
             self._ref_cache[tref] = result
         return result
 

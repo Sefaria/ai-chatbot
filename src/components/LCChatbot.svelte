@@ -458,24 +458,17 @@
     await tick();
     if (!messageListRef || !autoScrollEnabled) return;
     // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top
-    const pkgEls = messageListRef.querySelectorAll('.lc-response-package');
-    const pkgEl = pkgEls.at(-1);
+    const pkgEl = messageListRef.querySelectorAll('.lc-response-package').at(-1);
     if (pkgEl) {
-      const targetScrollTop = getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET;
-      lastAutoScrollTop = Math.max(0, targetScrollTop);
-      beginProgrammaticScroll();
-      messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
-    } else {
-      // Fallback: scroll to last assistant message top
-      const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
-      const lastResponse = contents.at(-1)?.closest('.message.assistant');
-      if (lastResponse) {
-        const targetScrollTop = getScrollTopForElement(lastResponse);
-        lastAutoScrollTop = Math.max(0, targetScrollTop);
-        beginProgrammaticScroll();
-        messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
-      }
+      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
+      return;
     }
+
+    // Fallback: scroll to the last assistant message top.
+    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
+    const lastResponse = contents.at(-1)?.closest('.message.assistant');
+    if (!lastResponse) return;
+    applyAutoScroll(getScrollTopForElement(lastResponse));
   }
 
   function beginProgrammaticScroll() {
@@ -484,6 +477,12 @@
     suppressScrollFallbackTimer = setTimeout(() => {
       suppressScrollDetection = false;
     }, 700);
+  }
+
+  function applyAutoScroll(top) {
+    lastAutoScrollTop = Math.max(0, top);
+    beginProgrammaticScroll();
+    messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
   }
 
   function resetScroll() {
@@ -498,37 +497,30 @@
     // When the topics box is the only/newest element, keep the entire wrapper in view
     // by preferring block:'end' — this brings the wrapper bottom to the container bottom.
     const el = loadingWrapperRef || messageListRef.querySelector('.lc-loading-wrapper');
-    if (el) {
-      const containerRect = messageListRef.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const elBottom = getScrollTopForElement(el) + elRect.height;
-      const elTop = getScrollTopForElement(el);
-      const containerHeight = messageListRef.clientHeight;
+    if (!el) return;
 
-      if (elRect.height <= containerHeight) {
-        // Wrapper fits in container: keep the WHOLE wrapper visible.
-        // If the bottom is below the viewport, scroll so the bottom is flush.
-        if (elRect.bottom > containerRect.bottom) {
-          const newScrollTop = elBottom - containerHeight;
-          lastAutoScrollTop = Math.max(0, newScrollTop);
-          beginProgrammaticScroll();
-          messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
-        } else if (elRect.top < containerRect.top) {
-          // Top is above viewport — scroll top into view
-          lastAutoScrollTop = Math.max(0, elTop);
-          beginProgrammaticScroll();
-          messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
-        } else {
-          lastAutoScrollTop = messageListRef.scrollTop;
-        }
-      } else {
-        // Wrapper is taller than container: scroll so the BOTTOM (newest step) is visible
-        const newScrollTop = elBottom - containerHeight;
-        lastAutoScrollTop = Math.max(0, newScrollTop);
-        beginProgrammaticScroll();
-        messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
-      }
+    const containerRect = messageListRef.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const containerHeight = messageListRef.clientHeight;
+    const elTop = getScrollTopForElement(el);
+    const elBottom = elTop + elRect.height;
+
+    // Wrapper taller than the viewport, or its bottom is below the viewport:
+    // scroll so the newest content (its bottom) is flush with the container bottom.
+    const tallerThanViewport = elRect.height > containerHeight;
+    if (tallerThanViewport || elRect.bottom > containerRect.bottom) {
+      applyAutoScroll(elBottom - containerHeight);
+      return;
     }
+
+    // Wrapper fits but its top is above the viewport: bring the top into view.
+    if (elRect.top < containerRect.top) {
+      applyAutoScroll(elTop);
+      return;
+    }
+
+    // Wrapper already fully visible: keep the current position.
+    lastAutoScrollTop = messageListRef.scrollTop;
   }
 
   async function handleSend() {
