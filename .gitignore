@@ -217,3 +217,8 @@ public
 .pnp.*
 .worktrees/
 .figma-cache/
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+.playwright-mcp/
