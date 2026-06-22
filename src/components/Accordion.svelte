@@ -9,7 +9,9 @@
       : (expanded ? 'accordion.hideThought' : 'accordion.showThought')
   );
 
-  function toggle() { onToggle(); }
+  function toggle() {
+    onToggle();
+  }
 </script>
 
 <div class="lc-accordion">

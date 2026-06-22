@@ -5,7 +5,10 @@
     href = '',
     onActivate,
   } = $props();
-  function activate(e) { e.preventDefault(); onActivate?.(href); }
+  function activate(e) {
+    e.preventDefault();
+    onActivate?.(href);
+  }
 </script>
 
 <!-- svelte-ignore a11y_missing_content -->
