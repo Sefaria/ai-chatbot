@@ -15,9 +15,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-
-from .contracts import MessageContext
 from .catalog_service import CatalogService
+from .contracts import MessageContext
 from .sefaria_client import SefariaClient
 
 logger = logging.getLogger("chat.agent")
@@ -195,6 +194,30 @@ class SefariaToolExecutor:
         return ToolResult(
             content=[{"type": "text", "text": json.dumps({"error": message})}], is_error=True
         )
+
+
+# ---------------------------------------------------------------------------
+# Ref resolution — maps ref-bearing tools to their ref argument name
+# ---------------------------------------------------------------------------
+
+# Tools whose named arg is a Sefaria ref (resolved via /api/ref for the trail link).
+REF_TOOL_ARG = {
+    "get_text": "reference",
+    "get_links_between_texts": "reference",
+    "get_available_manuscripts": "reference",
+    "get_english_translations": "reference",
+}
+
+
+async def resolve_tool_ref(client, tool_name: str, tool_input: dict) -> dict | None:
+    """Resolve the ref arg of a ref-bearing tool to {is_ref, url_ref, en, he}, or None."""
+    arg_name = REF_TOOL_ARG.get(tool_name)
+    if not arg_name:
+        return None
+    ref = tool_input.get(arg_name)
+    if not ref:
+        return None
+    return await client.resolve_ref(ref)
 
 
 # ---------------------------------------------------------------------------
