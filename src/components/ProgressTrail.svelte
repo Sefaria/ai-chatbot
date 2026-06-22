@@ -1,77 +1,53 @@
 <script>
-  import { _ } from '../i18n/index.js';
+  import { _, locale } from '../i18n/index.js';
   import Tooltip from './Tooltip.svelte';
 
   /**
    * entries: array of { id, type: 'tool'|'status', toolName?, description?, text?,
-   *                     status: 'running'|'complete'|'error', startTime, duration? }
+   *                     status: 'running'|'complete'|'error', startTime, duration?,
+   *                     refData?, toolInput? }
    */
   let { entries = [] } = $props();
 
   const SEFARIA_BASE_URL = 'https://www.sefaria.org';
 
-  /**
-   * Convert a bare Sefaria ref like "Pesachim 119b" or "Mishnah Pesachim 10:8"
-   * into a sefaria.org URL.  Returns null if the string doesn't look like a ref.
-   */
-  function refToUrl(ref) {
-    // Handles both space form ("Genesis 2:1-3", "Mishnah Shabbat 7:2") and
-    // dotted / API form ("Genesis.2.2-3", "Mishnah_Shabbat.7.2", "Berakhot.2a").
-    const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
-    if (!m) return null;
-    const book = m[1].trim().replace(/\s+/g, '_');
-    const section = m[2].replace(/:/g, '.');
-    return `${SEFARIA_BASE_URL}/${book}.${section}`;
-  }
+  let isHebrew = $derived($locale === 'he');
 
-  /** Prettify a ref for display: dotted API form → "Book chapter:verse". */
-  function refLabel(ref) {
-    if (!/\s/.test(ref)) {
-      const m = ref.match(/^(.+?)\.(\d[\w.\-–]*)$/);
-      if (m) return `${m[1].replace(/_/g, ' ')} ${m[2].replace(/\./g, ':')}`;
+  /** Locale-appropriate label for a resolved ref. */
+  function refDisplayLabel(refData) {
+    if (isHebrew && refData.he) {
+      return refData.he;
     }
-    return ref;
+    return refData.en;
+  }
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   /**
-   * Shared scanning engine for ref substitution.
-   * Escapes the input as HTML, then replaces every quoted Sefaria ref using
-   * the provided renderer callback.  Handles both single and double quotes.
-   * @param {string} text - plain-text input
-   * @param {(url: string, label: string) => string} renderer - returns HTML for one ref
+   * Render a tool entry's description. When refData.is_ref, replace the
+   * known ref substring (the tool's reference arg) with a bidi-isolated link.
    */
-  function substituteRefs(text, renderer) {
-    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return escaped.replace(/(['"])([^'"]+)\1/g, (match, _quote, ref) => {
-      const url = refToUrl(ref);
-      if (!url) return match;
-      return renderer(url, refLabel(ref));
-    });
-  }
-
-  /**
-   * Return an HTML string with any quoted Sefaria refs turned into links.
-   * Handles both single quotes ('Pesachim 119b') and double quotes ("Mishnah Shabbat 7:2").
-   * Input is plain text, so we escape it first to prevent XSS.
-   */
-  function linkifyRefs(text) {
-    // Bare link — no surrounding quotes, no external-link icon (matches Figma)
-    return substituteRefs(text, (url, label) =>
-      `<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
-    );
-  }
-
-  /**
-   * Return an HTML string with quoted refs rendered as plain (non-clickable) spans.
-   * Used for failed entries where refs must not look clickable.
-   * Wraps each ref in a <span class="trail-failed-ref"> so it can be styled
-   * with muted/secondary color and no underline.
-   */
-  function plainRefs(text) {
-    // Bare muted ref — no surrounding quotes (matches Figma)
-    return substituteRefs(text, (_url, label) =>
-      `<span class="trail-failed-ref">${label}</span>`
-    );
+  function renderToolText(entry) {
+    const text = entry.description ?? entry.toolName ?? '';
+    const refData = entry.refData;
+    if (!refData || !refData.is_ref) {
+      return escapeHtml(text);
+    }
+    const rawRef = entry.toolInput?.reference ?? '';
+    const escaped = escapeHtml(text);
+    const escapedRef = escapeHtml(rawRef);
+    if (!escapedRef || !escaped.includes(escapedRef)) {
+      return escaped;
+    }
+    const href = `${SEFARIA_BASE_URL}/${refData.url_ref}`;
+    const label = escapeHtml(refDisplayLabel(refData));
+    const link = `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${label}</bdi></a>`;
+    return escaped.replace(escapedRef, link);
   }
 
 
@@ -89,9 +65,9 @@
           <span class="progress-trail-text">
             {#if isFailed}
               <span class="trail-failed-prefix">{$_('progress.failed')}</span>
-              {@html plainRefs(entry.description ?? entry.toolName ?? entry.text ?? '')}
+              <bdi>{entry.description ?? entry.toolName ?? entry.text ?? ''}</bdi>
             {:else if entry.type === 'tool'}
-              {@html linkifyRefs(entry.description ?? entry.toolName ?? '')}
+              {@html renderToolText(entry)}
             {:else}
               {entry.text ?? ''}
             {/if}

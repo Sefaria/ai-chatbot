@@ -590,7 +590,9 @@
               toolName: progress.toolName,
               description: displayText?.replace(/…|\.\.\./, '') || '',
               status: 'running',
-              startTime: Date.now()
+              startTime: Date.now(),
+              refData: progress.refData ?? null,
+              toolInput: progress.toolInput ?? null
             }];
             scrollToLoadingElement();
           } else if (progress.type === 'tool_end') {

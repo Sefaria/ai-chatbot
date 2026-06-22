@@ -238,6 +238,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @property {string} [description] - Human-readable description
  * @property {boolean} [isError] - Whether tool errored
  * @property {string} [outputPreview] - Preview of tool output
+ * @property {{is_ref: boolean, url_ref: string, en: string, he: string} | null} [refData] - Resolved ref data for ref-bearing tools (tool_start only)
  */
 
 /**
