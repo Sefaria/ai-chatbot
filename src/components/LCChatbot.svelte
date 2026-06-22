@@ -540,7 +540,7 @@
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
     // Create user message
-    const locationRef = parseSefariaRef(window.location.href);
+    const locationRef = await parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
       sessionId,
@@ -954,32 +954,44 @@
     return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
   }
 
-  function parseSefariaRef(href) {
+  async function parseSefariaRef(href) {
+    const tref = extractCandidateTref(href);
+    if (!tref) {
+      return null;
+    }
+    const refData = await fetchRefData(tref);
+    if (!refData || !refData.is_ref) {
+      return null;
+    }
+    const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
+    return { label, url: `https://www.sefaria.org/${refData.url_ref}` };
+  }
+
+  function extractCandidateTref(href) {
+    let url;
     try {
-      const url = new URL(href);
-      const hostname = url.hostname;
-      // Only activate on sefaria.org / sefaria.org.il hostnames
-      if (!isSefariaHostname(hostname)) return null;
-      const path = decodeURIComponent(url.pathname).replace(/^\//, '');
-      if (!path) return null;
-      // Skip non-text paths
-      if (/^(topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)\//i.test(path) || path === '/') {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
+    if (!isSefariaHostname(url.hostname)) {
+      return null;
+    }
+    const path = decodeURIComponent(url.pathname).replace(/^\//, '');
+    const skip = /^(topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)\//i;
+    if (!path || skip.test(path)) {
+      return null;
+    }
+    return path;
+  }
+
+  async function fetchRefData(tref) {
+    try {
+      const res = await fetch(`https://www.sefaria.org/api/ref/${encodeURIComponent(tref)}`);
+      if (!res.ok) {
         return null;
       }
-      // Must have a dot followed by a digit somewhere (e.g. Genesis.1.1, Berakhot.2a)
-      const dotIdx = path.indexOf('.');
-      if (dotIdx === -1) return null;
-      if (!/^\d/.test(path.slice(dotIdx + 1))) return null;
-      const parts = path.split('.');
-      const book = parts[0].replace(/_/g, ' ');
-      if (parts.length === 2) {
-        // e.g. Berakhot.2a -> "Berakhot 2a"
-        return { label: `${book} ${parts[1]}`, url: href };
-      } else if (parts.length >= 3) {
-        // e.g. Genesis.1.1 -> "Genesis 1:1"
-        return { label: `${book} ${parts[1]}:${parts.slice(2).join(':')}`, url: href };
-      }
-      return null;
+      return await res.json();
     } catch {
       return null;
     }
