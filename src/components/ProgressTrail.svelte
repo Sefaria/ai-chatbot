@@ -54,6 +54,12 @@
     const href = escapeAttr(`${SEFARIA_BASE_URL}/${refData.url_ref}`);
     const label = escapeHtml(refDisplayLabel(refData));
     const link = `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${label}</bdi></a>`;
+    // Tool descriptions wrap the ref in quotes (e.g. Fetching text "Genesis 1:1").
+    // Consume the surrounding quotes so the link renders bare, per the design.
+    const quoted = `"${escapedRef}"`;
+    if (escaped.includes(quoted)) {
+      return escaped.replace(quoted, link);
+    }
     return escaped.replace(escapedRef, link);
   }
 

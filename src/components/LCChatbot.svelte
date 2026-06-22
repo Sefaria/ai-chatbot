@@ -55,16 +55,10 @@
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
-  let lastAutoScrollTop = -1;
   // Per latency UX spec: on final response the top edge of the response package
   // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
-  // px of drift from the auto-scroll target that counts as a deliberate user scroll
-  const USER_SCROLL_THRESHOLD_PX = 5;
   let loadingWrapperRef = $state(null);
-  // Suppresses the scroll-event check while a programmatic scroll is animating
-  let suppressScrollDetection = false;
-  let suppressScrollFallbackTimer = null;
 
   // Settings state
   let showSettings = $state(false);
@@ -441,9 +435,7 @@
   async function scrollToBottom() {
     await tick();
     if (messageListRef) {
-      lastAutoScrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
-      beginProgrammaticScroll();
-      messageListRef.scrollTop = lastAutoScrollTop;
+      messageListRef.scrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
     }
   }
 
@@ -457,37 +449,27 @@
   async function scrollToResponseStart() {
     await tick();
     if (!messageListRef || !autoScrollEnabled) return;
-    // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top
-    const pkgEl = messageListRef.querySelectorAll('.lc-response-package').at(-1);
+    // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top.
+    // querySelectorAll returns a NodeList (no Array.at), so spread before indexing.
+    const pkgEl = [...messageListRef.querySelectorAll('.lc-response-package')].at(-1);
     if (pkgEl) {
       applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
       return;
     }
 
     // Fallback: scroll to the last assistant message top.
-    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
+    const contents = [...messageListRef.querySelectorAll('.message.assistant .message-content')];
     const lastResponse = contents.at(-1)?.closest('.message.assistant');
     if (!lastResponse) return;
     applyAutoScroll(getScrollTopForElement(lastResponse));
   }
 
-  function beginProgrammaticScroll() {
-    suppressScrollDetection = true;
-    clearTimeout(suppressScrollFallbackTimer);
-    suppressScrollFallbackTimer = setTimeout(() => {
-      suppressScrollDetection = false;
-    }, 700);
-  }
-
   function applyAutoScroll(top) {
-    lastAutoScrollTop = Math.max(0, top);
-    beginProgrammaticScroll();
-    messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
+    messageListRef.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
 
   function resetScroll() {
     autoScrollEnabled = true;
-    lastAutoScrollTop = -1;
   }
 
   async function scrollToLoadingElement() {
@@ -520,7 +502,6 @@
     }
 
     // Wrapper already fully visible: keep the current position.
-    lastAutoScrollTop = messageListRef.scrollTop;
   }
 
   async function handleSend() {
@@ -749,13 +730,10 @@
     if (el.scrollTop < 50 && hasMoreHistory && !isLoadingHistory) {
       loadMoreHistory();
     }
-    // Detect user-initiated scrolls during generation — disable auto-scroll.
-    // Skip while a programmatic scroll animation is in flight.
-    if (!suppressScrollDetection && isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > USER_SCROLL_THRESHOLD_PX) {
-      autoScrollEnabled = false;
-    }
   }
 
+  // Genuine user-scroll intent is detected via explicit input events (wheel/touch)
+  // rather than scroll-position drift, which programmatic smooth scrolls trip falsely.
   function handleWheel() {
     if (isSending) autoScrollEnabled = false;
   }
@@ -763,20 +741,6 @@
   function handleTouchMove() {
     if (isSending) autoScrollEnabled = false;
   }
-
-  // Wire up 'scrollend' on the messages container to clear the suppression flag
-  // after each programmatic scroll animation completes.
-  $effect(() => {
-    const el = messageListRef;
-    if (!el) return;
-    function onScrollEnd() {
-      lastAutoScrollTop = el.scrollTop;
-      clearTimeout(suppressScrollFallbackTimer);
-      suppressScrollDetection = false;
-    }
-    el.addEventListener('scrollend', onScrollEnd);
-    return () => el.removeEventListener('scrollend', onScrollEnd);
-  });
 
   async function retryMessage(messageId) {
     const failedMessage = messages.find(m => m.messageId === messageId && m.status === STATUS_FAILED);
@@ -952,17 +916,41 @@
     return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
   }
 
+  function refToUrlPath(ref) {
+    const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
+    if (!m) {
+      return null;
+    }
+    const book = m[1].trim().replace(/\s+/g, '_');
+    const section = m[2].replace(/:/g, '.');
+    return `${book}.${section}`;
+  }
+
+  function refLabelFromTref(ref) {
+    if (!/\s/.test(ref)) {
+      const m = ref.match(/^(.+?)\.(\d[\w.\-–]*)$/);
+      if (m) {
+        return `${m[1].replace(/_/g, ' ')} ${m[2].replace(/\./g, ':')}`;
+      }
+    }
+    return ref;
+  }
+
   async function parseSefariaRef(href) {
     const tref = extractCandidateTref(href);
     if (!tref) {
       return null;
     }
     const refData = await fetchRefData(tref);
-    if (!refData || !refData.is_ref) {
+    if (refData && refData.is_ref) {
+      const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
+      return { label, url: `https://www.sefaria.org/${refData.url_ref}` };
+    }
+    const fallbackPath = refToUrlPath(tref);
+    if (!fallbackPath) {
       return null;
     }
-    const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
-    return { label, url: `https://www.sefaria.org/${refData.url_ref}` };
+    return { label: refLabelFromTref(tref), url: `https://www.sefaria.org/${fallbackPath}` };
   }
 
   function extractCandidateTref(href) {
