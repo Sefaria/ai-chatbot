@@ -71,7 +71,7 @@ class AppetizerService:
         interface_lang: str = "en",
         host: str = "",
     ) -> AppetizerResult | None:
-        use_hebrew = interface_lang == "he" or (host or "").endswith(".org.il")
+        use_hebrew = interface_lang == "he" or host.endswith(".org.il")
         try:
             return await asyncio.wait_for(
                 self._find_appetizer_inner(user_message, use_hebrew=use_hebrew),
@@ -134,10 +134,7 @@ class AppetizerService:
         if not topics:
             return None
         best = topics[0]
-        if use_hebrew:
-            title = best.get("he") or best.get("title", "")
-        else:
-            title = best.get("title", "")
+        title = best.get("he", "") if use_hebrew else best.get("title", "")
         return TopicInfo(
             topic_slug=best["slug"],
             topic_title=title,

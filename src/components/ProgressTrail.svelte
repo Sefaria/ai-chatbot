@@ -8,24 +8,20 @@
    */
   let { entries = [] } = $props();
 
+  const SEFARIA_BASE_URL = 'https://www.sefaria.org';
+
   /**
    * Convert a bare Sefaria ref like "Pesachim 119b" or "Mishnah Pesachim 10:8"
    * into a sefaria.org URL.  Returns null if the string doesn't look like a ref.
    */
   function refToUrl(ref) {
-    // Space form: "Genesis 2:1-3", "Mishnah Shabbat 7:2"
-    let m = ref.match(/^(.+?)\s+(\d[\w:.\-–]*)$/);
-    if (m) {
-      const book = m[1].trim().replace(/\s+/g, '_');
-      return `https://www.sefaria.org/${book}.${m[2].replace(/:/g, '.')}`;
-    }
-    // Dotted / API form: "Genesis.2.2-3", "Mishnah_Shabbat.7.2", "Berakhot.2a"
-    m = ref.match(/^(.+?)\.(\d[\w:.\-–]*)$/);
-    if (m) {
-      const book = m[1].replace(/\s+/g, '_');
-      return `https://www.sefaria.org/${book}.${m[2]}`;
-    }
-    return null;
+    // Handles both space form ("Genesis 2:1-3", "Mishnah Shabbat 7:2") and
+    // dotted / API form ("Genesis.2.2-3", "Mishnah_Shabbat.7.2", "Berakhot.2a").
+    const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
+    if (!m) return null;
+    const book = m[1].trim().replace(/\s+/g, '_');
+    const section = m[2].replace(/:/g, '.');
+    return `${SEFARIA_BASE_URL}/${book}.${section}`;
   }
 
   /** Prettify a ref for display: dotted API form → "Book chapter:verse". */
@@ -38,19 +34,31 @@
   }
 
   /**
+   * Shared scanning engine for ref substitution.
+   * Escapes the input as HTML, then replaces every quoted Sefaria ref using
+   * the provided renderer callback.  Handles both single and double quotes.
+   * @param {string} text - plain-text input
+   * @param {(url: string, label: string) => string} renderer - returns HTML for one ref
+   */
+  function substituteRefs(text, renderer) {
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.replace(/(['"])([^'"]+)\1/g, (match, _quote, ref) => {
+      const url = refToUrl(ref);
+      if (!url) return match;
+      return renderer(url, refLabel(ref));
+    });
+  }
+
+  /**
    * Return an HTML string with any quoted Sefaria refs turned into links.
    * Handles both single quotes ('Pesachim 119b') and double quotes ("Mishnah Shabbat 7:2").
    * Input is plain text, so we escape it first to prevent XSS.
    */
   function linkifyRefs(text) {
-    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
-      const url = refToUrl(ref);
-      if (!url) return match;
-      const label = refLabel(ref);
-      // Bare link — no surrounding quotes, no external-link icon (matches Figma)
-      return `<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-    });
+    // Bare link — no surrounding quotes, no external-link icon (matches Figma)
+    return substituteRefs(text, (url, label) =>
+      `<a class="trail-ref-link" href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+    );
   }
 
   /**
@@ -60,13 +68,10 @@
    * with muted/secondary color and no underline.
    */
   function plainRefs(text) {
-    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return escaped.replace(/(['"])([^'"]+)\1/g, (match, quote, ref) => {
-      const url = refToUrl(ref);
-      if (!url) return match;
-      // Bare muted ref — no surrounding quotes (matches Figma)
-      return `<span class="trail-failed-ref">${refLabel(ref)}</span>`;
-    });
+    // Bare muted ref — no surrounding quotes (matches Figma)
+    return substituteRefs(text, (_url, label) =>
+      `<span class="trail-failed-ref">${label}</span>`
+    );
   }
 
 
@@ -80,7 +85,7 @@
         class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
         style="width: 100%;"
       >
-        <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? undefined) : undefined}>
+        <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? '') : ''}>
           <span class="progress-trail-text">
             {#if isFailed}
               <span class="trail-failed-prefix">{$_('progress.failed')}</span>
@@ -152,7 +157,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--semantic-text-link, #18345D);
-    font-family: Roboto, sans-serif;
+    font-family: var(--lc-font);
     font-size: 12px;
     font-weight: 600;
     line-height: var(--global-dimension-250, 20px);

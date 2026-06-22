@@ -1,6 +1,10 @@
 <script>
   import Tooltip from './Tooltip.svelte';
-  let { label = '', href = '', onActivate } = $props();
+  let {
+    label = '',
+    href = '',
+    onActivate,
+  } = $props();
   function activate(e) { e.preventDefault(); onActivate?.(href); }
 </script>
 

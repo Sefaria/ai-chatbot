@@ -1,5 +1,5 @@
 <script>
-  import { _ } from '../i18n/index.js';
+  import { _, locale } from '../i18n/index.js';
 
   let { data, streaming = false, onClickTopic, collapsed = false } = $props();
 
@@ -29,15 +29,25 @@
    * Build the list of topic segments: each topic button, separated by
    * ", " between items and " {or} " before the last one.
    * Returns an array of { type: 'topic'|'sep', value } objects.
+   *
+   * Oxford comma ("A, B, or C") is English-only. Hebrew never uses a comma
+   * before the final connector: "A, B או C" for any count.
    */
-  function buildTopicSegments(topics, orWord) {
+  function buildTopicSegments(topics, orWord, isHebrew) {
     const last = topics.length - 1;
     const segments = [];
     topics.forEach((topic, i) => {
       if (i > 0) {
-        // ", " between items; " {or} " before the last (with a leading
-        // comma only when there are 3+ topics): "A, B, or C" / "A or B".
-        const sep = i === last ? `${topics.length > 2 ? ', ' : ' '}${orWord} ` : ', ';
+        let sep;
+        if (i === last) {
+          // Final connector: Hebrew always uses spaces only; English uses
+          // Oxford comma for 3+ items.
+          sep = isHebrew || topics.length <= 2
+            ? ` ${orWord} `
+            : `, ${orWord} `;
+        } else {
+          sep = ', ';
+        }
         segments.push({ type: 'sep', value: sep });
       }
       segments.push({ type: 'topic', topic });
@@ -48,16 +58,25 @@
   let frame = $derived($_('appetizer.sentence'));
   let orWord = $derived($_('appetizer.or'));
   let frameParts = $derived(splitFrame(frame));
-  let topicSegments = $derived(buildTopicSegments(data.topics, orWord));
+  let isHebrew = $derived($locale === 'he');
+  let topicSegments = $derived(buildTopicSegments(data.topics, orWord, isHebrew));
 </script>
+
+{#snippet renderSegment(seg)}
+  {#if seg.type === 'sep'}
+    {seg.value}
+  {:else}
+    <button
+      class="lc-topic-link"
+      type="button"
+      use:attachClickHandler={seg.topic}
+    >{seg.topic.topicTitle}</button>
+  {/if}
+{/snippet}
 
 <div class="topic-appetizer" class:topic-appetizer--collapsed={collapsed}>
   <p class="appetizer-sentence">
-    {frameParts[0]}{#each topicSegments as seg}{#if seg.type === 'sep'}{seg.value}{:else}<button
-        class="lc-topic-link"
-        type="button"
-        use:attachClickHandler={seg.topic}
-      >{seg.topic.topicTitle}</button>{/if}{/each}{frameParts[1]}
+    {frameParts[0]}{#each topicSegments as seg}{@render renderSegment(seg)}{/each}{frameParts[1]}
   </p>
 </div>
 
@@ -65,10 +84,10 @@
   .topic-appetizer {
     display: flex;
     align-items: flex-start;
-    padding: var(--global-dimension-100, 8px) var(--global-dimension-150, 12px);
-    border-radius: var(--global-dimension-0, 0);
-    border-inline-start: 2px solid var(--semantic-action-primary, #18345D);
-    background: var(--core-blue-tbr-100, #F0F7FF);
+    padding: var(--global-dimension-100) var(--global-dimension-150);
+    border-radius: var(--global-dimension-0);
+    border-inline-start: 2px solid var(--semantic-action-primary);
+    background: var(--core-blue-tbr-100);
     width: 252px;
     max-width: 100%;
     box-sizing: border-box;
@@ -89,16 +108,16 @@
     margin: 0;
     font-family: Roboto, sans-serif;
     font-size: 12px;
-    line-height: var(--global-dimension-250, 20px);
-    color: var(--semantic-text-secondary, #575757);
+    line-height: var(--global-dimension-250);
+    color: var(--semantic-text-secondary);
   }
 
   :global(.lc-topic-link) {
-    color: var(--semantic-text-link, #18345D);
+    color: var(--semantic-text-link);
     font-family: Roboto;
     font-size: 12px;
     font-weight: 600;
-    line-height: var(--global-dimension-250, 20px);
+    line-height: var(--global-dimension-250);
     text-decoration: underline;
     text-decoration-style: solid;
     text-underline-position: from-font;

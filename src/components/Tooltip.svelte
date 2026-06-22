@@ -24,13 +24,13 @@
     content: attr(data-tooltip);
     position: absolute;
     top: calc(100% + 8px);
-    left: 0;
-    background: var(--lc-tooltip-bg, #3a3a3a);
+    inset-inline-start: 0;
+    background: var(--lc-tooltip-bg);
     color: #fff;
-    font-family: var(--lc-font, inherit);
+    font-family: var(--lc-font);
     font-size: 12px;
     line-height: 1.4;
-    text-align: left;
+    text-align: start;
     padding: 8px 12px;
     border-radius: 12px;
     max-width: 252px;
@@ -40,7 +40,7 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.12s ease;
-    z-index: 20;
+    z-index: var(--lc-z-tooltip);
   }
 
   /* Caret — small triangle pointing UP toward the trigger */
@@ -50,11 +50,11 @@
     top: calc(100% + 2px);
     left: 16px;
     border: 6px solid transparent;
-    border-bottom-color: var(--lc-tooltip-bg, #3a3a3a);
+    border-bottom-color: var(--lc-tooltip-bg);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.12s ease;
-    z-index: 20;
+    z-index: var(--lc-z-tooltip);
   }
 
   .lc-tooltip[data-tooltip]:hover::after,

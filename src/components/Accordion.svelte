@@ -1,7 +1,7 @@
 <script>
   import { _ } from 'svelte-i18n';
 
-  let { kind = 'topics', expanded = false, onToggle, children } = $props();
+  let { kind, expanded = false, onToggle = () => {}, children } = $props();
 
   const titleKey = $derived(
     kind === 'topics'
@@ -9,7 +9,7 @@
       : (expanded ? 'accordion.hideThought' : 'accordion.showThought')
   );
 
-  function toggle() { onToggle?.(); }
+  function toggle() { onToggle(); }
 </script>
 
 <div class="lc-accordion">

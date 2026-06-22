@@ -56,7 +56,11 @@
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
   let lastAutoScrollTop = -1;
+  // Per latency UX spec: on final response the top edge of the response package
+  // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
+  // px of drift from the auto-scroll target that counts as a deliberate user scroll
+  const USER_SCROLL_THRESHOLD_PX = 5;
   let loadingWrapperRef = $state(null);
   // Suppresses the scroll-event check while a programmatic scroll is animating
   let suppressScrollDetection = false;
@@ -439,27 +443,30 @@
     }
   }
 
+  /** Returns the scrollTop value that places el's top edge at the container's top edge. */
+  function getScrollTopForElement(el) {
+    const containerRect = messageListRef.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    return messageListRef.scrollTop + elRect.top - containerRect.top;
+  }
+
   async function scrollToResponseStart() {
     await tick();
     if (!messageListRef || !autoScrollEnabled) return;
     // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top
     const pkgEls = messageListRef.querySelectorAll('.lc-response-package');
-    const pkgEl = pkgEls[pkgEls.length - 1];
+    const pkgEl = pkgEls.at(-1);
     if (pkgEl) {
-      const containerRect = messageListRef.getBoundingClientRect();
-      const pkgRect = pkgEl.getBoundingClientRect();
-      const targetScrollTop = messageListRef.scrollTop + pkgRect.top - containerRect.top - RESPONSE_PACKAGE_TOP_OFFSET;
+      const targetScrollTop = getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET;
       lastAutoScrollTop = Math.max(0, targetScrollTop);
       beginProgrammaticScroll();
       messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
     } else {
       // Fallback: scroll to last assistant message top
       const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
-      const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
+      const lastResponse = contents.at(-1)?.closest('.message.assistant');
       if (lastResponse) {
-        const containerRect = messageListRef.getBoundingClientRect();
-        const msgRect = lastResponse.getBoundingClientRect();
-        const targetScrollTop = messageListRef.scrollTop + msgRect.top - containerRect.top;
+        const targetScrollTop = getScrollTopForElement(lastResponse);
         lastAutoScrollTop = Math.max(0, targetScrollTop);
         beginProgrammaticScroll();
         messageListRef.scrollTo({ top: lastAutoScrollTop, behavior: 'smooth' });
@@ -473,6 +480,11 @@
     suppressScrollFallbackTimer = setTimeout(() => { suppressScrollDetection = false; }, 700);
   }
 
+  function resetScroll() {
+    autoScrollEnabled = true;
+    lastAutoScrollTop = -1;
+  }
+
   async function scrollToLoadingElement() {
     if (!autoScrollEnabled || !messageListRef) return;
     await tick();
@@ -483,8 +495,8 @@
     if (el) {
       const containerRect = messageListRef.getBoundingClientRect();
       const elRect = el.getBoundingClientRect();
-      const elBottom = messageListRef.scrollTop + elRect.bottom - containerRect.top;
-      const elTop = messageListRef.scrollTop + elRect.top - containerRect.top;
+      const elBottom = getScrollTopForElement(el) + elRect.height;
+      const elTop = getScrollTopForElement(el);
       const containerHeight = messageListRef.clientHeight;
 
       if (elRect.height <= containerHeight) {
@@ -519,8 +531,7 @@
     const isReadyToSend = text && !isSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
     // Reset auto-scroll on each new send
-    autoScrollEnabled = true;
-    lastAutoScrollTop = -1;
+    resetScroll();
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -740,7 +751,7 @@
     }
     // Detect user-initiated scrolls during generation — disable auto-scroll.
     // Skip while a programmatic scroll animation is in flight.
-    if (!suppressScrollDetection && isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > 5) {
+    if (!suppressScrollDetection && isSending && lastAutoScrollTop !== -1 && Math.abs(el.scrollTop - lastAutoScrollTop) > USER_SCROLL_THRESHOLD_PX) {
       autoScrollEnabled = false;
     }
   }
@@ -936,15 +947,17 @@
     return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
   }
 
+  /** Returns true for sefaria.org, *.sefaria.org (incl. voices.sefaria.org), sefaria.org.il, *.sefaria.org.il */
+  function isSefariaHostname(hostname) {
+    return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
+  }
+
   function parseSefariaRef(href) {
     try {
       const url = new URL(href);
       const hostname = url.hostname;
       // Only activate on sefaria.org / sefaria.org.il hostnames
-      const isSefaria =
-        hostname === 'sefaria.org' || hostname.endsWith('.sefaria.org') ||
-        hostname === 'sefaria.org.il' || hostname.endsWith('.sefaria.org.il');
-      if (!isSefaria) return null;
+      if (!isSefariaHostname(hostname)) return null;
       const path = decodeURIComponent(url.pathname).replace(/^\//, '');
       if (!path) return null;
       // Skip non-text paths
@@ -974,13 +987,13 @@
     try {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
-      if (hostname === 'sefaria.org' || hostname.endsWith('.sefaria.org') || hostname === 'sefaria.org.il' || hostname.endsWith('.sefaria.org.il')) {
+      if (isSefariaHostname(hostname)) {
         document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
       } else {
-        window.open(url, '_blank');
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
     } catch {
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   }
 
@@ -994,7 +1007,7 @@
       }));
     } else {
       // Off-site: open topic page in new tab
-      window.open(topicUrl || `https://www.sefaria.org/topics/${topicSlug}`, '_blank');
+      window.open(topicUrl || `https://www.sefaria.org/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
     }
 
     const el = $host();
@@ -1098,7 +1111,7 @@
                   {@html FEEDBACK_ICON}
                   {$_('menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('menu.help')}
                 </a>
@@ -1444,6 +1457,7 @@
     --lc-icon-primary: var(--functional-icon-icon-primary);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
+    --lc-z-tooltip: 20;
 
     display: block;
     font-family: var(--lc-font);
@@ -1895,7 +1909,7 @@
     gap: var(--global-dimension-100, 8px);
   }
   .lc-thinking-label {
-    font-family: 'Roboto', sans-serif;
+    font-family: var(--lc-font);
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
     color: var(--semantic-text-secondary, #575757);
