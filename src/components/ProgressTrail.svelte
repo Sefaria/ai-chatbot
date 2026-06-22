@@ -28,6 +28,13 @@
       .replace(/>/g, '&gt;');
   }
 
+  /** Escape a value for safe interpolation into an HTML attribute (adds quotes). */
+  function escapeAttr(value) {
+    return escapeHtml(String(value))
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   /**
    * Render a tool entry's description. When refData.is_ref, replace the
    * known ref substring (the tool's reference arg) with a bidi-isolated link.
@@ -44,7 +51,7 @@
     if (!escapedRef || !escaped.includes(escapedRef)) {
       return escaped;
     }
-    const href = `${SEFARIA_BASE_URL}/${refData.url_ref}`;
+    const href = escapeAttr(`${SEFARIA_BASE_URL}/${refData.url_ref}`);
     const label = escapeHtml(refDisplayLabel(refData));
     const link = `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${label}</bdi></a>`;
     return escaped.replace(escapedRef, link);
