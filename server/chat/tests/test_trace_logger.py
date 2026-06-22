@@ -51,6 +51,18 @@ class TestTraceLoggerOrigin:
         call_kwargs = self.span.log.call_args[1]
         assert "user_id" not in call_kwargs["metadata"]
 
+    def test_turn_number_logged_when_set(self):
+        ctx = MessageContext(origin="sefaria-production", turn_number=3)
+        self.logger.log_input(bt_span=self.span, user_message="hi", context=ctx, model="test")
+        call_kwargs = self.span.log.call_args[1]
+        assert call_kwargs["metadata"]["turn_number"] == 3
+
+    def test_turn_number_omitted_when_none(self):
+        ctx = MessageContext(origin="sefaria-production", turn_number=None)
+        self.logger.log_input(bt_span=self.span, user_message="hi", context=ctx, model="test")
+        call_kwargs = self.span.log.call_args[1]
+        assert "turn_number" not in call_kwargs["metadata"]
+
 
 class TestTraceLoggerPromptMetadata:
     """Test that log_prompt_metadata includes route."""
