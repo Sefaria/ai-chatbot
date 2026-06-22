@@ -82,6 +82,7 @@ class SefariaClient:
         self._client_loop: asyncio.AbstractEventLoop | None = None
         self._user_id: str | None = None
         self._session_token: str | None = None
+        self._ref_cache: dict[str, dict | None] = {}
 
     def set_user_session(self, user_id: str | None, session_token: str | None) -> None:
         """Store per-request auth context for endpoints that require user session access."""
@@ -455,6 +456,37 @@ class SefariaClient:
             },
         )
         return self._optimize_source_sheet_response(data)
+
+    async def resolve_ref(self, tref: str) -> dict | None:
+        """Resolve a tref via /api/ref into {is_ref, url_ref, en, he}, or None.
+
+        Results (including negatives) are cached per instance to avoid
+        redundant lookups of repeated refs within a turn.
+        """
+        if not tref:
+            return None
+        if tref in self._ref_cache:
+            return self._ref_cache[tref]
+        result = await self._fetch_ref(tref)
+        if len(self._ref_cache) < 512:
+            self._ref_cache[tref] = result
+        return result
+
+    async def _fetch_ref(self, tref: str) -> dict | None:
+        """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None."""
+        encoded_ref = quote(tref)
+        try:
+            data = await self._get_json(f"api/ref/{encoded_ref}")
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(data, dict) or not data.get("is_ref"):
+            return None
+        return {
+            "is_ref": True,
+            "url_ref": data.get("url_ref", ""),
+            "en": data.get("normalized", ""),
+            "he": data.get("hebrew", ""),
+        }
 
     # -------------------------------------------------------------------
     # Low-level HTTP helpers

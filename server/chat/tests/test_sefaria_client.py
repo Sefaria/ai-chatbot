@@ -1,8 +1,8 @@
 """Tests for SefariaClient - API calls and parameter handling."""
 
 import json
-from unittest.mock import AsyncMock, Mock, patch
 import os
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -456,6 +456,8 @@ class TestTextSearch:
         assert isinstance(result, list)
         assert len(result) == 1
         assert result[0]["ref"] == "Genesis 1:1"
+
+
 class TestSearchUserSourceSheets:
     """Test authenticated source sheet search."""
 
@@ -668,7 +670,10 @@ class TestCreateSourceSheet:
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
         assert posted_payload["sources"][2]["node"] == 3
-        assert posted_payload["sources"][2]["text"]["en"] == "<p>Now the serpent was the shrewdest.</p>"
+        assert (
+            posted_payload["sources"][2]["text"]["en"]
+            == "<p>Now the serpent was the shrewdest.</p>"
+        )
         assert posted_payload["sources"][2]["text"]["he"] == "<p>וְהַנָּחָשׁ הָיָה עָרוּם.</p>"
         assert posted_payload["nextNode"] == 4
 
@@ -676,6 +681,7 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{DEFAULT_SEFARIA_BASE_URL}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
 
 class TestSearchInBook:
     """Test search_in_book scoped path resolution."""
@@ -698,3 +704,54 @@ class TestSearchInBook:
 
         mock_text_search.assert_awaited_once_with("פרעה", ["Chasidut/Breslov/Likutei Moharan"], 10)
 
+
+class TestResolveRef:
+    """Test SefariaClient.resolve_ref via /api/ref."""
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_valid(self):
+        client = SefariaClient()
+        client._get_json = AsyncMock(
+            return_value={
+                "is_ref": True,
+                "normalized": "Genesis 1:1",
+                "hebrew": "בראשית א׳:א׳",
+                "url_ref": "Genesis.1.1",
+            }
+        )
+        result = await client.resolve_ref("Genesis 1:1")
+        assert result == {
+            "is_ref": True,
+            "url_ref": "Genesis.1.1",
+            "en": "Genesis 1:1",
+            "he": "בראשית א׳:א׳",
+        }
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_invalid_returns_none(self):
+        client = SefariaClient()
+        client._get_json = AsyncMock(return_value={"is_ref": False})
+        assert await client.resolve_ref("not a ref") is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_error_returns_none(self):
+        import httpx
+
+        client = SefariaClient()
+        client._get_json = AsyncMock(side_effect=httpx.HTTPError("boom"))
+        assert await client.resolve_ref("Genesis 1:1") is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_caches(self):
+        client = SefariaClient()
+        client._get_json = AsyncMock(
+            return_value={
+                "is_ref": True,
+                "normalized": "Genesis 1:1",
+                "hebrew": "x",
+                "url_ref": "Genesis.1.1",
+            }
+        )
+        await client.resolve_ref("Genesis 1:1")
+        await client.resolve_ref("Genesis 1:1")
+        assert client._get_json.call_count == 1
