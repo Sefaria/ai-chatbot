@@ -2453,7 +2453,7 @@ inset: 8px;
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
-    margin-right: 2px;
+    margin-inline-end: 2px;
     color: #18345D;
     opacity: 0.6;
   }

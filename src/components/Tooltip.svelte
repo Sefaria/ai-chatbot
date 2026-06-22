@@ -48,7 +48,7 @@
     content: '';
     position: absolute;
     top: calc(100% + 2px);
-    left: 16px;
+    inset-inline-start: 16px;
     border: 6px solid transparent;
     border-bottom-color: var(--lc-tooltip-bg);
     pointer-events: none;

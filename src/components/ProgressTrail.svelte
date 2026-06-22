@@ -92,7 +92,7 @@
     width: 100%;
     /* Force LTR for thinking steps regardless of interface language */
     direction: ltr;
-    text-align: left;
+    text-align: start;
   }
 
   .progress-trail-entry {
@@ -108,7 +108,7 @@
     box-sizing: border-box;
     /* Explicit LTR per-row so nested RTL elements can't flip it */
     direction: ltr;
-    text-align: left;
+    text-align: start;
   }
 
   .progress-trail-text {
@@ -150,18 +150,6 @@
   /* ── Failed prefix label ── */
   .trail-failed-prefix {
     flex-shrink: 0;
-  }
-
-  /* ── Failed ref span: muted color, no underline, not clickable ── */
-  :global(.trail-failed-ref) {
-    color: var(--lc-text-secondary, #575757);
-    text-decoration: none;
-    cursor: default;
-    /* Truncation in failed refs */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
   }
 
   /* Ensure no link-like styling leaks onto any element inside a failed entry */
