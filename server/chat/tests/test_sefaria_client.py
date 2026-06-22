@@ -734,12 +734,34 @@ class TestResolveRef:
         assert await client.resolve_ref("not a ref") is None
 
     @pytest.mark.asyncio
-    async def test_resolve_ref_error_returns_none(self):
+    async def test_resolve_ref_error_uses_fallback(self):
+        """When the API call fails, resolve_ref should fall back to local parsing."""
         import httpx
 
         client = SefariaClient()
         client._get_json = AsyncMock(side_effect=httpx.HTTPError("boom"))
-        assert await client.resolve_ref("Genesis 1:1") is None
+        result = await client.resolve_ref("Genesis 1:1")
+        assert result is not None
+        assert result["is_ref"] is True
+        assert result["url_ref"] == "Genesis.1.1"
+        assert result["en"] == "Genesis 1:1"
+        assert result["he"] == ""
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_api_result_takes_precedence_over_fallback(self):
+        """When the API succeeds, its richer result is returned, not the fallback."""
+        client = SefariaClient()
+        client._get_json = AsyncMock(
+            return_value={
+                "is_ref": True,
+                "normalized": "Genesis 1:1",
+                "hebrew": "בראשית א׳:א׳",
+                "url_ref": "Genesis.1.1",
+            }
+        )
+        result = await client.resolve_ref("Genesis 1:1")
+        # API provides Hebrew; fallback would return ""
+        assert result["he"] == "בראשית א׳:א׳"
 
     @pytest.mark.asyncio
     async def test_resolve_ref_caches(self):
@@ -755,3 +777,56 @@ class TestResolveRef:
         await client.resolve_ref("Genesis 1:1")
         await client.resolve_ref("Genesis 1:1")
         assert client._get_json.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_resolve_ref_caches_fallback_result(self):
+        """Fallback results are also cached so _fetch_ref is not called again."""
+        import httpx
+
+        client = SefariaClient()
+        client._get_json = AsyncMock(side_effect=httpx.HTTPError("boom"))
+        await client.resolve_ref("Genesis 1:1")
+        await client.resolve_ref("Genesis 1:1")
+        assert client._get_json.call_count == 1
+
+
+class TestFallbackRef:
+    """Unit tests for the _fallback_ref module-level helper."""
+
+    def test_genesis_1_1(self):
+        from chat.V2.agent.sefaria_client import _fallback_ref
+
+        result = _fallback_ref("Genesis 1:1")
+        assert result is not None
+        assert result["is_ref"] is True
+        assert result["url_ref"] == "Genesis.1.1"
+        assert result["en"] == "Genesis 1:1"
+        assert result["he"] == ""
+
+    def test_dotted_input_berakhot_2a(self):
+        """Dotted-form input like 'Berakhot.2a' should produce the expected url_ref and label."""
+        from chat.V2.agent.sefaria_client import _fallback_ref
+
+        result = _fallback_ref("Berakhot.2a")
+        assert result is not None
+        assert result["url_ref"] == "Berakhot.2a"
+        # _fallback_ref_label: no whitespace, matches dotted RE → "Berakhot" + "2a" (no dots to replace)
+        assert result["en"] == "Berakhot 2a"
+
+    def test_mishnah_shabbat_7_2(self):
+        from chat.V2.agent.sefaria_client import _fallback_ref
+
+        result = _fallback_ref("Mishnah Shabbat 7:2")
+        assert result is not None
+        assert result["url_ref"] == "Mishnah_Shabbat.7.2"
+        assert result["en"] == "Mishnah Shabbat 7:2"
+
+    def test_non_ref_returns_none(self):
+        from chat.V2.agent.sefaria_client import _fallback_ref
+
+        assert _fallback_ref("hello world") is None
+
+    def test_empty_string_returns_none(self):
+        from chat.V2.agent.sefaria_client import _fallback_ref
+
+        assert _fallback_ref("") is None

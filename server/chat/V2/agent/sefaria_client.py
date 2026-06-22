@@ -68,6 +68,58 @@ LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 # of a long-lived client cannot grow without bound.
 REF_CACHE_MAX_SIZE = 512
 
+# ---------------------------------------------------------------------------
+# Ref fallback helpers — construct a usable ref dict from a tref string when
+# the /api/ref endpoint is unavailable (e.g. not yet deployed to production).
+# ---------------------------------------------------------------------------
+
+_REF_SECTION_RE = re.compile(r"^(.+?)[\s.](\d[\w:.\-–]*)$")
+_REF_DOTTED_RE = re.compile(r"^(.+?)\.(\d[\w.\-–]*)$")
+
+
+def _fallback_ref_to_url(tref: str) -> str | None:
+    """Convert a tref to its URL-safe dotted form, or None if not recognisable."""
+    m = _REF_SECTION_RE.match(tref)
+    if not m:
+        return None
+    book = re.sub(r"\s+", "_", m.group(1).strip())
+    section = m.group(2).replace(":", ".")
+    return f"{book}.{section}"
+
+
+def _fallback_ref_label(tref: str) -> str:
+    """Prettify a dotted API-form ref to a display label.
+
+    "Genesis.1.1"       → "Genesis 1:1"
+    "Mishnah_Shabbat.7" → "Mishnah Shabbat 7"
+    "Genesis 1:1"       → "Genesis 1:1"  (already human-readable)
+    """
+    if re.search(r"\s", tref):
+        return tref
+    m = _REF_DOTTED_RE.match(tref)
+    if not m:
+        return tref
+    book = m.group(1).replace("_", " ")
+    section = m.group(2).replace(".", ":")
+    return f"{book} {section}"
+
+
+def _fallback_ref(tref: str) -> dict | None:
+    """Build a minimal ref dict from a tref without hitting the API.
+
+    Returns {is_ref, url_ref, en, he} when the tref looks like a valid ref,
+    or None when it cannot be parsed as one.
+    """
+    url_ref = _fallback_ref_to_url(tref)
+    if not url_ref:
+        return None
+    return {
+        "is_ref": True,
+        "url_ref": url_ref,
+        "en": _fallback_ref_label(tref),
+        "he": "",
+    }
+
 
 class SefariaClient:
     """Async HTTP client for the Sefaria REST API.
@@ -463,7 +515,11 @@ class SefariaClient:
         return self._optimize_source_sheet_response(data)
 
     async def resolve_ref(self, tref: str) -> dict | None:
-        """Resolve a tref via /api/ref into {is_ref, url_ref, en, he}, or None.
+        """Resolve a tref into {is_ref, url_ref, en, he}, or None.
+
+        First attempts /api/ref/<tref>; if that call fails or the endpoint is
+        unavailable (e.g. not yet deployed), falls back to constructing a ref
+        dict locally via _fallback_ref so trail links still render today.
 
         Results (including negatives) are cached per instance to avoid
         redundant lookups of repeated refs within a turn.
@@ -472,7 +528,8 @@ class SefariaClient:
             return None
         if tref in self._ref_cache:
             return self._ref_cache[tref]
-        result = await self._fetch_ref(tref)
+        api_result = await self._fetch_ref(tref)
+        result = api_result if api_result is not None else _fallback_ref(tref)
         if len(self._ref_cache) < REF_CACHE_MAX_SIZE:
             self._ref_cache[tref] = result
         return result
