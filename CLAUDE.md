@@ -28,7 +28,6 @@ This project uses a tree of CLAUDE.md files:
 - `server/CLAUDE.md` - Backend context (Django, Claude API)
 - `docs/ARCHITECTURE.md` - System design, API reference
 - `docs/TESTING.md` - Test commands and CI details
-- `docs/CODE_NOTES.md` - Best practices distilled from code review (CSS tokens, logical properties, refs, i18n)
 - `docs/archive/` - Historical implementation docs
 
 When working on implementation history or planning:
