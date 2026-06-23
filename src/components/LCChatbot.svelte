@@ -936,6 +936,18 @@
     return ref;
   }
 
+  /**
+   * Base host for ref resolution + links: the current Sefaria host when embedded
+   * on one (prod, .org.il, or a cauldron/staging), else canonical prod. This lets
+   * the ref API be exercised on whatever environment the widget runs in.
+   */
+  function sefariaBase() {
+    if (isSefariaHostname(window.location.hostname)) {
+      return window.location.origin;
+    }
+    return 'https://www.sefaria.org';
+  }
+
   async function parseSefariaRef(href) {
     const tref = extractCandidateTref(href);
     if (!tref) {
@@ -944,13 +956,14 @@
     const refData = await fetchRefData(tref);
     if (refData && refData.is_ref) {
       const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
-      return { label, url: `https://www.sefaria.org/${refData.url_ref}` };
+      return { label, url: `${sefariaBase()}/${refData.url_ref}` };
     }
+    // Fallback (feature: location pin) — /api/ref unavailable: derive URL+label from the tref.
     const fallbackPath = refToUrlPath(tref);
     if (!fallbackPath) {
       return null;
     }
-    return { label: refLabelFromTref(tref), url: `https://www.sefaria.org/${fallbackPath}` };
+    return { label: refLabelFromTref(tref), url: `${sefariaBase()}/${fallbackPath}` };
   }
 
   function extractCandidateTref(href) {
@@ -973,7 +986,7 @@
 
   async function fetchRefData(tref) {
     try {
-      const res = await fetch(`https://www.sefaria.org/api/ref/${encodeURIComponent(tref)}`);
+      const res = await fetch(`${sefariaBase()}/api/ref/${encodeURIComponent(tref)}`);
       if (!res.ok) {
         return null;
       }

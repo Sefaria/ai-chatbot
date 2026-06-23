@@ -35,25 +35,70 @@
       .replace(/'/g, '&#39;');
   }
 
+  /** Build the bare bidi-isolated ref link anchor HTML. */
+  function refLinkHtml(url, label) {
+    const href = escapeAttr(url);
+    return `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${escapeHtml(label)}</bdi></a>`;
+  }
+
+  // ── Client-side ref fallback (feature: trail ref links) ───────────────────
+  // Used when the backend did not attach refData — e.g. the /api/ref endpoint is
+  // unavailable, the backend is unreachable, or the tool isn't ref-bearing. This
+  // keeps the trail-linkification feature working independently of the ref API,
+  // mirroring the backend tref fallback.
+
+  /** Convert a bare ref ("Genesis 1:1", "Mishnah_Shabbat.7.2") to a sefaria.org URL, or null. */
+  function refToUrl(ref) {
+    const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
+    if (!m) {
+      return null;
+    }
+    const book = m[1].trim().replace(/\s+/g, '_');
+    const section = m[2].replace(/:/g, '.');
+    return `${SEFARIA_BASE_URL}/${book}.${section}`;
+  }
+
+  /** Prettify a dotted/API-form ref for display: "Book.1.2" → "Book 1:2". */
+  function refLabel(ref) {
+    if (!/\s/.test(ref)) {
+      const m = ref.match(/^(.+?)\.(\d[\w.\-–]*)$/);
+      if (m) {
+        return `${m[1].replace(/_/g, ' ')} ${m[2].replace(/\./g, ':')}`;
+      }
+    }
+    return ref;
+  }
+
+  /** Escape text, then replace each quoted ref ("..."/'...') with a bare link (quotes consumed). */
+  function linkifyRefsFallback(text) {
+    const escaped = escapeHtml(text);
+    return escaped.replace(/(['"])([^'"]+)\1/g, (match, _quote, ref) => {
+      const url = refToUrl(ref);
+      if (!url) {
+        return match;
+      }
+      return refLinkHtml(url, refLabel(ref));
+    });
+  }
+
   /**
-   * Render a tool entry's description. When refData.is_ref, replace the
-   * known ref substring (the tool's reference arg) with a bidi-isolated link.
+   * Render a tool entry's description. Prefer the backend-resolved refData
+   * (validated bilingual label via /api/ref); otherwise fall back to client-side
+   * linkification of any quoted ref in the description.
    */
   function renderToolText(entry) {
     const text = entry.description ?? entry.toolName ?? '';
     const refData = entry.refData;
     if (!refData || !refData.is_ref) {
-      return escapeHtml(text);
+      return linkifyRefsFallback(text);
     }
     const rawRef = entry.toolInput?.reference ?? '';
     const escaped = escapeHtml(text);
     const escapedRef = escapeHtml(rawRef);
     if (!escapedRef || !escaped.includes(escapedRef)) {
-      return escaped;
+      return linkifyRefsFallback(text);
     }
-    const href = escapeAttr(`${SEFARIA_BASE_URL}/${refData.url_ref}`);
-    const label = escapeHtml(refDisplayLabel(refData));
-    const link = `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${label}</bdi></a>`;
+    const link = refLinkHtml(`${SEFARIA_BASE_URL}/${refData.url_ref}`, refDisplayLabel(refData));
     // Tool descriptions wrap the ref in quotes (e.g. Fetching text "Genesis 1:1").
     // Consume the surrounding quotes so the link renders bare, per the design.
     const quoted = `"${escapedRef}"`;
