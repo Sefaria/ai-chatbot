@@ -144,7 +144,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--global-dimension-100, 8px);
+    gap: var(--global-dimension-100);
     align-items: flex-start;
     align-self: stretch;
     width: 100%;
@@ -159,7 +159,7 @@
     gap: 8px;
     font-size: 12px;
     line-height: 20px;
-    color: var(--lc-text-secondary, #575757);
+    color: var(--lc-text-secondary);
     min-height: 20px;
     /* Each row fills the container; required for truncation to work */
     width: 100%;
@@ -190,11 +190,11 @@
     -webkit-line-clamp: 1;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--semantic-text-link, #18345D);
+    color: var(--semantic-text-link);
     font-family: var(--lc-font);
     font-size: 12px;
     font-weight: 600;
-    line-height: var(--global-dimension-250, 20px);
+    line-height: var(--global-dimension-250);
     text-decoration: underline;
     text-decoration-style: solid;
     text-underline-position: from-font;
@@ -202,7 +202,7 @@
 
   :global(.trail-ref-icon) {
     flex-shrink: 0;
-    color: var(--lc-primary, #18345d);
+    color: var(--lc-primary);
   }
 
   /* ── Failed prefix label ── */
@@ -214,7 +214,7 @@
   .progress-trail-entry.failed :global(a),
   .progress-trail-entry.failed :global(.trail-ref-link),
   .progress-trail-entry.failed :global(.trail-ref-icon) {
-    color: var(--lc-text-secondary, #575757);
+    color: var(--lc-text-secondary);
     text-decoration: none;
     cursor: default;
     pointer-events: none;

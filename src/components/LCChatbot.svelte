@@ -58,6 +58,7 @@
   // Per latency UX spec: on final response the top edge of the response package
   // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
+  const SEFARIA_BASE_URL = 'https://www.sefaria.org';
   let loadingWrapperRef = $state(null);
 
   // Settings state
@@ -857,7 +858,7 @@
       return;
     }
     if (!isSefariaDomain(window.location.hostname)) {
-      window.open(`https://www.sefaria.org${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`, '_blank', 'noopener,noreferrer');
+      window.open(`${SEFARIA_BASE_URL}${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -945,7 +946,7 @@
     if (isSefariaHostname(window.location.hostname)) {
       return window.location.origin;
     }
-    return 'https://www.sefaria.org';
+    return SEFARIA_BASE_URL;
   }
 
   async function parseSefariaRef(href) {
@@ -1020,7 +1021,7 @@
       }));
     } else {
       // Off-site: open topic page in new tab
-      window.open(topicUrl || `https://www.sefaria.org/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
+      window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
     }
 
     const el = $host();
