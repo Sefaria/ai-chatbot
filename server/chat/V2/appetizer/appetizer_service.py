@@ -69,9 +69,8 @@ class AppetizerService:
         self,
         user_message: str,
         interface_lang: str = "en",
-        host: str = "",
     ) -> AppetizerResult | None:
-        use_hebrew = interface_lang == "he" or host.endswith(".org.il")
+        use_hebrew = interface_lang == "he"
         try:
             return await asyncio.wait_for(
                 self._find_appetizer_inner(user_message, use_hebrew=use_hebrew),

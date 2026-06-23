@@ -530,8 +530,12 @@ class SefariaClient:
             return self._ref_cache[tref]
         api_result = await self._fetch_ref(tref)
         result = api_result if api_result is not None else _fallback_ref(tref)
-        if len(self._ref_cache) < REF_CACHE_MAX_SIZE:
-            self._ref_cache[tref] = result
+        if len(self._ref_cache) >= REF_CACHE_MAX_SIZE:
+            # Cache is full — evict the oldest entry (FIFO) so long conversations
+            # keep caching recent refs instead of freezing at the first N.
+            oldest_tref = next(iter(self._ref_cache))
+            del self._ref_cache[oldest_tref]
+        self._ref_cache[tref] = result
         return result
 
     async def _fetch_ref(self, tref: str) -> dict | None:

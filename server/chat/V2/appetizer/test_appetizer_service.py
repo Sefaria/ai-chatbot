@@ -252,25 +252,6 @@ async def test_hebrew_interface_lang_returns_hebrew_title():
 
 
 @pytest.mark.asyncio
-async def test_org_il_host_returns_hebrew_title():
-    """When host ends with .org.il, TopicInfo.topic_title must be the Hebrew title."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.search_topics.return_value = [
-        {"title": "Torah", "he": "תּוֹרָה", "slug": "torah"}
-    ]
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Torah"]
-        result = await service.find_appetizer("מה זה תורה?", host="www.sefaria.org.il")
-
-    assert result is not None
-    assert result.topics[0].topic_slug == "torah"
-    assert result.topics[0].topic_title == "תּוֹרָה"
-
-
-@pytest.mark.asyncio
 async def test_english_interface_lang_returns_english_title():
     """Default (no lang or lang='en') keeps English title."""
     service = AppetizerService.__new__(AppetizerService)
