@@ -35,20 +35,21 @@ function buildFixtureHtml(apiBase = 'https://www.sefaria.org/api') {
 }
 
 /**
- * The SSE body that the mocked /chat/stream endpoint returns.
- * Includes: appetizer, status, tool_start (with refData), tool_end, message.
- */
-/**
  * Build the SSE body for the mocked /chat/stream endpoint.
- * Includes: appetizer, status, tool_start (with refData), tool_end, message.
- * `markdown` is the final answer text (default short; pass a long string to
- * force a tall response package for scroll-positioning tests).
+ * Includes: appetizer, status, tool_start, tool_end, message.
+ * - `markdown`: final answer text (pass a long string to force a tall response
+ *   package for scroll-positioning tests).
+ * - `omitRefData`: emit the tool_start WITHOUT backend refData, to exercise the
+ *   client-side trail-link fallback (the ref-API-replacement fallback).
  */
-function buildSseBody(markdown = 'Here is **Genesis 1:1**.') {
+function buildSseBody({ markdown = 'Here is **Genesis 1:1**.', omitRefData = false } = {}) {
   const messageData = JSON.stringify({
     messageId: 'm1', sessionId: 's1', timestamp: '2026-06-22T00:00:00Z',
     markdown, traceId: 't1', toolCalls: [], stats: {}, session: {},
   });
+  const toolStart = omitRefData
+    ? '{"type":"tool_start","toolName":"get_text","description":"Fetching text \\"Genesis 1:1\\"","toolInput":{"reference":"Genesis 1:1"}}'
+    : '{"type":"tool_start","toolName":"get_text","description":"Fetching text \\"Genesis 1:1\\"","toolInput":{"reference":"Genesis 1:1"},"refData":{"is_ref":true,"url_ref":"Genesis.1.1","en":"Genesis 1:1","he":"\\u05d1\\u05e8\\u05d0\\u05e9\\u05d9\\u05ea \\u05d0\\u05f3:\\u05d0\\u05f3"}}';
   return [
     'event: progress',
     'data: {"type":"appetizer","appetizerData":{"topics":[{"topicSlug":"shabbat","topicTitle":"Shabbat","topicUrl":"https://www.sefaria.org/topics/shabbat"}]}}',
@@ -57,7 +58,7 @@ function buildSseBody(markdown = 'Here is **Genesis 1:1**.') {
     'data: {"type":"status","text":"Thinking\\u2026"}',
     '',
     'event: progress',
-    'data: {"type":"tool_start","toolName":"get_text","description":"Fetching text \\"Genesis 1:1\\"","toolInput":{"reference":"Genesis 1:1"},"refData":{"is_ref":true,"url_ref":"Genesis.1.1","en":"Genesis 1:1","he":"\\u05d1\\u05e8\\u05d0\\u05e9\\u05d9\\u05ea \\u05d0\\u05f3:\\u05d0\\u05f3"}}',
+    `data: ${toolStart}`,
     '',
     'event: progress',
     'data: {"type":"tool_end","toolName":"get_text","isError":false}',
@@ -74,7 +75,7 @@ function buildSseBody(markdown = 'Here is **Genesis 1:1**.') {
  * apiBase should match the api-base-url attribute (e.g. "https://www.sefaria.org/api").
  * For the location-pin test, mock404Ref=true makes /api/ref/** return 404.
  */
-export async function setupMocks(page, { mock404Ref = false, markdown } = {}) {
+export async function setupMocks(page, { mock404Ref = false, markdown, omitRefData = false } = {}) {
   // Prompt defaults
   await page.route('**/v2/prompts/defaults', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corePromptSlug: 'test', labs: false }) })
@@ -96,7 +97,7 @@ export async function setupMocks(page, { mock404Ref = false, markdown } = {}) {
   );
 
   // SSE stream
-  const sseBody = buildSseBody(markdown);
+  const sseBody = buildSseBody({ markdown, omitRefData });
   await page.route('**/chat/stream', (route) =>
     route.fulfill({
       status: 200,
