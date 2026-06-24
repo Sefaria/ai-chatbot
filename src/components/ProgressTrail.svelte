@@ -38,7 +38,7 @@
   /** Build the bare bidi-isolated ref link anchor HTML. */
   function refLinkHtml(url, label) {
     const href = escapeAttr(url);
-    return `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer"><bdi>${escapeHtml(label)}</bdi></a>`;
+    return `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link"><bdi>${escapeHtml(label)}</bdi></a>`;
   }
 
   // ── Client-side ref fallback (feature: trail ref links) ───────────────────

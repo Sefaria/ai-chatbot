@@ -5,8 +5,9 @@
 
   function attachClickHandler(node, topic) {
     function handler(e) {
+      // preventDefault blocks the <a> navigation; we intentionally let the event
+      // bubble to the host click tracker (data-feature-name) instead of stopping it.
       e.preventDefault();
-      e.stopPropagation();
       if (onClickTopic) onClickTopic(topic.topicSlug, topic.topicUrl);
     }
     node.addEventListener('click', handler);
@@ -68,6 +69,7 @@
     <button
       class="lc-topic-link"
       type="button"
+      data-feature-name="related_topics_link"
       use:attachClickHandler={seg.topic}
     >{seg.topic.topicTitle}</button>
   {/if}
