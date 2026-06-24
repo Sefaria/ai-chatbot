@@ -122,7 +122,7 @@
         <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? '') : ''}>
           <span class="progress-trail-text">
             {#if isFailed}
-              <span class="trail-failed-prefix">{$_('progress.failed')}</span>
+              <span class="trail-failed-prefix">{$_('assistant.progress.failed')}</span>
               <bdi>{entry.description ?? entry.toolName ?? entry.text ?? ''}</bdi>
             {:else if entry.type === 'tool'}
               {@html renderToolText(entry)}

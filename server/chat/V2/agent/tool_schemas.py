@@ -29,11 +29,6 @@ TOOL_GET_TEXT = {
                 "type": "string",
                 "description": 'Specific text reference (e.g. "Genesis 1:1", "Berakhot 2a")',
             },
-            "version_language": {
-                "type": "string",
-                "enum": ["source", "english", "both"],
-                "description": "Which language version to retrieve. Omit for all versions.",
-            },
         },
         "required": ["reference"],
     },

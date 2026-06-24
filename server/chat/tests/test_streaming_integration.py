@@ -18,6 +18,7 @@ from rest_framework.test import APIClient
 
 from chat.models import ChatMessage, ChatSession
 from chat.V2.agent import AgentResponse
+from chat.V2.views import _compute_turn_count
 
 
 def create_test_token(user_id: str, secret: str, expires_at=None) -> str:
@@ -1052,3 +1053,55 @@ class TestChatClientEventV2:
 
         assert response.status_code == 400
         assert response.data["error"] == "Invalid request"
+
+
+@pytest.mark.django_db
+class TestComputeTurnCount:
+    """Tests for _compute_turn_count and turn_number derivation."""
+
+    def _make_session(self, session_id="sess_tc"):
+        return ChatSession.objects.create(session_id=session_id, user_id="user_tc")
+
+    def _add_successful_turn(self, session_id, n):
+        """Create a linked user+assistant pair (counts as a completed turn)."""
+        user_msg = ChatMessage.objects.create(
+            message_id=f"msg_u_{n}",
+            session_id=session_id,
+            turn_id=f"turn_{n}",
+            role=ChatMessage.Role.USER,
+            content=f"User message {n}",
+        )
+        assistant_msg = ChatMessage.objects.create(
+            message_id=f"msg_a_{n}",
+            session_id=session_id,
+            turn_id=f"turn_{n}",
+            role=ChatMessage.Role.ASSISTANT,
+            content=f"Assistant response {n}",
+            status=ChatMessage.Status.SUCCESS,
+        )
+        user_msg.response_message = assistant_msg
+        user_msg.save(update_fields=["response_message"])
+
+    def test_first_turn_is_1(self):
+        """No prior turns → turn_number should be 1."""
+        self._make_session("sess_first")
+        assert _compute_turn_count("sess_first") + 1 == 1
+
+    def test_second_turn_is_2(self):
+        """One prior successful turn → turn_number should be 2."""
+        self._make_session("sess_second")
+        self._add_successful_turn("sess_second", 1)
+        assert _compute_turn_count("sess_second") + 1 == 2
+
+    def test_failed_turn_not_counted(self):
+        """A failed turn (no linked response) does not increment the count."""
+        self._make_session("sess_failed")
+        # Orphan user message — no response_message linked
+        ChatMessage.objects.create(
+            message_id="msg_u_failed",
+            session_id="sess_failed",
+            turn_id="turn_failed",
+            role=ChatMessage.Role.USER,
+            content="This turn failed",
+        )
+        assert _compute_turn_count("sess_failed") + 1 == 1

@@ -5,8 +5,8 @@
 
   const titleKey = $derived(
     kind === 'topics'
-      ? (expanded ? 'accordion.hideTopics' : 'accordion.showTopics')
-      : (expanded ? 'accordion.hideThought' : 'accordion.showThought')
+      ? (expanded ? 'assistant.accordion.hideTopics' : 'assistant.accordion.showTopics')
+      : (expanded ? 'assistant.accordion.hideThought' : 'assistant.accordion.showThought')
   );
 
   function toggle() {

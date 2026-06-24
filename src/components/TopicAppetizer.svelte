@@ -54,8 +54,8 @@
     return segments;
   }
 
-  let frame = $derived($_('appetizer.sentence'));
-  let orWord = $derived($_('appetizer.or'));
+  let frame = $derived($_('assistant.appetizer.sentence'));
+  let orWord = $derived($_('assistant.appetizer.or'));
   let frameParts = $derived(splitFrame(frame));
   let isHebrew = $derived($locale === 'he');
   let topicSegments = $derived(buildTopicSegments(data.topics, orWord, isHebrew));

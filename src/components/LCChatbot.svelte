@@ -119,18 +119,18 @@
     setLocale(interfaceLang);
   });
 
-  let welcomeMessage = $derived($_('welcome.message'));
-  let restartMessage = $derived($_('welcome.restart'));
-  let newSessionMessage = $derived($_('welcome.newSession'));
+  let welcomeMessage = $derived($_('assistant.welcome.message'));
+  let restartMessage = $derived($_('assistant.welcome.restart'));
+  let newSessionMessage = $derived($_('assistant.welcome.newSession'));
 
   // Feedback issue options for dislikes — labels resolved reactively from the i18n store
   const DISLIKE_REASON_KEYS = [
-    { value: 'inaccurate', key: 'feedback.reason.inaccurate' },
-    { value: 'disrespectful', key: 'feedback.reason.disrespectful' },
-    { value: 'unhelpful', key: 'feedback.reason.unhelpful' },
-    { value: 'overly_definitive', key: 'feedback.reason.overlyDefinitive' },
-    { value: 'tech_issue', key: 'feedback.reason.techIssue' },
-    { value: 'other', key: 'feedback.reason.other' }
+    { value: 'inaccurate', key: 'assistant.feedback.reason.inaccurate' },
+    { value: 'disrespectful', key: 'assistant.feedback.reason.disrespectful' },
+    { value: 'unhelpful', key: 'assistant.feedback.reason.unhelpful' },
+    { value: 'overly_definitive', key: 'assistant.feedback.reason.overlyDefinitive' },
+    { value: 'tech_issue', key: 'assistant.feedback.reason.techIssue' },
+    { value: 'other', key: 'assistant.feedback.reason.other' }
   ];
   let DISLIKE_REASONS = $derived(DISLIKE_REASON_KEYS.map(r => ({ value: r.value, label: $_(r.key) })));
 
@@ -1048,12 +1048,13 @@
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
   class:is-open={isOpen}
+  class:interface-hebrew={interfaceLang === 'he'}
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button aria-label={$_('header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
+    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_('header.triggerLabel')}</span>
+      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -1062,7 +1063,7 @@
       class:resizing={isResizing}
       style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
-      aria-label={$_('header.chatWindow')}
+      aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
       <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
@@ -1085,20 +1086,18 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          <h2>{$_('header.title')} {#if testingVersion}(V{testingVersion}){/if}
-          <img src="{staticIconsBaseUrl}/AI.svg"/>
+          <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
+          <img src="{staticIconsBaseUrl}/AI.svg" alt={$_('assistant.badge.ai')} />
           </h2>
         </div>
         <div class="header-actions">
           <HeaderButton
             className="panel-btn"
-            title={(mode === 'floating') ? $_('header.dock') : $_('header.undock')}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleMode();
-            }}
+            title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
+            onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
+              class:panel-close-icon={mode === 'floating'}
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
               alt=""
               width="16"
@@ -1106,43 +1105,40 @@
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
-            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('header.moreOptions')} aria-expanded={showMenu}>
+            <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
                 {#if isModerator}
-                  <button class="menu-item" aria-label={$_('menu.settings.aria')} onclick={() => {
-                    openSettings();
-                    closeMenu();
-                  }} role="menuitem">
+                  <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
                       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
-                    {$_('menu.settings')}
+                    {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
-                  {$_('menu.restart')}
+                  {$_('assistant.menu.restart')}
                 </button>
-                <a class="menu-item" aria-label={$_('menu.feedback')} href="https://sefaria.formstack.com/forms/sefaria_ai_library_assistant_early_access_and_evaluation" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
-                  {$_('menu.feedback')}
+                  {$_('assistant.menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.help.aria')} href="https://help.sefaria.org/hc/en-us/articles/26006423836828" target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+<a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                  {$_('menu.help')}
+                  {$_('assistant.menu.help')}
                 </a>
-                <a class="menu-item" aria-label={$_('menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  {$_('menu.optOut')}
+                  {$_('assistant.menu.optout')}
                 </a>
               </div>
             {/if}
           </div>
-          <HeaderButton className="close-btn" onClick={closePanel} title={$_('header.close')}>
+          <HeaderButton className="close-btn" onClick={closePanel} title={$_('assistant.header.close.tooltip')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1154,14 +1150,14 @@
       {#if showSettings}
         <div class="settings-panel">
           <div class="settings-header">
-            <button class="settings-back" onclick={closeSettings} aria-label={$_('settings.back.aria')}>
-              {$_('settings.back')}
+            <button class="settings-back" onclick={closeSettings} aria-label={$_('assistant.settings.back.aria')}>
+              {$_('assistant.settings.back')}
             </button>
-            <div class="settings-title">{$_('settings.title')}</div>
+            <div class="settings-title">{$_('assistant.settings.title')}</div>
           </div>
 
           {#if isLoadingSettings}
-            <div class="settings-loading">{$_('settings.loading')}</div>
+            <div class="settings-loading">{$_('assistant.settings.loading')}</div>
           {/if}
 
           {#if settingsError}
@@ -1170,7 +1166,7 @@
 
           <div class="settings-fields">
             <label class="settings-field">
-              <span>{$_('settings.corePromptSlug')}</span>
+              <span>{$_('assistant.settings.corePromptSlug')}</span>
               <input
                 type="text"
                 bind:value={promptSlugs.corePromptSlug}
@@ -1184,20 +1180,20 @@
                 bind:checked={promptSlugs.labs}
                 disabled={isLoadingSettings}
               />
-              <span>{$_('settings.labs')}</span>
+              <span>{$_('assistant.settings.labs')}</span>
             </label>
           </div>
 
           <div class="settings-actions">
             <button class="settings-save" onclick={saveSettings} disabled={isLoadingSettings}>
-              {$_('settings.save')}
+              {$_('assistant.settings.save')}
             </button>
             <button class="settings-reset" onclick={resetSettings} disabled={isLoadingSettings}>
-              {$_('settings.reset')}
+              {$_('assistant.settings.reset')}
             </button>
           </div>
 
-          <p class="settings-note">{$_('settings.note')}</p>
+          <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
       {:else}
       <!-- Message List -->
@@ -1210,7 +1206,7 @@
         ontouchmove={handleTouchMove}
         onclick={handleMessageLinkClick}
         role="log"
-        aria-label={$_('messages.aria')}
+        aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
@@ -1220,8 +1216,8 @@
             </div>
             <div class="message-meta">
               {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
-                  {$_('messages.retry')}
+                <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
+                  {$_('assistant.messages.retry')}
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
@@ -1231,7 +1227,7 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_UP}
                       onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('messages.like')}
+                      aria-label={$_('assistant.feedback.positive')}
                     >
                       {@html THUMBUP}
                     </button>
@@ -1239,13 +1235,13 @@
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_DOWN}
                       onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('messages.dislike')}
+                      aria-label={$_('assistant.feedback.negative')}
                     >
                       {@html THUMBDOWN}
                     </button>
                   </div>
                   {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('messages.feedbackThanks')}</p>
+                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
                   {/if}
                 </div>
               {/if}
@@ -1256,7 +1252,7 @@
         {#if isLoadingHistory}
           <div class="loading-indicator">
             <div class="loading-spinner"></div>
-            <span>{$_('messages.loadingHistory')}</span>
+            <span>{$_('assistant.messages.loadingHistory')}</span>
           </div>
         {/if}
 
@@ -1296,8 +1292,8 @@
               </div>
               <div class="message-meta">
                 {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" aria-label={$_('messages.retry')} onclick={() => retryMessage(item.messageId)}>
-                    {$_('messages.retry')}
+                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
+                    {$_('assistant.messages.retry')}
                   </button>
                 {/if}
               </div>
@@ -1323,7 +1319,7 @@
                   <span class="lc-loading-spinner" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
                   </span>
-                  <span class="lc-thinking-label">{$_('status.thinking')}</span>
+                  <span class="lc-thinking-label">{$_('assistant.status.thinking')}</span>
                 </div>
               {/if}
             </div>
@@ -1334,10 +1330,10 @@
           <div class="message assistant limit-message">
             <div class="message-content">
               <p>
-                {$_('limit.reached')}
+                {$_('assistant.limit.reached')}
               </p>
               <p>
-                 <button aria-label={$_('limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('limit.startNew')}</button>
+                 <button aria-label={$_('assistant.limit.maxTurnsRestart.aria')} type="button" class="link-like" onclick={handleRestartConvo}>{$_('assistant.limit.startNew')}</button>
               </p>
             </div>
           </div>
@@ -1351,8 +1347,8 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('input.placeholder')}
-          aria-label={$_('input.aria')}
+          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          aria-label={$_('assistant.input.aria')}
           rows="1"
           disabled={isSending || limitReached}
         ></textarea>
@@ -1360,7 +1356,7 @@
           class="send-btn"
           onclick={handleSend}
           disabled={!inputText.trim() || isSending || limitReached}
-          aria-label={$_('input.send.aria')}
+          aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -1376,18 +1372,18 @@
         <div class="feedback-modal-overlay" onclick={closeFeedbackModal} onkeydown={(e) => e.key === 'Escape' && closeFeedbackModal()}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">{$_('feedback.modal.title')}</h3>
-            <p class="feedback-modal-subtitle">{$_('feedback.modal.subtitle')}</p>
+            <h3 class="feedback-modal-title">{$_('assistant.feedback.modal.title')}</h3>
+            <p class="feedback-modal-subtitle">{$_('assistant.feedback.modal.subtitle')}</p>
             {#if feedbackType === FEEDBACK_DOWN}
               <div class="feedback-modal-field">
-                <label for="select" class="feedback-modal-select-label">{$_('feedback.modal.issueLabel')}</label>
+                <label for="select" class="feedback-modal-select-label">{$_('assistant.feedback.modal.issueLabel')}</label>
                 <select
                   id="select"
                   class="feedback-modal-select"
                   class:is-placeholder={!feedbackReason}
                   bind:value={feedbackReason}
                 >
-                  <option value="" disabled>{$_('feedback.modal.selectIssue')}</option>
+                  <option value="" disabled>{$_('assistant.feedback.modal.selectIssue')}</option>
                   {#each DISLIKE_REASONS as issue}
                     <option value={issue.value}>{issue.label}</option>
                   {/each}
@@ -1397,7 +1393,7 @@
             <textarea
               class="feedback-modal-input"
               bind:value={feedbackComment}
-              placeholder={feedbackType === FEEDBACK_DOWN ? $_('feedback.modal.placeholder.detailed') : $_('feedback.modal.placeholder.optional')}
+              placeholder={feedbackType === FEEDBACK_DOWN ? $_('assistant.feedback.modal.placeholder.detailed') : $_('assistant.feedback.modal.placeholder.optional')}
             />
             <div class="feedback-modal-actions">
               <button
@@ -1405,10 +1401,10 @@
                 onclick={() => submitFeedback(true)}
                 disabled={feedbackType === FEEDBACK_DOWN && !feedbackReason}
               >
-                {$_('feedback.modal.submit')}
+                {$_('assistant.feedback.modal.submit')}
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
-                {$_('feedback.modal.skip')}
+                {$_('assistant.feedback.modal.skip')}
               </button>
             </div>
           </div>
@@ -1443,6 +1439,7 @@
 
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
+    --brand-sefaria-blue: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
@@ -1501,6 +1498,12 @@
     bottom: 24px;
     inset-inline-end: 24px;
     z-index: 9999;
+    direction: ltr;
+  }
+
+  .lc-chatbot-container.interface-hebrew {
+    direction: rtl;
+    font-family: Heebo;
   }
 
   .lc-chatbot-container.mode-docked.is-open {
@@ -1547,7 +1550,7 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: 9999px;
@@ -1649,11 +1652,18 @@
     gap: 6px;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
-    font-weight: 600;
-    color: var(--lc-text);
     margin: 0;
     line-height: 1.1;
+    color: var(--brand-sefaria-blue);
+    font-family: Roboto;
+    font-style: normal;
+    font-weight: 600;
   }
+
+  .interface-hebrew .lc-chatbot-header h2 {
+    line-height: normal;
+  }
+
 
   .lc-chatbot-header h2 img {
     display: block;
@@ -1673,7 +1683,6 @@
   .menu-dropdown {
     position: absolute;
     top: 100%;
-    right: 0;
     margin-top: 4px;
     min-width: 200px;
     background: var(--lc-bg);
@@ -1683,6 +1692,14 @@
     z-index: 100;
     overflow: hidden;
   }
+
+  .menu-dropdown {
+      right: auto;
+      left: auto;
+      inset-inline-start: auto;
+      inset-inline-end: 0;
+    }
+  
 
   .menu-item {
     display: flex;
@@ -1765,6 +1782,8 @@
   .message.user {
     max-width: 85%;
     align-self: flex-end;
+    background-color: #0056B3;
+    border-radius: 0 16px 16px 16px;
   }
 
   .message.assistant {
@@ -1783,11 +1802,17 @@
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
   }
-  .empty-state .message.assistant .message-content :global(ul) {
+
+  .message.assistant .message-content :global(ul),
+  .message.assistant .message-content :global(ol) {
     padding-inline-start: 20px;
   }
-  .empty-state .message.assistant .message-content :global(ul li) {
+
+  .message.assistant .message-content :global(li) {
     margin-bottom: 5px;
+  }
+  .interface-hebrew .message.assistant .message-content :global(li) {
+    margin-bottom: 10px;
   }
 
   .message-content {
@@ -1796,10 +1821,8 @@
 
   .message.user .message-content {
     padding: 12px 16px;
-    border-radius: var(--lc-radius);
     font-size: var(--lc-font-size);
     word-wrap: break-word;
-    background: var(--lc-user-bg);
     color: var(--lc-user-text);
     border-bottom-right-radius: 4px;
   }
@@ -1845,7 +1868,7 @@
   }
 
   .message-status.sending {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .retry-btn {
@@ -1886,7 +1909,12 @@
     min-width: 200px;
     padding: 12px 16px !important;
     margin-bottom: 8px;
-}
+    direction: ltr;
+  }
+
+  .message.assistant:has(.thinking-content) {
+     align-self: revert;
+  }
 
   .status-text {
     display: flex;
@@ -1897,7 +1925,7 @@
   }
 
   .status-text.tool-running {
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
   }
 
   .status-text.tool-error {
@@ -1967,7 +1995,7 @@
     width: 16px;
     height: 16px;
     border: 2px solid var(--lc-border);
-    border-top-color: var(--lc-primary);
+    border-top-color: var(--brand-sefaria-blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -2002,7 +2030,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -2020,7 +2048,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -2035,6 +2063,14 @@
   .send-btn:disabled {
     background: var(--lc-disabled-button);
     cursor: not-allowed;
+  }
+
+  .interface-hebrew .send-btn svg {
+    transform: scaleX(-1);
+  }
+
+  .interface-hebrew .panel-close-icon {
+    transform: scaleX(-1);
   }
 
   .send-btn:active:not(:disabled) {
@@ -2067,7 +2103,7 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--lc-primary);
+    color: var(--brand-sefaria-blue);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -2151,7 +2187,7 @@
   }
 
   .settings-save {
-    background: var(--lc-primary);
+    background: var(--brand-sefaria-blue);
     color: white;
     border-color: transparent;
   }
@@ -2231,9 +2267,13 @@ inset: 8px;
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    font-style: italic;
     color: var(--lc-sefaria-blue);
     margin: 0 0 16px 0;
+  }
+
+  .interface-hebrew .feedback-modal-subtitle {
+    font-size: var(--lc-font-size-sm);
+    font-weight: 400px;
   }
 
   .feedback-modal-field {
@@ -2273,21 +2313,18 @@ inset: 8px;
     background-image: url("data:image/svg+xml,...");
     background-repeat: no-repeat;
     background-position: right 12px center;
-    padding-right: 36px;
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-select.is-placeholder {
     color: var(--lc-disabled-text);
   }
 
-
-
   .feedback-modal-input:focus {
-    border-color: var(--lc-primary);
+    border-color: var(--brand-sefaria-blue);
   }
 
   .feedback-modal-input::placeholder {
@@ -2349,35 +2386,60 @@ inset: 8px;
   .message-content :global(.response-title) {
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
+    color: var(--brand-sefaria-blue);
+    font-style: normal;
+    line-height: normal;
+  }
+  .interface-hebrew .message-content :global(.response-title) {
+    font-weight: 700;
   }
 
   .message-content :global(.response-generic) {
-    line-height: 21px;
+    color: var(--brand-sefaria-blue);
+    font-size: var(--lc-font-size);
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-section) {
-    font-weight: 600;
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-size: var(--lc-font-size);
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-list) {
-    line-height: 20px;
+    color: var(--brand-sefaria-blue);
+    font-size: var(--lc-font-size);
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
   }
 
   .message-content :global(.response-link) {
     width: 239px;
-    line-height: 21px;
     text-decoration-line: underline;
     text-decoration-style: solid;
     text-decoration-skip-ink: none;
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
+    color: var(--brand-sefaria-blue);
+    font-size: var(--lc-font-size);
+    font-style: normal;
+    font-weight: 700;
+    line-height: normal;
   }
 
   .message-content :global(.response-signoff) {
     font-style: italic;
     line-height: 21px;
+  }
+
+  .interface-hebrew .message-content :global(.response-signoff) {
+    font-style: normal;
   }
 
   .message-content :global(.response-quote) {

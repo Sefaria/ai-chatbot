@@ -37,19 +37,26 @@ class TestSefariaClientInit:
     """Test SefariaClient initialization."""
 
     def test_default_base_url(self):
-        client = SefariaClient()
-        assert client.base_url == DEFAULT_SEFARIA_BASE_URL
         with patch.dict(
             os.environ,
             {
                 "SEFARIA_API_BASE_URL": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST": "",
-                "VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT": "",
-                "SEFARIA_AI_BASE_URL": "",
             },
         ):
             client = SefariaClient()
         assert client.base_url == "https://www.sefaria.org"
+        assert client.base_url == DEFAULT_SEFARIA_BASE_URL
+
+    def test_env_base_url(self):
+        with patch.dict(
+            os.environ,
+            {
+                "SEFARIA_API_BASE_URL": "https://www.personalization.cauldron.sefaria.org",
+            },
+        ):
+            client = SefariaClient()
+
+        assert client.base_url == "https://www.personalization.cauldron.sefaria.org"
 
     def test_custom_base_url(self):
         client = SefariaClient(base_url="https://custom.sefaria.org/")
@@ -65,61 +72,11 @@ class TestSefariaClientInit:
 
 
 class TestGetTextVersionLanguage:
-    """Test get_text version_language parameter handling."""
+    """Test get_text parameter handling."""
 
     @pytest.mark.asyncio
-    async def test_version_language_both_uses_multiple_params(self, client, mock_http_client):
-        """When version_language='both', should send version=english&version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="both")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            # The URL should have version=english&version=source, not version=english|source
-            assert "version=english" in url, f"URL should contain 'version=english', got: {url}"
-            assert "version=source" in url, f"URL should contain 'version=source', got: {url}"
-            assert "english|source" not in url, (
-                f"URL should NOT contain 'english|source', got: {url}"
-            )
-
-    @pytest.mark.asyncio
-    async def test_version_language_english_uses_single_param(self, client, mock_http_client):
-        """When version_language='english', should send version=english."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="english")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=english" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_source_uses_single_param(self, client, mock_http_client):
-        """When version_language='source', should send version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="source")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=source" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_none_omits_param(self, client, mock_http_client):
-        """When version_language is None, should not include version param."""
+    async def test_omits_version_param(self, client, mock_http_client):
+        """get_text should not include a version param in the URL."""
         mock_http_client.get.return_value.json = AsyncMock(
             return_value={"versions": [], "available_versions": []}
         )
@@ -264,7 +221,7 @@ class TestOptimizeTextResponse:
 
         assert "ref" in result
         assert "versions" in result
-        assert "available_versions" in result
+        assert "available_versions" not in result
         assert "extra_field" not in result
         assert "another_extra" not in result
 
@@ -657,7 +614,7 @@ class TestCreateSourceSheet:
                     ],
                 )
 
-        mock_get_text.assert_awaited_once_with("Genesis 3:1", "both")
+        mock_get_text.assert_awaited_once_with("Genesis 3:1")
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert call_args.args[0] == f"{client.base_url}/api/sheets/"
@@ -678,7 +635,7 @@ class TestCreateSourceSheet:
         assert posted_payload["nextNode"] == 4
 
         assert result["id"] == 715437
-        assert result["sheetUrl"] == f"{DEFAULT_SEFARIA_BASE_URL}/sheets/715437"
+        assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
 

@@ -42,6 +42,7 @@ class MessageContext:
     labs: bool = False
     user_id: str | None = None
     encrypted_user_token: str | None = None
+    turn_number: int | None = None
 
 
 @dataclass

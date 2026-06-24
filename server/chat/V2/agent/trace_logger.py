@@ -34,6 +34,8 @@ class BraintrustTraceLogger:
             span_metadata["is_staff"] = True
         if context.user_id:
             span_metadata["user_id"] = context.user_id
+        if context.turn_number is not None:
+            span_metadata["turn_number"] = context.turn_number
 
         # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
         # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.

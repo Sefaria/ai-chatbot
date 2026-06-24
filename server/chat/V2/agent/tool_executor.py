@@ -59,9 +59,7 @@ class SefariaToolExecutor:
         """Route a tool call to the corresponding SefariaClient method."""
 
         if tool_name == "get_text":
-            return await self.client.get_text(
-                input_data["reference"], input_data.get("version_language")
-            )
+            return await self.client.get_text(input_data["reference"])
 
         elif tool_name == "text_search":
             return await self.client.text_search(

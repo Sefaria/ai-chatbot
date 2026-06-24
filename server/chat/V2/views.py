@@ -385,6 +385,7 @@ def chat_stream_v2(request):
         labs=labs_enabled,
         user_id=actor.user_id,
         encrypted_user_token=actor.encrypted_token,
+        turn_number=_compute_turn_count(data["sessionId"]) + 1,
     )
 
     def generate_sse():

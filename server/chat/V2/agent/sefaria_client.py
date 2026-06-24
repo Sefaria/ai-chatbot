@@ -31,13 +31,12 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 # Base URL configuration — supports both public Sefaria and local k8s service
 # ---------------------------------------------------------------------------
 
-DEFAULT_SEFARIA_BASE_URL = os.environ.get(
-    "SEFARIA_API_BASE_URL", "https://www.personalization.cauldron.sefaria.org"
-)
+
+DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
 
 def _get_default_sefaria_base_url() -> str:
-    return os.environ.get("SEFARIA_API_BASE_URL") or "https://www.sefaria.org"
+    return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
 
 
 def _get_default_sefaria_ai_base_url() -> str:
@@ -173,19 +172,11 @@ class SefariaClient:
         self._client_loop = loop
         return self._client
 
-    async def get_text(self, reference: str, version_language: str | None = None) -> dict[str, Any]:
+    async def get_text(self, reference: str) -> dict[str, Any]:
         """Retrieve text content from a specific reference."""
         encoded_ref = quote(reference)
-        params = {}
 
-        if version_language == "source":
-            params["version"] = "source"
-        elif version_language == "english":
-            params["version"] = "english"
-        elif version_language == "both":
-            params["version"] = ["english", "source"]
-
-        data = await self._get_json(f"api/v3/texts/{encoded_ref}", params)
+        data = await self._get_json(f"api/v3/texts/{encoded_ref}", {})
         return self._optimize_text_response(data)
 
     async def text_search(
@@ -637,14 +628,10 @@ class SefariaClient:
         essential_fields = {
             "ref",
             "versions",
-            "available_versions",
-            "requestedRef",
             "spanningRefs",
-            "textType",
             "sectionRef",
             "he",
             "text",
-            "primary_title",
         }
 
         optimized = {k: v for k, v in data.items() if k in essential_fields}
@@ -658,15 +645,6 @@ class SefariaClient:
                     "versionSource": v.get("versionSource", ""),
                 }
                 for v in optimized["versions"]
-            ]
-
-        if isinstance(optimized.get("available_versions"), list):
-            optimized["available_versions"] = [
-                {
-                    "versionTitle": v.get("versionTitle", ""),
-                    "languageFamilyName": v.get("languageFamilyName", ""),
-                }
-                for v in optimized["available_versions"]
             ]
 
         return optimized
@@ -798,7 +776,7 @@ class SefariaClient:
         """Build an absolute source sheet URL when a numeric sheet id is available."""
         if sheet_id is None:
             return ""
-        return f"{DEFAULT_SEFARIA_BASE_URL}/sheets/{sheet_id}"
+        return f"{self.base_url}/sheets/{sheet_id}"
 
     async def _hydrate_source_sheet_sources(
         self, sources: list[dict[str, Any]]
@@ -812,7 +790,7 @@ class SefariaClient:
             return normalized_sources
 
         ref_payloads = await asyncio.gather(
-            *[self.get_text(normalized_sources[index]["ref"], "both") for index in ref_indices]
+            *[self.get_text(normalized_sources[index]["ref"]) for index in ref_indices]
         )
 
         for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
