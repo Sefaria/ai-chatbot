@@ -333,6 +333,9 @@ def chat_stream_v2(request):
                 )
                 try:
                     progress_queue.put(update, timeout=0.5)
+                    # User-perceived latency: request receipt → appetizer served.
+                    # Seconds, one decimal. Only set when actually served.
+                    appetizer_metrics["time_to_appetizer"] = round(time.time() - start_time, 1)
                 except queue.Full:
                     pass
         except Exception:
@@ -340,14 +343,14 @@ def chat_stream_v2(request):
             appetizer_metrics["error"] = True
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
-    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    appetizer_executor.submit(run_appetizer)
-
     is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
     labs_enabled = context.get("labs", prompt_slugs.get("labs", False))
+
+    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    appetizer_executor.submit(run_appetizer)
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
@@ -607,10 +610,14 @@ def chat_stream_v2(request):
                 try:
                     bt_logger = _get_bt_logger()
                     if bt_logger:
-                        bt_logger.update_span(
-                            id=agent_response.trace_id,
-                            metadata={"appetizer": appetizer_metrics},
-                        )
+                        span_kwargs = {"metadata": {"appetizer": appetizer_metrics}}
+                        # Emit time_to_appetizer as an aggregatable numeric metric
+                        # (avg/percentiles in Braintrust), not just a metadata blob.
+                        if "time_to_appetizer" in appetizer_metrics:
+                            span_kwargs["metrics"] = {
+                                "time_to_appetizer": appetizer_metrics["time_to_appetizer"]
+                            }
+                        bt_logger.update_span(id=agent_response.trace_id, **span_kwargs)
                 except Exception:
                     logger.debug("Could not attach appetizer metrics to trace")
 

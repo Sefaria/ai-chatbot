@@ -1052,3 +1052,98 @@ class TestChatClientEventV2:
 
         assert response.status_code == 400
         assert response.data["error"] == "Invalid request"
+
+
+@pytest.mark.django_db
+class TestAppetizerTimeMetric:
+    """time_to_appetizer is emitted as a numeric Braintrust metric."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def mock_agent(self):
+        mock = MagicMock()
+        mock.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="Response",
+                tool_calls=[],
+                latency_ms=42,
+                trace_id="trace_appetizer",
+            )
+        )
+        return mock
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    @patch("chat.V2.appetizer.appetizer_service.get_appetizer_service")
+    @patch("chat.V2.views.concurrent.futures.ThreadPoolExecutor")
+    @patch("chat.V2.views.get_agent_service")
+    def test_time_to_appetizer_emitted_as_metric(
+        self,
+        mock_get_agent,
+        mock_executor_cls,
+        mock_get_appetizer,
+        mock_bt_logger,
+        client,
+        secret,
+        mock_agent,
+    ):
+        """When an appetizer is served, update_span receives a numeric
+        metrics.time_to_appetizer (seconds, 1 decimal) — not just metadata."""
+        from chat.V2.appetizer.appetizer_service import AppetizerResult, TopicInfo
+
+        mock_get_agent.return_value = mock_agent
+
+        # Run the appetizer thread inline so the metric is deterministic (no race).
+        class _SyncExecutor:
+            def __init__(self, *a, **k):
+                pass
+
+            def submit(self, fn, *a, **k):
+                fn(*a, **k)
+
+            def shutdown(self, *a, **k):
+                pass
+
+        mock_executor_cls.side_effect = lambda *a, **k: _SyncExecutor()
+
+        appetizer_service = MagicMock()
+        appetizer_service.find_appetizer = AsyncMock(
+            return_value=AppetizerResult(
+                topics=[TopicInfo("shabbat", "Shabbat", "https://www.sefaria.org/topics/shabbat")],
+                metrics={"total_ms": 120},
+            )
+        )
+        mock_get_appetizer.return_value = appetizer_service
+
+        bt_logger = MagicMock()
+        mock_bt_logger.return_value = bt_logger
+
+        request_data = {
+            "userId": create_test_token("user_appetizer", secret),
+            "sessionId": "sess_appetizer",
+            "messageId": "msg_appetizer",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Tell me about Shabbat",
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+        assert response.status_code == 200
+        list(response.streaming_content)
+
+        # Find the update_span call that carried appetizer metrics.
+        metric_calls = [c for c in bt_logger.update_span.call_args_list if "metrics" in c.kwargs]
+        assert metric_calls, "expected update_span to be called with metrics"
+        metrics = metric_calls[0].kwargs["metrics"]
+        assert "time_to_appetizer" in metrics
+        ttf = metrics["time_to_appetizer"]
+        assert isinstance(ttf, float)
+        assert ttf >= 0.0
+        # One-decimal rounding.
+        assert round(ttf, 1) == ttf
