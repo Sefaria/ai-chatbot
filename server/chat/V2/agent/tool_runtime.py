@@ -9,7 +9,7 @@ from typing import Any
 
 from .contracts import AgentProgressUpdate, MessageContext
 from .helpers import truncate
-from .tool_executor import SefariaToolExecutor, describe_tool_call
+from .tool_executor import SefariaToolExecutor, describe_tool_call, resolve_tool_ref
 
 
 class ToolRuntime:
@@ -44,6 +44,7 @@ class ToolRuntime:
             async def handler(args: dict[str, Any]) -> dict[str, Any]:
                 tool_input = args or {}
                 tool_desc = describe_tool_call(tool_name, tool_input)
+                ref_data = await resolve_tool_ref(self.tool_executor.client, tool_name, tool_input)
 
                 emit(
                     AgentProgressUpdate(
@@ -51,6 +52,7 @@ class ToolRuntime:
                         tool_name=tool_name,
                         tool_input=tool_input,
                         description=tool_desc,
+                        ref_data=ref_data,
                     )
                 )
 

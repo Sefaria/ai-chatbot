@@ -19,6 +19,7 @@ class AgentProgressUpdate:
     is_error: bool | None = None
     output_preview: str | None = None
     appetizer_data: dict | None = None  # {topicSlug, topicTitle, topicUrl}
+    ref_data: dict | None = None  # {is_ref, url_ref, en, he} for ref-bearing tools
 
 
 @dataclass

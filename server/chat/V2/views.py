@@ -300,7 +300,12 @@ def chat_stream_v2(request):
 
             appetizer_service = get_appetizer_service()
 
-            result = asyncio.run(appetizer_service.find_appetizer(data["text"]))
+            result = asyncio.run(
+                appetizer_service.find_appetizer(
+                    data["text"],
+                    interface_lang=context.get("locale", ""),
+                )
+            )
             logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
 
             appetizer_metrics["suppressed"] = False
@@ -538,6 +543,8 @@ def chat_stream_v2(request):
                         event_data["outputPreview"] = update.output_preview
                     if update.appetizer_data:
                         event_data["appetizerData"] = update.appetizer_data
+                    if update.ref_data:
+                        event_data["refData"] = update.ref_data
 
                     _mark_turn_heartbeat(user_message.id)
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"

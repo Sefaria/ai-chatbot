@@ -232,6 +232,44 @@ async def test_returns_none_when_llm_returns_empty():
 
 
 @pytest.mark.asyncio
+async def test_hebrew_interface_lang_returns_hebrew_title():
+    """When interface_lang='he', TopicInfo.topic_title must be the Hebrew title."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    # Sefaria name API returns both English and Hebrew title fields
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Shabbat", "he": "שַׁבָּת", "slug": "shabbat"}
+    ]
+
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = ["Shabbat"]
+        result = await service.find_appetizer("מה זה שבת?", interface_lang="he")
+
+    assert result is not None
+    assert result.topics[0].topic_slug == "shabbat"
+    assert result.topics[0].topic_title == "שַׁבָּת"
+
+
+@pytest.mark.asyncio
+async def test_english_interface_lang_returns_english_title():
+    """Default (no lang or lang='en') keeps English title."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Shabbat", "he": "שַׁבָּת", "slug": "shabbat"}
+    ]
+
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = ["Shabbat"]
+        result = await service.find_appetizer("tell me about shabbat")
+
+    assert result is not None
+    assert result.topics[0].topic_title == "Shabbat"
+
+
+@pytest.mark.asyncio
 async def test_returns_none_on_timeout():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()

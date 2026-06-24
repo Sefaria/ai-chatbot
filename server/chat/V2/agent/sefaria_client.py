@@ -63,6 +63,63 @@ LEXICON_MAP = {
 
 LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 
+# Upper bound on the per-instance ref-resolution cache. Once this many distinct
+# refs are cached, new refs are still resolved but no longer stored, so the cache
+# of a long-lived client cannot grow without bound.
+REF_CACHE_MAX_SIZE = 512
+
+# ---------------------------------------------------------------------------
+# Ref fallback helpers — construct a usable ref dict from a tref string when
+# the /api/ref endpoint is unavailable (e.g. not yet deployed to production).
+# ---------------------------------------------------------------------------
+
+_REF_SECTION_RE = re.compile(r"^(.+?)[\s.](\d[\w:.\-–]*)$")
+_REF_DOTTED_RE = re.compile(r"^(.+?)\.(\d[\w.\-–]*)$")
+
+
+def _fallback_ref_to_url(tref: str) -> str | None:
+    """Convert a tref to its URL-safe dotted form, or None if not recognisable."""
+    m = _REF_SECTION_RE.match(tref)
+    if not m:
+        return None
+    book = re.sub(r"\s+", "_", m.group(1).strip())
+    section = m.group(2).replace(":", ".")
+    return f"{book}.{section}"
+
+
+def _fallback_ref_label(tref: str) -> str:
+    """Prettify a dotted API-form ref to a display label.
+
+    "Genesis.1.1"       → "Genesis 1:1"
+    "Mishnah_Shabbat.7" → "Mishnah Shabbat 7"
+    "Genesis 1:1"       → "Genesis 1:1"  (already human-readable)
+    """
+    if re.search(r"\s", tref):
+        return tref
+    m = _REF_DOTTED_RE.match(tref)
+    if not m:
+        return tref
+    book = m.group(1).replace("_", " ")
+    section = m.group(2).replace(".", ":")
+    return f"{book} {section}"
+
+
+def _fallback_ref(tref: str) -> dict | None:
+    """Build a minimal ref dict from a tref without hitting the API.
+
+    Returns {is_ref, url_ref, en, he} when the tref looks like a valid ref,
+    or None when it cannot be parsed as one.
+    """
+    url_ref = _fallback_ref_to_url(tref)
+    if not url_ref:
+        return None
+    return {
+        "is_ref": True,
+        "url_ref": url_ref,
+        "en": _fallback_ref_label(tref),
+        "he": "",
+    }
+
 
 class SefariaClient:
     """Async HTTP client for the Sefaria REST API.
@@ -82,6 +139,7 @@ class SefariaClient:
         self._client_loop: asyncio.AbstractEventLoop | None = None
         self._user_id: str | None = None
         self._session_token: str | None = None
+        self._ref_cache: dict[str, dict | None] = {}
 
     def set_user_session(self, user_id: str | None, session_token: str | None) -> None:
         """Store per-request auth context for endpoints that require user session access."""
@@ -455,6 +513,46 @@ class SefariaClient:
             },
         )
         return self._optimize_source_sheet_response(data)
+
+    async def resolve_ref(self, tref: str) -> dict | None:
+        """Resolve a tref into {is_ref, url_ref, en, he}, or None.
+
+        First attempts /api/ref/<tref>; if that call fails or the endpoint is
+        unavailable (e.g. not yet deployed), falls back to constructing a ref
+        dict locally via _fallback_ref so trail links still render today.
+
+        Results (including negatives) are cached per instance to avoid
+        redundant lookups of repeated refs within a turn.
+        """
+        if not tref:
+            return None
+        if tref in self._ref_cache:
+            return self._ref_cache[tref]
+        api_result = await self._fetch_ref(tref)
+        result = api_result if api_result is not None else _fallback_ref(tref)
+        if len(self._ref_cache) >= REF_CACHE_MAX_SIZE:
+            # Cache is full — evict the oldest entry (FIFO) so long conversations
+            # keep caching recent refs instead of freezing at the first N.
+            oldest_tref = next(iter(self._ref_cache))
+            del self._ref_cache[oldest_tref]
+        self._ref_cache[tref] = result
+        return result
+
+    async def _fetch_ref(self, tref: str) -> dict | None:
+        """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None."""
+        encoded_ref = quote(tref)
+        try:
+            data = await self._get_json(f"api/ref/{encoded_ref}")
+        except (httpx.HTTPError, ValueError):
+            return None
+        if not isinstance(data, dict) or not data.get("is_ref"):
+            return None
+        return {
+            "is_ref": True,
+            "url_ref": data.get("url_ref", ""),
+            "en": data.get("normalized", ""),
+            "he": data.get("hebrew", ""),
+        }
 
     # -------------------------------------------------------------------
     # Low-level HTTP helpers
