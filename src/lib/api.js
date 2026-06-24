@@ -91,8 +91,7 @@ async function reportClientStreamEvent(
     event,
     error = '',
     context,
-    timestamp = new Date().toISOString(),
-    metadata = {}
+    timestamp = new Date().toISOString()
   }
 ) {
   try {
@@ -108,8 +107,7 @@ async function reportClientStreamEvent(
         timestamp,
         event,
         error,
-        context,
-        ...metadata
+        context
       })
     });
   } catch {
@@ -255,7 +253,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
- * @param {{signal?: AbortSignal, getProgress?: () => object|null}} [options] - Optional request options. signal aborts the stream; getProgress returns the current progress state for cancel telemetry
+ * @param {{signal?: AbortSignal}} [options] - Optional request options. signal aborts the stream.
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -270,24 +268,8 @@ export async function sendMessageStream(
   requestMetadata = null,
   options = {}
 ) {
-  const { signal = null, getProgress = null } = options;
+  const { signal = null } = options;
 
-  function reportCancelled() {
-    const progress = getProgress?.();
-    reportClientStreamEvent(apiBaseUrl, {
-      userId,
-      sessionId,
-      messageId,
-      event: 'stream_cancelled',
-      context,
-      timestamp,
-      metadata: {
-        elapsed_ms: Date.now() - new Date(timestamp).getTime(),
-        last_progress_type: progress?.type ?? null,
-        last_tool_name: progress?.toolName ?? null
-      }
-    });
-  }
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
@@ -321,7 +303,7 @@ export async function sendMessageStream(
       signal
     });
   } catch (error) {
-    if (error?.name === 'AbortError') { reportCancelled(); throw error; }
+    if (error?.name === 'AbortError') throw error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
       sessionId,
@@ -443,7 +425,7 @@ export async function sendMessageStream(
       }
     }
   } catch (error) {
-    if (error?.name === 'AbortError') { reportCancelled(); throw error; }
+    if (error?.name === 'AbortError') throw error;
     streamReadError = error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
