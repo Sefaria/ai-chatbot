@@ -578,7 +578,12 @@
       toolHistory = [];
       streamAbortController = null;
       if (stoppedByUser) {
-        try { await tick(); inputRef?.focus(); } catch {}
+        inputText = text;
+        try {
+          await tick();
+          inputRef?.focus();
+          inputRef?.setSelectionRange(text.length, text.length);
+        } catch {}
       }
     }
   }
