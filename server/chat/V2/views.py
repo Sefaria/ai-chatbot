@@ -343,14 +343,14 @@ def chat_stream_v2(request):
             appetizer_metrics["error"] = True
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
-    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    appetizer_executor.submit(run_appetizer)
-
     is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
     labs_enabled = context.get("labs", prompt_slugs.get("labs", False))
+
+    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    appetizer_executor.submit(run_appetizer)
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
