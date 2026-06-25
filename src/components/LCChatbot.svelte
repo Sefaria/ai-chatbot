@@ -1792,6 +1792,13 @@
     align-self: flex-start;
   }
 
+  /* While streaming, the topics box fills the full content width (Figma spec):
+     stretch the loading-state assistant message so the box isn't shrink-wrapped.
+     Chat bubbles are unaffected — they cap via .message-content's max-width. */
+  .message.assistant:has(.lc-loading-wrapper) {
+    align-self: stretch;
+  }
+
   /* Response package: stacks topics accordion → thought accordion → answer bubble
      with 16px gap between each layer, matching the Figma "Final Response Ready" spec. */
   .lc-response-package {
@@ -1980,7 +1987,7 @@
   .lc-loading-wrapper {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: var(--spacing-spacing-large, 16px);
   }
 

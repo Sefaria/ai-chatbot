@@ -90,7 +90,6 @@
     border-inline-start: 2px solid var(--semantic-action-primary);
     background: var(--core-blue-tbr-100);
     width: 100%;
-    max-width: 560px;
     box-sizing: border-box;
     overflow: hidden;
   }
