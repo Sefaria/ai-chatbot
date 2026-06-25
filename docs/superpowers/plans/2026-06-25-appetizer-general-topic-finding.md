@@ -1,6 +1,6 @@
 # General Grounded Topic-Finding Appetizer — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the overfit parsha/daf-yomi intent gates in the appetizer with one general pipeline: calendar context → single structured LLM extraction → grounding-confidence gate.
 
@@ -27,7 +27,7 @@
 **Interfaces:**
 - Produces: `render_calendar_context(calendar: dict) -> str` — returns an XML-tagged block of `field: value` lines, or `"<calendar_context>unavailable</calendar_context>"` when no known items are present.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # server/chat/V2/appetizer/test_calendar_context.py
@@ -65,12 +65,12 @@ def test_render_unavailable_when_no_known_items():
     )
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_calendar_context.py -v`
 Expected: FAIL with `ModuleNotFoundError`/`ImportError` for `calendar_context`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # server/chat/V2/appetizer/calendar_context.py
@@ -124,12 +124,12 @@ def render_calendar_context(calendar: dict) -> str:
     return f"<calendar_context>\n{body}\n</calendar_context>"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_calendar_context.py -v`
 Expected: PASS (2 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/calendar_context.py server/chat/V2/appetizer/test_calendar_context.py
@@ -148,7 +148,7 @@ git commit -m "feat(appetizer): render calendar context block for topic extracti
 - Consumes: `render_calendar_context` (Task 1), `SefariaClient.get_current_calendar()`.
 - Produces: `AppetizerService._get_calendar_context() -> str` — daily-cached; never raises (returns the `unavailable` block on error).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # Append to test_appetizer_service.py
@@ -180,12 +180,12 @@ async def test_calendar_context_unavailable_on_error():
     assert result == "<calendar_context>unavailable</calendar_context>"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py::test_calendar_context_cached_per_day -v`
 Expected: FAIL with `AttributeError: ... '_get_calendar_context'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `appetizer_service.py`, add to the imports near the top:
 
@@ -223,12 +223,12 @@ Add the method to `AppetizerService`:
         return rendered
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py::test_calendar_context_cached_per_day chat/V2/appetizer/test_appetizer_service.py::test_calendar_context_unavailable_on_error -v`
 Expected: PASS (2 passed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/appetizer_service.py server/chat/V2/appetizer/test_appetizer_service.py
@@ -249,7 +249,7 @@ git commit -m "feat(appetizer): daily-cached calendar context on the service"
   - `@dataclass Candidate` with `label: str`, `kind: str`, `confidence_level: str`.
   - `AppetizerService._extract_candidates_via_llm(user_message: str, calendar_context: str) -> list[Candidate]` (≤ 3; empty list = NONE).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # Append to test_appetizer_service.py
@@ -305,12 +305,12 @@ async def test_extract_returns_empty_on_exception():
     assert result == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py::test_extract_parses_candidates -v`
 Expected: FAIL with `ImportError: cannot import name 'Candidate'`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `appetizer_service.py`, add the dataclass next to `TopicInfo`:
 
@@ -443,12 +443,12 @@ Rewrite `_extract_candidates_via_llm`:
             return []
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py::test_extract_parses_candidates chat/V2/appetizer/test_appetizer_service.py::test_extract_empty_is_none chat/V2/appetizer/test_appetizer_service.py::test_extract_returns_empty_on_exception -v`
 Expected: PASS (3 passed). The broader suite is still red here (old flow/intent tests) — fixed in Task 4.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/appetizer_service.py server/chat/V2/appetizer/test_appetizer_service.py
@@ -470,7 +470,7 @@ git commit -m "feat(appetizer): structured topic extraction with kind and confid
   - `AppetizerService._ground_candidate(candidate: Candidate, use_hebrew: bool) -> TopicInfo | None`.
   - Rewritten `_find_appetizer_inner` returning `AppetizerResult | None`.
 
-- [ ] **Step 1: Delete obsolete regex/blocklist tests and update flow-test mocks**
+- [x] **Step 1: Delete obsolete regex/blocklist tests and update flow-test mocks**
 
 In `test_appetizer_service.py`, **delete these whole test functions** (they assert deleted behavior): `test_daf_yomi_intent_returns_none`, `test_daf_yomi_phrase_returns_none`, `test_recent_dapim_returns_none`, `test_current_parsha_uses_calendar_not_llm`, `test_current_parsha_double_portion_returns_two_topics`, `test_current_parsha_returns_none_when_calendar_missing`, `test_parshat_hashavua_phrase_uses_calendar`, `test_generic_candidates_suppressed_by_blocklist`, `test_all_generic_candidates_returns_none`.
 
@@ -493,12 +493,12 @@ Apply the same shape to: `test_partial_topics_on_mixed_hits` (`["Shabbat","Nonex
 For `test_appetizer_passes_pool_library_to_search_topics`, the asserted call uses the candidate label, which now must match exactly for a low-confidence path — keep `confidence_level="high"` so the gate accepts regardless. The assertion line stays:
 `service.sefaria_client.search_topics.assert_called_once_with("Shabbat", limit=3, pool="library")`.
 
-- [ ] **Step 2: Run the suite to verify the expected failures**
+- [x] **Step 2: Run the suite to verify the expected failures**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py -v`
 Expected: FAIL — flow tests error because `_find_appetizer_inner` still references deleted helpers / old string flow. (This confirms the tests now drive the rewrite.)
 
-- [ ] **Step 3: Rewrite the service pipeline**
+- [x] **Step 3: Rewrite the service pipeline**
 
 In `appetizer_service.py`, **delete** these module-level constants and methods entirely: `_PARSHA_INTENT_RE`, `_DAF_YOMI_SUPPRESS_RE`, `_GENERIC_BLOCKLIST`, the method `_handle_parsha_intent`, and the method `_search_and_build`. Keep `import re` (used by `_normalize`).
 
@@ -585,12 +585,12 @@ Replace `_find_appetizer_inner` with:
         )
 ```
 
-- [ ] **Step 4: Run the suite to verify it passes**
+- [x] **Step 4: Run the suite to verify it passes**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py -v`
 Expected: PASS (all remaining flow + `search_topics` + extraction + calendar tests green).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/appetizer_service.py server/chat/V2/appetizer/test_appetizer_service.py
@@ -607,7 +607,7 @@ git commit -m "refactor(appetizer): general grounding gate, remove parsha/daf-yo
 **Interfaces:**
 - Consumes: `Candidate`, `_is_strong_match`, the rewritten pipeline (Task 4).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # Append to test_appetizer_service.py
@@ -687,17 +687,17 @@ async def test_temporal_candidate_grounds_to_tractate():
     assert result.topics[0].topic_slug == "chullin"
 ```
 
-- [ ] **Step 2: Run to verify they pass against the Task 4 implementation**
+- [x] **Step 2: Run to verify they pass against the Task 4 implementation**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/test_appetizer_service.py -v`
 Expected: PASS (full file green).
 
-- [ ] **Step 3: Run the whole backend appetizer + client suite**
+- [x] **Step 3: Run the whole backend appetizer + client suite**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/ -v`
 Expected: PASS (all appetizer tests).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/test_appetizer_service.py
@@ -714,7 +714,7 @@ git commit -m "test(appetizer): taxonomy regressions and grounding-gate unit tes
 
 **Interfaces:** none.
 
-- [ ] **Step 1: Replace the module docstring**
+- [x] **Step 1: Replace the module docstring**
 
 The current docstring describes the deleted intent-gate pipeline. Replace the top-of-file docstring with:
 
@@ -731,12 +731,12 @@ The outer asyncio.wait_for hard-cap is 5 seconds.
 """
 ```
 
-- [ ] **Step 2: Run the full appetizer suite once more**
+- [x] **Step 2: Run the full appetizer suite once more**
 
 Run: `cd server && DJANGO_SETTINGS_MODULE=chatbot_server.test_settings pytest chat/V2/appetizer/ -v`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add server/chat/V2/appetizer/appetizer_service.py docs/superpowers/plans/2026-06-25-appetizer-general-topic-finding.md

@@ -1,4 +1,13 @@
-"""Topic appetizer — finds relevant Sefaria topics within 5 seconds."""
+"""Topic appetizer — finds relevant Sefaria topics within 5 seconds.
+
+Pipeline:
+1. Build a daily-cached calendar context block (date + learning schedules).
+2. One structured LLM call extracts up to 3 candidates (label + kind + confidence).
+3. Each candidate is grounded against the library topic pool; low-confidence
+   candidates are kept only on an exact match. No grounded topic -> return None.
+
+The outer asyncio.wait_for hard-cap is 5 seconds.
+"""
 
 from __future__ import annotations
 
