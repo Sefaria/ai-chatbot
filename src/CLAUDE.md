@@ -18,8 +18,7 @@ src/
     ├── api.js                   # HTTP client, SSE streaming
     ├── session.js               # Session management
     ├── storage.js               # localStorage persistence
-    ├── markdown.js              # Markdown rendering
-    └── dates.js                 # Date formatting (locale-aware)
+    └── markdown.js              # Markdown rendering
 ```
 
 ## Commands
@@ -78,4 +77,4 @@ Conventions for Weblate compatibility:
 - Don't reuse a key with a changed meaning. If meaning shifts, create a new key so Weblate flags it for re-translation.
 - `he.json` may be empty or partial; missing keys fall back to `en.json` via `fallbackLocale: 'en'`.
 
-The `interface-lang` attribute accepts `en` or `he` and is piped directly into the svelte-i18n locale store via `setLocale` in `src/i18n/index.js`. Date/time formatting in `lib/dates.js` reads the active locale from the store.
+The `interface-lang` attribute accepts `en` or `he` and is piped directly into the svelte-i18n locale store via `setLocale` in `src/i18n/index.js`.
