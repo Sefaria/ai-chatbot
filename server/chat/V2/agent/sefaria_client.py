@@ -353,21 +353,64 @@ class SefariaClient:
 
         return await self._get_json(f"api/name/{encoded_name}", params)
 
-    async def search_topics(self, query: str, limit: int = 5) -> list[dict[str, str]]:
+    async def _get_canonical_title(self, slug: str) -> str | None:
+        """Return the topic page's canonical English primaryTitle, or None.
+
+        The name autocomplete title can differ from the actual topic page title
+        (e.g. name API returns "Parenting" for slug "education", but the page
+        /topics/education has primaryTitle "Education"). Fetching the topic doc
+        lets callers display a title that matches the page they link to.
+        """
+        try:
+            data = await self._get_json(f"api/v2/topics/{quote(slug)}")
+            return data.get("primaryTitle", {}).get("en") or None
+        except Exception:
+            return None
+
+    async def search_topics(
+        self, query: str, limit: int = 5, pool: str | None = None
+    ) -> list[dict[str, str]]:
         """Search for topics by name. Returns [{title, slug}, ...].
 
         Tries the name autocomplete API first. If no topics are found, falls
         back to a direct slug lookup (e.g. "Shabbat" matches the tractate in
         autocomplete but the topic exists at api/v2/topics/shabbat).
+
+        If pool is given (e.g. "library"), only topics whose name-API
+        completion lists that pool in its topic_pools are returned. Pool
+        membership comes solely from the name API response — no extra call is
+        needed to filter. For the surviving candidates, the canonical page
+        title (primaryTitle.en) is fetched and used so the displayed title
+        matches the topic page. When pool filtering is active the slug-fallback
+        path is skipped, since it can surface bare topic docs that are not real
+        library topics.
         """
         encoded = quote(query)
         params = {"limit": str(limit)}
         data = await self._get_json(f"api/name/{encoded}", params)
         completions = data.get("completion_objects", [])
-        topics = [
-            {"title": c.get("title", ""), "slug": c.get("key", "")}
+        candidates = [
+            {
+                "title": c.get("title", ""),
+                "slug": c.get("key", ""),
+                "topic_pools": c.get("topic_pools") or [],
+            }
             for c in completions
             if c.get("type") in {"Topic", "PersonTopic", "AuthorTopic"} and c.get("key")
+        ]
+
+        if pool:
+            results = []
+            for candidate in candidates:
+                if pool not in candidate["topic_pools"]:
+                    continue
+                canonical = await self._get_canonical_title(candidate["slug"])
+                title = canonical or candidate["title"]
+                results.append({"title": title, "slug": candidate["slug"]})
+            return results
+
+        topics = [
+            {"title": candidate["title"], "slug": candidate["slug"]} for candidate in candidates
         ]
         if topics:
             return topics

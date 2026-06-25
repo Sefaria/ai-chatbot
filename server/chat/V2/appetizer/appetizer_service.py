@@ -124,7 +124,7 @@ class AppetizerService:
 
     async def _search_and_build(self, query: str, use_hebrew: bool = False) -> TopicInfo | None:
         logger.info("Appetizer: searching for topics with query=%r", query)
-        topics = await self.sefaria_client.search_topics(query, limit=3)
+        topics = await self.sefaria_client.search_topics(query, limit=3, pool="library")
         logger.info(
             "Appetizer: search_topics returned %d topics: %s",
             len(topics) if topics else 0,
