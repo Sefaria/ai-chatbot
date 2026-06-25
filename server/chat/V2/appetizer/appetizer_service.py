@@ -112,13 +112,19 @@ EXTRACTION_SYSTEM_PROMPT = (
     "Each candidate must be a SINGLE specific topic — split combined references into "
     "separate candidates. A double parsha (calendar shows e.g. 'Chukat-Balak') becomes "
     "TWO candidates 'Parashat Chukat' and 'Parashat Balak'; never emit a combined "
-    "'Parashat Chukat-Balak'. For a daf yomi reference give the tractate name only "
-    "(e.g. 'Chullin'), not the daf number.\n"
+    "'Parashat Chukat-Balak'. "
+    "For a daf yomi / 'today's daf' request, the tractate name itself is usually NOT a "
+    "topic — instead return up to 3 of that tractate's main subject areas as concept "
+    "topics, in canonical ENGLISH (not transliterated Hebrew). Use the daf_yomi tractate "
+    "from the calendar context. E.g. Chullin -> 'Kashrut', 'Meat and Milk', 'Forbidden "
+    "Foods'; Berakhot -> 'Prayer', 'Blessings'; Bava Kamma -> 'Damages', 'Torts'.\n"
     "</precision_heuristic>\n\n"
     "<examples>\n"
     "\"what's this week's parsha?\" (calendar parsha: Chukat-Balak) -> "
     "[{label: Parashat Chukat, kind: temporal, high}, {label: Parashat Balak, kind: temporal, high}]\n"
-    "\"what's today's daf yomi?\" -> [{label: <daf_yomi tractate, e.g. Chullin>, kind: temporal, high}]\n"
+    "\"what's today's daf yomi?\" (calendar daf_yomi: Chullin 56) -> "
+    "[{label: Kashrut, kind: concept, high}, {label: Meat and Milk, kind: concept, high}, "
+    "{label: Forbidden Foods, kind: concept, high}]\n"
     '"show me sources on parenting" -> [{label: Parenting, kind: concept, high}]\n'
     '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
     '"la vaca roja" -> [{label: Red Heifer, kind: concept, high}]\n'

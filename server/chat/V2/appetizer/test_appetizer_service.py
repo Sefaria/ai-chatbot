@@ -804,3 +804,22 @@ async def test_temporal_candidate_grounds_to_tractate():
         result = await service.find_appetizer("what's today's daf yomi?")
     assert result is not None
     assert result.topics[0].topic_slug == "chullin"
+
+
+# ---------------------------------------------------------------------------
+# Extraction prompt contract (guards temporal-resolution instructions)
+# ---------------------------------------------------------------------------
+
+
+def test_extraction_prompt_has_temporal_resolution_rules():
+    """Guard the prompt instructions that live-testing proved necessary:
+    split double parshiyot, and resolve daf yomi to subject topics (not the
+    tractate ref, which has no library topic)."""
+    from ..appetizer.appetizer_service import EXTRACTION_SYSTEM_PROMPT as p
+
+    # Double parsha must split into separate candidates, never a combined label
+    assert "Parashat Chukat" in p and "Parashat Balak" in p
+    assert "never emit a combined" in p
+    # Daf yomi resolves to the tractate's subject areas
+    assert "daf yomi" in p.lower()
+    assert "subject" in p.lower()
