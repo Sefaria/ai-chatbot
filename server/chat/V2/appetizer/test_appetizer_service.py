@@ -754,3 +754,65 @@ async def test_calendar_context_unavailable_on_error():
     service.sefaria_client.get_current_calendar.side_effect = Exception("boom")
     result = await service._get_calendar_context()
     assert result == "<calendar_context>unavailable</calendar_context>"
+
+
+# ---------------------------------------------------------------------------
+# _extract_candidates_via_llm — structured Candidate extraction
+# ---------------------------------------------------------------------------
+
+from ..appetizer.appetizer_service import Candidate
+
+
+def _fake_tool_response(candidates):
+    resp = MagicMock()
+    block = MagicMock()
+    block.input = {"candidates": candidates}
+    resp.content = [block]
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_extract_parses_candidates():
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    with patch(
+        "chat.V2.appetizer.appetizer_service.tracked_messages_create",
+        return_value=_fake_tool_response(
+            [
+                {"label": "Parenting", "kind": "concept", "confidence_level": "high"},
+                {"label": "", "kind": "concept", "confidence_level": "low"},  # dropped: empty label
+            ]
+        ),
+    ):
+        result = await service._extract_candidates_via_llm(
+            "sources on parenting", "<calendar_context>unavailable</calendar_context>"
+        )
+    assert result == [Candidate(label="Parenting", kind="concept", confidence_level="high")]
+
+
+@pytest.mark.asyncio
+async def test_extract_empty_is_none():
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    with patch(
+        "chat.V2.appetizer.appetizer_service.tracked_messages_create",
+        return_value=_fake_tool_response([]),
+    ):
+        result = await service._extract_candidates_via_llm(
+            "yes please", "<calendar_context>unavailable</calendar_context>"
+        )
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_extract_returns_empty_on_exception():
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    with patch(
+        "chat.V2.appetizer.appetizer_service.tracked_messages_create",
+        side_effect=Exception("api down"),
+    ):
+        result = await service._extract_candidates_via_llm(
+            "anything", "<calendar_context>unavailable</calendar_context>"
+        )
+    assert result == []

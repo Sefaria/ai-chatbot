@@ -81,30 +81,87 @@ _GENERIC_BLOCKLIST: frozenset[str] = frozenset(
 TOPIC_EXTRACTION_TOOL = {
     "name": "extract_topics",
     "description": (
-        "Extract topic names from the user's message that could appear in the Sefaria library."
+        "Identify up to 3 candidate Sefaria library topics from the user's message. "
+        "Use the calendar context to resolve temporal references such as "
+        '"this week\'s parsha" or "today\'s daf yomi". Return an empty candidates '
+        "array when the message has no extractable topic: greetings, bare citations "
+        "(e.g. 'Genesis 6:13', 'yevamos 76b'), or follow-ups about prior/selected text "
+        "(e.g. 'explain this', 'yes please', 'translate the selected text'). "
+        "Prefer fewer high-confidence candidates over more low-confidence ones."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "topics": {
-                "type": "string",
-                "description": (
-                    "Return up to 3 comma-separated Sefaria topic names, most relevant first. "
-                    "Use the shortest canonical English name for each "
-                    "(e.g. 'Herod' not 'Herod the Great', 'Moses' not 'Moses our Teacher'). "
-                    "Prefer specific named topics over broad meta-topics "
-                    "(e.g. 'Shabbat' over 'Jewish Law', 'Moses' over 'Leadership'). "
-                    "Each candidate must be distinct — avoid near-synonyms. "
-                    "Return 'NONE' for schedule/calendar questions (current parsha, daf yomi, "
-                    "today's learning) or when there is genuinely no topic (greetings, "
-                    "technical questions). "
-                    "GOOD: 'Shabbat, Kiddush, Havdalah' | BAD: 'Parsha, Torah, Jewish Law'"
-                ),
-            },
+            "candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {
+                            "type": "string",
+                            "description": (
+                                "Canonical English topic name, shortest form "
+                                "(e.g. 'Moses' not 'Moses our Teacher', 'Parashat Balak' "
+                                "for a parsha, 'Chullin' for a tractate). Translate "
+                                "non-English messages to the canonical English name."
+                            ),
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["person", "place", "concept", "temporal"],
+                            "description": (
+                                "person=named individual; place=geographic; "
+                                "concept=theme/law/idea; temporal=resolved from calendar."
+                            ),
+                        },
+                        "confidence_level": {
+                            "type": "string",
+                            "enum": ["high", "low"],
+                            "description": (
+                                "high = a clear, specific topic the library plausibly has. "
+                                "low = plausible but the message is vague or underspecified."
+                            ),
+                        },
+                    },
+                    "required": ["label", "kind", "confidence_level"],
+                },
+            }
         },
-        "required": ["topics"],
+        "required": ["candidates"],
     },
 }
+
+EXTRACTION_SYSTEM_PROMPT = (
+    "<task>\n"
+    "You extract candidate topics from one user message for the Sefaria library — a "
+    "Jewish text library (Torah, Talmud, halacha, Jewish thought) that also covers "
+    "universal themes like parenting, money, relationships, health, and ethics. "
+    "Output is topics-only. Messages may be in any language; always return the "
+    "canonical English topic name.\n"
+    "</task>\n\n"
+    "<precision_heuristic>\n"
+    "Prefer returning fewer high-confidence candidates, or none. A false positive "
+    "(a chip on a non-topic) is worse than a false negative. Return NO candidates for "
+    "greetings, test strings, bare text citations, and follow-ups that refer to prior "
+    "or selected text ('explain this', 'translate that', 'yes', '?'). Resolve temporal "
+    "references using the calendar context below.\n"
+    "</precision_heuristic>\n\n"
+    "<examples>\n"
+    "\"what's today's daf yomi?\" -> [{label: <daf_yomi tractate>, kind: temporal, high}]\n"
+    '"show me sources on parenting" -> [{label: Parenting, kind: concept, high}]\n'
+    '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
+    '"la vaca roja" -> [{label: Red Heifer, kind: concept, high}]\n'
+    '"explain this tosfos to me" -> []\n'
+    '"yevamos 76 b" -> []\n'
+    "</examples>"
+)
+
+
+@dataclass
+class Candidate:
+    label: str
+    kind: str
+    confidence_level: str
 
 
 @dataclass
@@ -300,45 +357,36 @@ class AppetizerService:
             topic_url=f"{SEFARIA_TOPICS_BASE_URL}/{best['slug']}",
         )
 
-    async def _extract_candidates_via_llm(self, user_message: str) -> list[str]:
-        """Return up to 3 ranked topic candidates from the user's message.
-
-        Uses tool-forcing to constrain Sonnet's output to structured data,
-        preventing it from entering "assistant mode" with markdown/XML.
-        """
+    async def _extract_candidates_via_llm(
+        self, user_message: str, calendar_context: str
+    ) -> list[Candidate]:
+        """Return up to 3 structured candidates from the user's message (empty = NONE)."""
         try:
             response = await asyncio.to_thread(
                 tracked_messages_create,
                 self.client,
                 model=settings.APPETIZER_MODEL,
-                max_tokens=200,
+                max_tokens=300,
                 temperature=0.0,
-                system=(
-                    "You are a topic extractor for the Sefaria library — a Jewish text "
-                    "library covering Torah, Talmud, halacha, and all areas of Jewish "
-                    "thought including universal topics like parenting, money, "
-                    "relationships, health, and ethics. "
-                    "Extract up to 3 topics from the user's message. "
-                    "Prefer specific named topics over abstract meta-topics "
-                    "(e.g. 'Shabbat' over 'Jewish Law', 'Moses' over 'Leadership'). "
-                    "Each candidate should be distinct — don't return near-synonyms. "
-                    "Return 'NONE' for schedule/calendar questions (current parsha, "
-                    "daf yomi, today's learning) or when there is no clear topic."
-                ),
+                system=f"{EXTRACTION_SYSTEM_PROMPT}\n\n{calendar_context}",
                 messages=[{"role": "user", "content": user_message}],
                 tools=[TOPIC_EXTRACTION_TOOL],
                 tool_choice={"type": "tool", "name": "extract_topics"},
             )
-            tool_input = response.content[0].input
-            text = tool_input.get("topics", "").strip()
-            logger.info("Appetizer LLM raw response: %r for prompt: %r", text, user_message)
-            if not text or text.upper().rstrip(".,!?") == "NONE":
-                logger.info("Appetizer LLM decided: no topic (NONE) for prompt: %r", user_message)
-                return []
-            candidates = [c.strip() for c in text.split(",") if c.strip()]
-            logger.info(
-                "Appetizer LLM decided: candidates=%r for prompt: %r", candidates, user_message
-            )
+            raw = response.content[0].input.get("candidates", []) or []
+            candidates: list[Candidate] = []
+            for c in raw:
+                label = (c.get("label") or "").strip()
+                if not label:
+                    continue
+                candidates.append(
+                    Candidate(
+                        label=label,
+                        kind=c.get("kind", "concept"),
+                        confidence_level=c.get("confidence_level", "low"),
+                    )
+                )
+            logger.info("Appetizer extracted %r for prompt: %r", candidates, user_message)
             return candidates[:3]
         except Exception:
             logger.exception("LLM candidate extraction failed")
