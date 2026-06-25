@@ -286,35 +286,38 @@ async def test_returns_none_on_timeout():
 
 
 # ---------------------------------------------------------------------------
-# _get_canonical_title tests (SefariaClient)
+# _get_canonical_titles tests (SefariaClient)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_canonical_title_returns_primary_title_en():
+async def test_get_canonical_titles_returns_primary_title():
     client = SefariaClient(base_url="https://www.sefaria.org")
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
-        mock.return_value = {"slug": "education", "primaryTitle": {"en": "Education"}}
-        result = await client._get_canonical_title("education")
-        assert result == "Education"
+        mock.return_value = {
+            "slug": "education",
+            "primaryTitle": {"en": "Education", "he": "חינוך"},
+        }
+        result = await client._get_canonical_titles("education")
+        assert result == {"en": "Education", "he": "חינוך"}
         mock.assert_called_once_with("api/v2/topics/education")
 
 
 @pytest.mark.asyncio
-async def test_get_canonical_title_returns_none_when_missing():
+async def test_get_canonical_titles_returns_none_when_missing():
     client = SefariaClient(base_url="https://www.sefaria.org")
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
         mock.return_value = {"slug": "education"}  # no primaryTitle
-        result = await client._get_canonical_title("education")
+        result = await client._get_canonical_titles("education")
         assert result is None
 
 
 @pytest.mark.asyncio
-async def test_get_canonical_title_returns_none_on_exception():
+async def test_get_canonical_titles_returns_none_on_exception():
     client = SefariaClient(base_url="https://www.sefaria.org")
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
         mock.side_effect = Exception("network error")
-        result = await client._get_canonical_title("education")
+        result = await client._get_canonical_titles("education")
         assert result is None
 
 
@@ -339,10 +342,11 @@ async def test_search_topics_pool_filter_keeps_library_topic():
                     }
                 ]
             },
-            {"slug": "shabbat", "primaryTitle": {"en": "Shabbat"}},  # canonical title
+            # canonical title carries both English and Hebrew
+            {"slug": "shabbat", "primaryTitle": {"en": "Shabbat", "he": "שַׁבָּת"}},
         ]
         result = await client.search_topics("shabbat", pool="library")
-        assert result == [{"title": "Shabbat", "slug": "shabbat"}]
+        assert result == [{"title": "Shabbat", "slug": "shabbat", "he": "שַׁבָּת"}]
 
 
 @pytest.mark.asyncio
@@ -407,10 +411,10 @@ async def test_search_topics_pool_filter_uses_canonical_title():
                     }
                 ]
             },
-            {"slug": "education", "primaryTitle": {"en": "Education"}},
+            {"slug": "education", "primaryTitle": {"en": "Education", "he": "חינוך"}},
         ]
         result = await client.search_topics("parenting", pool="library")
-        assert result == [{"title": "Education", "slug": "education"}]
+        assert result == [{"title": "Education", "slug": "education", "he": "חינוך"}]
 
 
 @pytest.mark.asyncio
@@ -432,7 +436,8 @@ async def test_search_topics_pool_filter_falls_back_to_name_title():
             {"slug": "herod"},  # no primaryTitle on page
         ]
         result = await client.search_topics("herod", pool="library")
-        assert result == [{"title": "Herod", "slug": "herod"}]
+        # no canonical title → English falls back to name-API title, Hebrew is empty
+        assert result == [{"title": "Herod", "slug": "herod", "he": ""}]
 
 
 @pytest.mark.asyncio

@@ -353,17 +353,23 @@ class SefariaClient:
 
         return await self._get_json(f"api/name/{encoded_name}", params)
 
-    async def _get_canonical_title(self, slug: str) -> str | None:
-        """Return the topic page's canonical English primaryTitle, or None.
+    async def _get_canonical_titles(self, slug: str) -> dict[str, str] | None:
+        """Return the topic page's canonical primaryTitle as {"en", "he"}, or None.
 
         The name autocomplete title can differ from the actual topic page title
         (e.g. name API returns "Parenting" for slug "education", but the page
         /topics/education has primaryTitle "Education"). Fetching the topic doc
-        lets callers display a title that matches the page they link to.
+        lets callers display a title — in either language — that matches the page
+        they link to. Returns None only when the page has no primaryTitle at all.
         """
         try:
             data = await self._get_json(f"api/v2/topics/{quote(slug)}")
-            return data.get("primaryTitle", {}).get("en") or None
+            primary = data.get("primaryTitle") or {}
+            en = primary.get("en") or ""
+            he = primary.get("he") or ""
+            if not en and not he:
+                return None
+            return {"en": en, "he": he}
         except Exception:
             return None
 
@@ -380,10 +386,11 @@ class SefariaClient:
         completion lists that pool in its topic_pools are returned. Pool
         membership comes solely from the name API response — no extra call is
         needed to filter. For the surviving candidates, the canonical page
-        title (primaryTitle.en) is fetched and used so the displayed title
-        matches the topic page. When pool filtering is active the slug-fallback
-        path is skipped, since it can surface bare topic docs that are not real
-        library topics.
+        title (primaryTitle.en and .he) is fetched and used so the displayed
+        title matches the topic page; pool results therefore also carry the
+        Hebrew title under "he" for Hebrew-interface callers. When pool
+        filtering is active the slug-fallback path is skipped, since it can
+        surface bare topic docs that are not real library topics.
         """
         encoded = quote(query)
         params = {"limit": str(limit)}
@@ -392,6 +399,7 @@ class SefariaClient:
         candidates = [
             {
                 "title": c.get("title", ""),
+                "he": c.get("he", ""),
                 "slug": c.get("key", ""),
                 "topic_pools": c.get("topic_pools") or [],
             }
@@ -404,9 +412,10 @@ class SefariaClient:
             for candidate in candidates:
                 if pool not in candidate["topic_pools"]:
                     continue
-                canonical = await self._get_canonical_title(candidate["slug"])
-                title = canonical or candidate["title"]
-                results.append({"title": title, "slug": candidate["slug"]})
+                canonical = await self._get_canonical_titles(candidate["slug"])
+                title = (canonical and canonical["en"]) or candidate["title"]
+                he = (canonical and canonical["he"]) or candidate.get("he", "")
+                results.append({"title": title, "slug": candidate["slug"], "he": he})
             return results
 
         topics = [
@@ -551,9 +560,12 @@ class SefariaClient:
     async def resolve_ref(self, tref: str) -> dict | None:
         """Resolve a tref into {is_ref, url_ref, en, he}, or None.
 
-        First attempts /api/ref/<tref>; if that call fails or the endpoint is
-        unavailable (e.g. not yet deployed), falls back to constructing a ref
-        dict locally via _fallback_ref so trail links still render today.
+        First attempts /api/ref/<tref>. Only when that call fails or the
+        endpoint is unavailable (e.g. not yet deployed) do we fall back to
+        constructing a ref dict locally via _fallback_ref so trail links still
+        render today. If the API responds and says the string is not a ref
+        (is_ref: false), we return None rather than fabricating a link to an
+        invalid Sefaria URL.
 
         Results (including negatives) are cached per instance to avoid
         redundant lookups of repeated refs within a turn.
@@ -562,8 +574,11 @@ class SefariaClient:
             return None
         if tref in self._ref_cache:
             return self._ref_cache[tref]
-        api_result = await self._fetch_ref(tref)
-        result = api_result if api_result is not None else _fallback_ref(tref)
+        try:
+            result = await self._fetch_ref(tref)
+        except (httpx.HTTPError, ValueError):
+            # API unavailable/failed — fall back to local parsing so links still render.
+            result = _fallback_ref(tref)
         if len(self._ref_cache) >= REF_CACHE_MAX_SIZE:
             # Cache is full — evict the oldest entry (FIFO) so long conversations
             # keep caching recent refs instead of freezing at the first N.
@@ -573,12 +588,14 @@ class SefariaClient:
         return result
 
     async def _fetch_ref(self, tref: str) -> dict | None:
-        """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None."""
+        """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None.
+
+        Returns None when the API responds but reports the string is not a ref.
+        Raises httpx.HTTPError/ValueError on transport or decode failures so the
+        caller can distinguish "not a ref" from "could not reach the API".
+        """
         encoded_ref = quote(tref)
-        try:
-            data = await self._get_json(f"api/ref/{encoded_ref}")
-        except (httpx.HTTPError, ValueError):
-            return None
+        data = await self._get_json(f"api/ref/{encoded_ref}")
         if not isinstance(data, dict) or not data.get("is_ref"):
             return None
         return {
