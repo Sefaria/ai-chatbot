@@ -1860,7 +1860,9 @@
     display: flex;
     justify-content: flex-end;
     margin-top: 4px;
-    max-width: 560px;
+    /* Figma: max width = chat bubble width (560px), but never exceed the
+       available message column so long refs truncate instead of overflowing. */
+    max-width: min(560px, 100%);
     align-self: flex-end;
   }
 

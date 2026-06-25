@@ -23,28 +23,33 @@
 </Tooltip>
 
 <style>
+  /* Figma: Library-Assistant-Wireframes — Location Tag Component (node 6447:7199).
+     Pill hugs its content and caps at the chat-bubble width (set by the parent
+     .message-location-tag, max-width 560px); the ref truncates when too long. */
   .lc-location-tag {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    max-width: 560px;
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
     box-sizing: border-box;
     padding: 4px 8px;
     border: 1px solid var(--lc-border-strong, #ccc);
     border-radius: 16px;
-    color: var(--lc-text-secondary);
+    color: var(--lc-text-secondary, #575757);
     text-decoration: none;
     font-family: var(--lc-font);
-    font-size: var(--lc-font-size-sm);
-    line-height: 20px;
+    font-size: 12px;
+    line-height: normal;
     cursor: pointer;
   }
-  .lc-location-tag:hover {
-    background: var(--lc-bg-hover, #eee);
+  .lc-location-tag:hover,
+  .lc-location-tag:active {
+    background: var(--lc-bg-hover, #ededed);
   }
   .lc-location-pin {
     flex: none;
+    color: var(--lc-icon-primary, #666);
   }
   .lc-location-ref {
     flex: 1;
@@ -53,7 +58,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-:global(.interface-hebrew) .lc-location-tag {
+  :global(.interface-hebrew) .lc-location-tag {
     flex-direction: row-reverse;
   }
 </style>
