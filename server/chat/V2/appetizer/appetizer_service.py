@@ -108,10 +108,17 @@ EXTRACTION_SYSTEM_PROMPT = (
     "(a chip on a non-topic) is worse than a false negative. Return NO candidates for "
     "greetings, test strings, bare text citations, and follow-ups that refer to prior "
     "or selected text ('explain this', 'translate that', 'yes', '?'). Resolve temporal "
-    "references using the calendar context below.\n"
+    "references using the calendar context below. "
+    "Each candidate must be a SINGLE specific topic — split combined references into "
+    "separate candidates. A double parsha (calendar shows e.g. 'Chukat-Balak') becomes "
+    "TWO candidates 'Parashat Chukat' and 'Parashat Balak'; never emit a combined "
+    "'Parashat Chukat-Balak'. For a daf yomi reference give the tractate name only "
+    "(e.g. 'Chullin'), not the daf number.\n"
     "</precision_heuristic>\n\n"
     "<examples>\n"
-    "\"what's today's daf yomi?\" -> [{label: <daf_yomi tractate>, kind: temporal, high}]\n"
+    "\"what's this week's parsha?\" (calendar parsha: Chukat-Balak) -> "
+    "[{label: Parashat Chukat, kind: temporal, high}, {label: Parashat Balak, kind: temporal, high}]\n"
+    "\"what's today's daf yomi?\" -> [{label: <daf_yomi tractate, e.g. Chullin>, kind: temporal, high}]\n"
     '"show me sources on parenting" -> [{label: Parenting, kind: concept, high}]\n'
     '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
     '"la vaca roja" -> [{label: Red Heifer, kind: concept, high}]\n'
