@@ -1,6 +1,5 @@
 <script>
   import { _, locale } from '../i18n/index.js';
-  import Tooltip from './Tooltip.svelte';
 
   /**
    * entries: array of { id, type: 'tool'|'status', toolName?, description?, text?,
@@ -35,10 +34,11 @@
       .replace(/'/g, '&#39;');
   }
 
-  /** Build the bare bidi-isolated ref link anchor HTML. */
+  /** Build the bare bidi-isolated ref link anchor HTML, with tooltip on the ref itself. */
   function refLinkHtml(url, label) {
     const href = escapeAttr(url);
-    return `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link"><bdi>${escapeHtml(label)}</bdi></a>`;
+    const tooltipLabel = escapeAttr(label);
+    return `<span class="lc-tooltip" data-tooltip="${tooltipLabel}"><a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link"><bdi>${escapeHtml(label)}</bdi></a></span>`;
   }
 
   // ── Client-side ref fallback (feature: trail ref links) ───────────────────
@@ -119,7 +119,6 @@
         class="progress-trail-entry progress-trail-entry--{entry.status}{isFailed ? ' failed' : ''}"
         style="width: 100%;"
       >
-        <Tooltip text={entry.type === 'tool' ? (entry.description ?? entry.toolName ?? '') : ''}>
           <span class="progress-trail-text">
             {#if isFailed}
               <span class="trail-failed-prefix">{$_('assistant.progress.failed')}</span>
@@ -130,7 +129,6 @@
               {entry.text ?? ''}
             {/if}
           </span>
-        </Tooltip>
       </li>
     {/each}
   </ol>
@@ -144,7 +142,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--global-dimension-100);
+    gap: 4px;
     align-items: flex-start;
     align-self: stretch;
     width: 100%;
@@ -181,15 +179,65 @@
     white-space: nowrap;
   }
 
-/* ── Ref links in normal (non-failed) steps ── */
-  :global(.trail-ref-link) {
-    flex: 1 0 0;
+  /* Tooltip bubble styles for ref links injected via {@html} — duplicates Tooltip.svelte
+     CSS-only bubble so it works on raw HTML nodes that Svelte scoped styles can't reach. */
+  :global(.progress-trail-text .lc-tooltip) { position: relative; display: inline-flex; overflow: visible; max-width: 100%; }
+
+  :global(.progress-trail-text .lc-tooltip[data-tooltip]::after) {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    inset-inline-start: 0;
+    background: var(--lc-tooltip-bg);
+    color: #fff;
+    font-family: var(--lc-font);
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: start;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 252px;
+    width: max-content;
+    white-space: normal;
+    word-break: break-word;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: var(--lc-z-tooltip);
+  }
+
+  :global(.progress-trail-text .lc-tooltip[data-tooltip]::before) {
+    content: '';
+    position: absolute;
+    top: calc(100% + 2px);
+    inset-inline-start: 16px;
+    border: 6px solid transparent;
+    border-bottom-color: var(--lc-tooltip-bg);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: var(--lc-z-tooltip);
+  }
+
+  :global(.progress-trail-text .lc-tooltip[data-tooltip]:hover::after),
+  :global(.progress-trail-text .lc-tooltip[data-tooltip]:hover::before) { opacity: 1; }
+
+  :global(.progress-trail-text > .lc-tooltip) {
+    flex: 1 1 0;
     min-width: 0;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
+    max-width: 100%;
+    display: inline-flex;
+    overflow: hidden;
+  }
+
+  /* ── Ref links in normal (non-failed) steps ── */
+  :global(.trail-ref-link) {
+    min-width: 0;
+    max-width: 100%;
+    display: inline-block;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--semantic-text-link);
     font-family: var(--lc-font);
     font-size: 12px;
@@ -197,7 +245,7 @@
     line-height: var(--global-dimension-250);
     text-decoration: underline;
     text-decoration-style: solid;
-    text-underline-position: from-font;
+    text-underline-offset: auto;
   }
 
   :global(.trail-ref-icon) {
