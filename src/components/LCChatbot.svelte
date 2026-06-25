@@ -1090,9 +1090,8 @@
             title="Stop"
             aria-label="Stop generating"
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M14 9H10C9.44771 9 9 9.44771 9 10V14C9 14.5523 9.44771 15 10 15H14C14.5523 15 15 14.5523 15 14V10C15 9.44771 14.5523 9 14 9Z" stroke="currentColor" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
             </svg>
           </button>
         {:else}
@@ -1707,24 +1706,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
-    background: var(--lc-primary);
-    border: none;
+    background: transparent;
+    border: 1px solid var(--lc-primary);
     border-radius: var(--lc-radius-sm);
-    color: var(--lc-bg);
+    color: var(--lc-primary);
     cursor: pointer;
     transition: background-color 0.15s ease, transform 0.15s ease;
     flex-shrink: 0;
   }
 
   .stop-btn:hover {
-    background: var(--lc-primary-hover);
+    background: var(--lc-bg-tertiary);
   }
 
   .stop-btn:active {
-    background: var(--lc-primary-hover);
+    background: var(--lc-bg-tertiary);
     transform: scale(0.95);
   }
 
