@@ -1791,8 +1791,6 @@
   .message.user {
     max-width: 85%;
     align-self: flex-end;
-    background-color: #0056B3;
-    border-radius: 0 16px 16px 16px;
   }
 
   .message.assistant {
@@ -1840,6 +1838,10 @@
     font-size: var(--lc-font-size);
     word-wrap: break-word;
     color: var(--lc-user-text);
+    /* Blue bubble lives on the bubble only — not the whole column — so the
+       location tag below renders as a gray pill on the white chat background. */
+    background-color: #0056B3;
+    border-radius: 0 16px 16px 16px;
     border-bottom-right-radius: 4px;
   }
 
