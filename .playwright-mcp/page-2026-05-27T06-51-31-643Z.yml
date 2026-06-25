@@ -1,0 +1,110 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "LC Chatbot" [level=1] [ref=e3]
+    - paragraph [ref=e4]: A beautiful, embeddable chat widget for any website
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "💬 Markdown Support" [level=3] [ref=e7]
+        - paragraph [ref=e8]: Renders rich markdown responses including code blocks, lists, and links.
+      - generic [ref=e9]:
+        - heading "📐 Resizable" [level=3] [ref=e10]
+        - paragraph [ref=e11]: Drag to resize the chat panel. Size is remembered across sessions.
+      - generic [ref=e12]:
+        - heading "📜 History" [level=3] [ref=e13]
+        - paragraph [ref=e14]: Infinite scroll to load older messages with date markers.
+      - generic [ref=e15]:
+        - heading "🎨 Themeable" [level=3] [ref=e16]
+        - paragraph [ref=e17]: Customize colors and styles with CSS custom properties.
+    - generic [ref=e18]:
+      - heading "Demo Controls" [level=2] [ref=e19]
+      - generic [ref=e20]:
+        - button "Position Right" [ref=e21] [cursor=pointer]
+        - button "Position Left" [ref=e22] [cursor=pointer]
+        - button "Clear Storage" [ref=e23] [cursor=pointer]
+    - generic [ref=e24]:
+      - strong [ref=e25]: "Note:"
+      - text: This demo uses a mock API endpoint. To connect to a real backend, update the
+      - code [ref=e26]: api-base-url
+      - text: "attribute. The widget expects:"
+      - text: •
+      - code [ref=e27]: POST /chat
+      - text: "- Send message, receive markdown response"
+      - text: •
+      - code [ref=e28]: GET /history
+      - text: "- Load conversation history"
+  - generic [ref=e29]:
+    - dialog "Chat window":
+      - banner [ref=e39]:
+        - heading "Library Assistant" [level=2] [ref=e41]:
+          - text: Library Assistant
+          - img [ref=e42]
+        - generic [ref=e43]:
+          - button "Undock assistant" [ref=e72] [cursor=pointer]
+          - button "More options" [ref=e46] [cursor=pointer]
+          - button "Close assistant" [ref=e47] [cursor=pointer]:
+            - img [ref=e48]
+      - log "Chat messages" [ref=e51]:
+        - generic [ref=e74]: May 27, 2026
+        - paragraph [ref=e77]: תן לי מקורות על סיוון כ'
+        - generic [ref=e94]:
+          - button "While we prepare your answer, you might find this interesting" [expanded] [ref=e95] [cursor=pointer]:
+            - img [ref=e96]
+            - generic [ref=e98]: While we prepare your answer, you might find this interesting
+            - img [ref=e99]
+          - generic [ref=e101]:
+            - link "Shavuot →" [ref=e102] [cursor=pointer]:
+              - /url: https://www.sefaria.org/topics/shavuot
+            - generic [ref=e103]: Explore this topic on Sefaria
+        - button "Shulchan Arukh, Orach Chayim 580:2" [ref=e105] [cursor=pointer]:
+          - img [ref=e106]
+          - generic [ref=e109]: Shulchan Arukh, Orach Chayim 580:2
+          - img [ref=e110]
+        - button "Show thinking (9 steps)" [ref=e112] [cursor=pointer]
+        - generic [ref=e114]:
+          - paragraph [ref=e115]:
+            - text: המקור העיקרי על
+            - strong [ref=e116]: כ' בסיוון
+            - text: "קשור להפרשת מעשר בהמה:"
+          - paragraph [ref=e117]:
+            - strong [ref=e118]: משנת ארץ ישראל על משנה שקלים ג:א
+            - link "https://www.sefaria.org/Mishnat_Eretz_Yisrael_on_Mishnah_Shekalim.3.1" [ref=e119] [cursor=pointer]:
+              - /url: https://www.sefaria.org/Mishnat_Eretz_Yisrael_on_Mishnah_Shekalim.3.1
+          - blockquote [ref=e120]:
+            - paragraph [ref=e121]:
+              - text: "\"לדעת רבי עקיבא שלושת המועדים להפרשת מעשר בהמה הם ראש חודש ניסן,"
+              - strong [ref=e122]: כ' בסיוון
+              - text: בערך וראש חודש תשרי בערך"
+          - paragraph [ref=e123]: הפירוש מבאר שלדעת רבי עקיבא, כ' בסיוון הוא בערך המועד השני להפרשת מעשר בהמה (מעשר בהמה הוא עישור הבהמות שנולדו, שהיה מוקרב במקדש).
+          - separator [ref=e124]
+          - heading "תאריכים נוספים בסיוון שכדאי להכיר:" [level=3] [ref=e125]
+          - paragraph [ref=e126]:
+            - strong [ref=e127]: כ"ג בסיוון
+            - text: – שולחן ערוך אורח חיים תק"פ:ב
+            - link "https://www.sefaria.org/Shulchan_Arukh,_Orach_Chayim.580.2" [ref=e128] [cursor=pointer]:
+              - /url: https://www.sefaria.org/Shulchan_Arukh,_Orach_Chayim.580.2
+          - blockquote [ref=e129]:
+            - paragraph [ref=e130]: "\"בכ\"ג בסיון בטלו הביכורים מלעלות לירושלים בימי ירבעם בן נבט\""
+          - paragraph [ref=e131]:
+            - strong [ref=e132]: כ"ה בסיוון
+            - text: – שם
+          - blockquote [ref=e133]:
+            - paragraph [ref=e134]: "\"בכ\"ה בו נהרג רבן שמעון בן גמליאל ורבי ישמעאל ורבי חנינא סגן הכהנים\""
+          - paragraph [ref=e135]:
+            - strong [ref=e136]: כ"ז בסיוון
+            - text: – שם
+          - blockquote [ref=e137]:
+            - paragraph [ref=e138]: "\"בכ\"ז בו נשרף רבי חנינא בן תרדיון וספר תורה עמו\""
+          - paragraph [ref=e139]:
+            - strong [ref=e140]: כ"ט בסיוון
+            - text: – תלמוד בבלי תענית כט ע"א
+            - link "https://www.sefaria.org/Taanit.29a" [ref=e141] [cursor=pointer]:
+              - /url: https://www.sefaria.org/Taanit.29a
+          - blockquote [ref=e142]:
+            - paragraph [ref=e143]: "\"בעשרים ותשעה בסיוון שלח משה מרגלים\""
+          - separator [ref=e144]
+          - paragraph [ref=e145]: האם התכוונת לאחד מהתאריכים האלה, או שיש משהו ספציפי שאתה מחפש על כ' בסיוון?
+      - contentinfo [ref=e65]:
+        - textbox "Prompt input" [ref=e66]:
+          - /placeholder: What are you learning today?
+        - button "Send message" [disabled] [ref=e67]:
+          - img [ref=e68]

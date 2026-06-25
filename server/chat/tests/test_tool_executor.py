@@ -8,6 +8,7 @@ from chat.V2.agent.tool_executor import (
     SefariaToolExecutor,
     ToolResult,
     describe_tool_call,
+    resolve_tool_ref,
 )
 
 
@@ -373,3 +374,28 @@ class TestDescribeToolCall:
         desc = describe_tool_call("text_search", {"query": long_query})
         assert "..." in desc or "…" in desc
         assert len(desc) < len(long_query) + 50
+
+
+@pytest.mark.asyncio
+async def test_resolve_tool_ref_for_get_text():
+    client = AsyncMock()
+    client.resolve_ref = AsyncMock(
+        return_value={
+            "is_ref": True,
+            "url_ref": "Genesis.1.1",
+            "en": "Genesis 1:1",
+            "he": "x",
+        }
+    )
+    result = await resolve_tool_ref(client, "get_text", {"reference": "Genesis 1:1"})
+    assert result["url_ref"] == "Genesis.1.1"
+    client.resolve_ref.assert_awaited_once_with("Genesis 1:1")
+
+
+@pytest.mark.asyncio
+async def test_resolve_tool_ref_for_non_ref_tool():
+    client = AsyncMock()
+    client.resolve_ref = AsyncMock()
+    result = await resolve_tool_ref(client, "text_search", {"query": "shabbat"})
+    assert result is None
+    client.resolve_ref.assert_not_awaited()

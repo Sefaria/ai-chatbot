@@ -62,6 +62,68 @@ LEXICON_MAP = {
 
 LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 
+# Upper bound on the per-instance ref-resolution cache. Once this many distinct
+# refs are cached, new refs are still resolved but no longer stored, so the cache
+# of a long-lived client cannot grow without bound.
+REF_CACHE_MAX_SIZE = 512
+
+# Minimum number of completions to request from the name API in search_topics.
+# The API returns ref/text completions first for book-name queries, which we drop
+# by type; a wide window keeps the real Topic from being crowded out.
+TOPIC_NAME_FETCH_FLOOR = 25
+
+# ---------------------------------------------------------------------------
+# Ref fallback helpers — construct a usable ref dict from a tref string when
+# the /api/ref endpoint is unavailable (e.g. not yet deployed to production).
+# ---------------------------------------------------------------------------
+
+_REF_SECTION_RE = re.compile(r"^(.+?)[\s.](\d[\w:.\-–]*)$")
+_REF_DOTTED_RE = re.compile(r"^(.+?)\.(\d[\w.\-–]*)$")
+
+
+def _fallback_ref_to_url(tref: str) -> str | None:
+    """Convert a tref to its URL-safe dotted form, or None if not recognisable."""
+    m = _REF_SECTION_RE.match(tref)
+    if not m:
+        return None
+    book = re.sub(r"\s+", "_", m.group(1).strip())
+    section = m.group(2).replace(":", ".")
+    return f"{book}.{section}"
+
+
+def _fallback_ref_label(tref: str) -> str:
+    """Prettify a dotted API-form ref to a display label.
+
+    "Genesis.1.1"       → "Genesis 1:1"
+    "Mishnah_Shabbat.7" → "Mishnah Shabbat 7"
+    "Genesis 1:1"       → "Genesis 1:1"  (already human-readable)
+    """
+    if re.search(r"\s", tref):
+        return tref
+    m = _REF_DOTTED_RE.match(tref)
+    if not m:
+        return tref
+    book = m.group(1).replace("_", " ")
+    section = m.group(2).replace(".", ":")
+    return f"{book} {section}"
+
+
+def _fallback_ref(tref: str) -> dict | None:
+    """Build a minimal ref dict from a tref without hitting the API.
+
+    Returns {is_ref, url_ref, en, he} when the tref looks like a valid ref,
+    or None when it cannot be parsed as one.
+    """
+    url_ref = _fallback_ref_to_url(tref)
+    if not url_ref:
+        return None
+    return {
+        "is_ref": True,
+        "url_ref": url_ref,
+        "en": _fallback_ref_label(tref),
+        "he": "",
+    }
+
 
 class SefariaClient:
     """Async HTTP client for the Sefaria REST API.
@@ -81,6 +143,7 @@ class SefariaClient:
         self._client_loop: asyncio.AbstractEventLoop | None = None
         self._user_id: str | None = None
         self._session_token: str | None = None
+        self._ref_cache: dict[str, dict | None] = {}
 
     def set_user_session(self, user_id: str | None, session_token: str | None) -> None:
         """Store per-request auth context for endpoints that require user session access."""
@@ -295,6 +358,97 @@ class SefariaClient:
 
         return await self._get_json(f"api/name/{encoded_name}", params)
 
+    async def _get_canonical_titles(self, slug: str) -> dict[str, str] | None:
+        """Return the topic page's canonical primaryTitle as {"en", "he"}, or None.
+
+        The name autocomplete title can differ from the actual topic page title
+        (e.g. name API returns "Parenting" for slug "education", but the page
+        /topics/education has primaryTitle "Education"). Fetching the topic doc
+        lets callers display a title — in either language — that matches the page
+        they link to. Returns None only when the page has no primaryTitle at all.
+        """
+        try:
+            data = await self._get_json(f"api/v2/topics/{quote(slug)}")
+            primary = data.get("primaryTitle") or {}
+            en = primary.get("en") or ""
+            he = primary.get("he") or ""
+            if not en and not he:
+                return None
+            return {"en": en, "he": he}
+        except Exception:
+            return None
+
+    async def search_topics(
+        self, query: str, limit: int = 5, pool: str | None = None
+    ) -> list[dict[str, str]]:
+        """Search for topics by name. Returns [{title, slug}, ...].
+
+        Tries the name autocomplete API first. If no topics are found, falls
+        back to a direct slug lookup (e.g. "Shabbat" matches the tractate in
+        autocomplete but the topic exists at api/v2/topics/shabbat).
+
+        If pool is given (e.g. "library"), only topics whose name-API
+        completion lists that pool in its topic_pools are returned. Pool
+        membership comes solely from the name API response — no extra call is
+        needed to filter. For the surviving candidates, the canonical page
+        title (primaryTitle.en and .he) is fetched and used so the displayed
+        title matches the topic page; pool results therefore also carry the
+        Hebrew title under "he" for Hebrew-interface callers. When pool
+        filtering is active the slug-fallback path is skipped, since it can
+        surface bare topic docs that are not real library topics.
+        """
+        encoded = quote(query)
+        # The name API interleaves ref/text completions that we drop by type. For
+        # queries that collide with a book/tractate name (e.g. "Shabbat", "Chullin"),
+        # those refs fill the first slots and crowd the real Topic past a small
+        # limit. Request a wide window so Topics survive the type+pool filter; we
+        # still return at most `limit` topics.
+        fetch_limit = max(limit, TOPIC_NAME_FETCH_FLOOR)
+        params = {"limit": str(fetch_limit)}
+        data = await self._get_json(f"api/name/{encoded}", params)
+        completions = data.get("completion_objects", [])
+        candidates = [
+            {
+                "title": c.get("title", ""),
+                "he": c.get("he", ""),
+                "slug": c.get("key", ""),
+                "topic_pools": c.get("topic_pools") or [],
+                "is_primary": bool(c.get("is_primary")),
+            }
+            for c in completions
+            if c.get("type") in {"Topic", "PersonTopic", "AuthorTopic"} and c.get("key")
+        ]
+
+        if pool:
+            # Primary entries first so topics[0] is always the best match. Filter to
+            # the pool and slice to `limit` BEFORE fetching canonical titles, so the
+            # extra api/v2/topics calls stay bounded (the appetizer's 5s budget).
+            candidates.sort(key=lambda c: 0 if c["is_primary"] else 1)
+            in_pool = [c for c in candidates if pool in c["topic_pools"]][:limit]
+            results = []
+            for candidate in in_pool:
+                canonical = await self._get_canonical_titles(candidate["slug"])
+                title = (canonical and canonical["en"]) or candidate["title"]
+                he = (canonical and canonical["he"]) or candidate.get("he", "")
+                results.append({"title": title, "slug": candidate["slug"], "he": he})
+            return results
+
+        topics = [
+            {"title": candidate["title"], "slug": candidate["slug"]} for candidate in candidates
+        ][:limit]
+        if topics:
+            return topics
+
+        slug = query.lower().replace(" ", "-")
+        try:
+            topic_data = await self._get_json(f"api/v2/topics/{quote(slug)}")
+            if topic_data.get("slug"):
+                title = topic_data.get("primaryTitle", {}).get("en", query)
+                return [{"title": title, "slug": topic_data["slug"]}]
+        except Exception:
+            pass
+        return []
+
     async def clarify_search_path_filter(self, book_name: str) -> str | None:
         """Convert a book name into a search filter path."""
         encoded_name = quote(book_name)
@@ -417,6 +571,54 @@ class SefariaClient:
             },
         )
         return self._optimize_source_sheet_response(data)
+
+    async def resolve_ref(self, tref: str) -> dict | None:
+        """Resolve a tref into {is_ref, url_ref, en, he}, or None.
+
+        First attempts /api/ref/<tref>. Only when that call fails or the
+        endpoint is unavailable (e.g. not yet deployed) do we fall back to
+        constructing a ref dict locally via _fallback_ref so trail links still
+        render today. If the API responds and says the string is not a ref
+        (is_ref: false), we return None rather than fabricating a link to an
+        invalid Sefaria URL.
+
+        Results (including negatives) are cached per instance to avoid
+        redundant lookups of repeated refs within a turn.
+        """
+        if not tref:
+            return None
+        if tref in self._ref_cache:
+            return self._ref_cache[tref]
+        try:
+            result = await self._fetch_ref(tref)
+        except (httpx.HTTPError, ValueError):
+            # API unavailable/failed — fall back to local parsing so links still render.
+            result = _fallback_ref(tref)
+        if len(self._ref_cache) >= REF_CACHE_MAX_SIZE:
+            # Cache is full — evict the oldest entry (FIFO) so long conversations
+            # keep caching recent refs instead of freezing at the first N.
+            oldest_tref = next(iter(self._ref_cache))
+            del self._ref_cache[oldest_tref]
+        self._ref_cache[tref] = result
+        return result
+
+    async def _fetch_ref(self, tref: str) -> dict | None:
+        """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None.
+
+        Returns None when the API responds but reports the string is not a ref.
+        Raises httpx.HTTPError/ValueError on transport or decode failures so the
+        caller can distinguish "not a ref" from "could not reach the API".
+        """
+        encoded_ref = quote(tref)
+        data = await self._get_json(f"api/ref/{encoded_ref}")
+        if not isinstance(data, dict) or not data.get("is_ref"):
+            return None
+        return {
+            "is_ref": True,
+            "url_ref": data.get("url_ref", ""),
+            "en": data.get("normalized", ""),
+            "he": data.get("hebrew", ""),
+        }
 
     # -------------------------------------------------------------------
     # Low-level HTTP helpers
