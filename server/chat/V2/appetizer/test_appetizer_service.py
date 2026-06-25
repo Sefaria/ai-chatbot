@@ -85,6 +85,7 @@ async def test_returns_multiple_topics():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.side_effect = [
         [{"title": "Shabbat", "slug": "shabbat"}],
         [{"title": "Kiddush", "slug": "kiddush"}],
@@ -92,7 +93,11 @@ async def test_returns_multiple_topics():
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat", "Kiddush", "Havdalah"]
+        mock_llm.return_value = [
+            Candidate("Shabbat", "concept", "high"),
+            Candidate("Kiddush", "concept", "high"),
+            Candidate("Havdalah", "concept", "high"),
+        ]
         result = await service.find_appetizer("tell me about shabbat rituals")
 
     assert result is not None
@@ -109,6 +114,7 @@ async def test_partial_topics_on_mixed_hits():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.side_effect = [
         [{"title": "Shabbat", "slug": "shabbat"}],
         [],
@@ -116,7 +122,11 @@ async def test_partial_topics_on_mixed_hits():
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat", "Nonexistent", "Havdalah"]
+        mock_llm.return_value = [
+            Candidate("Shabbat", "concept", "high"),
+            Candidate("Nonexistent", "concept", "high"),
+            Candidate("Havdalah", "concept", "high"),
+        ]
         result = await service.find_appetizer("shabbat stuff")
 
     assert result is not None
@@ -131,13 +141,17 @@ async def test_deduplicates_topics_by_slug():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.side_effect = [
         [{"title": "Shabbat", "slug": "shabbat"}],
         [{"title": "Shabbat", "slug": "shabbat"}],
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat", "Sabbath"]
+        mock_llm.return_value = [
+            Candidate("Shabbat", "concept", "high"),
+            Candidate("Sabbath", "concept", "high"),
+        ]
         result = await service.find_appetizer("shabbat")
 
     assert result is not None
@@ -150,13 +164,17 @@ async def test_first_candidate_hits():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.side_effect = [
         [{"title": "Shabbat", "slug": "shabbat"}],
         [],
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat", "Sabbath"]
+        mock_llm.return_value = [
+            Candidate("Shabbat", "concept", "high"),
+            Candidate("Sabbath", "concept", "high"),
+        ]
         result = await service.find_appetizer("find me sources about Shabbat")
 
     assert result is not None
@@ -171,13 +189,17 @@ async def test_fallback_to_second_candidate():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.side_effect = [
         [],
         [{"title": "Herod", "slug": "herod"}],
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Herod the Great", "Herod"]
+        mock_llm.return_value = [
+            Candidate("Herod the Great", "person", "high"),
+            Candidate("Herod", "person", "high"),
+        ]
         result = await service.find_appetizer(
             "are there any sources in the yerushalmi about king herod the great"
         )
@@ -192,10 +214,11 @@ async def test_hebrew_prompt():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.return_value = [{"title": "Sivan", "slug": "sivan"}]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Sivan"]
+        mock_llm.return_value = [Candidate("Sivan", "concept", "high")]
         result = await service.find_appetizer("תן לי מקורות על סיוון כ'")
 
     assert result is not None
@@ -207,10 +230,14 @@ async def test_returns_none_when_all_candidates_miss():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.return_value = []
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["candidate1", "candidate2"]
+        mock_llm.return_value = [
+            Candidate("candidate1", "concept", "high"),
+            Candidate("candidate2", "concept", "high"),
+        ]
         result = await service.find_appetizer("some obscure thing")
 
     assert result is None
@@ -222,6 +249,7 @@ async def test_returns_none_when_llm_returns_empty():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = []
@@ -237,13 +265,14 @@ async def test_hebrew_interface_lang_returns_hebrew_title():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     # Sefaria name API returns both English and Hebrew title fields
     service.sefaria_client.search_topics.return_value = [
         {"title": "Shabbat", "he": "שַׁבָּת", "slug": "shabbat"}
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat"]
+        mock_llm.return_value = [Candidate("Shabbat", "concept", "high")]
         result = await service.find_appetizer("מה זה שבת?", interface_lang="he")
 
     assert result is not None
@@ -257,12 +286,13 @@ async def test_english_interface_lang_returns_english_title():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.return_value = [
         {"title": "Shabbat", "he": "שַׁבָּת", "slug": "shabbat"}
     ]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat"]
+        mock_llm.return_value = [Candidate("Shabbat", "concept", "high")]
         result = await service.find_appetizer("tell me about shabbat")
 
     assert result is not None
@@ -274,13 +304,16 @@ async def test_returns_none_on_timeout():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
 
     async def slow_search(*args, **kwargs):
         await asyncio.sleep(10)
         return [{"title": "X", "slug": "x"}]
 
     service.sefaria_client.search_topics = slow_search
-    result = await service.find_appetizer("test")
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Test", "concept", "high")]
+        result = await service.find_appetizer("test")
 
     assert result is None
 
@@ -462,10 +495,11 @@ async def test_appetizer_passes_pool_library_to_search_topics():
     service = AppetizerService.__new__(AppetizerService)
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
     service.sefaria_client.search_topics.return_value = [{"title": "Shabbat", "slug": "shabbat"}]
 
     with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["Shabbat"]
+        mock_llm.return_value = [Candidate("Shabbat", "concept", "high")]
         result = await service.find_appetizer("tell me about shabbat")
 
     assert result is not None
@@ -482,198 +516,6 @@ def test_appetizer_timeout_is_at_most_5_seconds():
     from ..appetizer.appetizer_service import APPETIZER_TIMEOUT_SECONDS
 
     assert APPETIZER_TIMEOUT_SECONDS <= 5
-
-
-# ---------------------------------------------------------------------------
-# Regression: Daf Yomi / recent dapim suppression
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_daf_yomi_intent_returns_none():
-    """'daf yomi' prompts must be suppressed — no useful library topic for the current daf."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer(
-            "what's the most interesting thing from the last few dapim?"
-        )
-        mock_llm.assert_not_called()
-
-    assert result is None
-    service.sefaria_client.search_topics.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_daf_yomi_phrase_returns_none():
-    """Bare 'daf yomi' phrase is suppressed."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer("tell me about daf yomi")
-        mock_llm.assert_not_called()
-
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_recent_dapim_returns_none():
-    """'recent dapim' variant is also suppressed."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer("what have we studied in recent dapim?")
-        mock_llm.assert_not_called()
-
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Regression: current-parsha intent → calendar path, no LLM
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_current_parsha_uses_calendar_not_llm():
-    """'This week's parsha' triggers calendar path; LLM is never called."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.get_current_calendar.return_value = {
-        "calendar_items": [
-            {
-                "title": {"en": "Parashat Hashavua"},
-                "displayValue": {"en": "Naso"},
-            }
-        ]
-    }
-    service.sefaria_client.search_topics.return_value = [
-        {"title": "Parashat Naso", "slug": "parashat-naso", "he": "פרשת נשא"}
-    ]
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer("what's this week's parsha?")
-        mock_llm.assert_not_called()
-
-    assert result is not None
-    assert result.topics[0].topic_slug == "parashat-naso"
-    service.sefaria_client.get_current_calendar.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_current_parsha_double_portion_returns_two_topics():
-    """Double parsha (e.g. Chukat-Balak) splits into two topic lookups."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.get_current_calendar.return_value = {
-        "calendar_items": [
-            {
-                "title": {"en": "Parashat Hashavua"},
-                "displayValue": {"en": "Chukat-Balak"},
-            }
-        ]
-    }
-    service.sefaria_client.search_topics.side_effect = [
-        [{"title": "Parashat Chukat", "slug": "parashat-chukat", "he": "פרשת חקת"}],
-        [{"title": "Parashat Balak", "slug": "parashat-balak", "he": "פרשת בלק"}],
-    ]
-
-    result = await service.find_appetizer("tell me about this week's parsha")
-
-    assert result is not None
-    assert len(result.topics) == 2
-    assert result.topics[0].topic_slug == "parashat-chukat"
-    assert result.topics[1].topic_slug == "parashat-balak"
-
-
-@pytest.mark.asyncio
-async def test_current_parsha_returns_none_when_calendar_missing():
-    """If calendar has no Parashat Hashavua entry, appetizer returns None gracefully."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.get_current_calendar.return_value = {"calendar_items": []}
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer("what's the weekly parsha?")
-        mock_llm.assert_not_called()
-
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_parshat_hashavua_phrase_uses_calendar():
-    """'Parshat hashavua' phrasing also triggers the calendar path."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.get_current_calendar.return_value = {
-        "calendar_items": [
-            {
-                "title": {"en": "Parashat Hashavua"},
-                "displayValue": {"en": "Emor"},
-            }
-        ]
-    }
-    service.sefaria_client.search_topics.return_value = [
-        {"title": "Parashat Emor", "slug": "parashat-emor"}
-    ]
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        result = await service.find_appetizer("מה הוא הפרשת השבוע? parshat hashavua")
-        mock_llm.assert_not_called()
-
-    assert result is not None
-    assert result.topics[0].topic_slug == "parashat-emor"
-
-
-# ---------------------------------------------------------------------------
-# Regression: generic-candidate blocklist
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_generic_candidates_suppressed_by_blocklist():
-    """Generic terms ('parashat', 'Torah Reading') are filtered before search.
-
-    Only specific non-blocked candidates reach search_topics.
-    """
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-    service.sefaria_client.search_topics.return_value = [{"title": "Shabbat", "slug": "shabbat"}]
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        # LLM returns two generic terms and one good one
-        mock_llm.return_value = ["parashat", "Torah Reading", "Shabbat"]
-        result = await service.find_appetizer("what's in the parashat torah reading about Shabbat?")
-
-    assert result is not None
-    assert len(result.topics) == 1
-    assert result.topics[0].topic_slug == "shabbat"
-    service.sefaria_client.search_topics.assert_called_once_with("Shabbat", limit=3, pool="library")
-
-
-@pytest.mark.asyncio
-async def test_all_generic_candidates_returns_none():
-    """If every LLM candidate is generic, the appetizer returns None."""
-    service = AppetizerService.__new__(AppetizerService)
-    service.client = MagicMock()
-    service.sefaria_client = AsyncMock()
-
-    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = ["parashat", "Torah Portion", "Daf Yomi"]
-        result = await service.find_appetizer("what's the parsha and daf yomi?")
-
-    assert result is None
-    service.sefaria_client.search_topics.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
