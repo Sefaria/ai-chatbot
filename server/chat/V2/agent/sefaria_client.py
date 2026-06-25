@@ -402,12 +402,15 @@ class SefariaClient:
                 "he": c.get("he", ""),
                 "slug": c.get("key", ""),
                 "topic_pools": c.get("topic_pools") or [],
+                "is_primary": bool(c.get("is_primary")),
             }
             for c in completions
             if c.get("type") in {"Topic", "PersonTopic", "AuthorTopic"} and c.get("key")
         ]
 
         if pool:
+            # Primary entries first so topics[0] is always the best match
+            candidates.sort(key=lambda c: 0 if c["is_primary"] else 1)
             results = []
             for candidate in candidates:
                 if pool not in candidate["topic_pools"]:
