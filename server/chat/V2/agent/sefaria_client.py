@@ -67,6 +67,11 @@ LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 # of a long-lived client cannot grow without bound.
 REF_CACHE_MAX_SIZE = 512
 
+# Minimum number of completions to request from the name API in search_topics.
+# The API returns ref/text completions first for book-name queries, which we drop
+# by type; a wide window keeps the real Topic from being crowded out.
+TOPIC_NAME_FETCH_FLOOR = 25
+
 # ---------------------------------------------------------------------------
 # Ref fallback helpers — construct a usable ref dict from a tref string when
 # the /api/ref endpoint is unavailable (e.g. not yet deployed to production).
@@ -393,7 +398,13 @@ class SefariaClient:
         surface bare topic docs that are not real library topics.
         """
         encoded = quote(query)
-        params = {"limit": str(limit)}
+        # The name API interleaves ref/text completions that we drop by type. For
+        # queries that collide with a book/tractate name (e.g. "Shabbat", "Chullin"),
+        # those refs fill the first slots and crowd the real Topic past a small
+        # limit. Request a wide window so Topics survive the type+pool filter; we
+        # still return at most `limit` topics.
+        fetch_limit = max(limit, TOPIC_NAME_FETCH_FLOOR)
+        params = {"limit": str(fetch_limit)}
         data = await self._get_json(f"api/name/{encoded}", params)
         completions = data.get("completion_objects", [])
         candidates = [
@@ -409,12 +420,13 @@ class SefariaClient:
         ]
 
         if pool:
-            # Primary entries first so topics[0] is always the best match
+            # Primary entries first so topics[0] is always the best match. Filter to
+            # the pool and slice to `limit` BEFORE fetching canonical titles, so the
+            # extra api/v2/topics calls stay bounded (the appetizer's 5s budget).
             candidates.sort(key=lambda c: 0 if c["is_primary"] else 1)
+            in_pool = [c for c in candidates if pool in c["topic_pools"]][:limit]
             results = []
-            for candidate in candidates:
-                if pool not in candidate["topic_pools"]:
-                    continue
+            for candidate in in_pool:
                 canonical = await self._get_canonical_titles(candidate["slug"])
                 title = (canonical and canonical["en"]) or candidate["title"]
                 he = (canonical and canonical["he"]) or candidate.get("he", "")
@@ -423,7 +435,7 @@ class SefariaClient:
 
         topics = [
             {"title": candidate["title"], "slug": candidate["slug"]} for candidate in candidates
-        ]
+        ][:limit]
         if topics:
             return topics
 

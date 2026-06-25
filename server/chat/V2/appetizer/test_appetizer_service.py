@@ -28,7 +28,69 @@ async def test_search_topics_returns_first_match():
             {"title": "Shabbat", "slug": "shabbat"},
             {"title": "Shabbat HaGadol", "slug": "shabbat-hagadol"},
         ]
-        mock.assert_called_once_with("api/name/shabbat", {"limit": "3"})
+        # The name API is queried with a wide window (not the caller's small limit)
+        # so real Topics survive the ref-type crowding; results are sliced to `limit`.
+        mock.assert_called_once_with("api/name/shabbat", {"limit": "25"})
+
+
+@pytest.mark.asyncio
+async def test_search_topics_fetches_wide_to_clear_ref_crowding():
+    """Book-name queries (e.g. 'Shabbat') return ref completions first; the real
+    Topic sits past a small limit. search_topics must request a wide window so the
+    Topic survives the type+pool filter."""
+    client = SefariaClient(base_url="https://www.sefaria.org")
+    with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
+        mock.side_effect = [
+            {
+                "completion_objects": [
+                    {"title": "Shabbat", "type": "ref", "key": "Shabbat"},
+                    {"title": "Shabbat HaAretz", "type": "ref", "key": "Shabbat HaAretz"},
+                    {
+                        "title": "Shabbat HaAretz, Preface",
+                        "type": "ref",
+                        "key": "Shabbat HaAretz, Preface",
+                    },
+                    {
+                        "title": "Shabbat",
+                        "type": "Topic",
+                        "key": "shabbat",
+                        "is_primary": True,
+                        "topic_pools": ["library", "sheets"],
+                    },
+                ]
+            },
+            {"slug": "shabbat", "primaryTitle": {"en": "Shabbat", "he": "שַׁבָּת"}},
+        ]
+        result = await client.search_topics("Shabbat", limit=3, pool="library")
+        assert result == [{"title": "Shabbat", "slug": "shabbat", "he": "שַׁבָּת"}]
+        name_call = mock.call_args_list[0]
+        assert name_call.args[0] == "api/name/Shabbat"
+        assert int(name_call.args[1]["limit"]) >= 20
+
+
+@pytest.mark.asyncio
+async def test_search_topics_bounds_canonical_fetches_to_limit():
+    """Many in-pool topics must not trigger one canonical-title fetch each — that
+    would blow the appetizer's 5s budget. Cap canonical fetches at `limit`."""
+    client = SefariaClient(base_url="https://www.sefaria.org")
+    many = [
+        {
+            "title": f"T{i}",
+            "type": "Topic",
+            "key": f"t{i}",
+            "is_primary": True,
+            "topic_pools": ["library"],
+        }
+        for i in range(10)
+    ]
+    with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
+        mock.side_effect = [{"completion_objects": many}] + [
+            {"slug": f"t{i}", "primaryTitle": {"en": f"T{i}", "he": ""}} for i in range(3)
+        ]
+        result = await client.search_topics("x", limit=3, pool="library")
+        assert len(result) == 3
+        # 1 name call + at most `limit` (3) canonical-title calls, not 10
+        assert mock.call_count == 4
 
 
 @pytest.mark.asyncio
