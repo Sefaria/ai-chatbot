@@ -12,6 +12,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from django.conf import settings
+
 from ..agent.sefaria_client import SefariaClient
 from ..pricing import tracked_messages_create
 from ..utils import get_anthropic_client, make_singleton
@@ -19,7 +21,6 @@ from ..utils import get_anthropic_client, make_singleton
 logger = logging.getLogger("chat.appetizer")
 
 APPETIZER_TIMEOUT_SECONDS = 8
-APPETIZER_MODEL = "claude-sonnet-4-6"
 SEFARIA_TOPICS_BASE_URL = "https://www.sefaria.org/topics"
 
 TOPIC_EXTRACTION_TOOL = {
@@ -150,7 +151,7 @@ class AppetizerService:
             response = await asyncio.to_thread(
                 tracked_messages_create,
                 self.client,
-                model=APPETIZER_MODEL,
+                model=settings.APPETIZER_MODEL,
                 max_tokens=200,
                 temperature=0.0,
                 system=(
