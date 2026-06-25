@@ -602,7 +602,7 @@ async def test_calendar_context_unavailable_on_error():
 # _extract_candidates_via_llm — structured Candidate extraction
 # ---------------------------------------------------------------------------
 
-from ..appetizer.appetizer_service import Candidate
+from ..appetizer.appetizer_service import Candidate, _is_strong_match
 
 
 def _fake_tool_response(candidates):
@@ -658,3 +658,83 @@ async def test_extract_returns_empty_on_exception():
             "anything", "<calendar_context>unavailable</calendar_context>"
         )
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Taxonomy regression tests + grounding-gate unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_strong_match_normalizes_title_and_slug():
+    assert _is_strong_match("Ahab", {"title": "Ahab", "slug": "ahab"})
+    assert _is_strong_match("Red Heifer", {"title": "Red Heifer", "slug": "red-heifer"})
+    assert _is_strong_match("parashat balak", {"title": "Parashat Balak", "slug": "parashat-balak"})
+    assert not _is_strong_match("number six", {"title": "Genesis", "slug": "genesis"})
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_weak_match_dropped():
+    """Low-confidence candidate that only fuzzy-grounds is dropped."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # search returns a topic that does NOT exactly match the vague label
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Genesis", "slug": "genesis", "he": "בראשית"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("the number six", "concept", "low")]
+        result = await service.find_appetizer("is the number six special?")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_exact_match_kept():
+    """Low-confidence candidate that grounds exactly is kept."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Shofar", "slug": "shofar", "he": "שופר"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Shofar", "concept", "low")]
+        result = await service.find_appetizer("shofar")
+    assert result is not None
+    assert result.topics[0].topic_slug == "shofar"
+
+
+@pytest.mark.asyncio
+async def test_none_taxonomy_cases_return_none():
+    """Greetings / follow-ups / bare citations: LLM yields no candidates -> None."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    for msg in ["<AUTO TEST> Say hi", "explain this to me", "yevamos 76 b", "yes please"]:
+        with patch.object(
+            service, "_extract_candidates_via_llm", new_callable=AsyncMock
+        ) as mock_llm:
+            mock_llm.return_value = []
+            result = await service.find_appetizer(msg)
+        assert result is None, msg
+    service.sefaria_client.search_topics.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_temporal_candidate_grounds_to_tractate():
+    """Daf-yomi style query resolves (in extraction) to a tractate that grounds."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Chullin", "slug": "chullin", "he": "חולין"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Chullin", "temporal", "high")]
+        result = await service.find_appetizer("what's today's daf yomi?")
+    assert result is not None
+    assert result.topics[0].topic_slug == "chullin"
