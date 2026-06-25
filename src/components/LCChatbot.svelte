@@ -487,33 +487,24 @@
   async function scrollToLoadingElement() {
     if (!autoScrollEnabled || !messageListRef) return;
     await tick();
-    // Scroll so the bottom of the loading wrapper (newest step) is always visible.
-    // When the topics box is the only/newest element, keep the entire wrapper in view
-    // by preferring block:'end' — this brings the wrapper bottom to the container bottom.
+    // Always scroll so the bottom of the loading wrapper (newest step) is visible.
+    // We unconditionally target the wrapper bottom rather than checking rects, because
+    // in-progress smooth scrolls leave getBoundingClientRect() in an intermediate state
+    // that causes the condition checks to incorrectly skip the scroll.
     const el = loadingWrapperRef || messageListRef.querySelector('.lc-loading-wrapper');
     if (!el) return;
 
-    const containerRect = messageListRef.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
     const containerHeight = messageListRef.clientHeight;
     const elTop = getScrollTopForElement(el);
-    const elBottom = elTop + elRect.height;
+    const elBottom = elTop + el.offsetHeight;
 
-    // Wrapper taller than the viewport, or its bottom is below the viewport:
-    // scroll so the newest content (its bottom) is flush with the container bottom.
-    const tallerThanViewport = elRect.height > containerHeight;
-    if (tallerThanViewport || elRect.bottom > containerRect.bottom) {
-      applyAutoScroll(elBottom - containerHeight);
-      return;
-    }
-
-    // Wrapper fits but its top is above the viewport: bring the top into view.
-    if (elRect.top < containerRect.top) {
+    if (el.offsetHeight <= containerHeight) {
+      // Wrapper fits: keep its top in view (don't scroll past the top edge).
       applyAutoScroll(elTop);
-      return;
+    } else {
+      // Wrapper taller than viewport: show its bottom (newest content).
+      applyAutoScroll(elBottom - containerHeight);
     }
-
-    // Wrapper already fully visible: keep the current position.
   }
 
   async function handleSend() {

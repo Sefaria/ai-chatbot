@@ -5,10 +5,6 @@
     href = '',
     onActivate,
   } = $props();
-  // Max width of the ref label before it truncates (with ellipsis + tooltip),
-  // expressed as a literal character count via the `ch` unit.
-  const LOCATION_REF_MAX_CHARS = 30;
-
   function activate(e) {
     e.preventDefault();
     onActivate?.(href);
@@ -22,7 +18,7 @@
       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
     </svg>
-    <span class="lc-location-ref" style="max-width: {LOCATION_REF_MAX_CHARS}ch;"><bdi>{label}</bdi></span>
+    <span class="lc-location-ref"><bdi>{label}</bdi></span>
   </a>
 </Tooltip>
 
@@ -31,7 +27,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    max-width: 100%;
+    max-width: 560px;
+    width: 100%;
     box-sizing: border-box;
     padding: 4px 8px;
     border: 1px solid var(--lc-border-strong, #ccc);
@@ -50,6 +47,8 @@
     flex: none;
   }
   .lc-location-ref {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
