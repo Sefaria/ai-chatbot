@@ -1746,6 +1746,10 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
+    /* Vertical scroll only. Without an explicit overflow-x, `overflow-y: auto`
+       makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
+       child shows a horizontal scrollbar. Clip horizontally so it can never. */
+    overflow-x: hidden;
     padding: var(--space-1, 4px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
