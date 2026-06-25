@@ -596,6 +596,10 @@ async def test_calendar_context_unavailable_on_error():
     service.sefaria_client.get_current_calendar.side_effect = Exception("boom")
     result = await service._get_calendar_context()
     assert result == "<calendar_context>unavailable</calendar_context>"
+    # failure is not cached → a second call retries the fetch
+    result2 = await service._get_calendar_context()
+    assert result2 == "<calendar_context>unavailable</calendar_context>"
+    assert service.sefaria_client.get_current_calendar.call_count == 2
 
 
 # ---------------------------------------------------------------------------
