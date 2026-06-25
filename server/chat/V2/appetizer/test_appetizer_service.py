@@ -721,3 +721,36 @@ async def test_search_topics_primary_preferred_over_alias():
 
     assert result[0]["slug"] == "parashat-noach"
     assert result[1]["slug"] == "noah"
+
+
+# ---------------------------------------------------------------------------
+# AppetizerService._get_calendar_context — daily cache
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_calendar_context_cached_per_day():
+    service = AppetizerService.__new__(AppetizerService)
+    service._calendar_cache = None
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {
+        "Gregorian Date": "2026-06-25T09:00:00",
+        "calendar_items": [
+            {"title": {"en": "Daf Yomi"}, "displayValue": {"en": "Chullin 56"}},
+        ],
+    }
+    first = await service._get_calendar_context()
+    second = await service._get_calendar_context()
+    assert "daf_yomi: Chullin 56" in first
+    assert first == second
+    service.sefaria_client.get_current_calendar.assert_called_once()  # cached
+
+
+@pytest.mark.asyncio
+async def test_calendar_context_unavailable_on_error():
+    service = AppetizerService.__new__(AppetizerService)
+    service._calendar_cache = None
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.side_effect = Exception("boom")
+    result = await service._get_calendar_context()
+    assert result == "<calendar_context>unavailable</calendar_context>"

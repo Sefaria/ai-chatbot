@@ -16,12 +16,14 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from django.conf import settings
 
 from ..agent.sefaria_client import SefariaClient
 from ..pricing import tracked_messages_create
 from ..utils import get_anthropic_client, make_singleton
+from .calendar_context import render_calendar_context
 
 logger = logging.getLogger("chat.appetizer")
 
@@ -122,6 +124,22 @@ class AppetizerService:
     def __init__(self):
         self.client = get_anthropic_client()
         self.sefaria_client = SefariaClient()
+        self._calendar_cache: tuple[str, str] | None = None
+
+    async def _get_calendar_context(self) -> str:
+        """Compact calendar block, fetched at most once per day per process."""
+        today = datetime.now().date().isoformat()
+        cache = getattr(self, "_calendar_cache", None)
+        if cache and cache[0] == today:
+            return cache[1]
+        try:
+            calendar = await self.sefaria_client.get_current_calendar()
+            rendered = render_calendar_context(calendar)
+        except Exception:
+            logger.exception("Appetizer: calendar fetch failed")
+            rendered = "<calendar_context>unavailable</calendar_context>"
+        self._calendar_cache = (today, rendered)
+        return rendered
 
     async def find_appetizer(
         self,
