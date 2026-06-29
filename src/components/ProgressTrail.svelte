@@ -259,13 +259,18 @@
     text-underline-offset: auto;
   }
 
-  /* F1: Clean focus indicator that isn't clipped by the row's overflow:hidden.
-     Use box-shadow instead of outline so it renders within the element's own
-     paint area and doesn't get swallowed by the ancestor clip. */
+  /* F1: Lift the overflow:hidden clip on the wrapping containers when a trail
+     link is focused so the outline isn't swallowed. overflow:visible on
+     :focus-within temporarily allows the outline to paint outside the box;
+     the text may un-truncate slightly while focused, which is acceptable. */
+  .trail-text-body:focus-within,
+  .progress-trail-text:focus-within {
+    overflow: visible;
+  }
+
   :global(.trail-ref-link:focus-visible) {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--lc-bg, #fff), 0 0 0 4px var(--semantic-text-link, #1a56a0);
-    border-radius: 2px;
+    outline: 1px dotted var(--semantic-text-link, #1a56a0);
+    outline-offset: 1px;
   }
 
   :global(.trail-ref-icon) {
