@@ -268,10 +268,10 @@
     overflow: visible;
   }
 
-  :global(.trail-ref-link:focus-visible) {
-    outline: 1px dotted var(--semantic-text-link, #1a56a0);
-    outline-offset: 1px;
-  }
+  /* No custom outline — use the browser default :focus-visible style (solid blue
+     ring), which matches how other links in the widget (e.g. appetizer chips)
+     look when focused. The :focus-within overflow lift above ensures it isn't
+     clipped by the ancestor overflow:hidden. */
 
   :global(.trail-ref-icon) {
     flex-shrink: 0;
