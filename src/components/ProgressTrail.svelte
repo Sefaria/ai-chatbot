@@ -34,11 +34,62 @@
       .replace(/'/g, '&#39;');
   }
 
-  /** Build the bare bidi-isolated ref link anchor HTML, with native title tooltip on the ref itself. */
+  /** Build the bare bidi-isolated ref link anchor HTML. The full-text tooltip is
+   *  handled per-row by the truncationTooltip action, so no native title here. */
   function refLinkHtml(url, label) {
     const href = escapeAttr(url);
-    const titleAttr = escapeAttr(label);
-    return `<a class="trail-ref-link" href="${href}" title="${titleAttr}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link"><bdi>${escapeHtml(label)}</bdi></a>`;
+    return `<a class="trail-ref-link" href="${href}" target="_blank" rel="noopener noreferrer" data-feature-name="thinking_steps_text_link"><bdi>${escapeHtml(label)}</bdi></a>`;
+  }
+
+  /**
+   * Svelte action: show a tooltip with the row's full text on hover, but only
+   * when the row is actually truncated. The bubble is appended to document.body
+   * with inline styles and a max z-index, so it can never be clipped or
+   * out-stacked by the widget's shadow-root overflow/transform/stacking context
+   * (the reason earlier shadow-root + CSS-class attempts were invisible).
+   */
+  function truncationTooltip(node) {
+    let bubble = null;
+    function hide() {
+      bubble?.remove();
+      bubble = null;
+    }
+    function show() {
+      if (node.scrollWidth <= node.clientWidth + 1) return; // not truncated — no tooltip
+      hide();
+      bubble = document.createElement('div');
+      bubble.className = 'lc-trail-tooltip';
+      bubble.dataset.testid = 'la-trail-tooltip';
+      bubble.textContent = node.textContent.trim();
+      Object.assign(bubble.style, {
+        position: 'fixed',
+        maxWidth: '260px',
+        background: '#3a3a3a',
+        color: '#fff',
+        font: '12px/1.4 Roboto, sans-serif',
+        padding: '8px 12px',
+        borderRadius: '12px',
+        whiteSpace: 'normal',
+        wordBreak: 'break-word',
+        pointerEvents: 'none',
+        zIndex: '2147483647',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+      });
+      document.body.appendChild(bubble);
+      const r = node.getBoundingClientRect();
+      const left = Math.min(r.left, window.innerWidth - bubble.offsetWidth - 8);
+      bubble.style.top = `${Math.round(r.bottom + 6)}px`;
+      bubble.style.left = `${Math.round(Math.max(8, left))}px`;
+    }
+    node.addEventListener('mouseenter', show);
+    node.addEventListener('mouseleave', hide);
+    return {
+      destroy() {
+        hide();
+        node.removeEventListener('mouseenter', show);
+        node.removeEventListener('mouseleave', hide);
+      },
+    };
   }
 
   // ── Client-side ref fallback (feature: trail ref links) ───────────────────
@@ -122,11 +173,17 @@
           <span class="progress-trail-text">
             {#if isFailed}
               <span class="trail-failed-prefix">{$_('assistant.progress.failed')}</span>
-              <bdi>{entry.description ?? entry.toolName ?? entry.text ?? ''}</bdi>
+              <bdi class="trail-text-body" use:truncationTooltip>{entry.description ?? entry.toolName ?? entry.text ?? ''}</bdi>
             {:else if entry.type === 'tool'}
-              {@html renderToolText(entry)}
+              <!-- F2: wrap the tool text (the dominant case: "Searching texts for…",
+                   "Fetching text …") in a block so text-overflow:ellipsis fires.
+                   Raw {@html} content sits directly in the flex parent otherwise,
+                   where ellipsis never applies and the row is hard-clipped. -->
+              <span class="trail-text-body" use:truncationTooltip>{@html renderToolText(entry)}</span>
             {:else}
-              {entry.text ?? ''}
+              <!-- F2: wrap in span so text-overflow:ellipsis fires (plain text nodes in a flex
+                   container do not respond to text-overflow on the parent) -->
+              <span class="trail-text-body" use:truncationTooltip>{entry.text ?? ''}</span>
             {/if}
           </span>
       </li>
@@ -173,21 +230,25 @@
     gap: 4px;
     flex: 1;
     min-width: 0;
-    /* Truncate the text row as a whole when it overflows */
+    /* Truncate the text row as a whole when it overflows.
+       F2: overflow+text-overflow only work on block/inline-block when the content
+       is a single text node or inline-level child. The flex display handles the
+       ref-link child (which truncates itself). For plain-text (no-ref) steps the
+       text node is a direct child of the flex container — wrap it so ellipsis fires.
+       We apply text-overflow here too; it fires on the flex container when all
+       children are inline. */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    /* Prevent this element itself from stretching the row past the container */
+    max-width: 100%;
   }
 
-  /* ── Ref links in normal (non-failed) steps ── */
+  /* ── Ref links in normal (non-failed) steps ──
+     Plain inline so the ref flows as text within the trail-text-body wrapper,
+     which owns truncation (overflow/ellipsis). An inline-block here produced an
+     odd dangling underline and a second truncation context. */
   :global(.trail-ref-link) {
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: 100%;
-    display: inline-block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--semantic-text-link);
     font-family: var(--lc-font);
     font-size: 12px;
@@ -198,9 +259,30 @@
     text-underline-offset: auto;
   }
 
+  /* F1: Clean focus indicator that isn't clipped by the row's overflow:hidden.
+     Use box-shadow instead of outline so it renders within the element's own
+     paint area and doesn't get swallowed by the ancestor clip. */
+  :global(.trail-ref-link:focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--lc-bg, #fff), 0 0 0 4px var(--semantic-text-link, #1a56a0);
+    border-radius: 2px;
+  }
+
   :global(.trail-ref-icon) {
     flex-shrink: 0;
     color: var(--lc-primary);
+  }
+
+  /* F2: text body for plain-text (non-ref, non-failed) steps.
+     Must be block or inline-block for text-overflow to fire; min-width:0 lets it
+     shrink inside the flex parent so the container never widens past its bounds. */
+  .trail-text-body {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
   }
 
   /* ── Failed prefix label ── */

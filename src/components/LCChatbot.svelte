@@ -1808,12 +1808,22 @@
     align-self: stretch;
   }
 
-  /* Response package: stacks topics accordion → thought accordion → answer bubble
-     with 16px gap between each layer, matching the Figma "Final Response Ready" spec. */
+  /* Response package: stacks topics accordion → thought accordion → answer bubble.
+     F5: Gap between accordions is 16px; gap before the answer bubble is 24px total.
+     We use a uniform 16px gap and add 8px of extra margin-top to the bubble so the
+     total visual space before it is 16 + 8 = 24px. */
   .lc-response-package {
     display: flex;
     flex-direction: column;
     gap: 16px;
+  }
+
+  /* F5: When the answer bubble is preceded by at least one accordion, add 8px extra
+     margin-top (on top of the 16px flex gap) so total visual gap = 24px.
+     When there are no accordions the bubble is the only child and the gap spec
+     does not apply, so we scope this to :not(:first-child). */
+  .lc-response-package > .message.assistant:not(:first-child) {
+    margin-top: 8px;
   }
 
   .empty-state .message.assistant .message-content,
@@ -1976,25 +1986,44 @@
 }
 
   /* Steps trail + the live status line share one 4px-gapped column so the
-     "Thinking"/"Synthesizing" line always sits 4px below the newest step. */
+     "Thinking"/"Synthesizing" line always sits 4px below the newest step.
+     F3: Force LTR on both so the Hebrew/RTL interface never flips them. */
   .lc-thinking-block {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     align-self: stretch;
     gap: var(--space-1, 4px);
+    /* F3: Hebrew RTL must not flip this block — thinking steps are always LTR */
+    direction: ltr;
+    text-align: start;
+    /* F6: Prevent the block from ever pushing past the container width */
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
   }
   .lc-thinking-step {
     display: flex;
     align-items: center;
     gap: var(--global-dimension-100, 8px);
     min-height: 20px;
+    /* F3: Explicitly LTR so spinner stays on the left even in Hebrew */
+    direction: ltr;
+    /* F6: must not overflow the block; min-width:0 lets it shrink */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
   .lc-thinking-label {
     font-family: var(--lc-font);
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
     color: var(--semantic-text-secondary, #575757);
+    /* F6: prevent label from pushing the thinking row wider than the container */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .lc-loading-spinner {
     display: inline-flex;
