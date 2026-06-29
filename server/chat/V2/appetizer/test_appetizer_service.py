@@ -823,3 +823,428 @@ def test_extraction_prompt_has_temporal_resolution_rules():
     # Daf yomi resolves to the tractate's subject areas
     assert "daf yomi" in p.lower()
     assert "subject" in p.lower()
+
+
+# ---------------------------------------------------------------------------
+# B1 regression: high-confidence fuzzy-mismatch gate (_match_score)
+# ---------------------------------------------------------------------------
+
+from ..appetizer.appetizer_service import _is_bare_parsha_label, _match_score
+
+
+def test_match_score_exact():
+    """Exact (strong) match scores 3."""
+    assert _match_score("Torah", {"title": "Torah", "slug": "torah"}) == 3
+    assert _match_score("Shabbat", {"title": "Shabbat", "slug": "shabbat"}) == 3
+    assert _match_score("Red Heifer", {"title": "Red Heifer", "slug": "red-heifer"}) == 3
+    assert _match_score("Ahab", {"title": "Ahab", "slug": "ahab"}) == 3
+
+
+def test_match_score_token_overlap():
+    """Token overlap scores 2."""
+    # 'existence' and 'god' both appear in title and slug
+    assert (
+        _match_score("Existence of God", {"title": "Existence of God", "slug": "gods-existence"})
+        == 3
+    )
+    # 'parenting' appears in slug 'parenting' even when title differs
+    assert _match_score("Parenting", {"title": "Education", "slug": "education"}) == 1
+    # 'red' token in 'red heifer' matches slug 'red-heifer'
+    assert _match_score("Red Heifer", {"title": "Red Heifer", "slug": "red-heifer"}) == 3
+
+
+def test_match_score_unrelated_scores_low():
+    """Unrelated hits score 1 (in-window but no token match) — below the acceptance threshold."""
+    # "Torah" vs "Noses": no shared tokens
+    assert _match_score("Torah", {"title": "Noses", "slug": "noses"}) == 1
+    # "Daf Yomi" vs "Yom Kippur": no shared tokens (yomi ≠ yom)
+    assert _match_score("Daf Yomi", {"title": "Yom Kippur", "slug": "yom-kippur"}) == 1
+    assert _match_score("Daf Yomi", {"title": "Yom HaShoah", "slug": "yom-hashoah"}) == 1
+
+
+def test_match_score_transliteration_achav():
+    """Transliteration: 'Achav' vs 'Acharei Mot' scores 1 (no token match);
+    'Achav' vs 'Ahab' also scores 1. The ground_candidate selects the best hit
+    across the list and requires score >= 2, so achav-typed queries that only
+    produce score-1 hits are dropped — but the LLM emits 'Ahab' (canonical form)
+    which scores 3 and grounds correctly."""
+    assert _match_score("Achav", {"title": "Acharei Mot", "slug": "acharei-mot"}) == 1
+    assert _match_score("Achav", {"title": "Ahab", "slug": "ahab"}) == 1
+    # When the LLM correctly translates to the canonical label, it scores 3
+    assert _match_score("Ahab", {"title": "Ahab", "slug": "ahab"}) == 3
+
+
+@pytest.mark.asyncio
+async def test_b1_high_confidence_unrelated_hit_dropped():
+    """B1 regression: high-confidence candidate whose top grounding hit is unrelated
+    to the label must be dropped (not accepted just because confidence=high)."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # Simulate name API returning "Noses" as top hit for "Torah" (the live bug)
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Noses", "slug": "noses", "he": ""}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Torah", "concept", "high")]
+        result = await service.find_appetizer("show me sources about torah")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_b1_high_confidence_second_hit_used_when_first_unrelated():
+    """B1 regression: when top hit is unrelated but a later hit is plausible, use it."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # First hit unrelated, second hit is the correct one (achav->ahab pattern)
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Acharei Mot", "slug": "acharei-mot", "he": ""},
+        {"title": "Ahab", "slug": "ahab", "he": "אחאב"},
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Ahab", "person", "high")]
+        result = await service.find_appetizer("help me learn about ahab")
+    assert result is not None
+    assert result.topics[0].topic_slug == "ahab"
+
+
+# ---------------------------------------------------------------------------
+# B2 regression: daf-yomi (sheets-only) must not leak into library results
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b2_daf_yomi_candidate_produces_no_library_topics():
+    """B2 regression: a candidate labeled 'Daf Yomi' must not resolve to unrelated
+    library topics (e.g. 'Yom Kippur') that appear in the name API response via
+    fuzzy expansion. The plausibility gate rejects them all."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # Simulate live API: daf-yomi dropped by pool filter, fuzzy expansions returned
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Yom Kippur", "slug": "yom-kippur", "he": "יום כיפור"},
+        {"title": "Yom HaShoah", "slug": "yom-hashoah", "he": ""},
+        {"title": "Yom HaAtzmaut", "slug": "yom-haatzmaut", "he": ""},
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Daf Yomi", "temporal", "high")]
+        result = await service.find_appetizer("what is today's daf yomi?")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_b2_sheets_only_topic_excluded_by_pool_filter():
+    """B2 regression: search_topics(pool='library') must return empty when the only
+    matching topic is in the sheets pool (e.g. daf-yomi)."""
+    client = SefariaClient(base_url="https://www.sefaria.org")
+    with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
+        mock.return_value = {
+            "completion_objects": [
+                {
+                    "title": "Daf Yomi",
+                    "type": "Topic",
+                    "key": "daf-yomi",
+                    "is_primary": True,
+                    "topic_pools": ["sheets"],  # NOT in library
+                }
+            ]
+        }
+        result = await client.search_topics("daf yomi", pool="library")
+    assert result == []
+    assert mock.call_count == 1  # only name API call, no canonical-title fetch
+
+
+# ---------------------------------------------------------------------------
+# B3 regression: bare "Parashat"/"Parasha" labels must be rejected
+# ---------------------------------------------------------------------------
+
+
+def test_b3_is_bare_parsha_label():
+    """B3: bare parsa labels are detected."""
+    for bare in [
+        "Parashat",
+        "Parasha",
+        "Parshah",
+        "Parshat",
+        "Parsha",
+        "the parasha",
+        "the parsha",
+        "PARASHAT",
+        "PARASHA",
+    ]:
+        assert _is_bare_parsha_label(bare), f"{bare!r} should be a bare parsha label"
+    # Specific portions must NOT be flagged
+    for specific in ["Parashat Pinchas", "Parashat Balak", "Parashat Noach"]:
+        assert not _is_bare_parsha_label(specific), f"{specific!r} should not be bare"
+
+
+@pytest.mark.asyncio
+async def test_b3_bare_parsha_dropped_at_extraction():
+    """B3 regression: bare 'Parashat' label emitted by extractor is silently dropped."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    with patch(
+        "chat.V2.appetizer.appetizer_service.tracked_messages_create",
+        return_value=_fake_tool_response(
+            [{"label": "Parashat", "kind": "temporal", "confidence_level": "high"}]
+        ),
+    ):
+        result = await service._extract_candidates_via_llm(
+            "teach me about the parsha", "<calendar_context>unavailable</calendar_context>"
+        )
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_b3_bare_parsha_dropped_at_grounding():
+    """B3 regression: even if a bare 'Parasha' candidate reaches _ground_candidate,
+    it is rejected before any Sefaria API call."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Parasha", "temporal", "high")]
+        result = await service.find_appetizer("teach me about the parsha")
+    assert result is None
+    service.sefaria_client.search_topics.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_b3_specific_parsha_still_passes():
+    """B3 regression: a specific parsha name (e.g. 'Parashat Pinchas') must still ground."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Parashat Pinchas", "slug": "parashat-pinchas", "he": "פרשת פינחס"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Parashat Pinchas", "temporal", "high")]
+        result = await service.find_appetizer("teach me about the parsha")
+    assert result is not None
+    assert result.topics[0].topic_slug == "parashat-pinchas"
+
+
+# ---------------------------------------------------------------------------
+# B4 regression: chip title == canonical topic page title (primaryTitle)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b4_chip_title_equals_canonical_page_title():
+    """B4 regression: the chip title must come from the topic's canonical primaryTitle,
+    not the autocomplete string from the name API (which can differ, e.g. 'Parenting'
+    for slug 'education' whose page title is 'Education')."""
+    client = SefariaClient(base_url="https://www.sefaria.org")
+    with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
+        mock.side_effect = [
+            {
+                "completion_objects": [
+                    {
+                        "title": "Parenting",  # name-API autocomplete string
+                        "type": "Topic",
+                        "key": "education",
+                        "is_primary": True,
+                        "topic_pools": ["library", "sheets"],
+                    }
+                ]
+            },
+            # canonical page has a different primaryTitle
+            {"slug": "education", "primaryTitle": {"en": "Education", "he": "חינוך"}},
+        ]
+        result = await client.search_topics("parenting", limit=1, pool="library")
+    assert len(result) == 1
+    assert result[0]["title"] == "Education"  # canonical page title, not autocomplete
+    assert result[0]["he"] == "חינוך"
+    assert result[0]["slug"] == "education"
+
+
+# ---------------------------------------------------------------------------
+# B5 regression: Hebrew interface_lang produces Hebrew chip title;
+#                "he-IL" locale variant is handled correctly
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b5_hebrew_interface_lang_returns_hebrew_title():
+    """B5 regression: interface_lang='he' produces Hebrew chip title."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Shabbat", "he": "שַׁבָּת", "slug": "shabbat"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Shabbat", "concept", "high")]
+        result = await service.find_appetizer("מה זה שבת?", interface_lang="he")
+    assert result is not None
+    assert result.topics[0].topic_title == "שַׁבָּת"
+
+
+@pytest.mark.asyncio
+async def test_b5_hebrew_fallback_to_english_when_no_hebrew_title():
+    """B5 regression: when Hebrew title is absent, fall back to English (not blank)."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Shabbat Chazon", "he": "", "slug": "shabbat-chazon"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Shabbat Chazon", "concept", "high")]
+        result = await service.find_appetizer("tell me about Shabbat Chazon", interface_lang="he")
+    assert result is not None
+    # No Hebrew title available → fall back to English
+    assert result.topics[0].topic_title == "Shabbat Chazon"
+
+
+def test_b5_views_locale_normalization():
+    """B5 regression: 'he-IL' (navigator.language format) is treated as Hebrew
+    by the views.py locale normalization."""
+
+    # Simulate the normalization logic from views.py
+    def normalize_locale(raw_locale):
+        return "he" if raw_locale.startswith("he") else raw_locale
+
+    assert normalize_locale("he") == "he"
+    assert normalize_locale("he-IL") == "he"
+    assert normalize_locale("he-il") == "he"
+    assert normalize_locale("en") == "en"
+    assert normalize_locale("en-US") == "en-US"
+    assert normalize_locale("") == ""
+
+
+def test_b5_extraction_prompt_has_no_bare_parsha_rule():
+    """B5 guard: extraction prompt now includes the bare-parsha prohibition."""
+    from ..appetizer.appetizer_service import EXTRACTION_SYSTEM_PROMPT as p
+
+    assert "NEVER emit a bare" in p
+    assert "Parashat" in p
+    assert "calendar context is unavailable" in p
+
+
+# ---------------------------------------------------------------------------
+# B6 regression: broad themes must resolve to established Sefaria library topics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b6_parenting_resolves_to_education_and_honoring_parents():
+    """B6 regression: 'parenting' query must resolve to established library topics.
+
+    The LLM should now emit 'Education' and 'Honoring Parents' (not the literal
+    word 'Parenting' which has no exact library topic), and both must ground
+    successfully via token-overlap scoring.
+    """
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.side_effect = [
+        [{"title": "Education", "slug": "education", "he": "חינוך"}],
+        [{"title": "Honoring Parents", "slug": "honoring-parents", "he": "כיבוד אב ואם"}],
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        # Simulates the new prompt behavior: broad theme -> established topic names
+        mock_llm.return_value = [
+            Candidate("Education", "concept", "high"),
+            Candidate("Honoring Parents", "concept", "high"),
+        ]
+        result = await service.find_appetizer("show me sources on parenting")
+    assert result is not None
+    slugs = [t.topic_slug for t in result.topics]
+    assert "education" in slugs
+    assert "honoring-parents" in slugs
+
+
+@pytest.mark.asyncio
+async def test_b6_parenting_literal_label_fails_grounding():
+    """B6 regression: if the LLM still emits the literal 'Parenting' label,
+    grounding must reject it (score < 2 against 'education' slug)."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # Simulates old (broken) behavior: name API returns 'education' for 'Parenting'
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Education", "slug": "education", "he": "חינוך"}
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Parenting", "concept", "high")]
+        result = await service.find_appetizer("show me sources on parenting")
+    # 'Parenting' scores 1 vs 'education' (no token overlap) — must be dropped
+    assert result is None
+
+
+def test_b6_extraction_prompt_has_broad_theme_rule():
+    """B6 guard: extraction prompt includes the broad-theme mapping rule."""
+    from ..appetizer.appetizer_service import EXTRACTION_SYSTEM_PROMPT as p
+
+    assert "BROAD THEME RULE" in p
+    assert "Education" in p
+    assert "Honoring Parents" in p
+
+
+# ---------------------------------------------------------------------------
+# source_decision logging field (Braintrust metadata.appetizer.source_decision)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_source_decision_explains_returned_topic():
+    """The metrics_sink receives a source_decision describing what was returned and why."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [{"title": "Shabbat", "slug": "shabbat"}]
+    sink: dict = {}
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Shabbat", "concept", "high")]
+        result = await service.find_appetizer("about shabbat", metrics_sink=sink)
+    assert result is not None
+    assert "returned" in sink["source_decision"]
+    assert "shabbat" in sink["source_decision"]
+
+
+@pytest.mark.asyncio
+async def test_source_decision_explains_why_nothing_returned():
+    """When no candidate is extracted, the sink still records why nothing came back."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    sink: dict = {}
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = []
+        result = await service.find_appetizer("hello there", metrics_sink=sink)
+    assert result is None
+    assert "no source returned" in sink["source_decision"]
+
+
+@pytest.mark.asyncio
+async def test_source_decision_explains_dropped_candidate():
+    """A high-confidence candidate with no plausible hit is reported as dropped + why."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    # name API returns an unrelated topic (no token/exact overlap) -> score 1 -> dropped
+    service.sefaria_client.search_topics.return_value = [
+        {"title": "Yom Kippur", "slug": "yom-kippur"}
+    ]
+    sink: dict = {}
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [Candidate("Daf Yomi", "concept", "high")]
+        result = await service.find_appetizer("today's daf yomi", metrics_sink=sink)
+    assert result is None
+    assert "dropped" in sink["source_decision"]

@@ -300,10 +300,19 @@ def chat_stream_v2(request):
 
             appetizer_service = get_appetizer_service()
 
+            # Normalize locale to "he" for Hebrew interfaces. The frontend
+            # sends navigator.language (e.g. "he-IL") and the widget
+            # interface-lang attribute is "he"; both should produce Hebrew chips.
+            raw_locale = context.get("locale", "")
+            interface_lang = "he" if raw_locale.startswith("he") else raw_locale
+            # Pass appetizer_metrics as the sink so the source decision (what was
+            # returned and why, or why nothing was) is captured even when the
+            # result is None — it is logged to Braintrust under metadata.appetizer.
             result = asyncio.run(
                 appetizer_service.find_appetizer(
                     data["text"],
-                    interface_lang=context.get("locale", ""),
+                    interface_lang=interface_lang,
+                    metrics_sink=appetizer_metrics,
                 )
             )
             logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)

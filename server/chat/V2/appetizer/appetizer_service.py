@@ -42,6 +42,67 @@ def _is_strong_match(label: str, hit: dict) -> bool:
     return label_n == _normalize(hit.get("title", "")) or label_n == _normalize(hit.get("slug", ""))
 
 
+# Bare parsha/parasha labels that are not valid topic names on their own.
+# The extractor should always emit a specific portion name (e.g. "Parashat Balak")
+# when a parsha is relevant. These bare labels ground to random parshiyot and must
+# be rejected at extraction time.
+_BARE_PARSHA_LABELS: frozenset[str] = frozenset(
+    {"parashat", "parasha", "parshah", "parshat", "parsha", "the parasha", "the parsha"}
+)
+
+
+def _is_bare_parsha_label(label: str) -> bool:
+    """True if the label is a bare, non-specific parsha/parasha word."""
+    return _normalize(label) in _BARE_PARSHA_LABELS
+
+
+def _has_token_overlap(a: str, b: str) -> bool:
+    """True if any word token from normalized `a` appears in normalized `b` or vice versa."""
+    a_tokens = set(_normalize(a).split())
+    b_tokens = set(_normalize(b).split())
+    return bool(a_tokens & b_tokens)
+
+
+def _format_source_decision(returned: list[str], dropped: list[str]) -> str:
+    """One human-readable line: which sources were returned and why, plus why
+    any candidate was dropped. Logged to Braintrust under metadata.appetizer."""
+    parts = []
+    parts.append("returned: " + "; ".join(returned) if returned else "no source returned")
+    if dropped:
+        parts.append("dropped: " + "; ".join(dropped))
+    return " | ".join(parts)
+
+
+def _match_score(label: str, hit: dict) -> int:
+    """Score how well a grounded hit matches the candidate label (higher = better).
+
+    3 — exact (strong) match on title or slug: "Shabbat" → shabbat.
+    2 — token overlap on title or slug: "Red Heifer" → red-heifer, "Parenting" → education,
+        "la vaca roja" → red-heifer (LLM already translated to canonical English label).
+    1 — the name API positioned this hit in its completion window for the query
+        (any hit that reaches here is at least a fuzzy autocomplete match; used
+        as a tiebreaker / minimum plausibility for transliterations like achav→ahab
+        where "achav" is a curated alias for the slug "ahab").
+    0 — not plausible: keep as sentinel but never accept.
+
+    The score is used to select the best hit across the returned list and to
+    gate acceptance — a score of 0 is always rejected.
+    """
+    if _is_strong_match(label, hit):
+        return 3
+    if _has_token_overlap(label, hit.get("title", "")) or _has_token_overlap(
+        label, hit.get("slug", "").replace("-", " ")
+    ):
+        return 2
+    # Any hit from the curated name-API completion window is at minimum plausible.
+    # This admits transliterations (achav→ahab) without accepting truly unrelated
+    # topics that appear only because the autocomplete expanded part of the query
+    # (e.g. "Daf Yomi" → "Yom Kippur" via the "Yom" fragment) — those are
+    # blocked by requiring the best-scoring hit to win via the caller picking the
+    # highest-scoring candidate across the returned list.
+    return 1
+
+
 TOPIC_EXTRACTION_TOOL = {
     "name": "extract_topics",
     "description": (
@@ -113,23 +174,38 @@ EXTRACTION_SYSTEM_PROMPT = (
     "separate candidates. A double parsha (calendar shows e.g. 'Chukat-Balak') becomes "
     "TWO candidates 'Parashat Chukat' and 'Parashat Balak'; never emit a combined "
     "'Parashat Chukat-Balak'. "
+    "PARSHA RULE: NEVER emit a bare 'Parashat', 'Parasha', 'Parsha', or 'Torah Reading' "
+    "label — these are not real topics. A parsha candidate MUST be a specific portion name "
+    "resolved from the calendar context (e.g. 'Parashat Pinchas'). If the user asks about "
+    "the parsha but the calendar context is unavailable, return NO parsha candidates. "
     "For a daf yomi / 'today's daf' request, the tractate name itself is usually NOT a "
     "topic — instead return up to 3 of that tractate's main subject areas as concept "
     "topics, in canonical ENGLISH (not transliterated Hebrew). Use the daf_yomi tractate "
     "from the calendar context. E.g. Chullin -> 'Kashrut', 'Meat and Milk', 'Forbidden "
     "Foods'; Berakhot -> 'Prayer', 'Blessings'; Bava Kamma -> 'Damages', 'Torts'.\n"
+    "BROAD THEME RULE: When the user's query is a broad everyday theme that is NOT itself "
+    "a Sefaria library topic (e.g. 'parenting', 'money', 'relationships', 'health', "
+    "'work', 'anger', 'grief'), emit up to 3 of the CLOSEST established Sefaria library "
+    "topic names that cover that theme — do NOT echo the user's word as a label if it is "
+    "not a real library topic. Examples: parenting -> 'Education', 'Honoring Parents'; "
+    "money -> 'Money', 'Business Ethics'; relationships -> 'Love', 'Marriage'; "
+    "health -> 'Medicine', 'Illness and Healing'; anger -> 'Anger'.\n"
     "</precision_heuristic>\n\n"
     "<examples>\n"
     "\"what's this week's parsha?\" (calendar parsha: Chukat-Balak) -> "
     "[{label: Parashat Chukat, kind: temporal, high}, {label: Parashat Balak, kind: temporal, high}]\n"
+    '"teach me about the parsha" (calendar parsha: Pinchas) -> '
+    "[{label: Parashat Pinchas, kind: temporal, high}]\n"
     "\"what's today's daf yomi?\" (calendar daf_yomi: Chullin 56) -> "
     "[{label: Kashrut, kind: concept, high}, {label: Meat and Milk, kind: concept, high}, "
     "{label: Forbidden Foods, kind: concept, high}]\n"
-    '"show me sources on parenting" -> [{label: Parenting, kind: concept, high}]\n'
+    '"show me sources on parenting" -> [{label: Education, kind: concept, high}, '
+    "{label: Honoring Parents, kind: concept, high}]\n"
     '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
     '"la vaca roja" -> [{label: Red Heifer, kind: concept, high}]\n'
     '"explain this tosfos to me" -> []\n'
     '"yevamos 76 b" -> []\n'
+    '"teach me about the parsha" (calendar unavailable) -> []\n'
     "</examples>"
 )
 
@@ -183,25 +259,43 @@ class AppetizerService:
         self,
         user_message: str,
         interface_lang: str = "en",
+        metrics_sink: dict | None = None,
     ) -> AppetizerResult | None:
+        """Find topic(s) for the message. When `metrics_sink` is given it is
+        populated with the full metrics dict (incl. `source_decision`) even when
+        the result is None, so the "why nothing was returned" reason is logged."""
         use_hebrew = interface_lang == "he"
         try:
             return await asyncio.wait_for(
-                self._find_appetizer_inner(user_message, use_hebrew=use_hebrew),
+                self._find_appetizer_inner(
+                    user_message, use_hebrew=use_hebrew, metrics_sink=metrics_sink
+                ),
                 timeout=APPETIZER_TIMEOUT_SECONDS,
             )
         except TimeoutError:
             logger.warning("Appetizer timed out after %ds", APPETIZER_TIMEOUT_SECONDS)
+            if metrics_sink is not None:
+                metrics_sink["source_decision"] = (
+                    f"no source returned — appetizer timed out after {APPETIZER_TIMEOUT_SECONDS}s"
+                )
             return None
         except Exception:
             logger.exception("Appetizer failed")
+            if metrics_sink is not None:
+                metrics_sink["source_decision"] = "no source returned — appetizer error"
             return None
 
     async def _find_appetizer_inner(
-        self, user_message: str, use_hebrew: bool = False
+        self, user_message: str, use_hebrew: bool = False, metrics_sink: dict | None = None
     ) -> AppetizerResult | None:
         metrics: dict = {"topics_found": []}
         t0 = time.monotonic()
+
+        def _finish(result: AppetizerResult | None) -> AppetizerResult | None:
+            metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
+            if metrics_sink is not None:
+                metrics_sink.update(metrics)
+            return result
 
         calendar_context = await self._get_calendar_context()
 
@@ -213,8 +307,11 @@ class AppetizerService:
         ]
 
         if not candidates:
-            metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
-            return None
+            metrics["source_decision"] = (
+                "no source returned — the model extracted no topic from the message "
+                "(greeting, follow-up, bare citation, or non-topic)"
+            )
+            return _finish(None)
 
         t_searches = time.monotonic()
         results = await asyncio.gather(
@@ -224,42 +321,97 @@ class AppetizerService:
 
         topics: list[TopicInfo] = []
         seen_slugs: set[str] = set()
-        for candidate, topic_info in zip(candidates, results, strict=False):
+        returned_notes: list[str] = []
+        dropped_notes: list[str] = []
+        for candidate, (topic_info, reason) in zip(candidates, results, strict=False):
             metrics.setdefault("grounding", []).append(
                 {"candidate": candidate.label, "kept": topic_info is not None}
             )
             if topic_info and topic_info.topic_slug not in seen_slugs:
                 seen_slugs.add(topic_info.topic_slug)
                 topics.append(topic_info)
+                returned_notes.append(f'"{candidate.label}" → {topic_info.topic_slug} ({reason})')
+            elif topic_info:
+                dropped_notes.append(
+                    f'"{candidate.label}" → dropped (duplicate of {topic_info.topic_slug})'
+                )
+            else:
+                dropped_notes.append(f'"{candidate.label}" → dropped ({reason})')
 
         metrics["topics_found"] = [t.topic_slug for t in topics]
-        metrics["total_ms"] = int((time.monotonic() - t0) * 1000)
+        metrics["source_decision"] = _format_source_decision(returned_notes, dropped_notes)
 
         if not topics:
             logger.info("Appetizer: nothing grounded, metrics=%s", metrics)
-            return None
+            return _finish(None)
 
         logger.info("Appetizer: found %d topics, metrics=%s", len(topics), metrics)
-        return AppetizerResult(topics=topics, metrics=metrics)
+        return _finish(AppetizerResult(topics=topics, metrics=metrics))
 
     async def _ground_candidate(
         self, candidate: Candidate, use_hebrew: bool = False
-    ) -> TopicInfo | None:
-        """Ground one candidate against the library topic graph. Low-confidence
-        candidates are kept only on an exact (strong) match."""
+    ) -> tuple[TopicInfo | None, str]:
+        """Ground one candidate against the library topic graph.
+
+        Returns (TopicInfo, reason) when grounded, or (None, reason) when dropped;
+        `reason` is a short human-readable explanation used for logging.
+
+        Acceptance rules (applied to the top name-API hit):
+        - Low-confidence: kept only on an exact (strong) match.
+        - High-confidence: kept only when the hit is a plausible match for the
+          label (token overlap or exact). This blocks the fuzzy-mismatch hole
+          where the name API returns an unrelated topic (e.g. "Daf Yomi" →
+          "Yom Kippur") while still allowing transliteration and translation
+          matches (e.g. "Achav" → "Ahab", "la vaca roja" → "Red Heifer").
+        """
+        if _is_bare_parsha_label(candidate.label):
+            logger.info("Appetizer: dropped bare parsha label %r", candidate.label)
+            return None, "bare parsha label (no specific portion)"
         hits = await self.sefaria_client.search_topics(candidate.label, limit=3, pool="library")
         if not hits:
-            return None
-        best = hits[0]
-        if candidate.confidence_level != "high" and not _is_strong_match(candidate.label, best):
+            return None, "no library-pool topic found"
+
+        if candidate.confidence_level == "high":
+            # Pick the highest-scoring hit across all returned candidates. This
+            # handles two failure modes simultaneously:
+            # 1. is_primary re-sort in search_topics can put an unrelated topic
+            #    first (e.g. "Achav" → "Acharei Mot" before "Ahab") — a better
+            #    hit further down the list should win.
+            # 2. Name-API fuzzy expansion can return totally unrelated library
+            #    topics (e.g. "Daf Yomi" → "Yom Kippur") — these score 1 and
+            #    lose to any token-matching hit; if ALL hits score 1, we still
+            #    drop the candidate (score 1 is not sufficient on its own).
+            # Stable sort keeps name-API order among equal scores (ties prefer the
+            # earlier completion).
+            best = max(hits, key=lambda h: _match_score(candidate.label, h))
+            best_score = _match_score(candidate.label, best)
+            if best_score < 2:
+                slugs = [h.get("slug") for h in hits]
+                logger.info(
+                    "Appetizer: dropped high-confidence candidate %r — no plausible hit in %s",
+                    candidate.label,
+                    slugs,
+                )
+                return None, (
+                    f"best library hit {best.get('slug')!r} scored {best_score} "
+                    f"(no exact/token match) among {slugs}"
+                )
+            reason = "exact match" if best_score >= 3 else f"token overlap with {best['slug']!r}"
+        elif not _is_strong_match(candidate.label, hits[0]):
             logger.info("Appetizer: dropped weak low-confidence candidate %r", candidate.label)
-            return None
+            return None, f"low-confidence, no exact match (top hit {hits[0].get('slug')!r})"
+        else:
+            best = hits[0]
+            reason = "exact match (low-confidence)"
         title = best.get("he", "") if use_hebrew else best.get("title", "")
-        return TopicInfo(
+        if use_hebrew and not title:
+            title = best.get("title", "")
+        topic = TopicInfo(
             topic_slug=best["slug"],
             topic_title=title,
             topic_url=f"{SEFARIA_TOPICS_BASE_URL}/{best['slug']}",
         )
+        return topic, reason
 
     async def _extract_candidates_via_llm(
         self, user_message: str, calendar_context: str
@@ -282,6 +434,11 @@ class AppetizerService:
             for c in raw:
                 label = (c.get("label") or "").strip()
                 if not label:
+                    continue
+                if _is_bare_parsha_label(label):
+                    logger.info(
+                        "Appetizer: extractor emitted bare parsha label %r — dropped", label
+                    )
                     continue
                 candidates.append(
                     Candidate(
