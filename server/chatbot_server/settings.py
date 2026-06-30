@@ -260,10 +260,7 @@ LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 # Sefaria API Configuration (optional)
 # ============================================================================
 # - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)
-# - SEFARIA_AI_BASE_URL (default: https://ai.sefaria.org)
-# - SEFARIA_AI_TOKEN (for authenticated requests)
-# - VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST (for internal deployment)
-# - VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT (for internal deployment)
+# - SEFARIA_AI_TOKEN (for authenticated semantic search requests)
 
 # Logging configuration
 LOGGING = {

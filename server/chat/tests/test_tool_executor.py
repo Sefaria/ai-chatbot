@@ -50,7 +50,7 @@ def mock_client():
     client.get_text = AsyncMock(return_value={"text": "In the beginning..."})
     client.text_search = AsyncMock(return_value={"results": []})
     client.get_current_calendar = AsyncMock(return_value={"date": "2024-01-15"})
-    client.english_semantic_search = AsyncMock(return_value={"results": []})
+    client.semantic_search = AsyncMock(return_value={"results": []})
     client.get_links_between_texts = AsyncMock(return_value={"links": []})
     client.search_in_book = AsyncMock(return_value={"results": []})
     client.search_in_dictionaries = AsyncMock(return_value={"entries": []})
@@ -91,10 +91,10 @@ class TestToolDispatch:
             ("text_search", {"query": "prayer"}, "text_search", ("prayer", None, 10)),
             ("get_current_calendar", {}, "get_current_calendar", ()),
             (
-                "english_semantic_search",
+                "semantic_search",
                 {"query": "meaning of life", "filters": "Philosophy"},
-                "english_semantic_search",
-                ("meaning of life", "Philosophy"),
+                "semantic_search",
+                ("meaning of life", "Philosophy", 10),
             ),
             (
                 "get_links_between_texts",
@@ -326,7 +326,7 @@ class TestDescribeToolCall:
                 ["Creating source sheet", "Bereshit"],
             ),
             (
-                "english_semantic_search",
+                "semantic_search",
                 {"query": "meaning of life"},
                 ["Semantic search", "meaning of life"],
             ),

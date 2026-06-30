@@ -58,12 +58,19 @@ TOOL_GET_CURRENT_CALENDAR = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
-TOOL_ENGLISH_SEMANTIC_SEARCH = {
-    "name": "english_semantic_search",
-    "description": "Use for conceptual/thematic English queries. Performs semantic similarity search on English embeddings of texts from Sefaria. Uses semantic similarity to find conceptually related text chunks. Works well only with English queries.",
+TOOL_SEMANTIC_SEARCH = {
+    "name": "semantic_search",
+    "description": "Use for conceptual/thematic queries, great as a first tool for queries whose intent is to discover sources. Performs semantic similarity search over Sefaria texts using embeddings. Finds conceptually related text chunks even without exact keyword matches. Prefer English queries; Hebrew queries are also supported.",
     "input_schema": {
         "type": "object",
-        "properties": {"query": {"type": "string"}, "filters": {"type": "object"}},
+        "properties": {
+            "query": {"type": "string"},
+            "limit": {
+                "type": "integer",
+                "default": 10,
+                "description": "Number of results to return (1–100).",
+            },
+        },
         "required": ["query"],
     },
 }
@@ -357,7 +364,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_text": TOOL_GET_TEXT,
     "text_search": TOOL_TEXT_SEARCH,
     "get_current_calendar": TOOL_GET_CURRENT_CALENDAR,
-    "english_semantic_search": TOOL_ENGLISH_SEMANTIC_SEARCH,
+    "semantic_search": TOOL_SEMANTIC_SEARCH,
     "get_links_between_texts": TOOL_GET_LINKS_BETWEEN_TEXTS,
     "search_in_book": TOOL_SEARCH_IN_BOOK,
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,
