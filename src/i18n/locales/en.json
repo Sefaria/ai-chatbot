@@ -62,7 +62,7 @@
   "assistant.status.toolError": "Tool error",
   "assistant.progress.failed": "Failed:",
   "assistant.appetizer.whileWaiting": "Discover sources on related topics",
-  "assistant.appetizer.sentence": "While you wait, explore sources about {topics}.",
+  "assistant.appetizer.sentence": "While we prepare a response, explore sources about {topics}.",
   "assistant.appetizer.or": "or",
   "assistant.source.readWhileWaiting": "Found a source — read while you wait",
   "assistant.source.readOnSefaria": "Read on Sefaria",

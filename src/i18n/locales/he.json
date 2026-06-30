@@ -71,7 +71,7 @@
   "assistant.status.done": "סיום",
   "assistant.status.toolError": "שגיאת כלי",
   "assistant.progress.failed": "נכשל:",
-  "assistant.appetizer.sentence": "בזמן שממתינים לתשובה, אפשר לעיין במקורות העוסקים ב{topics}.",
+  "assistant.appetizer.sentence": "עד שהתשובה תהיה מוכנה, אפשר לעיין במקורות העוסקים ב{topics}.",
   "assistant.appetizer.or": "או",
   "assistant.limit.reached": "השיחה הגיעה למגבלתה.",
   "assistant.limit.startNew": "התחלת שיחה מחדש על מנת להמשיך לחקור.",

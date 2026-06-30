@@ -42,8 +42,10 @@
   }
 
   /**
-   * Svelte action: show a tooltip with the row's full text on hover, but only
-   * when the row is actually truncated. The bubble is appended to document.body
+   * Svelte action: show a tooltip on hover when the row is truncated. For rows
+   * that contain a ref link the tooltip shows only the ref label (not the
+   * surrounding "Fetching text …" prose); otherwise it shows the full row text.
+   * The bubble is appended to document.body
    * with inline styles and a max z-index, so it can never be clipped or
    * out-stacked by the widget's shadow-root overflow/transform/stacking context
    * (the reason earlier shadow-root + CSS-class attempts were invisible).
@@ -60,7 +62,8 @@
       bubble = document.createElement('div');
       bubble.className = 'lc-trail-tooltip';
       bubble.dataset.testid = 'la-trail-tooltip';
-      bubble.textContent = node.textContent.trim();
+      const refEl = node.querySelector('.trail-ref-link');
+      bubble.textContent = (refEl ? refEl.textContent : node.textContent).trim();
       Object.assign(bubble.style, {
         position: 'fixed',
         maxWidth: '260px',

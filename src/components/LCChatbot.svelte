@@ -13,6 +13,7 @@
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
   import { setLocale, _ } from '../i18n/index.js';
+  import { get } from 'svelte/store';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -253,7 +254,7 @@
       );
       if (labelled) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name') });
+          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
         }
         return;
       }
@@ -265,12 +266,15 @@
         if (typeof window.gtag === 'function') {
           const raw = link.getAttribute('href');
           const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url });
+          const link_text = link.textContent.trim();
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
         }
         return;
       }
 
-      // Otherwise walk up the path for the nearest aria-label
+      // Otherwise walk up the path for the nearest aria-label. No link_text here:
+      // this fallback matches broad containers (e.g. the "Chat messages" scroll
+      // region) whose textContent is the whole conversation, not a link label.
       const target = path.find(
         el => el instanceof Element && el.getAttribute('aria-label')
       );
@@ -555,6 +559,15 @@
         onProgress: (progress) => {
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
+            // Dump the full served sentence (frame + topic titles) into `text` so
+            // analytics can measure what was actually shown — e.g. "While we prepare
+            // a response, explore sources about Prayer." The server sends the
+            // comma-joined, locale-aware titles as progress.text; we splice them into
+            // the localized sentence frame (same string the user sees).
+            if (typeof window.gtag === 'function' && progress.text) {
+              const shownText = get(_)('assistant.appetizer.sentence').replace('{topics}', progress.text);
+              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText });
+            }
             scrollToLoadingElement();
             return;
           }
@@ -602,7 +615,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      });
+      }, interfaceLang);
 
       // Update user message status
       messages = messages.map(m => 
@@ -1809,21 +1822,21 @@
   }
 
   /* Response package: stacks topics accordion → thought accordion → answer bubble.
-     F5: Gap between accordions is 16px; gap before the answer bubble is 24px total.
-     We use a uniform 16px gap and add 8px of extra margin-top to the bubble so the
-     total visual space before it is 16 + 8 = 24px. */
+     F5: Gap between accordions is 16px; gap before the answer bubble is 8px total.
+     We use a uniform 16px gap and subtract 8px via negative margin-top on the bubble so
+     the total visual space before it is 16 - 8 = 8px. */
   .lc-response-package {
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
-  /* F5: When the answer bubble is preceded by at least one accordion, add 8px extra
-     margin-top (on top of the 16px flex gap) so total visual gap = 24px.
+  /* F5: When the answer bubble is preceded by at least one accordion, pull it 8px closer
+     via negative margin-top (on top of the 16px flex gap) so total visual gap = 8px.
      When there are no accordions the bubble is the only child and the gap spec
      does not apply, so we scope this to :not(:first-child). */
   .lc-response-package > .message.assistant:not(:first-child) {
-    margin-top: 8px;
+    margin-top: -8px;
   }
 
   .empty-state .message.assistant .message-content,
