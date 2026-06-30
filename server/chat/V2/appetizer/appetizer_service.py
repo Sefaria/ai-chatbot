@@ -112,13 +112,22 @@ TOPIC_EXTRACTION_TOOL = {
         "array when the message has no extractable topic: greetings, bare citations "
         "(e.g. 'Genesis 6:13', 'yevamos 76b'), or follow-ups about prior/selected text "
         "(e.g. 'explain this', 'yes please', 'translate the selected text'). "
-        "Prefer fewer high-confidence candidates over more low-confidence ones."
+        "Order candidates most-central-first: the topic the user is most directly "
+        "asking about comes first. Prefer fewer high-confidence candidates over more "
+        "low-confidence ones."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "candidates": {
                 "type": "array",
+                "description": (
+                    "Up to 3 topics the user is ACTIVELY asking about, ordered "
+                    "most-central-first (array position is the priority signal). Include a "
+                    "topic only if it is the subject the user wants sources on — never "
+                    "tangential background the user only mentions in passing. Empty array "
+                    "when there is no such topic."
+                ),
                 "items": {
                     "type": "object",
                     "properties": {
@@ -164,6 +173,14 @@ EXTRACTION_SYSTEM_PROMPT = (
     "Output is topics-only. Messages may be in any language; always return the "
     "canonical English topic name.\n"
     "</task>\n\n"
+    "<relevance>\n"
+    "A topic is RELEVANT only when it is what the user is actively asking about — "
+    "removing it would leave their request unanswered. Details the user merely mentions "
+    "in passing are TANGENTIAL; do not extract them. When more than one topic qualifies, "
+    "order them most-central-first and choose the most specific ESTABLISHED library topic "
+    "that still captures the user's intent — not an over-broad parent, and not a "
+    "hyper-narrow phrase that is not a real topic.\n"
+    "</relevance>\n\n"
     "<precision_heuristic>\n"
     "Prefer returning fewer high-confidence candidates, or none. A false positive "
     "(a chip on a non-topic) is worse than a false negative. Return NO candidates for "
@@ -201,6 +218,8 @@ EXTRACTION_SYSTEM_PROMPT = (
     "{label: Forbidden Foods, kind: concept, high}]\n"
     '"show me sources on parenting" -> [{label: Education, kind: concept, high}, '
     "{label: Honoring Parents, kind: concept, high}]\n"
+    '"after my grandfather\'s funeral I want to learn about mourning" -> '
+    "[{label: Mourning, kind: concept, high}]  (grandfather/funeral are tangential context)\n"
     '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
     '"la vaca roja" -> [{label: Red Heifer, kind: concept, high}]\n'
     '"explain this tosfos to me" -> []\n'
