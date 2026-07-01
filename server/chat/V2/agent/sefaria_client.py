@@ -152,7 +152,12 @@ class SefariaClient:
         Supports English and Hebrew queries. Returns a 404 gracefully if
         the embeddings service is unavailable.
         """
-        payload: dict[str, Any] = {"query": query, "limit": limit}
+        payload: dict[str, Any] = {
+            "query": query,
+            "result_limit": limit,
+            "linked_ref_limit": limit,
+            "include_linked_refs": True,
+        }
         if filters:
             payload["filters"] = filters
 
