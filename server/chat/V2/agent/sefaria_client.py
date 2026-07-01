@@ -5,9 +5,8 @@ This is the lowest layer in the tool-call stack:
 
     Claude Agent SDK → tool handler → SefariaToolExecutor → SefariaClient → HTTP
 
-Two base URLs are used:
-- base_url (sefaria.org): texts, search, calendar, links, manuscripts, etc.
-- ai_base_url (ai.sefaria.org): semantic search (KNN embeddings service)
+One base URL is used:
+- base_url (sefaria.org): texts, search, calendar, links, manuscripts, semantic search, etc.
 
 Response optimization methods (_optimize_*) strip large/unnecessary fields
 from API responses before they're sent back to Claude, keeping token usage low.
@@ -39,17 +38,6 @@ def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
 
 
-def _get_default_sefaria_ai_base_url() -> str:
-    # In k8s, the AI service may be available via service discovery env vars.
-    service_host = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_HOST")
-    service_port = os.environ.get("VIRTUAL_HAVRUTA_HTTP_SERVICE_PORT")
-
-    if service_host and service_port:
-        return f"http://{service_host}:{service_port}"
-
-    return os.environ.get("SEFARIA_AI_BASE_URL") or "https://ai.sefaria.org"
-
-
 # Mapping from Sefaria search filter paths to human-friendly dictionary names.
 # Used by search_in_dictionaries to scope search to lexicon categories.
 LEXICON_MAP = {
@@ -71,11 +59,8 @@ class SefariaClient:
     (e.g. asyncio.run in a new thread), a fresh client is created.
     """
 
-    def __init__(
-        self, base_url: str | None = None, ai_base_url: str | None = None, timeout: float = 30.0
-    ):
+    def __init__(self, base_url: str | None = None, timeout: float = 30.0):
         self.base_url = (base_url or _get_default_sefaria_base_url()).rstrip("/")
-        self.ai_base_url = (ai_base_url or _get_default_sefaria_ai_base_url()).rstrip("/")
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
         self._client_loop: asyncio.AbstractEventLoop | None = None
@@ -159,24 +144,29 @@ class SefariaClient:
         calendar_data = await self._get_json("api/calendars")
         return {**calendar_data, "Gregorian Date": datetime.now().isoformat()}
 
-    async def english_semantic_search(
-        self, query: str, filters: dict[str, Any] | None = None
+    async def semantic_search(
+        self, query: str, filters: dict[str, Any] | None = None, limit: int = 10
     ) -> dict[str, Any]:
-        """Semantic (KNN) search on English text embeddings via ai.sefaria.org.
+        """Semantic (KNN) search via Sefaria's /api/knn-search endpoint.
 
-        This hits a separate service from the main Sefaria API. Returns a 404
-        gracefully if the embeddings service is down.
+        Supports English and Hebrew queries. Returns a 404 gracefully if
+        the embeddings service is unavailable.
         """
-        payload: dict[str, Any] = {"query": query}
+        payload: dict[str, Any] = {
+            "query": query,
+            "result_limit": limit,
+            "linked_ref_limit": limit,
+            "include_linked_refs": True,
+        }
         if filters:
             payload["filters"] = filters
 
         headers = {"Content-Type": "application/json"}
-        bearer = os.environ.get("SEFARIA_AI_TOKEN")
+        bearer = os.environ.get("SEMANTIC_SEARCH_API_TOKEN")
         if bearer:
             headers["Authorization"] = f"Bearer {bearer}"
 
-        url = f"{self.ai_base_url}/api/knn-search"
+        url = f"{self.base_url}/api/knn-search"
         client = await self._get_client()
 
         try:
@@ -187,7 +177,7 @@ class SefariaClient:
             if e.response.status_code == 404:
                 return {
                     "error": "Semantic search is currently unavailable.",
-                    "suggestion": "Use text_search instead for keyword-based search.",
+                    "suggestion": "Use specific_keyword_search instead for keyword-based search.",
                 }
             raise
 

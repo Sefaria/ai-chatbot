@@ -111,7 +111,7 @@ class TestToAnthropicResponse:
             content="Here is what I found",
             tool_calls=[
                 {"tool_name": "get_text", "tool_input": {"reference": "Genesis 1:1"}},
-                {"tool_name": "text_search", "tool_input": {"query": "shabbat"}},
+                {"tool_name": "specific_keyword_search", "tool_input": {"query": "shabbat"}},
             ],
             latency_ms=500,
         )
@@ -124,7 +124,7 @@ class TestToAnthropicResponse:
         assert result["content"][1]["input"] == {"reference": "Genesis 1:1"}
         assert result["content"][1]["id"].startswith("toolu_")
         assert result["content"][2]["type"] == "tool_use"
-        assert result["content"][2]["name"] == "text_search"
+        assert result["content"][2]["name"] == "specific_keyword_search"
 
     def test_empty_content(self, default_stats):
         agent_response = AgentResponse(

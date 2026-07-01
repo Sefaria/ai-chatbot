@@ -111,7 +111,7 @@ class TestRouteDecision:
             user_message="test",
             flow="DISCOVERY",
             reason_codes=["ROUTE_DISCOVERY_KEYWORDS", "ROUTE_DISCOVERY_INTENT"],
-            tools_attached=["get_text", "text_search", "english_semantic_search"],
+            tools_attached=["get_text", "specific_keyword_search", "semantic_search"],
         )
         assert len(decision.reason_codes) == 2
         assert "ROUTE_DISCOVERY_KEYWORDS" in decision.reason_codes
@@ -207,7 +207,7 @@ class TestChatMessage:
             tool_calls_count=3,
             tool_calls_data=[
                 {"tool": "get_text", "input": {"reference": "Genesis 1:1"}},
-                {"tool": "text_search", "input": {"query": "creation"}},
+                {"tool": "specific_keyword_search", "input": {"query": "creation"}},
             ],
         )
         assert message.flow == "DEEP_ENGAGEMENT"

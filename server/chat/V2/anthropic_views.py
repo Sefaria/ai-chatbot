@@ -213,7 +213,9 @@ def chat_anthropic_v2(request):
         )
 
     metadata = data.get("metadata") or {}
-    core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
+    core_prompt_slug = (
+        metadata.get("core_prompt_slug") or "core-prompt-noah-semantic-search"
+    )  # settings.CORE_PROMPT_SLUG
     model = data.get("model") or settings.AGENT_MODEL
 
     # Note: streaming endpoint reads origin from request body context field (via serializer).
