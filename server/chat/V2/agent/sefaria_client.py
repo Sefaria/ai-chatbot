@@ -172,7 +172,7 @@ class SefariaClient:
             if e.response.status_code == 404:
                 return {
                     "error": "Semantic search is currently unavailable.",
-                    "suggestion": "Use text_search instead for keyword-based search.",
+                    "suggestion": "Use specific_keyword_search instead for keyword-based search.",
                 }
             raise
 

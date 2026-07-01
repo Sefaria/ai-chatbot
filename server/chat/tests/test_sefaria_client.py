@@ -309,7 +309,7 @@ class TestSemanticSearch:
             result = await client.semantic_search("test query")
 
         assert "unavailable" in result.get("error", "").lower()
-        assert "text_search" in result.get("suggestion", "").lower()
+        assert "specific_keyword_search" in result.get("suggestion", "").lower()
 
     @pytest.mark.asyncio
     async def test_returns_results_on_success(self, client):
