@@ -157,7 +157,7 @@ class SefariaClient:
             payload["filters"] = filters
 
         headers = {"Content-Type": "application/json"}
-        bearer = os.environ.get("SEFARIA_AI_TOKEN")
+        bearer = os.environ.get("SEMANTIC_SEARCH_API_TOKEN")
         if bearer:
             headers["Authorization"] = f"Bearer {bearer}"
 
