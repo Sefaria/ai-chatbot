@@ -365,13 +365,22 @@ class SefariaClient:
         (e.g. name API returns "Parenting" for slug "education", but the page
         /topics/education has primaryTitle "Education"). Fetching the topic doc
         lets callers display a title — in either language — that matches the page
-        they link to. Returns None only when the page has no primaryTitle at all.
+        they link to. Returns None only when the page has no title at all.
+
+        When primaryTitle.he is missing, falls back to the titles array — some
+        topics have Hebrew titles not marked as primary.
         """
         try:
             data = await self._get_json(f"api/v2/topics/{quote(slug)}")
             primary = data.get("primaryTitle") or {}
             en = primary.get("en") or ""
             he = primary.get("he") or ""
+            if not he:
+                for t in data.get("titles", []):
+                    if t.get("lang") == "he":
+                        he = t.get("text", "")
+                        if he:
+                            break
             if not en and not he:
                 return None
             return {"en": en, "he": he}

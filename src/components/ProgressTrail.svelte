@@ -63,7 +63,15 @@
       bubble.className = 'lc-trail-tooltip';
       bubble.dataset.testid = 'la-trail-tooltip';
       const refEl = node.querySelector('.trail-ref-link');
-      bubble.textContent = (refEl ? refEl.textContent : node.textContent).trim();
+      let tooltipText;
+      if (refEl) {
+        tooltipText = refEl.textContent;
+      } else {
+        const raw = node.textContent || '';
+        const qm = raw.match(/["']([^"']+)["']/);
+        tooltipText = qm ? qm[1] : raw;
+      }
+      bubble.textContent = tooltipText.trim();
       Object.assign(bubble.style, {
         position: 'fixed',
         maxWidth: '260px',

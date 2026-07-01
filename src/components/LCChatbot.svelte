@@ -1822,17 +1822,14 @@
   }
 
   /* Response package: stacks topics accordion → thought accordion → answer bubble.
-     F5: Gap between accordions is 16px; gap before the answer bubble is 8px total.
-     We use a uniform 16px gap and subtract 8px via negative margin-top on the bubble so
-     the total visual space before it is 16 - 8 = 8px. */
+     8px gap between accordions; answer bubble pulled flush (0px) via negative margin. */
   .lc-response-package {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
   }
 
-  /* F5: When the answer bubble is preceded by at least one accordion, pull it 8px closer
-     via negative margin-top (on top of the 16px flex gap) so total visual gap = 8px.
+  /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
      When there are no accordions the bubble is the only child and the gap spec
      does not apply, so we scope this to :not(:first-child). */
   .lc-response-package > .message.assistant:not(:first-child) {

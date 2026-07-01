@@ -168,25 +168,33 @@ TOPIC_EXTRACTION_TOOL = {
 EXTRACTION_SYSTEM_PROMPT = (
     "<task>\n"
     "You extract candidate topics from one user message for the Sefaria library — a "
-    "Jewish text library (Torah, Talmud, halacha, Jewish thought) that also covers "
-    "universal themes like parenting, money, relationships, health, and ethics. "
+    "digital library of Jewish texts (Torah, Talmud, Midrash, Halacha, Kabbalah, "
+    "Jewish philosophy) that organizes content under curated topic pages covering "
+    "biblical figures, laws, holidays, ethical concepts, and life themes. Users come "
+    "to explore primary sources, not get general information. "
     "Output is topics-only. Messages may be in any language; always return the "
     "canonical English topic name.\n"
     "</task>\n\n"
     "<relevance>\n"
-    "A topic is RELEVANT only when it is what the user is actively asking about — "
-    "removing it would leave their request unanswered. Details the user merely mentions "
-    "in passing are TANGENTIAL; do not extract them. When more than one topic qualifies, "
-    "order them most-central-first and choose the most specific ESTABLISHED library topic "
-    "that still captures the user's intent — not an over-broad parent, and not a "
-    "hyper-narrow phrase that is not a real topic.\n"
+    "A topic is RELEVANT only when it is the CORE SUBJECT the user wants to learn "
+    "about or find sources on — removing it would leave their request unanswered. "
+    "Details the user merely mentions in passing, as context, or as setup for their "
+    "real question are TANGENTIAL; do not extract them.\n"
+    "QUALITY OVER QUANTITY: Return only 1-2 topics that are clearly, directly relevant. "
+    "A single perfect topic is better than 3 vaguely related ones. Only return a 3rd "
+    "candidate when it is genuinely a distinct topic the user is asking about.\n"
+    "Choose the most specific ESTABLISHED library topic that captures the user's intent "
+    "— not an over-broad parent (e.g. 'Judaism' or 'Torah'), and not a hyper-narrow "
+    "phrase that is not a real topic.\n"
     "</relevance>\n\n"
     "<precision_heuristic>\n"
-    "Prefer returning fewer high-confidence candidates, or none. A false positive "
-    "(a chip on a non-topic) is worse than a false negative. Return NO candidates for "
-    "greetings, test strings, bare text citations, and follow-ups that refer to prior "
-    "or selected text ('explain this', 'translate that', 'yes', '?'). Resolve temporal "
-    "references using the calendar context below. "
+    "A false positive (an irrelevant topic chip) is MUCH worse than a false negative "
+    "(no chip). When in doubt, return fewer candidates or none.\n"
+    "Return NO candidates for: greetings, test strings, bare text citations, "
+    "meta-questions about the tool itself ('how does this work?', 'what can you do?'), "
+    "and follow-ups that refer to prior or selected text ('explain this', 'translate "
+    "that', 'yes', '?', 'go on', 'more'). "
+    "Resolve temporal references using the calendar context below. "
     "Each candidate must be a SINGLE specific topic — split combined references into "
     "separate candidates. A double parsha (calendar shows e.g. 'Chukat-Balak') becomes "
     "TWO candidates 'Parashat Chukat' and 'Parashat Balak'; never emit a combined "
@@ -202,11 +210,11 @@ EXTRACTION_SYSTEM_PROMPT = (
     "Foods'; Berakhot -> 'Prayer', 'Blessings'; Bava Kamma -> 'Damages', 'Torts'.\n"
     "BROAD THEME RULE: When the user's query is a broad everyday theme that is NOT itself "
     "a Sefaria library topic (e.g. 'parenting', 'money', 'relationships', 'health', "
-    "'work', 'anger', 'grief'), emit up to 3 of the CLOSEST established Sefaria library "
-    "topic names that cover that theme — do NOT echo the user's word as a label if it is "
+    "'work', 'anger', 'grief'), emit only the 1-2 CLOSEST established Sefaria library "
+    "topic names — do NOT echo the user's word as a label if it is "
     "not a real library topic. Examples: parenting -> 'Education', 'Honoring Parents'; "
-    "money -> 'Money', 'Business Ethics'; relationships -> 'Love', 'Marriage'; "
-    "health -> 'Medicine', 'Illness and Healing'; anger -> 'Anger'.\n"
+    "money -> 'Money'; relationships -> 'Love'; "
+    "health -> 'Medicine'; anger -> 'Anger'.\n"
     "</precision_heuristic>\n\n"
     "<examples>\n"
     "\"what's this week's parsha?\" (calendar parsha: Chukat-Balak) -> "
@@ -216,8 +224,7 @@ EXTRACTION_SYSTEM_PROMPT = (
     "\"what's today's daf yomi?\" (calendar daf_yomi: Chullin 56) -> "
     "[{label: Kashrut, kind: concept, high}, {label: Meat and Milk, kind: concept, high}, "
     "{label: Forbidden Foods, kind: concept, high}]\n"
-    '"show me sources on parenting" -> [{label: Education, kind: concept, high}, '
-    "{label: Honoring Parents, kind: concept, high}]\n"
+    '"show me sources on parenting" -> [{label: Education, kind: concept, high}]\n'
     '"after my grandfather\'s funeral I want to learn about mourning" -> '
     "[{label: Mourning, kind: concept, high}]  (grandfather/funeral are tangential context)\n"
     '"help me learn about achav" -> [{label: Ahab, kind: person, high}]\n'
@@ -225,6 +232,8 @@ EXTRACTION_SYSTEM_PROMPT = (
     '"explain this tosfos to me" -> []\n'
     '"yevamos 76 b" -> []\n'
     '"teach me about the parsha" (calendar unavailable) -> []\n'
+    '"how does this work?" -> []  (meta-question about the tool)\n'
+    '"tell me something interesting" -> []  (too vague for a specific topic)\n'
     "</examples>"
 )
 
