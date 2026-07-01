@@ -75,5 +75,6 @@
     "assistant.feedback.reason.overlyDefinitive": "Overly definitive",
     "assistant.feedback.reason.techIssue": "Technical issue",
     "assistant.feedback.reason.other": "Other",
-    "assistant.loading.synthesizing": "Synthesizing Response"
+    "assistant.loading.synthesizing": "Synthesizing Response",
+    "test2": "test"
 }
