@@ -1248,3 +1248,149 @@ async def test_source_decision_explains_dropped_candidate():
         result = await service.find_appetizer("today's daf yomi", metrics_sink=sink)
     assert result is None
     assert "dropped" in sink["source_decision"]
+
+
+# ---------------------------------------------------------------------------
+# Token overlap fix: single-token match on multi-word label must be rejected
+# ---------------------------------------------------------------------------
+
+from ..appetizer.appetizer_service import _has_token_overlap
+
+
+def test_token_overlap_rejects_single_token_from_multiword_label():
+    """'Lamed Vav Tzaddikim' vs 'Lamed' — only 1/3 tokens match → rejected."""
+    assert not _has_token_overlap("Lamed Vav Tzaddikim", "Lamed")
+    assert not _has_token_overlap("Lamed Vav Tzaddikim", "Vav")
+
+
+def test_token_overlap_accepts_majority_match():
+    """'Forbidden Foods' vs 'Forbidden Foods and Laws' — 2/2 label tokens → accepted."""
+    assert _has_token_overlap("Forbidden Foods", "Forbidden Foods and Laws")
+    assert _has_token_overlap("King Solomon", "Solomon")
+
+
+def test_token_overlap_accepts_single_token_labels():
+    """Single-token labels still match with single overlap."""
+    assert _has_token_overlap("Shabbat", "Shabbat HaGadol")
+    assert not _has_token_overlap("Shabbat", "Torah")
+
+
+def test_match_score_lamed_vav_tzaddikim():
+    """'Lamed Vav Tzaddikim' must NOT score 2 against 'Lamed' (the letter)."""
+    assert _match_score("Lamed Vav Tzaddikim", {"title": "Lamed", "slug": "lamed"}) == 1
+    assert _match_score("Lamed Vav Tzaddikim", {"title": "Vav", "slug": "vav"}) == 1
+
+
+# ---------------------------------------------------------------------------
+# Alternative labels: fallback grounding for niche concepts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_alternative_label_grounds_when_primary_fails():
+    """Niche concept 'Lamed Vav Tzaddikim' fails grounding, but alternative
+    'Righteous' grounds successfully."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.side_effect = [
+        # Primary "Lamed Vav Tzaddikim" → only "Lamed" (the letter) returned
+        [{"title": "Lamed", "slug": "lamed"}],
+        # Alternative "Righteous" → exact match
+        [{"title": "Righteous", "slug": "righteous"}],
+    ]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [
+            Candidate(
+                "Lamed Vav Tzaddikim",
+                "concept",
+                "high",
+                alternative_labels=["Righteous"],
+            )
+        ]
+        result = await service.find_appetizer("tell me about the lamed vav tzaddikim")
+    assert result is not None
+    assert result.topics[0].topic_slug == "righteous"
+    assert service.sefaria_client.search_topics.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_alternative_labels_not_tried_when_primary_succeeds():
+    """When primary label grounds, alternatives are never searched."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = [{"title": "Shabbat", "slug": "shabbat"}]
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [
+            Candidate(
+                "Shabbat",
+                "concept",
+                "high",
+                alternative_labels=["Rest", "Sabbath"],
+            )
+        ]
+        result = await service.find_appetizer("tell me about shabbat")
+    assert result is not None
+    assert result.topics[0].topic_slug == "shabbat"
+    # Only the primary label was searched
+    service.sefaria_client.search_topics.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_alternative_labels_all_fail_returns_none():
+    """When primary and all alternatives fail, returns None."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    service.sefaria_client = AsyncMock()
+    service.sefaria_client.get_current_calendar.return_value = {}
+    service.sefaria_client.search_topics.return_value = []
+    with patch.object(service, "_extract_candidates_via_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = [
+            Candidate(
+                "Obscure Concept",
+                "concept",
+                "high",
+                alternative_labels=["Also Obscure"],
+            )
+        ]
+        result = await service.find_appetizer("tell me about an obscure concept")
+    assert result is None
+    assert service.sefaria_client.search_topics.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_parses_alternative_labels():
+    """_extract_candidates_via_llm correctly parses alternative_labels from LLM output."""
+    service = AppetizerService.__new__(AppetizerService)
+    service.client = MagicMock()
+    with patch(
+        "chat.V2.appetizer.appetizer_service.tracked_messages_create",
+        return_value=_fake_tool_response(
+            [
+                {
+                    "label": "Lamed Vav Tzaddikim",
+                    "kind": "concept",
+                    "confidence_level": "high",
+                    "alternative_labels": ["Righteous", "Righteousness"],
+                }
+            ]
+        ),
+    ):
+        result = await service._extract_candidates_via_llm(
+            "lamed vav", "<calendar_context>unavailable</calendar_context>"
+        )
+    assert len(result) == 1
+    assert result[0].label == "Lamed Vav Tzaddikim"
+    assert result[0].alternative_labels == ["Righteous", "Righteousness"]
+
+
+def test_extraction_prompt_has_alternative_labels_rule():
+    """Guard: extraction prompt includes the alternative labels instruction."""
+    from ..appetizer.appetizer_service import EXTRACTION_SYSTEM_PROMPT as p
+
+    assert "ALTERNATIVE LABELS" in p
+    assert "alternative_labels" in p
+    assert "Lamed Vav Tzaddikim" in p

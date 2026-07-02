@@ -56,11 +56,19 @@ def _is_bare_parsha_label(label: str) -> bool:
     return _normalize(label) in _BARE_PARSHA_LABELS
 
 
-def _has_token_overlap(a: str, b: str) -> bool:
-    """True if any word token from normalized `a` appears in normalized `b` or vice versa."""
-    a_tokens = set(_normalize(a).split())
-    b_tokens = set(_normalize(b).split())
-    return bool(a_tokens & b_tokens)
+def _has_token_overlap(label: str, hit_text: str) -> bool:
+    """True if a meaningful proportion of the label tokens appear in the hit text.
+
+    For multi-token labels, a single incidental word match is not meaningful
+    (e.g. "Lamed" from "Lamed Vav Tzaddikim"). Requires at least half the
+    label tokens to overlap.
+    """
+    label_tokens = set(_normalize(label).split())
+    hit_tokens = set(_normalize(hit_text).split())
+    overlap = label_tokens & hit_tokens
+    if not overlap:
+        return False
+    return len(overlap) * 2 >= len(label_tokens)
 
 
 def _format_source_decision(returned: list[str], dropped: list[str]) -> str:
@@ -156,6 +164,17 @@ TOPIC_EXTRACTION_TOOL = {
                                 "low = plausible but the message is vague or underspecified."
                             ),
                         },
+                        "alternative_labels": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "1-2 broader or alternative established topic names "
+                                "when the primary label is a niche concept that may not "
+                                "have its own topic page. E.g. 'Lamed Vav Tzaddikim' → "
+                                "['Righteous'], 'Pikuach Nefesh' → ['Saving a Life']. "
+                                "Omit when the primary label is a well-known topic."
+                            ),
+                        },
                     },
                     "required": ["label", "kind", "confidence_level"],
                 },
@@ -215,6 +234,15 @@ EXTRACTION_SYSTEM_PROMPT = (
     "not a real library topic. Examples: parenting -> 'Education', 'Honoring Parents'; "
     "money -> 'Money'; relationships -> 'Love'; "
     "health -> 'Medicine'; anger -> 'Anger'.\n"
+    "ALTERNATIVE LABELS: When the primary label is a niche or very specific concept "
+    "that may not have its own topic page (e.g. 'Lamed Vav Tzaddikim', 'Bat Kol', "
+    "'Pikuach Nefesh', 'Mussar Movement'), provide 1-2 alternative_labels with the "
+    "broader established topic names that cover the same area. The library organizes "
+    "content under broad canonical topics, so niche concepts need a fallback. "
+    "Examples: 'Lamed Vav Tzaddikim' -> ['Righteous'], 'Pikuach Nefesh' -> "
+    "['Saving a Life'], 'Bat Kol' -> ['Prophecy'], 'Tikkun Olam' -> "
+    "['Repairing the World']. Omit alternative_labels when the primary label is "
+    "a well-known topic (e.g. 'Shabbat', 'Moses', 'Prayer').\n"
     "</precision_heuristic>\n\n"
     "<examples>\n"
     "\"what's this week's parsha?\" (calendar parsha: Chukat-Balak) -> "
@@ -232,6 +260,8 @@ EXTRACTION_SYSTEM_PROMPT = (
     '"explain this tosfos to me" -> []\n'
     '"yevamos 76 b" -> []\n'
     '"teach me about the parsha" (calendar unavailable) -> []\n'
+    '"tell me about the lamed vav tzaddikim" -> '
+    "[{label: Lamed Vav Tzaddikim, kind: concept, high, alternative_labels: [Righteous]}]\n"
     '"how does this work?" -> []  (meta-question about the tool)\n'
     '"tell me something interesting" -> []  (too vague for a specific topic)\n'
     "</examples>"
@@ -243,6 +273,7 @@ class Candidate:
     label: str
     kind: str
     confidence_level: str
+    alternative_labels: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -384,40 +415,48 @@ class AppetizerService:
         Returns (TopicInfo, reason) when grounded, or (None, reason) when dropped;
         `reason` is a short human-readable explanation used for logging.
 
-        Acceptance rules (applied to the top name-API hit):
-        - Low-confidence: kept only on an exact (strong) match.
-        - High-confidence: kept only when the hit is a plausible match for the
-          label (token overlap or exact). This blocks the fuzzy-mismatch hole
-          where the name API returns an unrelated topic (e.g. "Daf Yomi" →
-          "Yom Kippur") while still allowing transliteration and translation
-          matches (e.g. "Achav" → "Ahab", "la vaca roja" → "Red Heifer").
+        Tries the primary label first. If it doesn't ground, tries each
+        alternative_label (broader/related topic names the LLM provided for
+        niche concepts). This lets "Lamed Vav Tzaddikim" fall back to "Righteous".
         """
         if _is_bare_parsha_label(candidate.label):
             logger.info("Appetizer: dropped bare parsha label %r", candidate.label)
             return None, "bare parsha label (no specific portion)"
-        hits = await self.sefaria_client.search_topics(candidate.label, limit=3, pool="library")
+
+        result, reason = await self._try_ground_label(
+            candidate.label, candidate.confidence_level, use_hebrew
+        )
+        if result:
+            return result, reason
+
+        for alt in candidate.alternative_labels:
+            alt_result, alt_reason = await self._try_ground_label(alt, "high", use_hebrew)
+            if alt_result:
+                logger.info(
+                    "Appetizer: primary %r failed, alternative %r grounded",
+                    candidate.label,
+                    alt,
+                )
+                return alt_result, f"alternative '{alt}': {alt_reason}"
+
+        return None, reason
+
+    async def _try_ground_label(
+        self, label: str, confidence_level: str, use_hebrew: bool
+    ) -> tuple[TopicInfo | None, str]:
+        """Try to ground a single label against the library topic pool."""
+        hits = await self.sefaria_client.search_topics(label, limit=3, pool="library")
         if not hits:
             return None, "no library-pool topic found"
 
-        if candidate.confidence_level == "high":
-            # Pick the highest-scoring hit across all returned candidates. This
-            # handles two failure modes simultaneously:
-            # 1. is_primary re-sort in search_topics can put an unrelated topic
-            #    first (e.g. "Achav" → "Acharei Mot" before "Ahab") — a better
-            #    hit further down the list should win.
-            # 2. Name-API fuzzy expansion can return totally unrelated library
-            #    topics (e.g. "Daf Yomi" → "Yom Kippur") — these score 1 and
-            #    lose to any token-matching hit; if ALL hits score 1, we still
-            #    drop the candidate (score 1 is not sufficient on its own).
-            # Stable sort keeps name-API order among equal scores (ties prefer the
-            # earlier completion).
-            best = max(hits, key=lambda h: _match_score(candidate.label, h))
-            best_score = _match_score(candidate.label, best)
+        if confidence_level == "high":
+            best = max(hits, key=lambda h: _match_score(label, h))
+            best_score = _match_score(label, best)
             if best_score < 2:
                 slugs = [h.get("slug") for h in hits]
                 logger.info(
-                    "Appetizer: dropped high-confidence candidate %r — no plausible hit in %s",
-                    candidate.label,
+                    "Appetizer: dropped high-confidence label %r — no plausible hit in %s",
+                    label,
                     slugs,
                 )
                 return None, (
@@ -425,8 +464,8 @@ class AppetizerService:
                     f"(no exact/token match) among {slugs}"
                 )
             reason = "exact match" if best_score >= 3 else f"token overlap with {best['slug']!r}"
-        elif not _is_strong_match(candidate.label, hits[0]):
-            logger.info("Appetizer: dropped weak low-confidence candidate %r", candidate.label)
+        elif not _is_strong_match(label, hits[0]):
+            logger.info("Appetizer: dropped weak low-confidence label %r", label)
             return None, f"low-confidence, no exact match (top hit {hits[0].get('slug')!r})"
         else:
             best = hits[0]
@@ -468,11 +507,17 @@ class AppetizerService:
                         "Appetizer: extractor emitted bare parsha label %r — dropped", label
                     )
                     continue
+                alt_labels = [
+                    alt.strip()
+                    for alt in (c.get("alternative_labels") or [])
+                    if alt and alt.strip()
+                ]
                 candidates.append(
                     Candidate(
                         label=label,
                         kind=c.get("kind", "concept"),
                         confidence_level=c.get("confidence_level", "low"),
+                        alternative_labels=alt_labels,
                     )
                 )
             logger.info("Appetizer extracted %r for prompt: %r", candidates, user_message)
