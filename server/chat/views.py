@@ -15,6 +15,8 @@ from .V2.prompts import get_prompt_service
 
 logger = logging.getLogger("chat")
 
+BETA_MARKER = "beta-semantic-search-2026-07-02"
+
 
 def extract_page_type(url: str | None) -> str:
     """Classify Sefaria page types for telemetry."""
@@ -148,5 +150,21 @@ def health(request):
                 "braintrust": True,  # Native tracing always available
             },
             "versions": ["v2"],
+        }
+    )
+
+
+@api_view(["GET"])
+def beta_marker(request):
+    """
+    Temporary deployment marker for beta verification.
+
+    GET /api/beta-marker
+    """
+    return Response(
+        {
+            "status": "ok",
+            "marker": BETA_MARKER,
+            "branch": "beta",
         }
     )

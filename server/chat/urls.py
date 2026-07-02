@@ -22,4 +22,5 @@ urlpatterns = [
     # Admin/management endpoints
     path("admin/reload-prompts", views.reload_prompts, name="reload_prompts"),
     path("health", views.health, name="health"),
+    path("beta-marker", views.beta_marker, name="beta_marker"),
 ]
