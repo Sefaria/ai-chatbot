@@ -150,9 +150,21 @@ class TurnOrchestrator:
             else prompt_result.conversation_text
         )
 
+        time_to_first_final_response_token: float | None = None
+
+        def emit_text_delta(delta: str) -> None:
+            nonlocal time_to_first_final_response_token
+            if time_to_first_final_response_token is None:
+                time_to_first_final_response_token = time.time() - start_time
+            emitter.emit(AgentProgressUpdate(type="message_delta", text=delta))
+
         emitter.emit(AgentProgressUpdate(type="status", text="Thinking..."))
         try:
-            sdk_result = await self.sdk_runner.run(options=options, prompt_text=prompt_text)
+            sdk_result = await self.sdk_runner.run(
+                options=options,
+                prompt_text=prompt_text,
+                on_text_delta=emit_text_delta,
+            )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
@@ -170,6 +182,7 @@ class TurnOrchestrator:
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
+            time_to_first_final_response_token=time_to_first_final_response_token,
         )
         self.trace_logger.log_success(
             bt_span=bt_span,

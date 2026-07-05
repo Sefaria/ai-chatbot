@@ -11,7 +11,7 @@ from typing import Any, Protocol
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
 
-    type: str  # 'status', 'tool_start', 'tool_end', 'complete'
+    type: str  # 'status', 'tool_start', 'tool_end', 'message_delta', 'complete'
     text: str | None = None
     tool_name: str | None = None
     tool_input: dict | None = None
@@ -74,7 +74,12 @@ class GuardrailGate(Protocol):
 
 
 class SdkRunner(Protocol):
-    async def run(self, options: Any, prompt_text: str) -> Any: ...
+    async def run(
+        self,
+        options: Any,
+        prompt_text: str,
+        on_text_delta: Callable[[str], None] | None = None,
+    ) -> Any: ...
 
 
 class TraceLogger(Protocol):
