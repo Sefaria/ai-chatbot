@@ -71,7 +71,7 @@ class SefariaToolExecutor:
 
         elif tool_name == "semantic_search":
             return await self.client.semantic_search(
-                input_data["query"], input_data.get("filters"), input_data.get("limit", 10)
+                input_data["query"], input_data.get("filters"), 10
             )
 
         elif tool_name == "get_links_between_texts":
