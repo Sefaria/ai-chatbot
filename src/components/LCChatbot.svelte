@@ -288,6 +288,54 @@
     return () => host.removeEventListener('click', trackClick);
   });
 
+  // GA4 tracking: fire 'assistant_impression' the first time an element with
+  // data-impression-name scrolls into view within the messages panel. Content
+  // (thinking steps, appetizer topics, location tag) streams in after mount, so
+  // this watches for new matching elements via MutationObserver rather than
+  // scanning once.
+  $effect(() => {
+    if (!messageListRef) return;
+    const root = messageListRef;
+
+    const seen = new WeakSet();
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        io.unobserve(el);
+        if (seen.has(el)) continue;
+        seen.add(el);
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'assistant_impression', { feature_name: el.getAttribute('data-impression-name') });
+        }
+      }
+    }, { root, threshold: 0.5 });
+
+    function observe(node) {
+      if (!(node instanceof Element)) return;
+      if (node.hasAttribute('data-impression-name') && !seen.has(node)) {
+        io.observe(node);
+      }
+      node.querySelectorAll?.('[data-impression-name]').forEach(el => {
+        if (!seen.has(el)) io.observe(el);
+      });
+    }
+
+    observe(root);
+
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach(observe);
+      }
+    });
+    mo.observe(root, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  });
+
   // Dispatch custom events
   function dispatchEvent(name, detail = {}) {
     const event = new CustomEvent(`chatbot:${name}`, {
