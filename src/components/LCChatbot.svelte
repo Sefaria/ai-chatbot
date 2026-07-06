@@ -6,7 +6,6 @@
   import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
-  import { formatDateMarker, formatTime, getDateKey, isSameDay } from '../lib/dates.js';
   import HeaderButton from './HeaderButton.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
@@ -682,33 +681,6 @@
     document.addEventListener('mouseup', onMouseUp);
   }
 
-  // Message grouping with date markers
-  function getMessagesWithMarkers() {
-    const result = [];
-    let lastDateKey = null;
-
-    for (const msg of messages) {
-      const dateKey = getDateKey(msg.timestamp);
-      if (dateKey !== lastDateKey) {
-        result.push({
-          type: 'date-marker',
-          date: formatDateMarker(new Date(msg.timestamp)),
-          key: 'date-' + dateKey
-        });
-        lastDateKey = dateKey;
-      }
-      result.push({
-        type: 'message',
-        ...msg,
-        key: msg.messageId
-      });
-    }
-
-    return result;
-  }
-
-  let messagesWithMarkers = $derived(getMessagesWithMarkers());
-
   function handleMessageLinkClick(e) {
     const anchor = e.target?.closest?.('a');
     if (!anchor) return;
@@ -1002,12 +974,8 @@
           </div>
         {/if}
 
-        {#each messagesWithMarkers as item (item.key)}
-          {#if item.type === 'date-marker'}
-            <div class="date-marker">
-              <span>{item.date}</span>
-            </div>
-          {:else if item.role === 'assistant'}
+        {#each messages as item (item.messageId)}
+          {#if item.role === 'assistant'}
             {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
           {:else}
             <div class="message user">
@@ -1438,23 +1406,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-
-  /* Date Markers */
-  .date-marker {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 8px 0;
-  }
-
-  .date-marker span {
-    font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-muted);
-    background: var(--lc-bg);
-    padding: 4px 12px;
-    border-radius: 9999px;
-    border: 1px solid var(--lc-border);
   }
 
   /* Messages */

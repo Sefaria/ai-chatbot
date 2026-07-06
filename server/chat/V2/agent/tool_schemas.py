@@ -29,19 +29,14 @@ TOOL_GET_TEXT = {
                 "type": "string",
                 "description": 'Specific text reference (e.g. "Genesis 1:1", "Berakhot 2a")',
             },
-            "version_language": {
-                "type": "string",
-                "enum": ["source", "english", "both"],
-                "description": "Which language version to retrieve. Omit for all versions.",
-            },
         },
         "required": ["reference"],
     },
 }
 
 TOOL_TEXT_SEARCH = {
-    "name": "text_search",
-    "description": "The primary and most powerful tool for finding source texts — use this first for most text-finding tasks. Use for exact phrases or specific Hebrew/Aramaic terms. Searches across the entire Jewish library for passages containing specific textual terms. This is a full-text search over text content, not a metadata search. Do not use author names, book titles, or other metadata as query terms unless you expect those exact words to appear in the text itself. Hebrew/Aramaic searches are more reliable than English translations. To scope a search to a specific book or category, pass filters as Sefaria path strings (e.g. 'Tanakh/Torah/Genesis' or 'Talmud/Bavli/Seder Nashim/Kiddushin'). Note that some works are structured as categories rather than single books — for example, Mishneh Torah is a category and each sub-book (e.g. 'Mishneh Torah/Sefer Madda/Teshuvah') is its own index. Use clarify_search_path_filter to resolve a book name to its correct filter path before filtering.",
+    "name": "specific_keyword_search",
+    "description": "Use ONLY when the query is a specific Hebrew/Aramaic term or exact phrase, e.g. 'Find all places where the word X appears' or 'What does the term X mean in context Y?'. For all other source-finding queries, use semantic_search instead. This is a full-text keyword search — it matches exact words, not concepts. Do not use author names, book titles, or metadata as query terms. To scope to a book or category, pass filters as Sefaria path strings. Use clarify_search_path_filter to resolve a book name to its filter path before filtering.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -63,12 +58,14 @@ TOOL_GET_CURRENT_CALENDAR = {
     "input_schema": {"type": "object", "properties": {}},
 }
 
-TOOL_ENGLISH_SEMANTIC_SEARCH = {
-    "name": "english_semantic_search",
-    "description": "Use for conceptual/thematic English queries. Performs semantic similarity search on English embeddings of texts from Sefaria. Uses semantic similarity to find conceptually related text chunks. Works well only with English queries.",
+TOOL_SEMANTIC_SEARCH = {
+    "name": "semantic_search",
+    "description": "Use for conceptual/thematic queries, great as a first tool for queries whose intent is to discover sources. Performs semantic similarity search over Sefaria texts using embeddings. Finds conceptually related text chunks even without exact keyword matches. Prefer English queries; Hebrew queries are also supported.",
     "input_schema": {
         "type": "object",
-        "properties": {"query": {"type": "string"}, "filters": {"type": "object"}},
+        "properties": {
+            "query": {"type": "string"},
+        },
         "required": ["query"],
     },
 }
@@ -360,9 +357,9 @@ TOOL_CREATE_SOURCE_SHEET = {
 # All tools indexed by name
 ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_text": TOOL_GET_TEXT,
-    "text_search": TOOL_TEXT_SEARCH,
+    "semantic_search": TOOL_SEMANTIC_SEARCH,
     "get_current_calendar": TOOL_GET_CURRENT_CALENDAR,
-    "english_semantic_search": TOOL_ENGLISH_SEMANTIC_SEARCH,
+    "specific_keyword_search": TOOL_TEXT_SEARCH,
     "get_links_between_texts": TOOL_GET_LINKS_BETWEEN_TEXTS,
     "search_in_book": TOOL_SEARCH_IN_BOOK,
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,

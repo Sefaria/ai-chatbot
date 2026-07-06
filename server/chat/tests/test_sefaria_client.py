@@ -72,61 +72,11 @@ class TestSefariaClientInit:
 
 
 class TestGetTextVersionLanguage:
-    """Test get_text version_language parameter handling."""
+    """Test get_text parameter handling."""
 
     @pytest.mark.asyncio
-    async def test_version_language_both_uses_multiple_params(self, client, mock_http_client):
-        """When version_language='both', should send version=english&version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="both")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            # The URL should have version=english&version=source, not version=english|source
-            assert "version=english" in url, f"URL should contain 'version=english', got: {url}"
-            assert "version=source" in url, f"URL should contain 'version=source', got: {url}"
-            assert "english|source" not in url, (
-                f"URL should NOT contain 'english|source', got: {url}"
-            )
-
-    @pytest.mark.asyncio
-    async def test_version_language_english_uses_single_param(self, client, mock_http_client):
-        """When version_language='english', should send version=english."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="english")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=english" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_source_uses_single_param(self, client, mock_http_client):
-        """When version_language='source', should send version=source."""
-        mock_http_client.get.return_value.json = AsyncMock(
-            return_value={"versions": [], "available_versions": []}
-        )
-
-        with patch.object(client, "_get_client", return_value=mock_http_client):
-            await client.get_text("Genesis 1:1", version_language="source")
-
-            call_args = mock_http_client.get.call_args
-            url = call_args[0][0]
-
-            assert "version=source" in url
-
-    @pytest.mark.asyncio
-    async def test_version_language_none_omits_param(self, client, mock_http_client):
-        """When version_language is None, should not include version param."""
+    async def test_omits_version_param(self, client, mock_http_client):
+        """get_text should not include a version param in the URL."""
         mock_http_client.get.return_value.json = AsyncMock(
             return_value={"versions": [], "available_versions": []}
         )
@@ -271,7 +221,7 @@ class TestOptimizeTextResponse:
 
         assert "ref" in result
         assert "versions" in result
-        assert "available_versions" in result
+        assert "available_versions" not in result
         assert "extra_field" not in result
         assert "another_extra" not in result
 
@@ -336,8 +286,8 @@ class TestOptimizeLinksResponse:
         assert result == {"not": "a list"}
 
 
-class TestEnglishSemanticSearch:
-    """Test english_semantic_search error handling."""
+class TestSemanticSearch:
+    """Test semantic_search error handling."""
 
     @pytest.mark.asyncio
     async def test_returns_unavailable_message_on_404(self, client):
@@ -345,7 +295,7 @@ class TestEnglishSemanticSearch:
         import httpx
 
         # Create a proper mock request and response for httpx error
-        mock_request = httpx.Request("POST", "https://ai.sefaria.org/api/knn-search")
+        mock_request = httpx.Request("POST", "https://www.sefaria.org/api/knn-search")
         mock_response = httpx.Response(404, request=mock_request)
 
         mock_client = AsyncMock()
@@ -356,10 +306,10 @@ class TestEnglishSemanticSearch:
         )
 
         with patch.object(client, "_get_client", return_value=mock_client):
-            result = await client.english_semantic_search("test query")
+            result = await client.semantic_search("test query")
 
         assert "unavailable" in result.get("error", "").lower()
-        assert "text_search" in result.get("suggestion", "").lower()
+        assert "specific_keyword_search" in result.get("suggestion", "").lower()
 
     @pytest.mark.asyncio
     async def test_returns_results_on_success(self, client):
@@ -378,7 +328,7 @@ class TestEnglishSemanticSearch:
         mock_client.post = AsyncMock(return_value=MockResponse())
 
         with patch.object(client, "_get_client", return_value=mock_client):
-            result = await client.english_semantic_search("test query")
+            result = await client.semantic_search("test query")
 
         assert result == expected_results
 
@@ -664,7 +614,7 @@ class TestCreateSourceSheet:
                     ],
                 )
 
-        mock_get_text.assert_awaited_once_with("Genesis 3:1", "both")
+        mock_get_text.assert_awaited_once_with("Genesis 3:1")
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert call_args.args[0] == f"{client.base_url}/api/sheets/"
