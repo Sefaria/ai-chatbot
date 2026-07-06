@@ -61,7 +61,7 @@ class SefariaToolExecutor:
         if tool_name == "get_text":
             return await self.client.get_text(input_data["reference"])
 
-        elif tool_name == "text_search":
+        elif tool_name == "specific_keyword_search":
             return await self.client.text_search(
                 input_data["query"], input_data.get("filters"), input_data.get("size", 10)
             )
@@ -69,9 +69,9 @@ class SefariaToolExecutor:
         elif tool_name == "get_current_calendar":
             return await self.client.get_current_calendar()
 
-        elif tool_name == "english_semantic_search":
-            return await self.client.english_semantic_search(
-                input_data["query"], input_data.get("filters")
+        elif tool_name == "semantic_search":
+            return await self.client.semantic_search(
+                input_data["query"], input_data.get("filters"), 10
             )
 
         elif tool_name == "get_links_between_texts":
@@ -212,11 +212,11 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
             return "[unserializable]"
 
     descriptions = {
-        "text_search": lambda: (
+        "specific_keyword_search": lambda: (
             f"Searching texts for {q(tool_input.get('query'))}"
             + (f" in {q(tool_input.get('filters'))}" if tool_input.get("filters") else "")
         ),
-        "english_semantic_search": lambda: f"Semantic search for {q(tool_input.get('query'))}",
+        "semantic_search": lambda: f"Semantic search for {q(tool_input.get('query'))}",
         "search_in_book": lambda: (
             f"Searching in {q(tool_input.get('book_name'))} for {q(tool_input.get('query'))}"
         ),
