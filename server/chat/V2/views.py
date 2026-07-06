@@ -284,7 +284,7 @@ def chat_stream_v2(request):
     # Only core prompt slug is used for v2 streaming.
     core_prompt_slug = (prompt_slugs.get("corePromptSlug") or "").strip()
     if not core_prompt_slug:
-        core_prompt_slug = "core-prompt-noah-semantic-search"  # settings.CORE_PROMPT_SLUG
+        core_prompt_slug = settings.CORE_PROMPT_SLUG
 
     # Save user message
     user_message = save_user_message(
@@ -789,7 +789,7 @@ def prompt_defaults(request):
     """Return default Braintrust prompt slugs for client settings."""
     return Response(
         {
-            "corePromptSlug": "core-prompt-noah-semantic-search",  # settings.CORE_PROMPT_SLUG
+            "corePromptSlug": settings.CORE_PROMPT_SLUG,
             "labs": False,
         }
     )
