@@ -71,3 +71,34 @@ python3 latency/scripts/run_baseline_beta_from_braintrust.py
 ```bash
 python3 latency/scripts/analyze_experiment_latency.py
 ```
+
+### Running the local agent-loop probe
+
+For detailed local JSONL traces of the agent loop, edit the `PROBE_CONFIG`
+block at the top of:
+
+```bash
+latency/scripts/run_agent_loop_probe.py
+```
+
+Then run the probe directly:
+
+```bash
+python3 latency/scripts/run_agent_loop_probe.py
+```
+
+The probe starts a local Django backend with `AGENT_FILE_TRACE_ENABLED=1`, replays
+the configured Braintrust dataset against `http://127.0.0.1:8001`, and writes:
+
+```text
+latency/runs/<run_id>/
+  agent_debug_events.jsonl
+  agent_debug_turn_summary.csv
+  results.jsonl
+  summary.json
+  manifest.json
+  backend.log
+```
+
+Set `PROBE_CONFIG["limit"] = None` for the full dataset. Use
+`PROBE_CONFIG["max_concurrency"] = 1` for the clearest per-turn trace ordering.

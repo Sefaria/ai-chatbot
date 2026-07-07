@@ -9,6 +9,7 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
+from ..file_trace import AgentFileTracer
 from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
@@ -40,6 +41,7 @@ class TurnOrchestrator:
         router: Router,
         trace_logger: BraintrustTraceLogger,
         logging_enabled: bool = True,
+        file_tracer: AgentFileTracer | None = None,
     ):
         self.model = model
         self.mcp_server_name = mcp_server_name
@@ -52,6 +54,7 @@ class TurnOrchestrator:
         self.router = router
         self.trace_logger = trace_logger
         self.logging_enabled = logging_enabled
+        self.file_tracer = file_tracer
 
     async def run_turn(
         self,
@@ -67,6 +70,17 @@ class TurnOrchestrator:
         # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "turn_start",
+                {
+                    "model": self.model,
+                    "core_prompt_id": core_prompt_id,
+                    "message_count": len(messages),
+                    "messages": messages,
+                    "context": context,
+                },
+            )
 
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -80,44 +94,113 @@ class TurnOrchestrator:
             model=self.model,
         )
 
+        guardrail_start_ms = self.file_tracer.elapsed_ms() if self.file_tracer else None
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "guardrail_start",
+                {"user_message": last_user_message, "context": context},
+            )
         guardrail_response = await self.guardrail_gate.run_guardrail(
             bt_span=bt_span,
             user_message=last_user_message,
             context=context,
             start_time=start_time,
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "guardrail_end",
+                {
+                    "duration_ms": self.file_tracer.elapsed_ms() - guardrail_start_ms
+                    if guardrail_start_ms is not None
+                    else None,
+                    "blocked": guardrail_response is not None,
+                    "response": guardrail_response,
+                },
+            )
         if guardrail_response:
+            if self.file_tracer:
+                self.file_tracer.emit("turn_end_guardrail", {"response": guardrail_response})
             return guardrail_response
 
+        router_start_ms = self.file_tracer.elapsed_ms() if self.file_tracer else None
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "router_start",
+                {"user_message": last_user_message, "messages": messages},
+            )
         router_prompt_id, route, messages = await self.router.run_router(
             bt_span, last_user_message, messages
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "router_end",
+                {
+                    "duration_ms": self.file_tracer.elapsed_ms() - router_start_ms
+                    if router_start_ms is not None
+                    else None,
+                    "router_prompt_id": router_prompt_id,
+                    "route": route,
+                    "messages": messages,
+                },
+            )
         if router_prompt_id:
             core_prompt_id = router_prompt_id
 
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.
         response_format = self.prompt_service.get_core_prompt(
-            prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG
+            prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG,
+            file_tracer=self.file_tracer,
         )
         core_prompt = self.prompt_service.get_core_prompt(
             prompt_id=core_prompt_id,
             build_vars={"response_format": response_format.text},
+            file_tracer=self.file_tracer,
         )
 
+        prompt_build_start_ms = self.file_tracer.elapsed_ms() if self.file_tracer else None
         prompt_result = build_turn_prompt(
             messages=messages,
             core_prompt=core_prompt.text,
             context=context,
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "turn_prompt_built",
+                {
+                    "duration_ms": self.file_tracer.elapsed_ms() - prompt_build_start_ms
+                    if prompt_build_start_ms is not None
+                    else None,
+                    "core_prompt_id": core_prompt.prompt_id,
+                    "core_prompt_version": core_prompt.version,
+                    "response_format_prompt_id": response_format.prompt_id,
+                    "response_format_version": response_format.version,
+                    "summary_included": prompt_result.summary_included,
+                    "full_prompt": prompt_result.full_prompt,
+                    "conversation_text": prompt_result.conversation_text,
+                    "summary_text": context.summary_text,
+                    "full_prompt_char_count": len(prompt_result.full_prompt),
+                    "conversation_text_char_count": len(prompt_result.conversation_text),
+                },
+            )
 
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_tools_for_labs(context.labs)
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "tools_selected",
+                {
+                    "labs": context.labs,
+                    "tool_count": len(tools),
+                    "tools": tools,
+                },
+            )
         sdk_tools = self.tool_runtime.build_sdk_tools(
             tool_schemas=tools,
             context=context,
             emit=emitter.emit,
             tool_calls_list=tool_calls_list,
+            file_tracer=self.file_tracer,
         )
         allowed_tools = [
             f"mcp__{self.mcp_server_name}__{tool_schema['name']}" for tool_schema in tools
@@ -133,6 +216,16 @@ class TurnOrchestrator:
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "sdk_options_built",
+                {
+                    "options": options,
+                    "system_prompt_in_options": system_prompt_in_options,
+                    "allowed_tools": allowed_tools,
+                    "mcp_server_name": self.mcp_server_name,
+                },
+            )
         self.trace_logger.log_prompt_metadata(
             bt_span=bt_span,
             core_prompt_id=core_prompt.prompt_id,
@@ -149,6 +242,15 @@ class TurnOrchestrator:
             if not system_prompt_in_options
             else prompt_result.conversation_text
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "sdk_prompt_text_selected",
+                {
+                    "system_prompt_in_options": system_prompt_in_options,
+                    "prompt_text": prompt_text,
+                    "prompt_text_char_count": len(prompt_text),
+                },
+            )
 
         time_to_first_final_response_token: float | None = None
 
@@ -164,9 +266,16 @@ class TurnOrchestrator:
                 options=options,
                 prompt_text=prompt_text,
                 on_text_delta=emit_text_delta,
+                file_tracer=self.file_tracer,
             )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
+            if self.file_tracer:
+                self.file_tracer.exception(
+                    "turn_error",
+                    exc,
+                    {"latency_ms": latency_ms, "tool_calls": tool_calls_list},
+                )
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
 
@@ -184,6 +293,20 @@ class TurnOrchestrator:
             total_cost_usd=sdk_result.total_cost_usd,
             time_to_first_final_response_token=time_to_first_final_response_token,
         )
+        if self.file_tracer:
+            self.file_tracer.emit(
+                "turn_success",
+                {
+                    "latency_ms": latency_ms,
+                    "output": output,
+                    "output_char_count": len(output),
+                    "trace_id": trace_id,
+                    "tool_calls": tool_calls_list,
+                    "usage": sdk_result.usage,
+                    "metrics": metrics,
+                    "total_cost_usd": sdk_result.total_cost_usd,
+                },
+            )
         self.trace_logger.log_success(
             bt_span=bt_span,
             content=output,

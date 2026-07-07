@@ -51,6 +51,7 @@ from ..serializers import (
 )
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .agent.tracing_guard import suppress_tracing
+from .file_trace import AgentFileTracer
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
@@ -312,6 +313,28 @@ def chat_stream_v2(request):
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
     )
+    file_tracer = AgentFileTracer.create(session_id=data["sessionId"], turn_id=turn_id)
+    if file_tracer:
+        file_tracer.emit(
+            "request_received",
+            {
+                "endpoint": "chat_stream_v2",
+                "message_id": data["messageId"],
+                "session_id": data["sessionId"],
+                "turn_id": turn_id,
+                "user_id": actor.user_id,
+                "is_load_test": is_load_test,
+                "text": data["text"],
+                "timestamp": data["timestamp"],
+                "context": context,
+                "prompt_slugs": prompt_slugs,
+                "labs_enabled": labs_enabled,
+                "page_url": page_url,
+                "summary_text": summary_text,
+                "core_prompt_slug": core_prompt_slug,
+                "message_context": msg_context,
+            },
+        )
 
     def generate_sse():
         """Generator that yields SSE events for a single chat turn.
@@ -342,6 +365,8 @@ def chat_stream_v2(request):
         def on_progress(update: AgentProgressUpdate):
             if stream_closed:
                 return
+            if file_tracer:
+                file_tracer.emit("progress_update", {"update": update})
             try:
                 progress_queue.put(update, timeout=0.1)
             except queue.Full:
@@ -360,7 +385,7 @@ def chat_stream_v2(request):
             bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service(is_load_test=is_load_test)
+                agent = get_agent_service(is_load_test=is_load_test, file_tracer=file_tracer)
 
                 async def _send():
                     return await agent.send_message(
@@ -377,6 +402,16 @@ def chat_stream_v2(request):
                     result_holder["response"] = asyncio.run(_send())
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
+                if file_tracer:
+                    file_tracer.exception(
+                        "request_agent_error",
+                        e,
+                        {
+                            "session_id": data["sessionId"],
+                            "turn_id": turn_id,
+                            "message_id": data["messageId"],
+                        },
+                    )
                 capture_exception(
                     e,
                     endpoint="chat_stream_v2",
@@ -451,6 +486,11 @@ def chat_stream_v2(request):
             # --- Error path: persist an error message and notify client ---
             if result_holder["error"]:
                 logger.error(f"Agent error: {result_holder['error']}")
+                if file_tracer:
+                    file_tracer.emit(
+                        "response_error_persist_start",
+                        {"error": result_holder["error"], "latency_ms": latency_ms},
+                    )
 
                 error_msg = logging_service.record_error_message(
                     session_id=data["sessionId"],
@@ -464,6 +504,15 @@ def chat_stream_v2(request):
                 user_message.save(update_fields=["response_message"])
                 assistant_persisted = True
                 _mark_turn_failed(user_message.id, result_holder["error"])
+                if file_tracer:
+                    file_tracer.emit(
+                        "response_error_persisted",
+                        {
+                            "assistant_message_id": error_msg.message_id,
+                            "latency_ms": latency_ms,
+                            "error_text": ERROR_FALLBACK_MESSAGE,
+                        },
+                    )
 
                 logger.info(
                     "Assistant row persisted after agent error",
@@ -476,6 +525,8 @@ def chat_stream_v2(request):
 
                 yield f"event: error\ndata: {json.dumps({'error': INTERNAL_ERROR_MESSAGE})}\n\n"
                 final_event_sent = True
+                if file_tracer:
+                    file_tracer.emit("final_sse_error_sent", {"error": INTERNAL_ERROR_MESSAGE})
                 logger.info(
                     "Final SSE error sent",
                     extra={"session_id": data["sessionId"], "turn_id": turn_id},
@@ -484,6 +535,11 @@ def chat_stream_v2(request):
 
             # --- Success path: persist first, then do non-fatal session/summary work ---
             agent_response = result_holder["response"]
+            if file_tracer:
+                file_tracer.emit(
+                    "agent_response_received",
+                    {"latency_ms": latency_ms, "response": agent_response},
+                )
             logger.info(
                 "Agent completed",
                 extra={
@@ -512,6 +568,15 @@ def chat_stream_v2(request):
             response_message = logging_result.response_message
             assistant_persisted = True
             _mark_turn_completed(user_message.id)
+            if file_tracer:
+                file_tracer.emit(
+                    "assistant_message_persisted",
+                    {
+                        "response_message_id": response_message.message_id,
+                        "latency_ms": latency_ms,
+                        "logging_stats": logging_result.stats,
+                    },
+                )
 
             logger.info(
                 "Assistant row persisted",
@@ -531,6 +596,14 @@ def chat_stream_v2(request):
                     new_assistant_response=agent_response.content,
                 )
                 summary_text = new_summary.to_prompt_text()
+                if file_tracer:
+                    file_tracer.emit(
+                        "summary_updated",
+                        {
+                            "summary_text": summary_text,
+                            "summary_char_count": len(summary_text),
+                        },
+                    )
 
                 # Back-patch any cost added since persist (summary, in practice).
                 post_persist_delta = cost_accumulator.total - aux_cost_at_persist
@@ -543,6 +616,8 @@ def chat_stream_v2(request):
                     logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
             except Exception as exc:
                 logger.exception("Summary update failed after agent success")
+                if file_tracer:
+                    file_tracer.exception("summary_update_error", exc)
                 capture_exception(
                     exc,
                     endpoint="chat_stream_v2",
@@ -562,6 +637,8 @@ def chat_stream_v2(request):
                 session.refresh_from_db()
             except Exception as exc:
                 logger.exception("Session update failed after assistant persist")
+                if file_tracer:
+                    file_tracer.exception("session_update_error", exc)
                 capture_exception(
                     exc,
                     endpoint="chat_stream_v2",
@@ -600,10 +677,18 @@ def chat_stream_v2(request):
                     phase="forced_break_before_final_sse",
                     response_message_id=response_message.message_id,
                 )
+                if file_tracer:
+                    file_tracer.exception(
+                        "forced_stream_break_before_final_sse",
+                        test_exc,
+                        {"response_message_id": response_message.message_id},
+                    )
                 raise test_exc
 
             yield f"event: message\ndata: {json.dumps(final_data)}\n\n"
             final_event_sent = True
+            if file_tracer:
+                file_tracer.emit("final_sse_sent", {"payload": final_data})
             logger.info(
                 "Final SSE sent",
                 extra={
@@ -613,6 +698,15 @@ def chat_stream_v2(request):
                 },
             )
         except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+            if file_tracer:
+                file_tracer.emit(
+                    "client_disconnected",
+                    {
+                        "final_event_sent": final_event_sent,
+                        "assistant_persisted": assistant_persisted,
+                        "agent_completed": result_holder["response"] is not None,
+                    },
+                )
             if not final_event_sent:
                 logger.warning(
                     "Client disconnected before final send",
@@ -625,6 +719,16 @@ def chat_stream_v2(request):
                 )
             raise
         finally:
+            if file_tracer:
+                file_tracer.emit(
+                    "request_finished",
+                    {
+                        "final_event_sent": final_event_sent,
+                        "assistant_persisted": assistant_persisted,
+                        "agent_completed": result_holder["response"] is not None,
+                        "had_error": result_holder["error"] is not None,
+                    },
+                )
             stream_closed = True
             if not future.done():
                 future.cancel()

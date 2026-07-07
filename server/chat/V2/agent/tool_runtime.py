@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from ..file_trace import AgentFileTracer
 from .contracts import AgentProgressUpdate, MessageContext
 from .helpers import truncate
 from .tool_executor import SefariaToolExecutor, describe_tool_call
@@ -31,6 +32,7 @@ class ToolRuntime:
         context: MessageContext,
         emit: Callable[[AgentProgressUpdate], None],
         tool_calls_list: list[dict[str, Any]],
+        file_tracer: AgentFileTracer | None = None,
     ) -> list[Any]:
         """Create SDK-compatible tool handlers from JSON schemas."""
         sdk_tools: list[Any] = []
@@ -44,6 +46,16 @@ class ToolRuntime:
             async def handler(args: dict[str, Any]) -> dict[str, Any]:
                 tool_input = args or {}
                 tool_desc = describe_tool_call(tool_name, tool_input)
+                if file_tracer:
+                    file_tracer.emit(
+                        "tool_call_start",
+                        {
+                            "tool_name": tool_name,
+                            "tool_description": tool_description,
+                            "tool_input": tool_input,
+                            "description": tool_desc,
+                        },
+                    )
 
                 emit(
                     AgentProgressUpdate(
@@ -55,8 +67,21 @@ class ToolRuntime:
                 )
 
                 tool_start = time.time()
-                result = await self.tool_executor.execute(tool_name, tool_input)
-                tool_latency = int((time.time() - tool_start) * 1000)
+                try:
+                    result = await self.tool_executor.execute(tool_name, tool_input)
+                    tool_latency = int((time.time() - tool_start) * 1000)
+                except Exception as exc:
+                    if file_tracer:
+                        file_tracer.exception(
+                            "tool_call_error",
+                            exc,
+                            {
+                                "tool_name": tool_name,
+                                "tool_input": tool_input,
+                                "duration_ms": int((time.time() - tool_start) * 1000),
+                            },
+                        )
+                    raise
 
                 output_text = "".join(
                     block.get("text", "") if block.get("type") == "text" else json.dumps(block)
@@ -73,6 +98,20 @@ class ToolRuntime:
                         "latency_ms": tool_latency,
                     }
                 )
+
+                if file_tracer:
+                    file_tracer.emit(
+                        "tool_call_end",
+                        {
+                            "tool_name": tool_name,
+                            "tool_input": tool_input,
+                            "tool_output_full": output_text,
+                            "tool_output_preview": output_preview,
+                            "result_content": result.content,
+                            "is_error": result.is_error,
+                            "duration_ms": tool_latency,
+                        },
+                    )
 
                 emit(
                     AgentProgressUpdate(

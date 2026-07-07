@@ -86,6 +86,9 @@ class SDKOptionsBuilder:
             if self._supports_option("stderr"):
                 options_kwargs["stderr"] = lambda line: self.logger.warning("Claude CLI: %s", line)
 
+        if self._supports_option("thinking"):
+            options_kwargs["thinking"] = {"type": "disabled"}
+
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
             options_kwargs["system_prompt"] = system_prompt

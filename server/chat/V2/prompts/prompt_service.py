@@ -22,6 +22,7 @@ from typing import Any
 
 from django.conf import settings
 
+from ..file_trace import AgentFileTracer
 from ..utils import make_singleton
 
 logger = logging.getLogger("chat.prompts")
@@ -77,6 +78,7 @@ class PromptService:
         prompt_id: str | None = None,
         version: str = "stable",
         build_vars: dict[str, str] | None = None,
+        file_tracer: AgentFileTracer | None = None,
     ) -> CorePrompt:
         """
         Get the core system prompt.
@@ -90,10 +92,47 @@ class PromptService:
             CorePrompt with text and metadata
         """
         prompt_id = prompt_id or settings.CORE_PROMPT_SLUG
-        prompt_obj, actual_version = self._get_prompt_object(prompt_id, version)
-        prompt_text = self._extract_prompt_text(prompt_obj, **(build_vars or {}))
+        prompt_start = time.perf_counter()
+        if file_tracer:
+            file_tracer.emit(
+                "prompt_fetch_start",
+                {
+                    "prompt_id": prompt_id,
+                    "requested_version": version,
+                    "build_vars": build_vars or {},
+                    "project_name": self.project_name,
+                },
+            )
+        try:
+            prompt_obj, actual_version = self._get_prompt_object(prompt_id, version)
+            prompt_text = self._extract_prompt_text(prompt_obj, **(build_vars or {}))
+        except Exception as exc:
+            if file_tracer:
+                file_tracer.exception(
+                    "prompt_fetch_error",
+                    exc,
+                    {
+                        "prompt_id": prompt_id,
+                        "requested_version": version,
+                        "duration_ms": int((time.perf_counter() - prompt_start) * 1000),
+                    },
+                )
+            raise
         if not prompt_text:
             raise RuntimeError(f"Prompt '{prompt_id}' returned empty from Braintrust")
+        if file_tracer:
+            file_tracer.emit(
+                "prompt_fetch_end",
+                {
+                    "prompt_id": prompt_id,
+                    "actual_version": actual_version,
+                    "requested_version": version,
+                    "duration_ms": int((time.perf_counter() - prompt_start) * 1000),
+                    "prompt_text": prompt_text,
+                    "prompt_text_char_count": len(prompt_text),
+                    "build_vars": build_vars or {},
+                },
+            )
         return CorePrompt(text=prompt_text, prompt_id=prompt_id, version=actual_version)
 
     def _get_prompt_object(self, prompt_id: str, version: str) -> tuple[Any, str]:

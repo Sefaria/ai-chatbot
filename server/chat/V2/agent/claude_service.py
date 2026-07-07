@@ -23,6 +23,7 @@ from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
 from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
 
+from ..file_trace import AgentFileTracer
 from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
@@ -55,6 +56,7 @@ class ClaudeAgentService:
         temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
         is_load_test: bool = False,
+        file_tracer: AgentFileTracer | None = None,
     ):
         if (
             ClaudeAgentOptions is None
@@ -88,6 +90,7 @@ class ClaudeAgentService:
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.file_tracer = file_tracer
 
         self.sefaria_client = SefariaClient()
         self.tool_executor = SefariaToolExecutor(self.sefaria_client)
@@ -126,6 +129,7 @@ class ClaudeAgentService:
             router=Router(logger=logger),
             trace_logger=trace_logger,
             logging_enabled=self.braintrust_logging_enabled,
+            file_tracer=self.file_tracer,
         )
 
     def _setup_braintrust_tracing(self) -> None:
@@ -170,6 +174,10 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
+def get_agent_service(
+    is_load_test: bool = False, file_tracer: AgentFileTracer | None = None
+) -> ClaudeAgentService:
     """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService(is_load_test=is_load_test)
+    if file_tracer is None:
+        return ClaudeAgentService(is_load_test=is_load_test)
+    return ClaudeAgentService(is_load_test=is_load_test, file_tracer=file_tracer)

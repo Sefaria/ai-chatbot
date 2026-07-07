@@ -9,6 +9,8 @@ from typing import Any
 from claude_agent_sdk import ClaudeSDKClient
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
+from ..file_trace import AgentFileTracer
+
 
 @dataclass
 class SDKRunResult:
@@ -41,6 +43,7 @@ class ClaudeSDKRunner:
         options: Any,
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
+        file_tracer: AgentFileTracer | None = None,
     ) -> SDKRunResult:
         final_text = ""
         trace_id = None
@@ -48,16 +51,63 @@ class ClaudeSDKRunner:
         usage: dict[str, Any] | None = None
         total_cost_usd: float | None = None
 
+        if file_tracer:
+            file_tracer.emit(
+                "sdk_run_start",
+                {
+                    "prompt_text": prompt_text,
+                    "prompt_text_char_count": len(prompt_text),
+                    "options": options,
+                },
+            )
+
         async with self.client_cls(options=options) as client:
+            query_start = file_tracer.elapsed_ms() if file_tracer else None
             await client.query(prompt_text)
+            if file_tracer:
+                file_tracer.emit(
+                    "sdk_query_sent",
+                    {
+                        "duration_ms": file_tracer.elapsed_ms() - query_start
+                        if query_start is not None
+                        else None,
+                    },
+                )
             async for message in client.receive_response():
+                if file_tracer:
+                    file_tracer.emit(
+                        "sdk_message_received",
+                        {
+                            "message_type": message.__class__.__name__,
+                            "message": message,
+                            "text": self.extract_text_from_message(message),
+                        },
+                    )
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
                 if isinstance(message, self.result_message_cls):
                     usage = message.usage
                     total_cost_usd = message.total_cost_usd
+                    if file_tracer:
+                        file_tracer.emit(
+                            "sdk_result_message",
+                            {
+                                "usage": usage,
+                                "total_cost_usd": total_cost_usd,
+                                "result": message,
+                            },
+                        )
                 elif isinstance(message, self.stream_event_cls):
                     delta = self.extract_text_delta_from_stream_event(message)
+                    if file_tracer:
+                        file_tracer.emit(
+                            "sdk_stream_event",
+                            {
+                                "delta": delta,
+                                "delta_char_count": len(delta),
+                                "event": getattr(message, "event", None),
+                            },
+                        )
                     if delta and on_text_delta:
                         on_text_delta(delta)
                 else:
@@ -66,6 +116,19 @@ class ClaudeSDKRunner:
                         final_text += chunk
 
             trace_id = getattr(client, "trace_id", None) or getattr(client, "last_trace_id", None)
+
+        if file_tracer:
+            file_tracer.emit(
+                "sdk_run_end",
+                {
+                    "trace_id": trace_id,
+                    "llm_call_count": llm_call_count,
+                    "final_text": final_text,
+                    "final_text_char_count": len(final_text),
+                    "usage": usage,
+                    "total_cost_usd": total_cost_usd,
+                },
+            )
 
         return SDKRunResult(
             final_text=final_text,

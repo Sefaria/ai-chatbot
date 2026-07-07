@@ -79,6 +79,7 @@ class SdkRunner(Protocol):
         options: Any,
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
+        file_tracer: Any | None = None,
     ) -> Any: ...
 
 
