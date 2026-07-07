@@ -51,7 +51,7 @@ def mock_client():
     client.get_text = AsyncMock(return_value={"text": "In the beginning..."})
     client.text_search = AsyncMock(return_value={"results": []})
     client.get_current_calendar = AsyncMock(return_value={"date": "2024-01-15"})
-    client.english_semantic_search = AsyncMock(return_value={"results": []})
+    client.semantic_search = AsyncMock(return_value={"results": []})
     client.get_links_between_texts = AsyncMock(return_value={"links": []})
     client.search_in_book = AsyncMock(return_value={"results": []})
     client.search_in_dictionaries = AsyncMock(return_value={"entries": []})
@@ -84,18 +84,18 @@ class TestToolDispatch:
         [
             ("get_text", {"reference": "Genesis 1:1"}, "get_text", ("Genesis 1:1",)),
             (
-                "text_search",
+                "specific_keyword_search",
                 {"query": "shabbat", "filters": "Talmud", "size": 20},
                 "text_search",
                 ("shabbat", "Talmud", 20),
             ),
-            ("text_search", {"query": "prayer"}, "text_search", ("prayer", None, 10)),
+            ("specific_keyword_search", {"query": "prayer"}, "text_search", ("prayer", None, 10)),
             ("get_current_calendar", {}, "get_current_calendar", ()),
             (
-                "english_semantic_search",
+                "semantic_search",
                 {"query": "meaning of life", "filters": "Philosophy"},
-                "english_semantic_search",
-                ("meaning of life", "Philosophy"),
+                "semantic_search",
+                ("meaning of life", "Philosophy", 10),
             ),
             (
                 "get_links_between_texts",
@@ -312,8 +312,12 @@ class TestDescribeToolCall:
     @pytest.mark.parametrize(
         "tool_name,args,expected_phrases",
         [
-            ("text_search", {"query": "shabbat"}, ["Searching texts", "shabbat"]),
-            ("text_search", {"query": "prayer", "filters": "Talmud"}, ["prayer", "Talmud"]),
+            ("specific_keyword_search", {"query": "shabbat"}, ["Searching texts", "shabbat"]),
+            (
+                "specific_keyword_search",
+                {"query": "prayer", "filters": "Talmud"},
+                ["prayer", "Talmud"],
+            ),
             ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
             (
                 "search_user_source_sheets",
@@ -327,7 +331,7 @@ class TestDescribeToolCall:
                 ["Creating source sheet", "Bereshit"],
             ),
             (
-                "english_semantic_search",
+                "semantic_search",
                 {"query": "meaning of life"},
                 ["Semantic search", "meaning of life"],
             ),
@@ -371,7 +375,7 @@ class TestDescribeToolCall:
 
     def test_truncates_long_values(self):
         long_query = "x" * 200
-        desc = describe_tool_call("text_search", {"query": long_query})
+        desc = describe_tool_call("specific_keyword_search", {"query": long_query})
         assert "..." in desc or "…" in desc
         assert len(desc) < len(long_query) + 50
 

@@ -286,8 +286,8 @@ class TestOptimizeLinksResponse:
         assert result == {"not": "a list"}
 
 
-class TestEnglishSemanticSearch:
-    """Test english_semantic_search error handling."""
+class TestSemanticSearch:
+    """Test semantic_search error handling."""
 
     @pytest.mark.asyncio
     async def test_returns_unavailable_message_on_404(self, client):
@@ -295,7 +295,7 @@ class TestEnglishSemanticSearch:
         import httpx
 
         # Create a proper mock request and response for httpx error
-        mock_request = httpx.Request("POST", "https://ai.sefaria.org/api/knn-search")
+        mock_request = httpx.Request("POST", "https://www.sefaria.org/api/knn-search")
         mock_response = httpx.Response(404, request=mock_request)
 
         mock_client = AsyncMock()
@@ -306,10 +306,10 @@ class TestEnglishSemanticSearch:
         )
 
         with patch.object(client, "_get_client", return_value=mock_client):
-            result = await client.english_semantic_search("test query")
+            result = await client.semantic_search("test query")
 
         assert "unavailable" in result.get("error", "").lower()
-        assert "text_search" in result.get("suggestion", "").lower()
+        assert "specific_keyword_search" in result.get("suggestion", "").lower()
 
     @pytest.mark.asyncio
     async def test_returns_results_on_success(self, client):
@@ -328,7 +328,7 @@ class TestEnglishSemanticSearch:
         mock_client.post = AsyncMock(return_value=MockResponse())
 
         with patch.object(client, "_get_client", return_value=mock_client):
-            result = await client.english_semantic_search("test query")
+            result = await client.semantic_search("test query")
 
         assert result == expected_results
 
