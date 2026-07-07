@@ -42,6 +42,7 @@
   // Agent progress state
   let currentProgress = $state(null);
   let toolHistory = $state([]);
+  let streamingMarkdown = $state('');
 
   // Settings state
   let showSettings = $state(false);
@@ -457,6 +458,7 @@
     isSending = true;
     currentProgress = null;
     toolHistory = [];
+    streamingMarkdown = '';
     updateSessionActivity(sessionId);
 
     try {
@@ -468,7 +470,7 @@
           } else if (progress?.type === 'tool_start') {
             displayText = progress.description || `Running ${progress.toolName}`;
           }
-          displayText = displayText.replace(/…|\.\.\./, '');
+          displayText = displayText?.replace(/…|\.\.\./, '');
           currentProgress = {...progress, displayText};
 
           // Track tool usage in history
@@ -487,6 +489,11 @@
             );
           }
         },
+        onPartial: (delta) => {
+          if (!delta) return;
+          streamingMarkdown += delta;
+          scrollToBottom();
+        },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
@@ -503,6 +510,7 @@
       );
 
       // Add assistant response
+      streamingMarkdown = '';
       const assistantMessage = {
         messageId: response.messageId,
         sessionId: response.sessionId,
@@ -560,6 +568,7 @@
       isSending = false;
       currentProgress = null;
       toolHistory = [];
+      streamingMarkdown = '';
     }
   }
 
@@ -994,29 +1003,35 @@
         {/each}
 
         {#if isSending}
-          <div class="message assistant">
-            <div class="thinking-content">
-              <!-- Progress Status -->
-              {#if currentProgress?.type === 'tool_end' }
-                <div class="status-text" class:tool-error={currentProgress.isError}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    {#if currentProgress.isError}
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="15" y1="9" x2="9" y2="15"></line>
-                      <line x1="9" y1="9" x2="15" y2="15"></line>
-                    {:else}
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                    {/if}
-                  </svg>
-                  <span>{currentProgress.isError ? $_('assistant.status.toolError') : $_('assistant.status.done')}</span>
-                </div>
-              {:else}
-                <div class="status-text">
-                  <p>{currentProgress?.displayText || $_('assistant.loading.thinking')}<span class="dots"></span></p>
-                </div>
-              {/if}
-            </div>
+          <div class="message assistant" class:streaming={!!streamingMarkdown}>
+            {#if streamingMarkdown}
+              <div class="message-content">
+                {@html renderMarkdown(streamingMarkdown)}
+              </div>
+            {:else}
+              <div class="thinking-content">
+                <!-- Progress Status -->
+                {#if currentProgress?.type === 'tool_end' }
+                  <div class="status-text" class:tool-error={currentProgress.isError}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      {#if currentProgress.isError}
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                      {:else}
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      {/if}
+                    </svg>
+                    <span>{currentProgress.isError ? $_('assistant.status.toolError') : $_('assistant.status.done')}</span>
+                  </div>
+                {:else}
+                  <div class="status-text">
+                    <p>{currentProgress?.displayText || $_('assistant.loading.thinking')}<span class="dots"></span></p>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           </div>
         {/if}
 

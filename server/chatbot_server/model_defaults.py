@@ -5,7 +5,7 @@ Pure Python — no Django, no other imports — so prompt push scripts can impor
 this without booting Django.
 """
 
-AGENT_MODEL = "claude-sonnet-4-5-20250929"
+AGENT_MODEL = "claude-sonnet-4-6"
 AGENT_MAX_TOKENS = 8000
 AGENT_TEMPERATURE = 0.7
 

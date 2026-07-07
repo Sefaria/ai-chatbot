@@ -40,11 +40,14 @@ def build_braintrust_metrics(
     llm_call_count: int,
     usage: UsageMetrics,
     total_cost_usd: float | None,
+    time_to_first_final_response_token: float | None = None,
 ) -> dict[str, Any]:
     metrics: dict[str, Any] = {
         "latency_ms": latency_ms,
         "tool_count": tool_count,
     }
+    if time_to_first_final_response_token is not None:
+        metrics["time_to_first_final_response_token"] = time_to_first_final_response_token
     if llm_call_count:
         metrics["llm_calls"] = llm_call_count
     if usage.prompt_tokens is not None:
