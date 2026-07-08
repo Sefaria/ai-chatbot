@@ -65,11 +65,6 @@ TOOL_SEMANTIC_SEARCH = {
         "type": "object",
         "properties": {
             "query": {"type": "string"},
-            "limit": {
-                "type": "integer",
-                "default": 10,
-                "description": "Number of results to return (1–100).",
-            },
         },
         "required": ["query"],
     },

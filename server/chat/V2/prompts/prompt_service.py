@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
+from django.conf import settings
+
 from ..utils import make_singleton
 
 logger = logging.getLogger("chat.prompts")
@@ -87,7 +89,7 @@ class PromptService:
         Returns:
             CorePrompt with text and metadata
         """
-        prompt_id = prompt_id or "core-prompt-noah-semantic-search"  # settings.CORE_PROMPT_SLUG
+        prompt_id = prompt_id or settings.CORE_PROMPT_SLUG
         prompt_obj, actual_version = self._get_prompt_object(prompt_id, version)
         prompt_text = self._extract_prompt_text(prompt_obj, **(build_vars or {}))
         if not prompt_text:

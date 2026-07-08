@@ -15,7 +15,9 @@ from .V2.prompts import get_prompt_service
 
 logger = logging.getLogger("chat")
 
-BETA_MARKER = "beta-semantic-search-2026-07-02"
+BETA_MARKER = "beta-perf-disable-extended-thinking-d3ecbd1-2026-07-08"
+BETA_SOURCE_BRANCH = "perf/disable-extended-thinking"
+BETA_SOURCE_COMMIT = "d3ecbd1"
 
 
 def extract_page_type(url: str | None) -> str:
@@ -166,5 +168,7 @@ def beta_marker(request):
             "status": "ok",
             "marker": BETA_MARKER,
             "branch": "beta",
+            "sourceBranch": BETA_SOURCE_BRANCH,
+            "sourceCommit": BETA_SOURCE_COMMIT,
         }
     )

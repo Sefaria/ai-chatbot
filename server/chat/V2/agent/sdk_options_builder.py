@@ -68,6 +68,8 @@ class SDKOptionsBuilder:
             options_kwargs["max_tokens"] = self.max_tokens
         if self._supports_option("temperature"):
             options_kwargs["temperature"] = self.temperature
+        if self._supports_option("include_partial_messages"):
+            options_kwargs["include_partial_messages"] = True
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
@@ -83,6 +85,9 @@ class SDKOptionsBuilder:
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
             if self._supports_option("stderr"):
                 options_kwargs["stderr"] = lambda line: self.logger.warning("Claude CLI: %s", line)
+
+        if self._supports_option("thinking"):
+            options_kwargs["thinking"] = {"type": "disabled"}
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
