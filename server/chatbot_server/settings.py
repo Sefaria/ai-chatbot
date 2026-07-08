@@ -1,0 +1,326 @@
+"""
+Django settings for chatbot_server project.
+"""
+
+import os
+from pathlib import Path
+
+from corsheaders.defaults import default_headers
+
+try:
+    import whitenoise  # noqa: F401
+
+    _WHITENOISE_AVAILABLE = True
+except ImportError:
+    _WHITENOISE_AVAILABLE = False
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+# Loads from server/.env (same directory as manage.py)
+try:
+    from dotenv import load_dotenv
+
+    # Load .env from the server directory (parent of chatbot_server)
+    env_path = BASE_DIR / ".env"
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production")
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
+
+ALLOWED_HOSTS = ["*"]
+
+# Application definition
+INSTALLED_APPS = [
+    "django.contrib.contenttypes",
+    "django.contrib.staticfiles",
+    "corsheaders",
+    "rest_framework",
+    "chat",
+]
+
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
+]
+
+if _WHITENOISE_AVAILABLE:
+    MIDDLEWARE.append("whitenoise.middleware.WhiteNoiseMiddleware")
+
+ROOT_URLCONF = "chatbot_server.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "chatbot_server.wsgi.application"
+
+# Database - using postgres for production
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME"),
+        "USER": os.environ.get("DB_USER"),
+        "PASSWORD": os.environ.get("DB_PASSWORD"),
+        "HOST": os.environ.get("DB_HOST"),
+        "PORT": os.environ.get("DB_PORT"),
+    }
+}
+
+# Internationalization
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+# Static files
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_URL = "/static/"
+
+# WhiteNoise configuration for serving static files in production
+if _WHITENOISE_AVAILABLE:
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# CORS settings - allow all origins in development
+# Set to True to allow any origin (for local development)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Fallback list if CORS_ALLOW_ALL_ORIGINS is False
+
+# Allow all methods
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+# CORS headers for SSE streaming (include Sentry tracing headers)
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "sentry-trace",
+    "baggage",
+    "x-origin",
+]
+
+
+# Allow credentials for CORS
+CORS_ALLOW_CREDENTIALS = True
+
+# Expose headers needed for SSE
+CORS_EXPOSE_HEADERS = [
+    "Content-Type",
+    "Cache-Control",
+    "X-Accel-Buffering",
+]
+
+# Allow preflight requests to be cached
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# REST Framework settings
+REST_FRAMEWORK = {
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "rest_framework.parsers.JSONParser",
+    ],
+    "UNAUTHENTICATED_USER": None,
+}
+
+# ============================================================================
+# LangSmith Tracing Configuration
+# ============================================================================
+# Set these environment variables to enable LangSmith tracing:
+# - LANGSMITH_API_KEY=<your-api-key>
+# - LANGSMITH_PROJECT=sefaria-chatbot (optional, defaults to this)
+# - LANGSMITH_ENDPOINT=https://api.smith.langchain.com (optional)
+
+# ============================================================================
+# Braintrust Configuration (Prompts + Evals)
+# ============================================================================
+# Set these environment variables to enable Braintrust:
+# - BRAINTRUST_API_KEY=<your-api-key>
+# - BRAINTRUST_PROJECT=On Site Agent (optional, defaults to this)
+
+# Environment tag for logging
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
+
+# Braintrust logging toggle — set to "false" to disable all tracing
+BRAINTRUST_LOGGING_ENABLED = os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true").lower() == "true"
+
+
+def _read_env_float(name: str, default: float) -> float:
+    """Read an environment variable as float; fall back to default on invalid values."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+# Optional Sentry error monitoring.
+# Enable by setting SENTRY_DSN in the server environment.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        environment=ENVIRONMENT,
+        release=os.environ.get("SENTRY_RELEASE"),
+        sample_rate=_read_env_float("SENTRY_SAMPLE_RATE", 0.0),
+        send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "false").lower() == "true",
+        traces_sample_rate=_read_env_float("SENTRY_TRACES_SAMPLE_RATE", 0.0),
+        profiles_sample_rate=_read_env_float("SENTRY_PROFILES_SAMPLE_RATE", 0.0),
+    )
+
+# Prompt slug defaults (Braintrust)
+# These slugs identify which Braintrust prompt to fetch for each service.
+CORE_PROMPT_SLUG = os.environ.get("CORE_PROMPT_SLUG", "core-8fbc")
+GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-checker")
+ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "router-classifier")
+REWRITER_PROMPT_SLUG = os.environ.get("REWRITER_PROMPT_SLUG", "question-rewriter")
+TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation")
+RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "response-format")
+
+# ============================================================================
+# Chat User Token Configuration
+# ============================================================================
+# Token secret used to decrypt incoming userId values for chat requests.
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
+
+# ============================================================================
+# Anthropic API Configuration
+# ============================================================================
+# Set ANTHROPIC_API_KEY environment variable.
+#
+# Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
+# (guardrail classification, summarization). Override via env vars.
+from .model_defaults import AGENT_MODEL as _AGENT_MODEL_DEFAULT
+from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
+from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
+
+AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
+GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", _GUARDRAIL_MODEL_DEFAULT)
+GUARDRAIL_OUTPUT_CONFIG = {
+    "format": {
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": ["ALLOW", "BLOCK"],
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief note for ALLOW, or a complete user-facing message for BLOCK",
+                },
+            },
+            "required": ["decision", "reason"],
+            "additionalProperties": False,
+        },
+    }
+}
+ROUTER_MODEL = os.environ.get("ROUTER_MODEL", _ROUTER_MODEL_DEFAULT)
+SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
+LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
+
+# ============================================================================
+# Sefaria API Configuration (optional)
+# ============================================================================
+# - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)
+# - SEFARIA_AI_TOKEN (for authenticated semantic search requests)
+
+# Logging configuration
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
+        },
+        "chat": {
+            "format": "{asctime} | {message}",
+            "style": "{",
+            "datefmt": "%H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "chat_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "chat",
+        },
+    },
+    "loggers": {
+        "chat": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.agent": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.prompts": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.tracing": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.logging": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.summarization": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}

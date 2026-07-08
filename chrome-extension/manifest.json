@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Sefaria LC Chatbot Injector",
+  "version": "0.1.0",
+  "description": "Injects lc-chatbot script and element into pages.",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

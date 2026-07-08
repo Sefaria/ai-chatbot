@@ -1,0 +1,71 @@
+# =============================================================================
+# Push Scorers to Braintrust
+# =============================================================================
+#
+# Automatically builds and pushes scorer files to Braintrust when merged to main.
+#
+# Structure:
+#   - llm_scorers/*.py: LLM-based scorers (NAME, SLUG, DESCRIPTION, PROMPT)
+#   - code_scorers/*.py: Code-based scorers (NAME, SLUG, DESCRIPTION, handler function)
+#   - templates/llm_scorers.py: Template for LLM scorers (OpenAI evaluation logic)
+#   - templates/code_scorers.py: Template for code scorers (minimal, just registration)
+#   - build.py: Combines templates + scorers into built/*.py
+#   - built/*.py: Generated self-contained files (git-ignored)
+#
+# Required secrets:
+#   - BRAINTRUST_API_KEY: API key for Braintrust authentication
+# Note: OPENAI_API_KEY is used by LLM scorers at runtime (not during push)
+# =============================================================================
+
+name: Push Scorers to Braintrust
+
+on:
+  workflow_dispatch:  # manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - "evals/scorers/templates/*.py"
+      - "evals/scorers/llm_scorers/*.py"
+      - "evals/scorers/code_scorers/*.py"
+      - "evals/scorers/build.py"
+
+jobs:
+  push-scorers:
+    name: Build and Push Scorers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install 'braintrust[cli]==0.5.3' pydantic==2.12.5 openai==2.26.0 anthropic
+
+      - name: Build scorers
+        run: python evals/scorers/build.py
+
+      - name: Verify build output
+        run: |
+          count=$(ls evals/scorers/built/*.py 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "ERROR: No built scorer files found"
+            exit 1
+          fi
+          echo "Built $count scorer(s)"
+
+      - name: Push scorers to Braintrust
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+        run: |
+          set -e
+          # braintrust push only accepts one file at a time
+          for file in evals/scorers/built/*.py; do
+            echo "Pushing: $file"
+            braintrust push "$file"
+          done

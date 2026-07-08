@@ -1,0 +1,25 @@
+{
+  "name": "lc-chatbot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Embeddable Sefaria Library Assistant chatbot web component",
+  "main": "dist/lc-chatbot.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "svelte": "^5.0.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.0",
+    "marked": "^15.0.0",
+    "svelte-i18n": "^4.0.1"
+  }
+}

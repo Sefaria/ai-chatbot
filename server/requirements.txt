@@ -1,0 +1,30 @@
+django>=4.2,<5.0
+djangorestframework>=3.14
+django-cors-headers>=4.3
+whitenoise>=6.6
+
+# AI/LLM
+anthropic>=0.94.0
+claude-agent-sdk>=0.1.58
+
+# Tracing/Observability
+langsmith>=0.1.0
+braintrust>=0.0.150
+sentry-sdk[django]>=2.0.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Environment
+python-dotenv>=1.0
+
+# Database
+psycopg2-binary>=2.9.10
+gunicorn>=21.2
+
+# Development/Testing
+pytest>=8.0
+pytest-django>=4.8
+pytest-asyncio>=1.0
+ruff>=0.4.0
+cryptography
