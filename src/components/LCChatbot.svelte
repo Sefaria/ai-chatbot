@@ -293,8 +293,6 @@
   // scanning once.
   $effect(() => {
     if (!messageListRef) return;
-    // Aliased (not used inline) so `{ root, threshold: 0.5 }` below can use
-    // object-shorthand for IntersectionObserver's expected `root` option name.
     const root = messageListRef;
 
     const seen = new WeakSet();

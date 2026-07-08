@@ -42,9 +42,7 @@ def _is_strong_match(label: str, hit: dict) -> bool:
 
 
 def _is_strong_match_normalized(label_n: str, hit: dict) -> bool:
-    """Same as `_is_strong_match`, but takes an already-normalized label — lets
-    callers that need the normalized label for other checks (e.g. `_match_score`)
-    normalize it once instead of re-normalizing per helper call."""
+    """Same as `_is_strong_match`, but takes an already-normalized label."""
     return label_n == _normalize(hit.get("title", "")) or label_n == _normalize(hit.get("slug", ""))
 
 
@@ -105,13 +103,6 @@ def _match_score(label: str, hit: dict) -> int:
 
     The score is used to select the best hit across the returned list and to
     gate acceptance — a score of 0 is always rejected.
-
-    Discrete tiers rather than a continuous overlap ratio (len(overlap) /
-    len(label_tokens)): a ratio would let a single incidental word match
-    ("Lamed" from "Lamed Vav Tzaddikim" against a hit titled "Lamed") score as
-    high as a genuine strong match once the label is short, since ratio and
-    strong-match can coincide at 1.0. Tiers keep "strong match" a strictly
-    higher, separately-gated rung than "token overlap" regardless of label length.
     """
     label_n = _normalize(label)
     if _is_strong_match_normalized(label_n, hit):
@@ -314,22 +305,13 @@ class AppetizerService:
         self._calendar_cache: tuple[str, str] | None = None
 
     async def _get_calendar_context(self) -> str:
-        """Compact calendar block, fetched at most once per day per process.
+        """Compact calendar block, fetched at most once per day per process (UTC).
 
         Only successful fetches are cached; a transient failure returns the
         unavailable block without caching, so the next request retries.
-
-        The cache key is UTC's calendar date, not any individual user's — this
-        is a process-wide cache keyed on "has a new day started somewhere",
-        not a per-user-accurate date. Pinning to UTC (rather than the server's
-        local time, which can vary by deployment) keeps that rollover point
-        deterministic.
         """
         today = datetime.now(UTC).date().isoformat()
-        # getattr default, not self._calendar_cache directly: some callers build
-        # this service via AppetizerService.__new__ (bypassing __init__), notably
-        # tests exercising this method in isolation.
-        cache = getattr(self, "_calendar_cache", None)
+        cache = self._calendar_cache
         if cache and cache[0] == today:
             return cache[1]
         try:

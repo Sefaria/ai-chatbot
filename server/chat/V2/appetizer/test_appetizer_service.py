@@ -9,6 +9,16 @@ import pytest
 from ..agent.sefaria_client import SefariaClient
 from ..appetizer.appetizer_service import AppetizerService
 
+
+def make_appetizer_service() -> AppetizerService:
+    """Construct an AppetizerService for tests, bypassing __init__ (no real
+    Anthropic/Sefaria clients) while still setting the instance attributes
+    __init__ would — callers overwrite client/sefaria_client with mocks."""
+    service = AppetizerService.__new__(AppetizerService)
+    service._calendar_cache = None
+    return service
+
+
 # ---------------------------------------------------------------------------
 # search_topics tests (SefariaClient)
 # ---------------------------------------------------------------------------
@@ -145,7 +155,7 @@ async def test_search_topics_filters_non_topic_types():
 @pytest.mark.asyncio
 async def test_returns_multiple_topics():
     """All 3 candidates match → returns 3 topics."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -174,7 +184,7 @@ async def test_returns_multiple_topics():
 @pytest.mark.asyncio
 async def test_partial_topics_on_mixed_hits():
     """2 of 3 candidates match → returns 2 topics."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -201,7 +211,7 @@ async def test_partial_topics_on_mixed_hits():
 @pytest.mark.asyncio
 async def test_deduplicates_topics_by_slug():
     """Two candidates resolve to the same slug → only one topic returned."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -224,7 +234,7 @@ async def test_deduplicates_topics_by_slug():
 
 @pytest.mark.asyncio
 async def test_first_candidate_hits():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -249,7 +259,7 @@ async def test_first_candidate_hits():
 @pytest.mark.asyncio
 async def test_fallback_to_second_candidate():
     """First candidate misses, second hits — models Herod the Great → Herod."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -274,7 +284,7 @@ async def test_fallback_to_second_candidate():
 
 @pytest.mark.asyncio
 async def test_hebrew_prompt():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -290,7 +300,7 @@ async def test_hebrew_prompt():
 
 @pytest.mark.asyncio
 async def test_returns_none_when_all_candidates_miss():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -309,7 +319,7 @@ async def test_returns_none_when_all_candidates_miss():
 
 @pytest.mark.asyncio
 async def test_returns_none_when_llm_returns_empty():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -325,7 +335,7 @@ async def test_returns_none_when_llm_returns_empty():
 @pytest.mark.asyncio
 async def test_hebrew_interface_lang_returns_hebrew_title():
     """When interface_lang='he', TopicInfo.topic_title must be the Hebrew title."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -346,7 +356,7 @@ async def test_hebrew_interface_lang_returns_hebrew_title():
 @pytest.mark.asyncio
 async def test_english_interface_lang_returns_english_title():
     """Default (no lang or lang='en') keeps English title."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -364,7 +374,7 @@ async def test_english_interface_lang_returns_english_title():
 
 @pytest.mark.asyncio
 async def test_returns_none_on_timeout():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -555,7 +565,7 @@ async def test_search_topics_pool_filter_skips_slug_fallback():
 @pytest.mark.asyncio
 async def test_appetizer_passes_pool_library_to_search_topics():
     """AppetizerService passes pool='library' to search_topics."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -635,8 +645,7 @@ async def test_search_topics_primary_preferred_over_alias():
 
 @pytest.mark.asyncio
 async def test_calendar_context_cached_per_day():
-    service = AppetizerService.__new__(AppetizerService)
-    service._calendar_cache = None
+    service = make_appetizer_service()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {
         "Gregorian Date": "2026-06-25T09:00:00",
@@ -653,8 +662,7 @@ async def test_calendar_context_cached_per_day():
 
 @pytest.mark.asyncio
 async def test_calendar_context_unavailable_on_error():
-    service = AppetizerService.__new__(AppetizerService)
-    service._calendar_cache = None
+    service = make_appetizer_service()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.side_effect = Exception("boom")
     result = await service._get_calendar_context()
@@ -682,7 +690,7 @@ def _fake_tool_response(candidates):
 
 @pytest.mark.asyncio
 async def test_extract_parses_candidates():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     with patch(
         "chat.V2.appetizer.appetizer_service.tracked_messages_create",
@@ -701,7 +709,7 @@ async def test_extract_parses_candidates():
 
 @pytest.mark.asyncio
 async def test_extract_empty_is_none():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     with patch(
         "chat.V2.appetizer.appetizer_service.tracked_messages_create",
@@ -715,7 +723,7 @@ async def test_extract_empty_is_none():
 
 @pytest.mark.asyncio
 async def test_extract_returns_empty_on_exception():
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     with patch(
         "chat.V2.appetizer.appetizer_service.tracked_messages_create",
@@ -742,7 +750,7 @@ def test_is_strong_match_normalizes_title_and_slug():
 @pytest.mark.asyncio
 async def test_low_confidence_weak_match_dropped():
     """Low-confidence candidate that only fuzzy-grounds is dropped."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -759,7 +767,7 @@ async def test_low_confidence_weak_match_dropped():
 @pytest.mark.asyncio
 async def test_low_confidence_exact_match_kept():
     """Low-confidence candidate that grounds exactly is kept."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -776,7 +784,7 @@ async def test_low_confidence_exact_match_kept():
 @pytest.mark.asyncio
 async def test_none_taxonomy_cases_return_none():
     """Greetings / follow-ups / bare citations: LLM yields no candidates -> None."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -793,7 +801,7 @@ async def test_none_taxonomy_cases_return_none():
 @pytest.mark.asyncio
 async def test_temporal_candidate_grounds_to_tractate():
     """Daf-yomi style query resolves (in extraction) to a tractate that grounds."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -879,7 +887,7 @@ def test_match_score_transliteration_achav():
 async def test_b1_high_confidence_unrelated_hit_dropped():
     """B1 regression: high-confidence candidate whose top grounding hit is unrelated
     to the label must be dropped (not accepted just because confidence=high)."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -896,7 +904,7 @@ async def test_b1_high_confidence_unrelated_hit_dropped():
 @pytest.mark.asyncio
 async def test_b1_high_confidence_second_hit_used_when_first_unrelated():
     """B1 regression: when top hit is unrelated but a later hit is plausible, use it."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -922,7 +930,7 @@ async def test_b2_daf_yomi_candidate_produces_no_library_topics():
     """B2 regression: a candidate labeled 'Daf Yomi' must not resolve to unrelated
     library topics (e.g. 'Yom Kippur') that appear in the name API response via
     fuzzy expansion. The plausibility gate rejects them all."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -987,7 +995,7 @@ def test_b3_is_bare_parsha_label():
 @pytest.mark.asyncio
 async def test_b3_bare_parsha_dropped_at_extraction():
     """B3 regression: bare 'Parashat' label emitted by extractor is silently dropped."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     with patch(
         "chat.V2.appetizer.appetizer_service.tracked_messages_create",
@@ -1005,7 +1013,7 @@ async def test_b3_bare_parsha_dropped_at_extraction():
 async def test_b3_bare_parsha_dropped_at_grounding():
     """B3 regression: even if a bare 'Parasha' candidate reaches _ground_candidate,
     it is rejected before any Sefaria API call."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1019,7 +1027,7 @@ async def test_b3_bare_parsha_dropped_at_grounding():
 @pytest.mark.asyncio
 async def test_b3_specific_parsha_still_passes():
     """B3 regression: a specific parsha name (e.g. 'Parashat Pinchas') must still ground."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1076,7 +1084,7 @@ async def test_b4_chip_title_equals_canonical_page_title():
 @pytest.mark.asyncio
 async def test_b5_hebrew_interface_lang_returns_hebrew_title():
     """B5 regression: interface_lang='he' produces Hebrew chip title."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1093,7 +1101,7 @@ async def test_b5_hebrew_interface_lang_returns_hebrew_title():
 @pytest.mark.asyncio
 async def test_b5_hebrew_fallback_to_english_when_no_hebrew_title():
     """B5 regression: when Hebrew title is absent, fall back to English (not blank)."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1146,7 +1154,7 @@ async def test_b6_parenting_resolves_to_education_and_honoring_parents():
     word 'Parenting' which has no exact library topic), and both must ground
     successfully via token-overlap scoring.
     """
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1171,7 +1179,7 @@ async def test_b6_parenting_resolves_to_education_and_honoring_parents():
 async def test_b6_parenting_literal_label_fails_grounding():
     """B6 regression: if the LLM still emits the literal 'Parenting' label,
     grounding must reject it (score < 2 against 'education' slug)."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1203,7 +1211,7 @@ def test_b6_extraction_prompt_has_broad_theme_rule():
 @pytest.mark.asyncio
 async def test_source_decision_explains_returned_topic():
     """The metrics_sink receives a source_decision describing what was returned and why."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1220,7 +1228,7 @@ async def test_source_decision_explains_returned_topic():
 @pytest.mark.asyncio
 async def test_source_decision_explains_why_nothing_returned():
     """When no candidate is extracted, the sink still records why nothing came back."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1235,7 +1243,7 @@ async def test_source_decision_explains_why_nothing_returned():
 @pytest.mark.asyncio
 async def test_source_decision_explains_dropped_candidate():
     """A high-confidence candidate with no plausible hit is reported as dropped + why."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1291,7 +1299,7 @@ def test_match_score_lamed_vav_tzaddikim():
 async def test_alternative_label_grounds_when_primary_fails():
     """Niche concept 'Lamed Vav Tzaddikim' fails grounding, but alternative
     'Righteous' grounds successfully."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1319,7 +1327,7 @@ async def test_alternative_label_grounds_when_primary_fails():
 @pytest.mark.asyncio
 async def test_alternative_labels_not_tried_when_primary_succeeds():
     """When primary label grounds, alternatives are never searched."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1343,7 +1351,7 @@ async def test_alternative_labels_not_tried_when_primary_succeeds():
 @pytest.mark.asyncio
 async def test_alternative_labels_all_fail_returns_none():
     """When primary and all alternatives fail, returns None."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     service.sefaria_client = AsyncMock()
     service.sefaria_client.get_current_calendar.return_value = {}
@@ -1365,7 +1373,7 @@ async def test_alternative_labels_all_fail_returns_none():
 @pytest.mark.asyncio
 async def test_extract_parses_alternative_labels():
     """_extract_candidates_via_llm correctly parses alternative_labels from LLM output."""
-    service = AppetizerService.__new__(AppetizerService)
+    service = make_appetizer_service()
     service.client = MagicMock()
     with patch(
         "chat.V2.appetizer.appetizer_service.tracked_messages_create",
