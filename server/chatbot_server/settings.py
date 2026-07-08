@@ -227,10 +227,12 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # Model defaults: Sonnet for the main agent, Haiku for lightweight tasks
 # (guardrail classification, summarization). Override via env vars.
 from .model_defaults import AGENT_MODEL as _AGENT_MODEL_DEFAULT
+from .model_defaults import APPETIZER_MODEL as _APPETIZER_MODEL_DEFAULT
 from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
 from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
 
 AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
+APPETIZER_MODEL = os.environ.get("APPETIZER_MODEL", _APPETIZER_MODEL_DEFAULT)
 GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", _GUARDRAIL_MODEL_DEFAULT)
 GUARDRAIL_OUTPUT_CONFIG = {
     "format": {
@@ -314,6 +316,11 @@ LOGGING = {
             "propagate": False,
         },
         "chat.summarization": {
+            "handlers": ["chat_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "chat.appetizer": {
             "handlers": ["chat_console"],
             "level": "INFO",
             "propagate": False,
