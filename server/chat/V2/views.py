@@ -560,7 +560,8 @@ def chat_stream_v2(request):
                         event_data["refData"] = update.ref_data
 
                     _mark_turn_heartbeat(user_message.id)
-                    yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+                    event_name = "partial" if update.type == "message_delta" else "progress"
+                    yield f"event: {event_name}\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
                     # No update in 60s — send a keepalive to prevent

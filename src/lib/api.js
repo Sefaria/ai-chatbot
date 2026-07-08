@@ -244,6 +244,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
 /**
  * @typedef {Object} StreamCallbacks
  * @property {function(ProgressEvent): void} [onProgress] - Progress update callback
+ * @property {function(string): void} [onPartial] - Partial assistant markdown callback
  * @property {function(ChatResponse): void} [onMessage] - Final message callback
  * @property {function(string): void} [onError] - Error callback
  */
@@ -382,6 +383,8 @@ export async function sendMessageStream(
               
               if (currentEvent === 'progress' && callbacks.onProgress) {
                 callbacks.onProgress(data);
+              } else if (currentEvent === 'partial' && callbacks.onPartial) {
+                callbacks.onPartial(data.text || '');
               } else if (currentEvent === 'message') {
                 finalMessage = {
                   messageId: data.messageId,
