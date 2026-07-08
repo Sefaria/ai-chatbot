@@ -17,7 +17,7 @@
 <div class="lc-accordion">
   <button class="lc-accordion-header" aria-expanded={expanded} onclick={toggle}
     data-feature-name={kind === 'thought' ? 'thinking_steps_toggle' : undefined}
-    data-impression-name={kind === 'thought' ? 'thinking_steps_toggle_shown' : undefined}>
+    data-element-shown-name={kind === 'thought' ? 'thinking_steps_toggle_shown' : undefined}>
     <span class="lc-accordion-title">{$_(titleKey)}</span>
     <svg class="lc-accordion-chevron" class:expanded width="18" height="18" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">

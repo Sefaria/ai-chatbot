@@ -174,7 +174,7 @@
 </script>
 
 {#if entries.length > 0}
-  <ol class="progress-trail-list" data-impression-name="thinking_steps_list_shown">
+  <ol class="progress-trail-list" data-element-shown-name="thinking_steps_list_shown">
     {#each entries as entry (entry.id)}
       {@const isFailed = entry.status === 'error'}
       <li

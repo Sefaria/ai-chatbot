@@ -287,7 +287,7 @@
   });
 
   // GA4 tracking: fire 'assistant_element_shown' the first time an element with
-  // data-impression-name scrolls into view within the messages panel. Content
+  // data-element-shown-name scrolls into view within the messages panel. Content
   // (thinking steps, appetizer topics, location tag) streams in after mount, so
   // this watches for new matching elements via MutationObserver rather than
   // scanning once.
@@ -304,17 +304,17 @@
         if (seen.has(el)) continue;
         seen.add(el);
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-impression-name') });
+          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
         }
       }
     }, { root, threshold: 0.5 });
 
     function observe(node) {
       if (!(node instanceof Element)) return;
-      if (node.hasAttribute('data-impression-name') && !seen.has(node)) {
+      if (node.hasAttribute('data-element-shown-name') && !seen.has(node)) {
         io.observe(node);
       }
-      node.querySelectorAll?.('[data-impression-name]').forEach(el => {
+      node.querySelectorAll?.('[data-element-shown-name]').forEach(el => {
         if (!seen.has(el)) io.observe(el);
       });
     }
