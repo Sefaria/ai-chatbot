@@ -52,9 +52,9 @@
     max-width: 100%;
     box-sizing: border-box;
     padding: 4px 8px;
-    border: 1px solid var(--lc-border-strong, #ccc);
+    border: 1px solid var(--lc-border-strong);
     border-radius: 16px;
-    color: var(--lc-text-secondary, #575757);
+    color: var(--lc-text-secondary);
     text-decoration: none;
     font-family: var(--lc-font);
     font-size: 12px;
@@ -63,11 +63,11 @@
   }
   .lc-location-tag:hover,
   .lc-location-tag:active {
-    background: var(--lc-bg-hover, #ededed);
+    background: var(--lc-bg-hover);
   }
   .lc-location-pin {
     flex: none;
-    color: var(--lc-icon-primary, #666);
+    color: var(--lc-icon-primary);
   }
   .lc-location-ref {
     flex: 1;

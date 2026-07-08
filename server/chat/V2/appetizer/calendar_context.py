@@ -12,6 +12,9 @@ _CALENDAR_FIELDS: dict[str, str] = {
     "Haftarah": "haftarah",
     "Daf Yomi": "daf_yomi",
     "Mishnah Yomi": "mishnah_yomi",
+    # Both intentionally map to the same field: the Sefaria calendar rotates
+    # between the 1-chapter and 3-chapter Rambam cycles, and the two cycles'
+    # en-titles differ, but we surface them as a single "rambam_yomi" concept.
     "Daily Rambam": "rambam_yomi",
     "Daily Rambam (3 Chapters)": "rambam_yomi",
     "Yerushalmi Yomi": "yerushalmi_yomi",

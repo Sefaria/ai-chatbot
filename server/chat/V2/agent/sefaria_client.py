@@ -357,25 +357,31 @@ class SefariaClient:
         lets callers display a title — in either language — that matches the page
         they link to. Returns None only when the page has no title at all.
 
-        When primaryTitle.he is missing, falls back to the titles array — some
-        topics have Hebrew titles not marked as primary.
+        When primaryTitle is missing a language, falls back to the titles array
+        for that language — some topics have titles not marked as primary. This
+        fallback applies symmetrically to en and he, since either can be absent.
         """
         try:
             data = await self._get_json(f"api/v2/topics/{quote(slug)}")
             primary = data.get("primaryTitle") or {}
-            en = primary.get("en") or ""
-            he = primary.get("he") or ""
-            if not he:
-                for t in data.get("titles", []):
-                    if t.get("lang") == "he":
-                        he = t.get("text", "")
-                        if he:
-                            break
+            titles = data.get("titles", [])
+            en = primary.get("en") or self._title_from_titles_array(titles, "en")
+            he = primary.get("he") or self._title_from_titles_array(titles, "he")
             if not en and not he:
                 return None
             return {"en": en, "he": he}
-        except Exception:
+        except (httpx.HTTPStatusError, httpx.RequestError):
             return None
+
+    @staticmethod
+    def _title_from_titles_array(titles: list[dict[str, str]], lang: str) -> str:
+        """First non-empty title text for `lang` in a topic doc's titles array."""
+        for t in titles:
+            if t.get("lang") == lang:
+                text = t.get("text", "")
+                if text:
+                    return text
+        return ""
 
     async def search_topics(
         self, query: str, limit: int = 5, pool: str | None = None
@@ -396,6 +402,21 @@ class SefariaClient:
         filtering is active the slug-fallback path is skipped, since it can
         surface bare topic docs that are not real library topics.
         """
+        candidates = await self._fetch_topic_name_candidates(query, limit)
+
+        if pool:
+            return await self._filter_candidates_by_pool(candidates, pool, limit)
+
+        topics = [
+            {"title": candidate["title"], "slug": candidate["slug"]} for candidate in candidates
+        ][:limit]
+        if topics:
+            return topics
+
+        return await self._lookup_topic_by_slug_fallback(query.split())
+
+    async def _fetch_topic_name_candidates(self, query: str, limit: int) -> list[dict[str, Any]]:
+        """Query the name-autocomplete API and return raw Topic-type candidates."""
         encoded = quote(query)
         # The name API interleaves ref/text completions that we drop by type. For
         # queries that collide with a book/tractate name (e.g. "Shabbat", "Chullin"),
@@ -406,7 +427,7 @@ class SefariaClient:
         params = {"limit": str(fetch_limit)}
         data = await self._get_json(f"api/name/{encoded}", params)
         completions = data.get("completion_objects", [])
-        candidates = [
+        return [
             {
                 "title": c.get("title", ""),
                 "he": c.get("he", ""),
@@ -418,35 +439,43 @@ class SefariaClient:
             if c.get("type") in {"Topic", "PersonTopic", "AuthorTopic"} and c.get("key")
         ]
 
-        if pool:
-            # Primary entries first so topics[0] is always the best match. Filter to
-            # the pool and slice to `limit` BEFORE fetching canonical titles, so the
-            # extra api/v2/topics calls stay bounded (the appetizer's 5s budget).
-            candidates.sort(key=lambda c: 0 if c["is_primary"] else 1)
-            in_pool = [c for c in candidates if pool in c["topic_pools"]][:limit]
-            results = []
-            for candidate in in_pool:
-                canonical = await self._get_canonical_titles(candidate["slug"])
-                title = (canonical and canonical["en"]) or candidate["title"]
-                he = (canonical and canonical["he"]) or candidate.get("he", "")
-                results.append({"title": title, "slug": candidate["slug"], "he": he})
-            return results
+    async def _filter_candidates_by_pool(
+        self, candidates: list[dict[str, Any]], pool: str, limit: int
+    ) -> list[dict[str, str]]:
+        """Filter name-API candidates to `pool` and fetch each one's canonical title."""
+        # Primary entries first so topics[0] is always the best match. Filter to
+        # the pool and slice to `limit` BEFORE fetching canonical titles, so the
+        # extra api/v2/topics calls stay bounded (the appetizer's 5s budget).
+        sorted_candidates = sorted(candidates, key=lambda c: 0 if c["is_primary"] else 1)
+        in_pool = [c for c in sorted_candidates if pool in c["topic_pools"]][:limit]
+        results = []
+        for candidate in in_pool:
+            canonical = await self._get_canonical_titles(candidate["slug"])
+            title = (canonical and canonical["en"]) or candidate["title"]
+            he = (canonical and canonical["he"]) or candidate.get("he", "")
+            results.append({"title": title, "slug": candidate["slug"], "he": he})
+        return results
 
-        topics = [
-            {"title": candidate["title"], "slug": candidate["slug"]} for candidate in candidates
-        ][:limit]
-        if topics:
-            return topics
+    async def _lookup_topic_by_slug_fallback(self, query_words: list[str]) -> list[dict[str, str]]:
+        """Try a direct api/v2/topics/{slug} lookup, e.g. "Shabbat" matches the
+        tractate in autocomplete but the topic exists at api/v2/topics/shabbat.
 
-        slug = query.lower().replace(" ", "-")
+        Sefaria topic slugs are lowercase-hyphenated, but don't always cover the
+        full query (e.g. "Laws of Shabbat" is filed at just "shabbat"). Recurses,
+        dropping the leading word each time, until a match is found or no words
+        remain — bounded by the (small) word count of the query.
+        """
+        if not query_words:
+            return []
+        slug = "-".join(w.lower() for w in query_words)
         try:
             topic_data = await self._get_json(f"api/v2/topics/{quote(slug)}")
             if topic_data.get("slug"):
-                title = topic_data.get("primaryTitle", {}).get("en", query)
+                title = topic_data.get("primaryTitle", {}).get("en", " ".join(query_words))
                 return [{"title": title, "slug": topic_data["slug"]}]
-        except Exception:
+        except (httpx.HTTPStatusError, httpx.RequestError):
             pass
-        return []
+        return await self._lookup_topic_by_slug_fallback(query_words[1:])
 
     async def clarify_search_path_filter(self, book_name: str) -> str | None:
         """Convert a book name into a search filter path."""

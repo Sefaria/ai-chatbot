@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from ..agent.sefaria_client import SefariaClient
@@ -114,7 +115,7 @@ async def test_search_topics_empty_result():
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
         mock.side_effect = [
             {"completion_objects": []},
-            Exception("404"),
+            httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock()),
         ]
         result = await client.search_topics("xyznonexistent")
         assert result == []
@@ -411,7 +412,7 @@ async def test_get_canonical_titles_returns_none_when_missing():
 async def test_get_canonical_titles_returns_none_on_exception():
     client = SefariaClient(base_url="https://www.sefaria.org")
     with patch.object(client, "_get_json", new_callable=AsyncMock) as mock:
-        mock.side_effect = Exception("network error")
+        mock.side_effect = httpx.RequestError("network error")
         result = await client._get_canonical_titles("education")
         assert result is None
 

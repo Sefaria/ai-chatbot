@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from django.conf import settings
 
@@ -38,7 +38,13 @@ def _normalize(text: str) -> str:
 def _is_strong_match(label: str, hit: dict) -> bool:
     """True when the candidate label matches the grounded topic's title or slug exactly
     (normalized). Used to admit low-confidence candidates only on an exact hit."""
-    label_n = _normalize(label)
+    return _is_strong_match_normalized(_normalize(label), hit)
+
+
+def _is_strong_match_normalized(label_n: str, hit: dict) -> bool:
+    """Same as `_is_strong_match`, but takes an already-normalized label — lets
+    callers that need the normalized label for other checks (e.g. `_match_score`)
+    normalize it once instead of re-normalizing per helper call."""
     return label_n == _normalize(hit.get("title", "")) or label_n == _normalize(hit.get("slug", ""))
 
 
@@ -63,7 +69,12 @@ def _has_token_overlap(label: str, hit_text: str) -> bool:
     (e.g. "Lamed" from "Lamed Vav Tzaddikim"). Requires at least half the
     label tokens to overlap.
     """
-    label_tokens = set(_normalize(label).split())
+    return _has_token_overlap_normalized(_normalize(label), hit_text)
+
+
+def _has_token_overlap_normalized(label_n: str, hit_text: str) -> bool:
+    """Same as `_has_token_overlap`, but takes an already-normalized label."""
+    label_tokens = set(label_n.split())
     hit_tokens = set(_normalize(hit_text).split())
     overlap = label_tokens & hit_tokens
     if not overlap:
@@ -74,10 +85,9 @@ def _has_token_overlap(label: str, hit_text: str) -> bool:
 def _format_source_decision(returned: list[str], dropped: list[str]) -> str:
     """One human-readable line: which sources were returned and why, plus why
     any candidate was dropped. Logged to Braintrust under metadata.appetizer."""
-    parts = []
-    parts.append("returned: " + "; ".join(returned) if returned else "no source returned")
+    parts = [f"returned: {'; '.join(returned)}" if returned else "no source returned"]
     if dropped:
-        parts.append("dropped: " + "; ".join(dropped))
+        parts.append(f"dropped: {'; '.join(dropped)}")
     return " | ".join(parts)
 
 
@@ -95,12 +105,20 @@ def _match_score(label: str, hit: dict) -> int:
 
     The score is used to select the best hit across the returned list and to
     gate acceptance — a score of 0 is always rejected.
+
+    Discrete tiers rather than a continuous overlap ratio (len(overlap) /
+    len(label_tokens)): a ratio would let a single incidental word match
+    ("Lamed" from "Lamed Vav Tzaddikim" against a hit titled "Lamed") score as
+    high as a genuine strong match once the label is short, since ratio and
+    strong-match can coincide at 1.0. Tiers keep "strong match" a strictly
+    higher, separately-gated rung than "token overlap" regardless of label length.
     """
-    if _is_strong_match(label, hit):
+    label_n = _normalize(label)
+    if _is_strong_match_normalized(label_n, hit):
         return 3
-    if _has_token_overlap(label, hit.get("title", "")) or _has_token_overlap(
-        label, hit.get("slug", "").replace("-", " ")
-    ):
+    if _has_token_overlap_normalized(
+        label_n, hit.get("title", "")
+    ) or _has_token_overlap_normalized(label_n, hit.get("slug", "").replace("-", " ")):
         return 2
     # Any hit from the curated name-API completion window is at minimum plausible.
     # This admits transliterations (achav→ahab) without accepting truly unrelated
@@ -300,8 +318,17 @@ class AppetizerService:
 
         Only successful fetches are cached; a transient failure returns the
         unavailable block without caching, so the next request retries.
+
+        The cache key is UTC's calendar date, not any individual user's — this
+        is a process-wide cache keyed on "has a new day started somewhere",
+        not a per-user-accurate date. Pinning to UTC (rather than the server's
+        local time, which can vary by deployment) keeps that rollover point
+        deterministic.
         """
-        today = datetime.now().date().isoformat()
+        today = datetime.now(UTC).date().isoformat()
+        # getattr default, not self._calendar_cache directly: some callers build
+        # this service via AppetizerService.__new__ (bypassing __init__), notably
+        # tests exercising this method in isolation.
         cache = getattr(self, "_calendar_cache", None)
         if cache and cache[0] == today:
             return cache[1]

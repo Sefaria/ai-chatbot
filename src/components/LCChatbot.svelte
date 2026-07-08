@@ -53,9 +53,8 @@
   let displayTrail = $derived(toolHistory.filter(e => e.type === 'tool'));
   // Final phase: once the backend emits the synthesizing status, the persistent
   // "Thinking" loader line is replaced by the text-only "Synthesizing Response".
-  let isSynthesizing = $derived(
-    toolHistory.some(e => e.type === 'status' && e.statusKey === 'synthesizing')
-  );
+  // statusKey is only ever set on type: 'status' entries, so checking it alone is sufficient.
+  let isSynthesizing = $derived(toolHistory.some(e => e.statusKey === 'synthesizing'));
   let appetizerData = $state(null);
 
   // Auto-scroll controller
@@ -287,13 +286,15 @@
     return () => host.removeEventListener('click', trackClick);
   });
 
-  // GA4 tracking: fire 'assistant_impression' the first time an element with
+  // GA4 tracking: fire 'assistant_element_shown' the first time an element with
   // data-impression-name scrolls into view within the messages panel. Content
   // (thinking steps, appetizer topics, location tag) streams in after mount, so
   // this watches for new matching elements via MutationObserver rather than
   // scanning once.
   $effect(() => {
     if (!messageListRef) return;
+    // Aliased (not used inline) so `{ root, threshold: 0.5 }` below can use
+    // object-shorthand for IntersectionObserver's expected `root` option name.
     const root = messageListRef;
 
     const seen = new WeakSet();
@@ -305,7 +306,7 @@
         if (seen.has(el)) continue;
         seen.add(el);
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_impression', { feature_name: el.getAttribute('data-impression-name') });
+          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-impression-name') });
         }
       }
     }, { root, threshold: 0.5 });
@@ -1487,7 +1488,7 @@
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #18345D;
+    --lc-user-bg: #0056B3;
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
@@ -1863,7 +1864,7 @@
     color: var(--lc-user-text);
     /* Blue bubble lives on the bubble only — not the whole column — so the
        location tag below renders as a gray pill on the white chat background. */
-    background-color: #0056B3;
+    background-color: var(--lc-user-bg);
     border-radius: 0 16px 16px 16px;
     border-bottom-right-radius: 4px;
   }
