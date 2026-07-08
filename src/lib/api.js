@@ -64,11 +64,11 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildMessageContext(origin = '', isStaff = false, labs = false) {
+function buildMessageContext(origin = '', isStaff = false, labs = false, interfaceLang = '') {
   /** @type {MessageContext} */
   const context = {
     pageUrl: window.location.href,
-    locale: navigator.language || 'en',
+    locale: interfaceLang || navigator.language || 'en',
     clientVersion: CLIENT_VERSION
   };
   if (origin !== undefined && origin !== '') {
@@ -238,6 +238,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @property {string} [description] - Human-readable description
  * @property {boolean} [isError] - Whether tool errored
  * @property {string} [outputPreview] - Preview of tool output
+ * @property {{is_ref: boolean, url_ref: string, en: string, he: string} | null} [refData] - Resolved ref data for ref-bearing tools (tool_start only)
  */
 
 /**
@@ -260,6 +261,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
+ * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -272,12 +274,13 @@ export async function sendMessageStream(
   origin = '',
   isStaff = false,
   labs = false,
-  requestMetadata = null
+  requestMetadata = null,
+  interfaceLang = ''
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
-  const context = buildMessageContext(origin, isStaff, labs);
+  const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }

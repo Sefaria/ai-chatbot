@@ -9,6 +9,9 @@ AGENT_MODEL = "claude-sonnet-4-6"
 AGENT_MAX_TOKENS = 8000
 AGENT_TEMPERATURE = 0.7
 
+# The topic appetizer uses the same model as the main agent by default.
+APPETIZER_MODEL = AGENT_MODEL
+
 GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
 GUARDRAIL_MAX_TOKENS = 256
 GUARDRAIL_TEMPERATURE = 0.0

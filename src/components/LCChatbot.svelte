@@ -7,7 +7,12 @@
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
+  import ProgressTrail from './ProgressTrail.svelte';
+  import TopicAppetizer from './TopicAppetizer.svelte';
+  import LocationTag from './LocationTag.svelte';
+  import Accordion from './Accordion.svelte';
   import { setLocale, _ } from '../i18n/index.js';
+  import { get } from 'svelte/store';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -40,8 +45,25 @@
   let resizeEdge = $state(null);
   
   // Agent progress state
-  let currentProgress = $state(null);
   let toolHistory = $state([]);
+  let trailEntryId = $state(0);
+  // The trail is the record of tools only. Status events ("Thinking...",
+  // "Synthesizing response...") are excluded — the live status is rendered as a
+  // persistent loader line below the tool record (see the loading block).
+  let displayTrail = $derived(toolHistory.filter(e => e.type === 'tool'));
+  // Final phase: once the backend emits the synthesizing status, the persistent
+  // "Thinking" loader line is replaced by the text-only "Synthesizing Response".
+  // statusKey is only ever set on type: 'status' entries, so checking it alone is sufficient.
+  let isSynthesizing = $derived(toolHistory.some(e => e.statusKey === 'synthesizing'));
+  let appetizerData = $state(null);
+
+  // Auto-scroll controller
+  let autoScrollEnabled = $state(true);
+  // Per latency UX spec: on final response the top edge of the response package
+  // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
+  const RESPONSE_PACKAGE_TOP_OFFSET = 80;
+  const SEFARIA_BASE_URL = 'https://www.sefaria.org';
+  let loadingWrapperRef = $state(null);
   let streamingMarkdown = $state('');
 
   // Settings state
@@ -57,6 +79,11 @@
   let settingsLoaded = $state(false);
   let isLoadingSettings = $state(false);
   let settingsError = $state('');
+
+  let expandedSections = $state({});
+  function toggleSection(key) {
+    expandedSections[key] = !expandedSections[key];
+  }
 
   let isClearing = $state(false);
   let isFirstTimeUser = $state(true);
@@ -93,7 +120,9 @@
   const THUMBUP = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3457 6.439e-05C8.82494 0.00605952 9.29664 0.120247 9.72559 0.334049C10.1546 0.547943 10.53 0.856213 10.8232 1.23542C11.1165 1.61466 11.3208 2.05545 11.4199 2.52448C11.5187 2.9925 11.5096 3.47698 11.3955 3.94147L10.8975 6.00006H14.207C14.5695 6.00006 14.9277 6.08404 15.252 6.24616C15.576 6.4082 15.8577 6.64384 16.0752 6.93366C16.2926 7.22359 16.44 7.5605 16.5049 7.91706C16.5697 8.27354 16.5506 8.64049 16.4492 8.98835L14.7012 14.9883C14.5597 15.4733 14.2654 15.9001 13.8613 16.2032C13.4571 16.5063 12.9652 16.67 12.46 16.67H2.33496C1.71568 16.67 1.12149 16.4243 0.683594 15.9864C0.245697 15.5485 0 14.9543 0 14.335V8.33503C0 7.71574 0.245696 7.12156 0.683594 6.68366C1.12149 6.24576 1.71568 6.00006 2.33496 6.00006H4.4043C4.52801 6 4.64974 5.96566 4.75488 5.90045C4.86 5.83526 4.94496 5.74169 5 5.63092L7.58789 0.461002L7.64844 0.359439C7.80498 0.133378 8.0657 -0.00340299 8.3457 6.439e-05ZM6.49414 6.37604C6.30081 6.76418 6.0033 7.09086 5.63477 7.3194C5.56531 7.36247 5.49306 7.40024 5.41992 7.43561V15.0001H12.46C12.6038 15.0001 12.7443 14.9536 12.8594 14.8673C12.9743 14.781 13.0583 14.6595 13.0986 14.5215L14.8457 8.52155C14.8746 8.42244 14.8798 8.31746 14.8613 8.21589C14.8428 8.1144 14.8012 8.01813 14.7393 7.93561C14.6774 7.8532 14.5971 7.7864 14.5049 7.7403C14.4125 7.69413 14.3103 7.66999 14.207 7.66999H9.83496C9.57899 7.66999 9.33703 7.55274 9.17871 7.35163C9.0204 7.15029 8.96303 6.88665 9.02344 6.63776L9.77344 3.54792L9.77441 3.54499C9.82901 3.32384 9.83314 3.09306 9.78613 2.87018C9.73906 2.64723 9.6423 2.43718 9.50293 2.2569C9.36353 2.07661 9.18442 1.93085 8.98047 1.82917C8.92425 1.80114 8.86657 1.77666 8.80762 1.75592L6.49414 6.37604ZM1.66992 14.335C1.66992 14.5114 1.73955 14.681 1.86426 14.8057C1.98897 14.9304 2.15859 15.0001 2.33496 15.0001H3.75V7.66999H2.33496C2.15859 7.66999 1.98897 7.73961 1.86426 7.86432C1.73955 7.98903 1.66992 8.15866 1.66992 8.33503V14.335Z" fill="currentColor"/></svg>'
   const THUMBDOWN = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8716 2.33496C14.8716 2.15859 14.802 1.98897 14.6773 1.86426C14.5526 1.73968 14.3829 1.66992 14.2066 1.66992H12.7916V9H14.2066C14.3829 9 14.5526 8.93024 14.6773 8.80566C14.802 8.68095 14.8716 8.51133 14.8716 8.33496V2.33496ZM4.0816 1.66992C3.93795 1.67001 3.79812 1.71658 3.68316 1.80273C3.56816 1.88899 3.48424 2.01046 3.44391 2.14844L1.69586 8.14844C1.66695 8.24755 1.66177 8.35253 1.68023 8.4541C1.69872 8.55561 1.7404 8.65183 1.8023 8.73438C1.86414 8.81678 1.94456 8.88355 2.03668 8.92969C2.12902 8.97586 2.23129 9 2.33453 9H6.7066C6.96268 9 7.20551 9.11708 7.36383 9.31836C7.52214 9.51969 7.57853 9.78333 7.51812 10.0322L6.76812 13.1221V13.125C6.71352 13.3462 6.70938 13.5769 6.7564 13.7998C6.80348 14.0228 6.90021 14.2328 7.03961 14.4131C7.17892 14.5932 7.35734 14.7392 7.56109 14.8408C7.61711 14.8687 7.67521 14.8924 7.73394 14.9131L10.0474 10.2939C10.2407 9.90584 10.5384 9.57915 10.9068 9.35059C10.9763 9.30751 11.0485 9.26877 11.1216 9.2334V1.66992H4.0816ZM16.5416 8.33496C16.5416 8.95424 16.2959 9.54843 15.858 9.98633C15.4201 10.4241 14.8258 10.6699 14.2066 10.6699H12.1373C12.0137 10.67 11.8927 10.7045 11.7877 10.7695C11.6825 10.8347 11.5976 10.9283 11.5425 11.0391L8.95367 16.209C8.81047 16.4948 8.51653 16.6738 8.19683 16.6699C7.71735 16.664 7.24512 16.5499 6.81598 16.3359C6.3869 16.122 6.01161 15.8139 5.71832 15.4346C5.42511 15.0554 5.22171 14.6145 5.12262 14.1455C5.02356 13.6763 5.03111 13.1902 5.14605 12.7246L5.64508 10.6699H2.33453C1.97218 10.6699 1.61471 10.5858 1.29058 10.4238C0.966416 10.2617 0.683849 10.0263 0.466366 9.73633C0.248938 9.44642 0.102533 9.10945 0.0376551 8.75293C-0.0271694 8.39639 -0.00809404 8.02954 0.0933192 7.68164L1.84039 1.68164L1.90094 1.50195C2.05771 1.09146 2.32764 0.731974 2.68121 0.466797C3.08524 0.163841 3.57661 9.28572e-05 4.0816 0H14.2066C14.8258 0 15.4201 0.245831 15.858 0.683594C16.2959 1.12149 16.5416 1.71568 16.5416 2.33496V8.33496Z" fill="currentColor"/></svg>'
 
-  $effect(() => { setLocale(interfaceLang); });
+  $effect(() => {
+    setLocale(interfaceLang);
+  });
 
   let welcomeMessage = $derived($_('assistant.welcome.message'));
   let restartMessage = $derived($_('assistant.welcome.restart'));
@@ -217,6 +246,17 @@
         el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
       );
       if (isToggle) return;
+      // Explicit analytics label wins over the generic link/aria-label logic
+      // below (e.g. appetizer topic links, thinking-step links are <a> elements).
+      const labelled = path.find(
+        el => el instanceof Element && el.getAttribute('data-feature-name')
+      );
+      if (labelled) {
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
+        }
+        return;
+      }
       // If a response link was clicked — capture the link text
       const link = path.find(
         el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
@@ -225,12 +265,15 @@
         if (typeof window.gtag === 'function') {
           const raw = link.getAttribute('href');
           const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url });
+          const link_text = link.textContent.trim();
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
         }
         return;
       }
 
-      // Otherwise walk up the path for the nearest aria-label
+      // Otherwise walk up the path for the nearest aria-label. No link_text here:
+      // this fallback matches broad containers (e.g. the "Chat messages" scroll
+      // region) whose textContent is the whole conversation, not a link label.
       const target = path.find(
         el => el instanceof Element && el.getAttribute('aria-label')
       );
@@ -242,6 +285,54 @@
 
     host.addEventListener('click', trackClick);
     return () => host.removeEventListener('click', trackClick);
+  });
+
+  // GA4 tracking: fire 'assistant_element_shown' the first time an element with
+  // data-element-shown-name scrolls into view within the messages panel. Content
+  // (thinking steps, appetizer topics, location tag) streams in after mount, so
+  // this watches for new matching elements via MutationObserver rather than
+  // scanning once.
+  $effect(() => {
+    if (!messageListRef) return;
+    const root = messageListRef;
+
+    const seen = new WeakSet();
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        io.unobserve(el);
+        if (seen.has(el)) continue;
+        seen.add(el);
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
+        }
+      }
+    }, { root, threshold: 0.5 });
+
+    function observe(node) {
+      if (!(node instanceof Element)) return;
+      if (node.hasAttribute('data-element-shown-name') && !seen.has(node)) {
+        io.observe(node);
+      }
+      node.querySelectorAll?.('[data-element-shown-name]').forEach(el => {
+        if (!seen.has(el)) io.observe(el);
+      });
+    }
+
+    observe(root);
+
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach(observe);
+      }
+    });
+    mo.observe(root, { childList: true, subtree: true });
+
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
   });
 
   // Dispatch custom events
@@ -294,7 +385,7 @@
     inputText = '';
     isLoadingHistory = false;
     hasMoreHistory = false;
-    currentProgress = null;
+
     toolHistory = [];
     turnCount = 0;
 
@@ -412,19 +503,63 @@
   async function scrollToBottom() {
     await tick();
     if (messageListRef) {
-      messageListRef.scrollTop = messageListRef.scrollHeight;
+      messageListRef.scrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
     }
+  }
+
+  /** Returns the scrollTop value that places el's top edge at the container's top edge. */
+  function getScrollTopForElement(el) {
+    const containerRect = messageListRef.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    return messageListRef.scrollTop + elRect.top - containerRect.top;
   }
 
   async function scrollToResponseStart() {
     await tick();
-    if (!messageListRef) return;
-    const contents = messageListRef.querySelectorAll('.message.assistant .message-content');
-    const lastResponse = contents[contents.length - 1]?.closest('.message.assistant');
-    if (lastResponse) {
-      const containerRect = messageListRef.getBoundingClientRect();
-      const msgRect = lastResponse.getBoundingClientRect();
-      messageListRef.scrollTop += msgRect.top - containerRect.top;
+    if (!messageListRef || !autoScrollEnabled) return;
+    // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top.
+    // querySelectorAll returns a NodeList (no Array.at), so spread before indexing.
+    const pkgEl = [...messageListRef.querySelectorAll('.lc-response-package')].at(-1);
+    if (pkgEl) {
+      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
+      return;
+    }
+
+    // Fallback: scroll to the last assistant message top.
+    const contents = [...messageListRef.querySelectorAll('.message.assistant .message-content')];
+    const lastResponse = contents.at(-1)?.closest('.message.assistant');
+    if (!lastResponse) return;
+    applyAutoScroll(getScrollTopForElement(lastResponse));
+  }
+
+  function applyAutoScroll(top) {
+    messageListRef.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
+  function resetScroll() {
+    autoScrollEnabled = true;
+  }
+
+  async function scrollToLoadingElement() {
+    if (!autoScrollEnabled || !messageListRef) return;
+    await tick();
+    // Always scroll so the bottom of the loading wrapper (newest step) is visible.
+    // We unconditionally target the wrapper bottom rather than checking rects, because
+    // in-progress smooth scrolls leave getBoundingClientRect() in an intermediate state
+    // that causes the condition checks to incorrectly skip the scroll.
+    const el = loadingWrapperRef || messageListRef.querySelector('.lc-loading-wrapper');
+    if (!el) return;
+
+    const containerHeight = messageListRef.clientHeight;
+    const elTop = getScrollTopForElement(el);
+    const elBottom = elTop + el.offsetHeight;
+
+    if (el.offsetHeight <= containerHeight) {
+      // Wrapper fits: keep its top in view (don't scroll past the top edge).
+      applyAutoScroll(elTop);
+    } else {
+      // Wrapper taller than viewport: show its bottom (newest content).
+      applyAutoScroll(elBottom - containerHeight);
     }
   }
 
@@ -433,6 +568,8 @@
     const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
+    // Reset auto-scroll on each new send
+    resetScroll();
     if (typeof window.gtag === 'function') {
       window.gtag('event', 'assistant_message_sent', { length: text.length });
     }
@@ -441,6 +578,7 @@
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
     // Create user message
+    const locationRef = await parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
       sessionId,
@@ -448,7 +586,8 @@
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
-      status: 'sending'
+      status: 'sending',
+      locationRef
     };
 
     messages = [...messages, userMessage];
@@ -456,37 +595,66 @@
     scrollToBottom();
 
     isSending = true;
-    currentProgress = null;
+
     toolHistory = [];
+    trailEntryId = 0;
+    appetizerData = null;
     streamingMarkdown = '';
     updateSessionActivity(sessionId);
 
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
+          if (progress?.type === 'appetizer' && progress.appetizerData) {
+            appetizerData = progress.appetizerData;
+            // Dump the full served sentence (frame + topic titles) into `text` so
+            // analytics can measure what was actually shown — e.g. "While we prepare
+            // a response, explore sources about Prayer." The server sends the
+            // comma-joined, locale-aware titles as progress.text; we splice them into
+            // the localized sentence frame (same string the user sees).
+            if (typeof window.gtag === 'function' && progress.text) {
+              const shownText = get(_)('assistant.appetizer.sentence').replace('{topics}', progress.text);
+              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText });
+            }
+            scrollToLoadingElement();
+            return;
+          }
           let displayText;
           if (progress?.type === 'status') {
             displayText = progress.text;
-          } else if (progress?.type === 'tool_start') {
-            displayText = progress.description || `Running ${progress.toolName}`;
-          }
-          displayText = displayText?.replace(/…|\.\.\./, '');
-          currentProgress = {...progress, displayText};
-
-          // Track tool usage in history
-          if (progress.type === 'tool_start') {
             toolHistory = [...toolHistory, {
-              toolName: progress.toolName,
-              description: progress.description,
+              id: trailEntryId++,
+              type: 'status',
+              statusKey: /synthesi/i.test(progress.text || '') ? 'synthesizing' : 'thinking',
+              text: displayText?.replace(/…|\.\.\./, '') || '',
               status: 'running',
               startTime: Date.now()
             }];
+            scrollToLoadingElement();
+          } else if (progress?.type === 'tool_start') {
+            displayText = progress.description || `Running ${progress.toolName}`;
+            toolHistory = [...toolHistory, {
+              id: trailEntryId++,
+              type: 'tool',
+              toolName: progress.toolName,
+              description: displayText?.replace(/…|\.\.\./, '') || '',
+              status: 'running',
+              startTime: Date.now(),
+              refData: progress.refData ?? null,
+              toolInput: progress.toolInput ?? null
+            }];
+            scrollToLoadingElement();
           } else if (progress.type === 'tool_end') {
-            toolHistory = toolHistory.map((t, i) => 
-              i === toolHistory.length - 1 
-                ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
-                : t
+            const idx = toolHistory.findLastIndex(t =>
+              t.type === 'tool' && t.status === 'running' && t.toolName === progress.toolName
             );
+            if (idx !== -1) {
+              toolHistory = toolHistory.map((t, i) =>
+                i === idx
+                  ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
+                  : t
+              );
+            }
           }
         },
         onPartial: (delta) => {
@@ -500,7 +668,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      });
+      }, interfaceLang);
 
       // Update user message status
       messages = messages.map(m => 
@@ -508,6 +676,12 @@
           ? { ...m, status: 'sent' }
           : m
       );
+
+      // Persist only the tool record (no status entries), marking any
+      // still-running tool entries as complete.
+      const finalTrail = toolHistory
+        .filter(t => t.type === 'tool')
+        .map(t => (t.status === 'running' ? { ...t, status: 'complete' } : t));
 
       // Add assistant response
       streamingMarkdown = '';
@@ -522,7 +696,9 @@
         traceId: response.traceId || null,
         feedback: null,
         toolCalls: response.toolCalls,
-        stats: response.stats
+        stats: response.stats,
+        toolHistory: finalTrail,
+        appetizerData: appetizerData ? {...appetizerData} : null
       };
 
       messages = [...messages, assistantMessage];
@@ -566,7 +742,7 @@
       });
     } finally {
       isSending = false;
-      currentProgress = null;
+  
       toolHistory = [];
       streamingMarkdown = '';
     }
@@ -631,6 +807,16 @@
     if (el.scrollTop < 50 && hasMoreHistory && !isLoadingHistory) {
       loadMoreHistory();
     }
+  }
+
+  // Genuine user-scroll intent is detected via explicit input events (wheel/touch)
+  // rather than scroll-position drift, which programmatic smooth scrolls trip falsely.
+  function handleWheel() {
+    if (isSending) autoScrollEnabled = false;
+  }
+
+  function handleTouchMove() {
+    if (isSending) autoScrollEnabled = false;
   }
 
   async function retryMessage(messageId) {
@@ -713,8 +899,20 @@
       return;
     }
 
+    // Only dispatch in-page navigation for Sefaria URLs on a Sefaria host.
+    // External links and off-Sefaria embeds fall back to a new tab.
+    const isSefariaDomain = (h) => h === '' || h.includes('sefaria.org');
+    if (!isSefariaDomain(resolvedUrl.hostname)) {
+      window.open(resolvedUrl.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!isSefariaDomain(window.location.hostname)) {
+      window.open(`${SEFARIA_BASE_URL}${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
-    console.log('[lc-chatbot] Link clicked:', href);
+
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
       detail: {
         url: path,
@@ -755,6 +953,134 @@
     closeMenu();
     isRestarted = true;
     handleNewChat();
+  }
+
+  function normalizeAppetizerData(raw) {
+    if (!raw) return null;
+    if (raw.topics) return raw;
+    return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
+  }
+
+  /** Returns true for sefaria.org, *.sefaria.org (incl. voices.sefaria.org), sefaria.org.il, *.sefaria.org.il */
+  function isSefariaHostname(hostname) {
+    return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
+  }
+
+  function refToUrlPath(ref) {
+    const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
+    if (!m) {
+      return null;
+    }
+    const book = m[1].trim().replace(/\s+/g, '_');
+    const section = m[2].replace(/:/g, '.');
+    return `${book}.${section}`;
+  }
+
+  function refLabelFromTref(ref) {
+    if (!/\s/.test(ref)) {
+      const m = ref.match(/^(.+?)\.(\d[\w.\-–]*)$/);
+      if (m) {
+        return `${m[1].replace(/_/g, ' ')} ${m[2].replace(/\./g, ':')}`;
+      }
+    }
+    return ref;
+  }
+
+  /**
+   * Base host for ref resolution + links: the current Sefaria host when embedded
+   * on one (prod, .org.il, or a cauldron/staging), else canonical prod. This lets
+   * the ref API be exercised on whatever environment the widget runs in.
+   */
+  function sefariaBase() {
+    if (isSefariaHostname(window.location.hostname)) {
+      return window.location.origin;
+    }
+    return SEFARIA_BASE_URL;
+  }
+
+  async function parseSefariaRef(href) {
+    const tref = extractCandidateTref(href);
+    if (!tref) {
+      return null;
+    }
+    const refData = await fetchRefData(tref);
+    if (refData && refData.is_ref) {
+      const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
+      return { label, url: `${sefariaBase()}/${refData.url_ref}` };
+    }
+    // Fallback (feature: location pin) — /api/ref unavailable: derive URL+label from the tref.
+    const fallbackPath = refToUrlPath(tref);
+    if (!fallbackPath) {
+      return null;
+    }
+    return { label: refLabelFromTref(tref), url: `${sefariaBase()}/${fallbackPath}` };
+  }
+
+  function extractCandidateTref(href) {
+    let url;
+    try {
+      url = new URL(href);
+    } catch {
+      return null;
+    }
+    if (!isSefariaHostname(url.hostname)) {
+      return null;
+    }
+    const path = decodeURIComponent(url.pathname).replace(/^\//, '');
+    const skip = /^(topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)\//i;
+    if (!path || skip.test(path)) {
+      return null;
+    }
+    return path;
+  }
+
+  async function fetchRefData(tref) {
+    try {
+      const res = await fetch(`${sefariaBase()}/api/ref/${encodeURIComponent(tref)}`);
+      if (!res.ok) {
+        return null;
+      }
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function handleLocationClick(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      if (isSefariaHostname(hostname)) {
+        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function handleAppetizerClick(topicSlug, topicUrl) {
+    const onSefaria = window.location.hostname.includes('sefaria.org');
+
+    if (onSefaria) {
+      // In-page navigation via ReaderApp's existing event listener
+      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
+        detail: { url: `/topics/${topicSlug}` }
+      }));
+    } else {
+      // Off-site: open topic page in new tab
+      window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
+    }
+
+    const el = $host();
+    if (el) {
+      el.dispatchEvent(new CustomEvent('appetizer_click', {
+        detail: { topicSlug, sessionId },
+        bubbles: true,
+        composed: true
+      }));
+    }
   }
 
   function getEmptyStateMessage() {
@@ -850,7 +1176,7 @@
                   {@html FEEDBACK_ICON}
                   {$_('assistant.menu.feedback')}
                 </a>
-                <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
+<a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
@@ -903,7 +1229,7 @@
                 bind:checked={promptSlugs.labs}
                 disabled={isLoadingSettings}
               />
-              <span>{$_('settings.labs')}</span>
+              <span>{$_('assistant.settings.labs')}</span>
             </label>
           </div>
 
@@ -925,6 +1251,8 @@
         class:clearing={isClearing}
         bind:this={messageListRef}
         onscroll={handleScroll}
+        onwheel={handleWheel}
+        ontouchmove={handleTouchMove}
         onclick={handleMessageLinkClick}
         role="log"
         aria-label={$_('assistant.messages.aria')}
@@ -985,7 +1313,23 @@
 
         {#each messages as item (item.messageId)}
           {#if item.role === 'assistant'}
-            {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+            <div class="lc-response-package">
+              {#if item.appetizerData}
+                <Accordion kind="topics"
+                  expanded={!!expandedSections[`${item.messageId}_topics`]}
+                  onToggle={() => toggleSection(`${item.messageId}_topics`)}>
+                  <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
+                </Accordion>
+              {/if}
+              {#if item.toolHistory?.length > 0}
+                <Accordion kind="thought"
+                  expanded={!!expandedSections[`${item.messageId}_thought`]}
+                  onToggle={() => toggleSection(`${item.messageId}_thought`)}>
+                  <ProgressTrail entries={item.toolHistory} />
+                </Accordion>
+              {/if}
+              {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+            </div>
           {:else}
             <div class="message user">
               <div class="message-content">
@@ -998,40 +1342,39 @@
                   </button>
                 {/if}
               </div>
+              {#if item.locationRef}
+                <div class="message-location-tag">
+                  <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+                </div>
+              {/if}
             </div>
           {/if}
         {/each}
 
         {#if isSending}
           <div class="message assistant" class:streaming={!!streamingMarkdown}>
-            {#if streamingMarkdown}
-              <div class="message-content">
-                {@html renderMarkdown(streamingMarkdown)}
-              </div>
-            {:else}
-              <div class="thinking-content">
-                <!-- Progress Status -->
-                {#if currentProgress?.type === 'tool_end' }
-                  <div class="status-text" class:tool-error={currentProgress.isError}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      {#if currentProgress.isError}
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                      {:else}
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                      {/if}
-                    </svg>
-                    <span>{currentProgress.isError ? $_('assistant.status.toolError') : $_('assistant.status.done')}</span>
+            <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
+              {#if appetizerData}
+                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+              {/if}
+              {#if streamingMarkdown}
+                <div class="message-content">
+                  {@html renderMarkdown(streamingMarkdown)}
+                </div>
+              {:else}
+                <div class="lc-thinking-block">
+                  {#if displayTrail.length > 0}
+                    <ProgressTrail entries={displayTrail} />
+                  {/if}
+                  <div class="lc-thinking-step">
+                    <span class="lc-loading-spinner" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
+                    </span>
+                    <span class="lc-thinking-label">{isSynthesizing ? $_('assistant.loading.synthesizing') : $_('assistant.status.thinking')}</span>
                   </div>
-                {:else}
-                  <div class="status-text">
-                    <p>{currentProgress?.displayText || $_('assistant.loading.thinking')}<span class="dots"></span></p>
-                  </div>
-                {/if}
-              </div>
-            {/if}
+                </div>
+              {/if}
+            </div>
           </div>
         {/if}
 
@@ -1126,6 +1469,28 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
+    /* Figma design tokens (canonical) */
+    --global-dimension-0: 0px;
+    --global-dimension-100: 8px;
+    --global-dimension-150: 12px;
+    --global-dimension-200: 16px;
+    --global-dimension-250: 20px;
+    --global-dimension-300: 24px;
+    --space-1: 4px;
+    --spacing-spacing-large: 16px;
+    --spacing-spacing-medium: 12px;
+    --semantic-action-primary: #18345D;
+    --semantic-text-link: #18345D;
+    --semantic-text-secondary: #575757;
+    --semantic-text-muted: #707070;
+    --core-blue-tbr-100: #F0F7FF;
+    --core-base-white: #FFFFFF;
+    --core-neutral-gray-100: #EEEEEE;
+    --core-neutral-gray-300: #CCCCCC;
+    --functional-icon-icon-primary: #666666;
+
+    /* Component tokens — aliased to Figma tokens where applicable */
+    --lc-primary: var(--semantic-action-primary);
     --brand-sefaria-blue: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
@@ -1133,10 +1498,10 @@
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
-    --lc-text-secondary: #64748b;
+    --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #18345D;
+    --lc-user-bg: #0056B3;
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
@@ -1155,6 +1520,13 @@
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
+    --lc-border-strong: var(--core-neutral-gray-300);
+    --lc-bg-hover: var(--core-neutral-gray-100);
+    --lc-on-primary: var(--core-base-white);
+    --lc-icon-primary: var(--functional-icon-icon-primary);
+    --lc-topics-bg: var(--core-blue-tbr-100);
+    --lc-tooltip-bg: #3a3a3a;
+    --lc-z-tooltip: 20;
 
     display: block;
     font-family: var(--lc-font);
@@ -1417,10 +1789,15 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
-    padding: 16px;
+    /* Vertical scroll only. Without an explicit overflow-x, `overflow-y: auto`
+       makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
+       child shows a horizontal scrollbar. Clip horizontally so it can never. */
+    overflow-x: hidden;
+    padding: var(--space-1, 4px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--spacing-spacing-large, 16px);
+    scroll-behavior: smooth;
   }
 
   /* Messages */
@@ -1444,12 +1821,32 @@
   .message.user {
     max-width: 85%;
     align-self: flex-end;
-    background-color: #0056B3;
-    border-radius: 0 16px 16px 16px;
   }
 
   .message.assistant {
     align-self: flex-start;
+  }
+
+  /* While streaming, the topics box fills the full content width (Figma spec):
+     stretch the loading-state assistant message so the box isn't shrink-wrapped.
+     Chat bubbles are unaffected — they cap via .message-content's max-width. */
+  .message.assistant:has(.lc-loading-wrapper) {
+    align-self: stretch;
+  }
+
+  /* Response package: stacks topics accordion → thought accordion → answer bubble.
+     8px gap between accordions; answer bubble pulled flush (0px) via negative margin. */
+  .lc-response-package {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
+     When there are no accordions the bubble is the only child and the gap spec
+     does not apply, so we scope this to :not(:first-child). */
+  .lc-response-package > .message.assistant:not(:first-child) {
+    margin-top: -8px;
   }
 
   .empty-state .message.assistant .message-content,
@@ -1478,6 +1875,10 @@
     font-size: var(--lc-font-size);
     word-wrap: break-word;
     color: var(--lc-user-text);
+    /* Blue bubble lives on the bubble only — not the whole column — so the
+       location tag below renders as a gray pill on the white chat background. */
+    background-color: var(--lc-user-bg);
+    border-radius: 0 16px 16px 16px;
     border-bottom-right-radius: 4px;
   }
 
@@ -1506,6 +1907,16 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
+  }
+
+  .message-location-tag {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+    /* Figma: max width = chat bubble width (560px), but never exceed the
+       available message column so long refs truncate instead of overflowing. */
+    max-width: min(560px, 100%);
+    align-self: flex-end;
   }
 
   .message-status {
@@ -1550,46 +1961,63 @@
     color: #666;
   }
 
-  /* Thinking/Progress Indicator */
-  .thinking-content {
-    min-width: 200px;
-    padding: 12px 16px !important;
-    margin-bottom: 8px;
+  /* Steps trail + the live status line share one 4px-gapped column so the
+     "Thinking"/"Synthesizing" line always sits 4px below the newest step.
+     F3: Force LTR on both so the Hebrew/RTL interface never flips them. */
+  .lc-thinking-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: stretch;
+    gap: var(--space-1, 4px);
+    /* F3: Hebrew RTL must not flip this block — thinking steps are always LTR */
     direction: ltr;
+    text-align: start;
+    /* F6: Prevent the block from ever pushing past the container width */
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
   }
-
-  .message.assistant:has(.thinking-content) {
-     align-self: revert;
-  }
-
-  .status-text {
+  .lc-thinking-step {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--lc-text-secondary);
+    gap: var(--global-dimension-100, 8px);
+    min-height: 20px;
+    /* F3: Explicitly LTR so spinner stays on the left even in Hebrew */
+    direction: ltr;
+    /* F6: must not overflow the block; min-width:0 lets it shrink */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .lc-thinking-label {
+    font-family: var(--lc-font);
+    font-size: 12px;
+    line-height: var(--global-dimension-250, 20px);
+    color: var(--semantic-text-secondary, #575757);
+    /* F6: prevent label from pushing the thinking row wider than the container */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .lc-loading-spinner {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--functional-icon-icon-primary, #666666);
+    animation: lc-loading-spin 0.8s linear infinite;
+    transform-origin: center;
+  }
+  @keyframes lc-loading-spin {
+    to { transform: rotate(360deg); }
   }
 
-  .status-text.tool-running {
-    color: var(--brand-sefaria-blue);
+  .lc-loading-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-spacing-large, 16px);
   }
-
-  .status-text.tool-error {
-    color: var(--lc-error);
-  }
-
-.dots::after {
-  content: '';
-  animation: dots 1.5s steps(4, end) infinite;
-}
-
-@keyframes dots {
-  0%   { content: ''; }
-  25%  { content: '.'; }
-  50%  { content: '..'; }
-  75%  { content: '...'; }
-  100% { content: ''; }
-}
 
   /* Loading Indicator */
   .loading-indicator {
@@ -2055,6 +2483,86 @@ inset: 8px;
 
   .message-content :global(.response-quote) {
     /*  place holder */
+  }
+
+  :global(.progress-trail-toggle) {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #888;
+    font-size: 11px;
+    padding: 4px 12px;
+    font-family: inherit;
+  }
+  :global(.progress-trail-toggle:hover) {
+    color: #555;
+  }
+  :global(.progress-trail-list) {
+    list-style: none;
+    margin: 0;
+    padding: 4px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  :global(.progress-trail-entry) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #777;
+  }
+  :global(.progress-trail-entry--error) {
+    color: #c62828;
+  }
+  :global(.progress-trail-entry--complete) {
+    color: #666;
+  }
+  :global(.progress-trail-icon) {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :global(.progress-trail-spinner) {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid #ccc;
+    border-top-color: #888;
+    border-radius: 50%;
+    animation: trail-spin 0.8s linear infinite;
+  }
+  @keyframes trail-spin {
+    to { transform: rotate(360deg); }
+  }
+  :global(.progress-trail-text) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global(.trail-ref-link) {
+    color: #18345D;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-underline-offset: 2px;
+  }
+  :global(.trail-ref-link:hover) {
+    color: #465D7D;
+    text-decoration-color: rgba(70, 93, 125, 0.6);
+  }
+  :global(.trail-ref-icon) {
+    display: inline-block;
+    vertical-align: middle;
+    margin-inline-end: 2px;
+    color: #18345D;
+    opacity: 0.6;
   }
 
 </style>

@@ -11,13 +11,15 @@ from typing import Any, Protocol
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
 
-    type: str  # 'status', 'tool_start', 'tool_end', 'message_delta', 'complete'
+    type: str  # 'status', 'tool_start', 'tool_end', 'message_delta', 'complete', 'appetizer'
     text: str | None = None
     tool_name: str | None = None
     tool_input: dict | None = None
     description: str | None = None  # human-readable tool call label
     is_error: bool | None = None
     output_preview: str | None = None
+    appetizer_data: dict | None = None  # {topicSlug, topicTitle, topicUrl}
+    ref_data: dict | None = None  # {is_ref, url_ref, en, he} for ref-bearing tools
 
 
 @dataclass
