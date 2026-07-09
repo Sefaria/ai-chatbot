@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from typing import Any
@@ -9,7 +10,12 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
+from ..prompts.prompt_fragments import (
+    AGENT_THINKING_TAG,
+    ERROR_FALLBACK_MESSAGE,
+    NO_THINKING_NARRATION_INSTRUCTION,
+    SECTION_SEPARATOR,
+)
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
@@ -128,8 +134,12 @@ class TurnOrchestrator:
             tools=sdk_tools,
         )
 
+        system_prompt = prompt_result.full_prompt
+        if self.options_builder.thinking_disabled:
+            system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
+
         options, system_prompt_in_options = self.options_builder.build(
-            system_prompt=prompt_result.full_prompt,
+            system_prompt=system_prompt,
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
@@ -161,7 +171,15 @@ class TurnOrchestrator:
         emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
         latency_ms = int((time.time() - start_time) * 1000)
-        output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
+        final_text = sdk_result.final_text
+        if self.options_builder.thinking_disabled:
+            final_text = re.sub(
+                rf"<{AGENT_THINKING_TAG}>.*?</{AGENT_THINKING_TAG}>\s*",
+                "",
+                final_text,
+                flags=re.DOTALL,
+            )
+        output = final_text.strip() or ERROR_FALLBACK_MESSAGE
         trace_id = sdk_result.trace_id or bt_span.id
         usage = map_usage(sdk_result.usage)
         metrics = build_braintrust_metrics(
