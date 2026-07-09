@@ -45,15 +45,11 @@ PAGE_CONTEXT_SECTION = (
 )
 
 # When extended thinking is disabled, the model may externalize its planning
-# as visible text (e.g. "Let me search for..."). This fragment instructs it to
-# wrap such narration in a strippable tag instead.
-AGENT_THINKING_TAG = "agent_thinking"
-
+# as visible text (e.g. "Let me search for..."). This fragment prohibits it.
 NO_THINKING_NARRATION_INSTRUCTION = (
-    f"If you need to narrate an action you are about to take "
-    f'(e.g. "Let me search for...", "I\'ll look up..."), '
-    f"wrap that text in <{AGENT_THINKING_TAG}> tags. "
-    f"These tags are stripped before the response reaches the user."
+    "Do not narrate your actions or search steps. "
+    'Never start a response with phrases like "Let me search for...", "I\'ll look up...", etc. '
+    "Begin your response directly with the answer."
 )
 
 
