@@ -11,6 +11,7 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  const APP_VERSION = import.meta.env.VITE_APP_VERSION || null;
 
   // Props (attributes)
   let {
@@ -224,7 +225,7 @@
         if (typeof window.gtag === 'function') {
           const raw = link.getAttribute('href');
           const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url });
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link.textContent.trim(), link_url, app_version: APP_VERSION });
         }
         return;
       }
@@ -235,7 +236,7 @@
       );
       if (!target) return;
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label') });
+        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label'), app_version: APP_VERSION });
       }
     }
 
@@ -279,7 +280,7 @@
     const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
     setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
     if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}` });
+      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}`, app_version: APP_VERSION });
     }
   }
 
@@ -433,7 +434,7 @@
     const isReadyToSend = text && !isSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
     if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_message_sent', { length: text.length });
+      window.gtag('event', 'assistant_message_sent', { length: text.length, app_version: APP_VERSION });
     }
     // Clear input and draft
     inputText = '';
