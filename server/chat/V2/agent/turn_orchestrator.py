@@ -9,7 +9,11 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
+from ..prompts.prompt_fragments import (
+    ERROR_FALLBACK_MESSAGE,
+    NO_THINKING_NARRATION_INSTRUCTION,
+    SECTION_SEPARATOR,
+)
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
@@ -128,8 +132,12 @@ class TurnOrchestrator:
             tools=sdk_tools,
         )
 
+        system_prompt = prompt_result.full_prompt
+        if self.options_builder.thinking_disabled:
+            system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
+
         options, system_prompt_in_options = self.options_builder.build(
-            system_prompt=prompt_result.full_prompt,
+            system_prompt=system_prompt,
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
