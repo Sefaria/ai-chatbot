@@ -11,6 +11,8 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  // Deployed LA version, baked in at build time (release version → Docker ARG → Vite env);
+  // null in local dev so gtag omits the field instead of sending an empty value.
   const APP_VERSION = import.meta.env.VITE_APP_VERSION || null;
 
   // Props (attributes)
