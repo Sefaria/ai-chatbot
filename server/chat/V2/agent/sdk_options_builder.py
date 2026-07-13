@@ -22,6 +22,7 @@ class SDKOptionsBuilder:
         braintrust_project: str,
         mcp_server_name: str,
         braintrust_logging_enabled: bool = True,
+        thinking_disabled: bool = True,
         logger: logging.Logger | None = None,
     ):
         self.options_cls = options_cls
@@ -32,6 +33,7 @@ class SDKOptionsBuilder:
         self.braintrust_project = braintrust_project
         self.braintrust_logging_enabled = braintrust_logging_enabled
         self.mcp_server_name = mcp_server_name
+        self.thinking_disabled = thinking_disabled
         self.logger = logger or logging.getLogger("chat.agent")
 
     def _supports_option(self, option_name: str) -> bool:
@@ -83,6 +85,9 @@ class SDKOptionsBuilder:
                 options_kwargs["extra_args"] = {"debug-to-stderr": None}
             if self._supports_option("stderr"):
                 options_kwargs["stderr"] = lambda line: self.logger.warning("Claude CLI: %s", line)
+
+        if self.thinking_disabled and self._supports_option("thinking"):
+            options_kwargs["thinking"] = {"type": "disabled"}
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
