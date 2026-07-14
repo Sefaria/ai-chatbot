@@ -30,6 +30,17 @@
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
+  // The host sets is-moderator from Django's request.user.is_staff, so it doubles
+  // as the internal-traffic flag. Stamped on every GA4 event via track() below so
+  // staff sessions can be segmented out of usage reports. Sent as a string because
+  // GA4 custom dimensions are text.
+  let isStaff = $derived(isModerator === true || isModerator === 'true' ? 'true' : 'false');
+
+  function track(event, params = {}) {
+    if (typeof window.gtag !== 'function') return;
+    window.gtag('event', event, { ...params, is_staff: isStaff });
+  }
+
   // State
   let mode = $state('floating');
   let isOpen = $state(false);
@@ -251,9 +262,7 @@
         el => el instanceof Element && el.getAttribute('data-feature-name')
       );
       if (labelled) {
-        if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
-        }
+        track('assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
         return;
       }
       // If a response link was clicked — capture the link text
@@ -261,12 +270,10 @@
         el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
       );
       if (link) {
-        if (typeof window.gtag === 'function') {
-          const raw = link.getAttribute('href');
-          const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
-          const link_text = link.textContent.trim();
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
-        }
+        const raw = link.getAttribute('href');
+        const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
+        const link_text = link.textContent.trim();
+        track('assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
         return;
       }
 
@@ -277,9 +284,7 @@
         el => el instanceof Element && el.getAttribute('aria-label')
       );
       if (!target) return;
-      if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label') });
-      }
+      track('assistant_click', { feature_name: target.getAttribute('aria-label') });
     }
 
     host.addEventListener('click', trackClick);
@@ -303,9 +308,7 @@
         io.unobserve(el);
         if (seen.has(el)) continue;
         seen.add(el);
-        if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
-        }
+        track('assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
       }
     }, { root, threshold: 0.5 });
 
@@ -369,9 +372,7 @@
     mode = newMode;
     const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
     setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
-    if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}` });
-    }
+    track('assistant_click', { feature_name: `Toggle to ${newMode}` });
   }
 
   function handleNewChat() {
@@ -569,9 +570,7 @@
     if (!isConfigured || !isReadyToSend) return;
     // Reset auto-scroll on each new send
     resetScroll();
-    if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_message_sent', { length: text.length });
-    }
+    track('assistant_message_sent', { length: text.length });
     // Clear input and draft
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -610,9 +609,9 @@
             // a response, explore sources about Prayer." The server sends the
             // comma-joined, locale-aware titles as progress.text; we splice them into
             // the localized sentence frame (same string the user sees).
-            if (typeof window.gtag === 'function' && progress.text) {
+            if (progress.text) {
               const shownText = get(_)('assistant.appetizer.sentence').replace('{topics}', progress.text);
-              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText });
+              track('assistant_element_shown', { feature_name: 'related_topics', text: shownText });
             }
             scrollToLoadingElement();
             return;

@@ -35,6 +35,22 @@ npm run build    # Build bundle to dist/
 - **Web Component** - registered as `<lc-chatbot>` custom element
 - **SSE streaming** - real-time responses via Server-Sent Events
 
+## Analytics (GA4)
+
+All GA4 events go through the `track(event, params)` helper in `LCChatbot.svelte`.
+Never call `window.gtag` directly — `track()` is the only place common properties
+are attached, and it no-ops when the host page has no `gtag` (e.g. the demo harness).
+
+Every event carries `is_staff` (`"true"` / `"false"`), derived from the
+`is-moderator` attribute, which the host sets from Django's `request.user.is_staff`.
+Analysts filter on it to exclude internal traffic from usage reports — so an event
+that bypasses `track()` is invisible to that filter and will silently skew results.
+
+Events: `assistant_click`, `assistant_element_shown`, `assistant_message_sent`.
+Click and impression labels are declared with `data-feature-name` /
+`data-element-shown-name` attributes; host-level listeners in `LCChatbot.svelte`
+pick them up across the shadow-DOM boundary. No other wiring needed.
+
 ## Widget Attributes
 
 | Attribute | Type | Required | Description |
@@ -47,7 +63,7 @@ npm run build    # Build bundle to dist/
 | `max-prompts` | number | No | Max prompts per conversation before blocking (default: 100) |
 | `mode` | `"floating"` \| `"panel"` | No | Display mode |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
-| `is-moderator` | boolean | No | Staff flag — shows settings gear and logged to Braintrust metadata |
+| `is-moderator` | boolean | No | Staff flag (host sets it from Django `request.user.is_staff`) — shows settings gear, logged to Braintrust metadata, and emitted as `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
