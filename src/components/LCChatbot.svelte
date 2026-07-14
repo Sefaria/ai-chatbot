@@ -30,18 +30,11 @@
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
-  // The host sets is-moderator from Django's request.user.is_staff, so it doubles
-  // as the internal-traffic flag.
-  //
-  // Custom-element attributes arrive UNCOERCED as strings, so this prop can be a
-  // boolean (property) or a string (attribute). Normalize once here and let every
-  // consumer read the boolean — the settings gear, the Braintrust isStaff tag, and
-  // the GA4 is_staff param must never disagree about who is staff. Note "false" is
-  // a truthy string in JS: a raw `if (isModerator)` check treats it as staff.
+  // Custom-element attributes arrive uncoerced, so this prop can be a boolean or a
+  // string — and "false" is truthy. Normalize once; every consumer reads the boolean.
   let isModeratorBool = $derived(!!isModerator && isModerator !== 'false');
 
-  // GA4 custom dimensions are text, so is_staff ships as a string. Stamped on every
-  // event via track() so staff sessions can be segmented out of usage reports.
+  // GA4 custom dimensions are text.
   let isStaff = $derived(isModeratorBool ? 'true' : 'false');
 
   function track(event, params = {}) {
@@ -279,8 +272,7 @@
       );
       if (link) {
         const raw = link.getAttribute('href');
-        // An assistant-authored href may be malformed (e.g. a bare "https://"), and
-        // new URL() throws on those — never let a bad link kill the click handler.
+        // new URL() throws on a malformed href — a bad link must not kill the handler
         let link_url = raw;
         if (raw.startsWith('http')) {
           try {

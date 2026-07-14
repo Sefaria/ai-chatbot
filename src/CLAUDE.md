@@ -37,19 +37,13 @@ npm run build    # Build bundle to dist/
 
 ## Analytics (GA4)
 
-All GA4 events go through the `track(event, params)` helper in `LCChatbot.svelte`.
-Never call `window.gtag` directly — `track()` is the only place common properties
-are attached, and it no-ops when the host page has no `gtag` (e.g. the demo harness).
+Events (`assistant_click`, `assistant_element_shown`, `assistant_message_sent`) go
+through the `track()` helper in `LCChatbot.svelte`. **Never call `window.gtag`
+directly** — `track()` is the only place `is_staff` is attached, and analysts filter
+on it to exclude internal traffic, so a bypassing event silently skews their reports.
 
-Every event carries `is_staff` (`"true"` / `"false"`), derived from the
-`is-moderator` attribute, which the host sets from Django's `request.user.is_staff`.
-Analysts filter on it to exclude internal traffic from usage reports — so an event
-that bypasses `track()` is invisible to that filter and will silently skew results.
-
-Events: `assistant_click`, `assistant_element_shown`, `assistant_message_sent`.
-Click and impression labels are declared with `data-feature-name` /
-`data-element-shown-name` attributes; host-level listeners in `LCChatbot.svelte`
-pick them up across the shadow-DOM boundary. No other wiring needed.
+Label a click or impression by adding `data-feature-name` / `data-element-shown-name`
+to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 ## Widget Attributes
 
@@ -63,7 +57,7 @@ pick them up across the shadow-DOM boundary. No other wiring needed.
 | `max-prompts` | number | No | Max prompts per conversation before blocking (default: 100) |
 | `mode` | `"floating"` \| `"panel"` | No | Display mode |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
-| `is-moderator` | boolean | No | Staff flag (host sets it from Django `request.user.is_staff`) — shows settings gear, logged to Braintrust metadata, and emitted as `is_staff` on every GA4 event |
+| `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
