@@ -26,16 +26,16 @@
     'max-input-chars': maxInputChars = DEFAULT_MAX_INPUT_CHARS,
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
-    'is-moderator': isModerator = false,
+    'is-moderator': isModeratorAttr = false,
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
-  // Custom-element attributes arrive uncoerced, so this prop can be a boolean or a
-  // string — and "false" is truthy. Normalize once; every consumer reads the boolean.
-  let isModeratorBool = $derived(!!isModerator && isModerator !== 'false');
+  // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
+  // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
+  let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
 
   // GA4 custom dimensions are text.
-  let isStaff = $derived(isModeratorBool ? 'true' : 'false');
+  let isStaff = $derived(isModerator ? 'true' : 'false');
 
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
@@ -667,7 +667,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModeratorBool, promptSlugs.labs === true, {
+      }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, interfaceLang);
@@ -1159,7 +1159,7 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                {#if isModeratorBool}
+                {#if isModerator}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
