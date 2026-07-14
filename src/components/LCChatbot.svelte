@@ -11,8 +11,9 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
-  // Deployed LA version, baked in at build time (release version → Docker ARG → Vite env);
-  // null in local dev so gtag omits the field instead of sending an empty value.
+  // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
+  // CI passes the version into the Docker build, and Vite bakes it in at build time.
+  // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
   const APP_VERSION = import.meta.env.VITE_APP_VERSION || null;
 
   // Props (attributes)
