@@ -31,10 +31,18 @@
   } = $props();
 
   // The host sets is-moderator from Django's request.user.is_staff, so it doubles
-  // as the internal-traffic flag. Stamped on every GA4 event via track() below so
-  // staff sessions can be segmented out of usage reports. Sent as a string because
-  // GA4 custom dimensions are text.
-  let isStaff = $derived(isModerator === true || isModerator === 'true' ? 'true' : 'false');
+  // as the internal-traffic flag.
+  //
+  // Custom-element attributes arrive UNCOERCED as strings, so this prop can be a
+  // boolean (property) or a string (attribute). Normalize once here and let every
+  // consumer read the boolean — the settings gear, the Braintrust isStaff tag, and
+  // the GA4 is_staff param must never disagree about who is staff. Note "false" is
+  // a truthy string in JS: a raw `if (isModerator)` check treats it as staff.
+  let isModeratorBool = $derived(!!isModerator && isModerator !== 'false');
+
+  // GA4 custom dimensions are text, so is_staff ships as a string. Stamped on every
+  // event via track() so staff sessions can be segmented out of usage reports.
+  let isStaff = $derived(isModeratorBool ? 'true' : 'false');
 
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
@@ -271,7 +279,17 @@
       );
       if (link) {
         const raw = link.getAttribute('href');
-        const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
+        // An assistant-authored href may be malformed (e.g. a bare "https://"), and
+        // new URL() throws on those — never let a bad link kill the click handler.
+        let link_url = raw;
+        if (raw.startsWith('http')) {
+          try {
+            const url = new URL(raw);
+            link_url = url.pathname + (url.search || '');
+          } catch {
+            // keep the raw href
+          }
+        }
         const link_text = link.textContent.trim();
         track('assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
         return;
@@ -657,7 +675,7 @@
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
         }
-      }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
+      }, promptSlugs, originProp, isModeratorBool, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, interfaceLang);
@@ -1149,7 +1167,7 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                {#if isModerator}
+                {#if isModeratorBool}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
