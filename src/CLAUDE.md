@@ -35,6 +35,16 @@ npm run build    # Build bundle to dist/
 - **Web Component** - registered as `<lc-chatbot>` custom element
 - **SSE streaming** - real-time responses via Server-Sent Events
 
+## Analytics (GA4)
+
+Events (`assistant_click`, `assistant_element_shown`, `assistant_message_sent`) go
+through the `track()` helper in `LCChatbot.svelte`. **Never call `window.gtag`
+directly** — `track()` is the only place `is_staff` is attached, and analysts filter
+on it to exclude internal traffic, so a bypassing event silently skews their reports.
+
+Label a click or impression by adding `data-feature-name` / `data-element-shown-name`
+to the element; host-level listeners pick it up across the shadow-DOM boundary.
+
 ## Widget Attributes
 
 | Attribute | Type | Required | Description |
@@ -47,7 +57,7 @@ npm run build    # Build bundle to dist/
 | `max-prompts` | number | No | Max prompts per conversation before blocking (default: 100) |
 | `mode` | `"floating"` \| `"panel"` | No | Display mode |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
-| `is-moderator` | boolean | No | Staff flag — shows settings gear and logged to Braintrust metadata |
+| `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
