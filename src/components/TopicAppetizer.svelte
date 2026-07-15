@@ -1,14 +1,23 @@
 <script>
   import { _, locale } from '../i18n/index.js';
 
-  let { data, streaming = false, onClickTopic, collapsed = false } = $props();
+  const SEFARIA_BASE_URL = 'https://www.sefaria.org';
+
+  let { data, streaming = false, onClickTopic, onTrackTopicOpen = undefined, collapsed = false } = $props();
+
+  function topicHref(topic) {
+    return topic.topicUrl || `${SEFARIA_BASE_URL}/topics/${topic.topicSlug}`;
+  }
 
   function attachClickHandler(node, topic) {
     function handler(e) {
-      // Let modifier/middle clicks fall through to the browser so the real
-      // <a href> opens in a new tab/window. Only intercept a plain left click
-      // to route through the in-app handler.
-      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      // Let modifier clicks fall through to the browser so the real <a href>
+      // opens in a new tab/window (middle clicks never reach a click handler).
+      // Only intercept a plain left click to route through the in-app handler.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        if (onTrackTopicOpen) onTrackTopicOpen(topic.topicSlug);
+        return;
+      }
       // preventDefault blocks the <a> navigation; we intentionally let the event
       // bubble to the host click tracker (data-feature-name) instead of stopping it.
       e.preventDefault();
@@ -72,7 +81,7 @@
   {:else}
     <a
       class="lc-topic-link"
-      href={seg.topic.topicUrl}
+      href={topicHref(seg.topic)}
       data-feature-name="related_topics_link"
       use:attachClickHandler={seg.topic}
     >{seg.topic.topicTitle}</a>
@@ -125,9 +134,6 @@
     text-decoration: underline;
     text-decoration-style: solid;
     text-underline-position: from-font;
-    background: none;
-    border: none;
-    padding: 0;
     cursor: pointer;
   }
 
