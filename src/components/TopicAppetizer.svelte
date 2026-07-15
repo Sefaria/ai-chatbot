@@ -5,6 +5,10 @@
 
   function attachClickHandler(node, topic) {
     function handler(e) {
+      // Let modifier/middle clicks fall through to the browser so the real
+      // <a href> opens in a new tab/window. Only intercept a plain left click
+      // to route through the in-app handler.
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       // preventDefault blocks the <a> navigation; we intentionally let the event
       // bubble to the host click tracker (data-feature-name) instead of stopping it.
       e.preventDefault();
@@ -66,12 +70,12 @@
   {#if seg.type === 'sep'}
     {seg.value}
   {:else}
-    <button
+    <a
       class="lc-topic-link"
-      type="button"
+      href={seg.topic.topicUrl}
       data-feature-name="related_topics_link"
       use:attachClickHandler={seg.topic}
-    >{seg.topic.topicTitle}</button>
+    >{seg.topic.topicTitle}</a>
   {/if}
 {/snippet}
 
