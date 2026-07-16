@@ -194,3 +194,21 @@ class TestSDKOptionsBuilderBraintrustGating:
         env = builder.options_cls.call_args[1].get("env", {})
         assert env.get("BRAINTRUST_API_KEY") == "real-bt-key"
         assert env.get("BRAINTRUST_PROJECT") == "my-project"
+
+    def test_partial_messages_enabled_when_supported(self):
+        builder = self._make_builder(braintrust_logging_enabled=True)
+        with patch.object(builder, "_supports_option", return_value=True):
+            builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
+
+        assert builder.options_cls.call_args[1]["include_partial_messages"] is True
+
+    def test_partial_messages_omitted_when_unsupported(self):
+        builder = self._make_builder(braintrust_logging_enabled=True)
+        with patch.object(
+            builder,
+            "_supports_option",
+            side_effect=lambda option: option != "include_partial_messages",
+        ):
+            builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
+
+        assert "include_partial_messages" not in builder.options_cls.call_args[1]
