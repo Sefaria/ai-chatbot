@@ -76,7 +76,12 @@ class GuardrailGate(Protocol):
 
 
 class SdkRunner(Protocol):
-    async def run(self, options: Any, prompt_text: str) -> Any: ...
+    async def run(
+        self,
+        options: Any,
+        prompt_text: str,
+        on_text_delta: Callable[[str], None] | None = None,
+    ) -> Any: ...
 
 
 class TraceLogger(Protocol):
