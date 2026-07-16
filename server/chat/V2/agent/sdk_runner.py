@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AssistantMessage, ResultMessage
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
 
 @dataclass
@@ -27,12 +28,20 @@ class ClaudeSDKRunner:
         client_cls: type = ClaudeSDKClient,
         assistant_message_cls: type = AssistantMessage,
         result_message_cls: type = ResultMessage,
+        stream_event_cls: type = StreamEvent,
     ):
         self.client_cls = client_cls
         self.assistant_message_cls = assistant_message_cls
         self.result_message_cls = result_message_cls
+        self.stream_event_cls = stream_event_cls
 
-    async def run(self, *, options: Any, prompt_text: str) -> SDKRunResult:
+    async def run(
+        self,
+        *,
+        options: Any,
+        prompt_text: str,
+        on_text_delta: Callable[[str], None] | None = None,
+    ) -> SDKRunResult:
         final_text = ""
         trace_id = None
         llm_call_count = 0
@@ -47,6 +56,10 @@ class ClaudeSDKRunner:
                 if isinstance(message, self.result_message_cls):
                     usage = message.usage
                     total_cost_usd = message.total_cost_usd
+                elif isinstance(message, self.stream_event_cls):
+                    delta = self.extract_text_delta_from_stream_event(message)
+                    if delta and on_text_delta:
+                        on_text_delta(delta)
                 else:
                     chunk = self.extract_text_from_message(message)
                     if chunk:
@@ -61,6 +74,26 @@ class ClaudeSDKRunner:
             usage=usage,
             total_cost_usd=total_cost_usd,
         )
+
+    @staticmethod
+    def extract_text_delta_from_stream_event(message: Any) -> str:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict):
+            return ""
+
+        delta = event.get("delta")
+        if isinstance(delta, dict):
+            delta_type = delta.get("type")
+            if delta_type == "text_delta" and isinstance(delta.get("text"), str):
+                return delta["text"]
+
+        if event.get("type") == "content_block_delta" and isinstance(delta, dict):
+            text = delta.get("text")
+            return text if isinstance(text, str) else ""
+
+        return ""
 
     @staticmethod
     def extract_text_from_message(message: Any) -> str:
