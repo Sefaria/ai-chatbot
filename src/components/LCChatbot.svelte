@@ -16,6 +16,10 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
+  // CI passes the version into the Docker build, and Vite bakes it in at build time.
+  // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
+  const APP_VERSION = import.meta.env.VITE_APP_VERSION || null;
 
   // Props (attributes)
   let {
@@ -265,7 +269,7 @@
           const raw = link.getAttribute('href');
           const link_url = raw.startsWith('http') ? new URL(raw).pathname + (new URL(raw).search || '') : raw;
           const link_text = link.textContent.trim();
-          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
+          window.gtag('event', 'assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text, la_version: APP_VERSION });
         }
         return;
       }
@@ -278,7 +282,7 @@
       );
       if (!target) return;
       if (typeof window.gtag === 'function') {
-        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label') });
+        window.gtag('event', 'assistant_click', { feature_name: target.getAttribute('aria-label'), la_version: APP_VERSION });
       }
     }
 
@@ -370,7 +374,7 @@
     const savedUI = getStorage(STORAGE_KEYS.UI, null) || {};
     setStorage(STORAGE_KEYS.UI, { ...savedUI, mode });
     if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}` });
+      window.gtag('event', 'assistant_click', { feature_name: `Toggle to ${newMode}`, la_version: APP_VERSION });
     }
   }
 
@@ -570,7 +574,7 @@
     // Reset auto-scroll on each new send
     resetScroll();
     if (typeof window.gtag === 'function') {
-      window.gtag('event', 'assistant_message_sent', { length: text.length });
+      window.gtag('event', 'assistant_message_sent', { length: text.length, la_version: APP_VERSION });
     }
     // Clear input and draft
     inputText = '';
