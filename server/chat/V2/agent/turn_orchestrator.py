@@ -158,19 +158,12 @@ class TurnOrchestrator:
             else prompt_result.conversation_text
         )
 
-        time_to_first_final_response_token: float | None = None
-
-        def record_first_final_response_token(delta: str) -> None:
-            nonlocal time_to_first_final_response_token
-            if delta and time_to_first_final_response_token is None:
-                time_to_first_final_response_token = time.time() - start_time
-
         emitter.emit(AgentProgressUpdate(type="status", text="Thinking..."))
         try:
+            sdk_start_time = time.time()
             sdk_result = await self.sdk_runner.run(
                 options=options,
                 prompt_text=prompt_text,
-                on_text_delta=record_first_final_response_token,
             )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
@@ -183,6 +176,11 @@ class TurnOrchestrator:
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
         trace_id = sdk_result.trace_id or bt_span.id
         usage = map_usage(sdk_result.usage)
+        time_to_first_final_response_token = None
+        if sdk_result.first_final_text_delta_elapsed_s is not None:
+            time_to_first_final_response_token = (
+                sdk_start_time - start_time + sdk_result.first_final_text_delta_elapsed_s
+            )
         metrics = build_braintrust_metrics(
             latency_ms=latency_ms,
             tool_count=len(tool_calls_list),
