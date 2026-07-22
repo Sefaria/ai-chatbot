@@ -1,5 +1,6 @@
 <script>
   import { _, locale } from '../i18n/index.js';
+  import { showTooltip, hideTooltip } from '../lib/tooltip.js';
 
   /**
    * entries: array of { id, type: 'tool'|'status', toolName?, description?, text?,
@@ -45,23 +46,18 @@
    * Svelte action: show a tooltip on hover when the row is truncated. For rows
    * that contain a ref link the tooltip shows only the ref label (not the
    * surrounding "Fetching text …" prose); otherwise it shows the full row text.
-   * The bubble is appended to document.body
-   * with inline styles and a max z-index, so it can never be clipped or
-   * out-stacked by the widget's shadow-root overflow/transform/stacking context
-   * (the reason earlier shadow-root + CSS-class attempts were invisible).
+   * Bubble rendering/positioning is shared with the Tooltip component — see
+   * lib/tooltip.js for why it is portalled to document.body.
    */
   function truncationTooltip(node) {
     let bubble = null;
     function hide() {
-      bubble?.remove();
+      hideTooltip(bubble);
       bubble = null;
     }
     function show() {
       if (node.scrollWidth <= node.clientWidth + 1) return; // not truncated — no tooltip
       hide();
-      bubble = document.createElement('div');
-      bubble.className = 'lc-trail-tooltip';
-      bubble.dataset.testid = 'la-trail-tooltip';
       const refEl = node.querySelector('.trail-ref-link');
       let tooltipText;
       if (refEl) {
@@ -71,26 +67,7 @@
         const qm = raw.match(/["']([^"']+)["']/);
         tooltipText = qm ? qm[1] : raw;
       }
-      bubble.textContent = tooltipText.trim();
-      Object.assign(bubble.style, {
-        position: 'fixed',
-        maxWidth: '260px',
-        background: '#3a3a3a',
-        color: '#fff',
-        font: '12px/1.4 Roboto, sans-serif',
-        padding: '8px 12px',
-        borderRadius: '12px',
-        whiteSpace: 'normal',
-        wordBreak: 'break-word',
-        pointerEvents: 'none',
-        zIndex: '2147483647',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-      });
-      document.body.appendChild(bubble);
-      const r = node.getBoundingClientRect();
-      const left = Math.min(r.left, window.innerWidth - bubble.offsetWidth - 8);
-      bubble.style.top = `${Math.round(r.bottom + 6)}px`;
-      bubble.style.left = `${Math.round(Math.max(8, left))}px`;
+      bubble = showTooltip(node, tooltipText);
     }
     node.addEventListener('mouseenter', show);
     node.addEventListener('mouseleave', hide);
