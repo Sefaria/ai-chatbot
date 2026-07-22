@@ -3,7 +3,7 @@
  *
  * The widget's panel sets `overflow: hidden` (rounded corners + scroll
  * containment), so a bubble drawn inside the shadow tree is clipped at the panel
- * edge (sc-45831). Portalling to <body> with `position: fixed` and a max z-index
+ * edge. Portalling to <body> with `position: fixed` and a max z-index
  * escapes every clipping/stacking ancestor; the bubble is then clamped to the
  * viewport and flipped above the trigger when there is no room below, so it is
  * always fully readable.
