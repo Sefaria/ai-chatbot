@@ -58,6 +58,10 @@
   // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
   const SEFARIA_BASE_URL = 'https://www.sefaria.org';
+  const CONFIGURED_SEFARIA_HOSTNAMES = (import.meta.env.VITE_SEFARIA_HOSTNAMES || '')
+    .split(',')
+    .map(normalizeHostname)
+    .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
   // Settings state
@@ -905,9 +909,27 @@
     return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
   }
 
-  /** Returns true for sefaria.org, *.sefaria.org (incl. voices.sefaria.org), sefaria.org.il, *.sefaria.org.il */
+  function normalizeHostname(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+    try {
+      return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
+    } catch {
+      return trimmed.split(':')[0];
+    }
+  }
+
+  /**
+   * Returns true for:
+   * - sefaria.org, *.sefaria.org, sefaria.org.il, *.sefaria.org.il
+   * - hostnames listed in VITE_SEFARIA_HOSTNAMES, comma-separated
+   */
   function isSefariaHostname(hostname) {
-    return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
+    const normalized = normalizeHostname(hostname);
+    return (
+      /(^|\.)sefaria\.org(\.il)?$/.test(normalized) ||
+      CONFIGURED_SEFARIA_HOSTNAMES.includes(normalized)
+    );
   }
 
   function refToUrlPath(ref) {
@@ -1005,7 +1027,7 @@
   }
 
   function handleAppetizerClick(topicSlug, topicUrl) {
-    const onSefaria = window.location.hostname.includes('sefaria.org');
+    const onSefaria = isSefariaHostname(window.location.hostname);
 
     if (onSefaria) {
       // In-page navigation via ReaderApp's existing event listener
