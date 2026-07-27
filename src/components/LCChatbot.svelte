@@ -15,6 +15,20 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  const THINKING_MESSAGE_MIN_MS = 4500;
+  const THINKING_MESSAGE_MAX_MS = 6500;
+  const THINKING_MESSAGE_KEYS = [
+    'assistant.thinking.array.01',
+    'assistant.thinking.array.02',
+    'assistant.thinking.array.03',
+    'assistant.thinking.array.04',
+    'assistant.thinking.array.05',
+    'assistant.thinking.array.06',
+    'assistant.thinking.array.07',
+    'assistant.thinking.array.08',
+    'assistant.thinking.array.09',
+    'assistant.thinking.array.10'
+  ];
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -47,10 +61,10 @@
   let isResizing = $state(false);
   let resizeEdge = $state(null);
   
-  // Final phase: once the backend emits the synthesizing status, the persistent
-  // "Thinking" loader line is replaced by the text-only "Synthesizing Response".
-  let isSynthesizing = $state(false);
   let appetizerData = $state(null);
+  let thinkingMessageKey = $state('assistant.loading.initial');
+  let thinkingMessageIndex = $state(-1);
+  let thinkingMessageTimeout = null;
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
@@ -343,6 +357,52 @@
     document.dispatchEvent(event);
   }
 
+  function sampleThinkingMessageDelay() {
+    return THINKING_MESSAGE_MIN_MS + Math.random() * (THINKING_MESSAGE_MAX_MS - THINKING_MESSAGE_MIN_MS);
+  }
+
+  function clearThinkingMessageTimer() {
+    if (thinkingMessageTimeout) {
+      clearTimeout(thinkingMessageTimeout);
+      thinkingMessageTimeout = null;
+    }
+  }
+
+  function scheduleNextThinkingMessage() {
+    clearThinkingMessageTimer();
+    thinkingMessageTimeout = setTimeout(() => {
+      if (thinkingMessageIndex < THINKING_MESSAGE_KEYS.length - 1) {
+        thinkingMessageIndex += 1;
+        thinkingMessageKey = THINKING_MESSAGE_KEYS[thinkingMessageIndex];
+        scheduleNextThinkingMessage();
+      } else {
+        thinkingMessageKey = 'assistant.thinking.final';
+        clearThinkingMessageTimer();
+      }
+    }, sampleThinkingMessageDelay());
+  }
+
+  function startThinkingMessages() {
+    thinkingMessageKey = 'assistant.loading.initial';
+    thinkingMessageIndex = -1;
+    scheduleNextThinkingMessage();
+  }
+
+  function stopThinkingMessages() {
+    clearThinkingMessageTimer();
+    thinkingMessageKey = 'assistant.loading.initial';
+    thinkingMessageIndex = -1;
+  }
+
+  function showFinalThinkingMessage() {
+    clearThinkingMessageTimer();
+    thinkingMessageKey = 'assistant.thinking.final';
+  }
+
+  $effect(() => {
+    return () => clearThinkingMessageTimer();
+  });
+
   function openPanel() {
     isOpen = true;
     showSettings = false;
@@ -384,7 +444,7 @@
     isLoadingHistory = false;
     hasMoreHistory = false;
 
-    isSynthesizing = false;
+    stopThinkingMessages();
     turnCount = 0;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -594,8 +654,8 @@
 
     isSending = true;
 
-    isSynthesizing = false;
     appetizerData = null;
+    startThinkingMessages();
     updateSessionActivity(sessionId);
 
     try {
@@ -616,7 +676,9 @@
             return;
           }
           if (progress?.type === 'status') {
-            isSynthesizing = /synthesi/i.test(progress.text || '');
+            if (/synthesi/i.test(progress.text || '')) {
+              showFinalThinkingMessage();
+            }
             scrollToLoadingElement();
           }
         },
@@ -692,7 +754,7 @@
       });
     } finally {
       isSending = false;
-      isSynthesizing = false;
+      stopThinkingMessages();
     }
   }
 
@@ -1318,10 +1380,8 @@
               {/if}
               <div class="lc-thinking-block">
                 <div class="lc-thinking-step">
-                  <span class="lc-loading-spinner" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
-                  </span>
-                  <span class="lc-thinking-label">{isSynthesizing ? $_('assistant.loading.synthesizing') : $_('assistant.status.thinking')}</span>
+                  <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                  <span class="lc-thinking-label">{$_(thinkingMessageKey)}</span>
                 </div>
               </div>
             </div>
@@ -1911,66 +1971,12 @@
     color: #666;
   }
 
-  /* Thinking/Progress Indicator */
-  .thinking-content {
-    min-width: 200px;
-    padding: 12px 16px !important;
-    margin-bottom: 8px;
-    direction: ltr;
-  }
-
-  .message.assistant:has(.thinking-content) {
-     align-self: revert;
-  }
-
-  .status-text {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--lc-text-secondary);
-  }
-
-  .status-text.tool-running {
-    color: var(--brand-sefaria-blue);
-  }
-
-  .status-text.tool-error {
-    color: var(--lc-error);
-  }
-
-.thinking-fallback {
-    padding: 4px 12px;
-    font-size: 12px;
-    color: #777;
-  }
-
-.dots::after {
-  content: '';
-  animation: dots 1.5s steps(4, end) infinite;
-}
-
-@keyframes dots {
-  0%   { content: ''; }
-  25%  { content: '.'; }
-  50%  { content: '..'; }
-  75%  { content: '...'; }
-  100% { content: ''; }
-}
-
-  /* Steps trail + the live status line share one 4px-gapped column so the
-     "Thinking"/"Synthesizing" line always sits 4px below the newest step.
-     F3: Force LTR on both so the Hebrew/RTL interface never flips them. */
+  /* Live thinking message shown while the backend prepares the final response. */
   .lc-thinking-block {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     align-self: stretch;
-    gap: var(--space-1, 4px);
-    /* F3: Hebrew RTL must not flip this block — thinking steps are always LTR */
-    direction: ltr;
-    text-align: start;
-    /* F6: Prevent the block from ever pushing past the container width */
     min-width: 0;
     width: 100%;
     overflow: hidden;
@@ -1980,33 +1986,33 @@
     align-items: center;
     gap: var(--global-dimension-100, 8px);
     min-height: 20px;
-    /* F3: Explicitly LTR so spinner stays on the left even in Hebrew */
     direction: ltr;
-    /* F6: must not overflow the block; min-width:0 lets it shrink */
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
   }
+  .interface-hebrew .lc-thinking-block {
+    align-items: flex-end;
+    text-align: end;
+  }
+  .interface-hebrew .lc-thinking-step {
+    direction: rtl;
+  }
+  .lc-thinking-glyph,
   .lc-thinking-label {
     font-family: var(--lc-font);
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
     color: var(--semantic-text-secondary, #575757);
-    /* F6: prevent label from pushing the thinking row wider than the container */
+  }
+  .lc-thinking-glyph {
+    flex-shrink: 0;
+  }
+  .lc-thinking-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-  }
-  .lc-loading-spinner {
-    display: inline-flex;
-    flex-shrink: 0;
-    color: var(--functional-icon-icon-primary, #666666);
-    animation: lc-loading-spin 0.8s linear infinite;
-    transform-origin: center;
-  }
-  @keyframes lc-loading-spin {
-    to { transform: rotate(360deg); }
   }
 
   .lc-loading-wrapper {

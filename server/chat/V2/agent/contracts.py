@@ -81,6 +81,7 @@ class SdkRunner(Protocol):
         options: Any,
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
+        on_first_final_text_delta: Callable[[], None] | None = None,
     ) -> Any: ...
 
 

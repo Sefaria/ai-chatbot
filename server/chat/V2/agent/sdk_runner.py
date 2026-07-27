@@ -43,6 +43,7 @@ class ClaudeSDKRunner:
         options: Any,
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
+        on_first_final_text_delta: Callable[[], None] | None = None,
     ) -> SDKRunResult:
         final_text = ""
         trace_id = None
@@ -52,7 +53,16 @@ class ClaudeSDKRunner:
         pending_first_text_delta_elapsed_s: float | None = None
         final_text_delta_candidate_elapsed_s: float | None = None
         first_final_text_delta_elapsed_s: float | None = None
+        first_final_text_delta_notified = False
+        saw_tool_use_message = False
         start_time = time.time()
+
+        def notify_first_final_text_delta() -> None:
+            nonlocal first_final_text_delta_notified
+            if first_final_text_delta_notified or not on_first_final_text_delta:
+                return
+            first_final_text_delta_notified = True
+            on_first_final_text_delta()
 
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
@@ -60,6 +70,8 @@ class ClaudeSDKRunner:
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
                 if isinstance(message, self.result_message_cls):
+                    if final_text_delta_candidate_elapsed_s is not None:
+                        notify_first_final_text_delta()
                     usage = message.usage
                     total_cost_usd = message.total_cost_usd
                     first_final_text_delta_elapsed_s = final_text_delta_candidate_elapsed_s
@@ -69,16 +81,23 @@ class ClaudeSDKRunner:
                         pending_first_text_delta_elapsed_s = time.time() - start_time
                     if delta and on_text_delta:
                         on_text_delta(delta)
+                    if delta and saw_tool_use_message:
+                        notify_first_final_text_delta()
                 else:
                     chunk = self.extract_text_from_message(message)
+                    uses_tools = self.message_uses_tools(message)
                     if chunk:
                         final_text += chunk
-                        if not self.message_uses_tools(message):
+                        if not uses_tools:
                             final_text_delta_candidate_elapsed_s = (
                                 pending_first_text_delta_elapsed_s
                                 if pending_first_text_delta_elapsed_s is not None
                                 else time.time() - start_time
                             )
+                            if saw_tool_use_message:
+                                notify_first_final_text_delta()
+                    if isinstance(message, self.assistant_message_cls) and uses_tools:
+                        saw_tool_use_message = True
                     if isinstance(message, self.assistant_message_cls):
                         pending_first_text_delta_elapsed_s = None
 
