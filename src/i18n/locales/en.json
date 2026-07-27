@@ -76,5 +76,18 @@
     "assistant.feedback.reason.techIssue": "Technical issue",
     "assistant.feedback.reason.other": "Other",
     "assistant.loading.synthesizing": "Synthesizing Response",
-    "test2": "test"
+    "test2": "test",
+    "EN": "HE",
+    "Thinking": "חושב",
+    "Interpreting your question": "מפענח את השאלה",
+    "Searching the library": "מחפש בספרייה",
+    "Reading primary sources": "קורא מקורות ראשוניים",
+    "Noting relevant passages": "\tמאתר קטעים רלוונטיים",
+    "Consulting commentaries": "מעיין בפרשנים",
+    "Weighing different perspectives": "בוחן נקודות מבט שונות",
+    "Traversing links": "עוקב אחר קשרים",
+    "Checking citations": "בודק מראי מקומות",
+    "Prioritizing sources": "ממיין מקורות",
+    "Bringing it all together": "מגבש תשובה",
+    "Synthesizing response": "מנסח תשובה סופית"
 }
