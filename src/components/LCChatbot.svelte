@@ -17,6 +17,7 @@
   const DEFAULT_MAX_INPUT_CHARS = 10000;
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
+  const THINKING_MESSAGE_FADE_MS = 600;
   const THINKING_MESSAGE_KEYS = [
     'assistant.thinking.array.01',
     'assistant.thinking.array.02',
@@ -64,7 +65,9 @@
   let appetizerData = $state(null);
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
+  let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
+  let thinkingMessageFadeTimeout = null;
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
@@ -368,39 +371,70 @@
     }
   }
 
+  function clearThinkingMessageFadeTimer() {
+    if (thinkingMessageFadeTimeout) {
+      clearTimeout(thinkingMessageFadeTimeout);
+      thinkingMessageFadeTimeout = null;
+    }
+  }
+
+  function clearThinkingMessageTimers() {
+    clearThinkingMessageTimer();
+    clearThinkingMessageFadeTimer();
+  }
+
+  function getThinkingMessageFadeMs() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : THINKING_MESSAGE_FADE_MS;
+  }
+
+  function fadeToThinkingMessage(nextKey, nextIndex = thinkingMessageIndex, scheduleAfterFade = false) {
+    clearThinkingMessageTimers();
+    const fadeMs = getThinkingMessageFadeMs();
+    isThinkingMessageFading = true;
+    thinkingMessageFadeTimeout = setTimeout(() => {
+      thinkingMessageKey = nextKey;
+      thinkingMessageIndex = nextIndex;
+      isThinkingMessageFading = false;
+      thinkingMessageFadeTimeout = null;
+      if (scheduleAfterFade) {
+        scheduleNextThinkingMessage();
+      }
+    }, fadeMs);
+  }
+
   function scheduleNextThinkingMessage() {
     clearThinkingMessageTimer();
     thinkingMessageTimeout = setTimeout(() => {
       if (thinkingMessageIndex < THINKING_MESSAGE_KEYS.length - 1) {
-        thinkingMessageIndex += 1;
-        thinkingMessageKey = THINKING_MESSAGE_KEYS[thinkingMessageIndex];
-        scheduleNextThinkingMessage();
+        const nextIndex = thinkingMessageIndex + 1;
+        fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
       } else {
-        thinkingMessageKey = 'assistant.thinking.final';
-        clearThinkingMessageTimer();
+        fadeToThinkingMessage('assistant.thinking.final');
       }
     }, sampleThinkingMessageDelay());
   }
 
   function startThinkingMessages() {
+    clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
+    isThinkingMessageFading = false;
     scheduleNextThinkingMessage();
   }
 
   function stopThinkingMessages() {
-    clearThinkingMessageTimer();
+    clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
+    isThinkingMessageFading = false;
   }
 
   function showFinalThinkingMessage() {
-    clearThinkingMessageTimer();
-    thinkingMessageKey = 'assistant.thinking.final';
+    fadeToThinkingMessage('assistant.thinking.final');
   }
 
   $effect(() => {
-    return () => clearThinkingMessageTimer();
+    return () => clearThinkingMessageTimers();
   });
 
   function openPanel() {
@@ -1381,7 +1415,10 @@
               <div class="lc-thinking-block">
                 <div class="lc-thinking-step">
                   <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
-                  <span class="lc-thinking-label">{$_(thinkingMessageKey)}</span>
+                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                    <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                    <span class="lc-thinking-label lc-thinking-label-glow" aria-hidden="true">{$_(thinkingMessageKey)}</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -2003,16 +2040,78 @@
     font-family: var(--lc-font);
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
+  }
+  .lc-thinking-glyph,
+  .lc-thinking-label-base {
     color: var(--semantic-text-secondary, #575757);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
+  }
+  .lc-thinking-label-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    transition: opacity 0.6s ease-in-out;
+  }
+  .lc-thinking-label-wrap.is-fading {
+    opacity: 0;
   }
   .lc-thinking-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+  .lc-thinking-label-glow {
+    position: absolute;
+    inset: 0;
+    color: #ffffff;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255,255,255,0.85) 45%,
+      rgba(255,255,255,1) 50%,
+      rgba(255,255,255,0.85) 55%,
+      transparent 70%
+    );
+    mask-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255,255,255,0.85) 45%,
+      rgba(255,255,255,1) 50%,
+      rgba(255,255,255,0.85) 55%,
+      transparent 70%
+    );
+    -webkit-mask-size: 250% 100%;
+    mask-size: 250% 100%;
+    -webkit-mask-position: 160% 0;
+    mask-position: 160% 0;
+    animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
+  }
+  .interface-hebrew .lc-thinking-label-glow {
+    animation-name: lc-thinking-shimmer-rtl;
+  }
+  @keyframes lc-thinking-shimmer-ltr {
+    from { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
+    to { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
+  }
+  @keyframes lc-thinking-shimmer-rtl {
+    from { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
+    to { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lc-thinking-label-wrap {
+      transition: none;
+    }
+    .lc-thinking-label-glow {
+      animation: none;
+      opacity: 0;
+    }
   }
 
   .lc-loading-wrapper {
