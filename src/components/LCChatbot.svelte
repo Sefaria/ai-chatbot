@@ -1490,7 +1490,7 @@
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #0056B3;
+    --lc-user-bg: var(--brand-sefaria-blue);
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
