@@ -76,5 +76,7 @@
     "assistant.feedback.reason.techIssue": "Technical issue",
     "assistant.feedback.reason.other": "Other",
     "assistant.loading.synthesizing": "Synthesizing Response",
-    "test2": "test"
+    "test2": "test",
+    "assistant.loading.initial": "Thinking",
+    "assistant.thinking.array.01": "Interpreting your question"
 }
