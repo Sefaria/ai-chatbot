@@ -74,5 +74,16 @@
     "assistant.limit.startNew": "התחלת שיחה מחדש על מנת להמשיך לחקור.",
     "assistant.limit.maxTurnsRestart.aria": "התחלת שיחה מחדש עקב הגעה למגבלה",
     "assistant.loading.thinking": "",
-    "assistant.loading.initial": "חושב"
+    "assistant.loading.initial": "חושב",
+    "assistant.thinking.array.01": "פענוח השאלה",
+    "assistant.thinking.array.02": "חיפוש בספרייה",
+    "assistant.thinking.array.03": "קריאת מקורות ראשוניים",
+    "assistant.thinking.array.04": "סימון קטעים רלוונטיים",
+    "assistant.thinking.array.05": "עיון במפרשים",
+    "assistant.thinking.array.06": "שקילת נקודות מבט שונות",
+    "assistant.thinking.array.07": "מעבר בין קישורים",
+    "assistant.thinking.array.08": "בדיקת מראי מקומות",
+    "assistant.thinking.array.09": "תעדוף מקורות",
+    "assistant.thinking.array.10": "חיבור הכול יחד",
+    "assistant.thinking.final": "ניסוח התשובה"
 }
