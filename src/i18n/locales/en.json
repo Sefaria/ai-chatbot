@@ -78,5 +78,15 @@
     "assistant.loading.synthesizing": "Synthesizing Response",
     "test2": "test",
     "assistant.loading.initial": "Thinking",
-    "assistant.thinking.array.01": "Interpreting your question"
+    "assistant.thinking.array.01": "Interpreting your question",
+    "assistant.thinking.array.02": "Searching the library",
+    "assistant.thinking.array.03": "Reading primary sources",
+    "assistant.thinking.array.04": "Noting relevant passages",
+    "assistant.thinking.array.05": "Consulting commentaries",
+    "assistant.thinking.array.06": "Weighing different perspectives",
+    "assistant.thinking.array.07": "Traversing links",
+    "assistant.thinking.array.08": "Checking citations",
+    "assistant.thinking.array.09": "Prioritizing sources",
+    "assistant.thinking.array.10": "Bringing it all together",
+    "assistant.thinking.final": "Synthesizing response"
 }
