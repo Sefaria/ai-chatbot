@@ -79,5 +79,6 @@
     "assistant.accordion.showTopics": "הצגת נושאים קשורים",
     "assistant.accordion.hideTopics": "הסתרת נושאים קשורים",
     "assistant.accordion.showThought": "הצגת תהליך חשיבה",
-    "assistant.accordion.hideThought": "הסתרת תהליך חשיבה"
+    "assistant.accordion.hideThought": "הסתרת תהליך חשיבה",
+    "assistant.loading.thinking": ""
 }
