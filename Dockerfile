@@ -1,5 +1,8 @@
 FROM node:22 AS script
 
+ARG APP_VERSION
+ENV VITE_APP_VERSION=$APP_VERSION
+
 WORKDIR /build
 COPY . .
 RUN npm install

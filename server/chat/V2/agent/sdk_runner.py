@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AssistantMessage, ResultMessage
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
 
 @dataclass
@@ -16,6 +18,7 @@ class SDKRunResult:
     llm_call_count: int
     usage: dict[str, Any] | None
     total_cost_usd: float | None
+    first_final_text_delta_elapsed_s: float | None = None
 
 
 class ClaudeSDKRunner:
@@ -27,17 +30,29 @@ class ClaudeSDKRunner:
         client_cls: type = ClaudeSDKClient,
         assistant_message_cls: type = AssistantMessage,
         result_message_cls: type = ResultMessage,
+        stream_event_cls: type = StreamEvent,
     ):
         self.client_cls = client_cls
         self.assistant_message_cls = assistant_message_cls
         self.result_message_cls = result_message_cls
+        self.stream_event_cls = stream_event_cls
 
-    async def run(self, *, options: Any, prompt_text: str) -> SDKRunResult:
+    async def run(
+        self,
+        *,
+        options: Any,
+        prompt_text: str,
+        on_text_delta: Callable[[str], None] | None = None,
+    ) -> SDKRunResult:
         final_text = ""
         trace_id = None
         llm_call_count = 0
         usage: dict[str, Any] | None = None
         total_cost_usd: float | None = None
+        pending_first_text_delta_elapsed_s: float | None = None
+        final_text_delta_candidate_elapsed_s: float | None = None
+        first_final_text_delta_elapsed_s: float | None = None
+        start_time = time.time()
 
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
@@ -47,10 +62,25 @@ class ClaudeSDKRunner:
                 if isinstance(message, self.result_message_cls):
                     usage = message.usage
                     total_cost_usd = message.total_cost_usd
+                    first_final_text_delta_elapsed_s = final_text_delta_candidate_elapsed_s
+                elif isinstance(message, self.stream_event_cls):
+                    delta = self.extract_text_delta_from_stream_event(message)
+                    if delta and pending_first_text_delta_elapsed_s is None:
+                        pending_first_text_delta_elapsed_s = time.time() - start_time
+                    if delta and on_text_delta:
+                        on_text_delta(delta)
                 else:
                     chunk = self.extract_text_from_message(message)
                     if chunk:
                         final_text += chunk
+                        if not self.message_uses_tools(message):
+                            final_text_delta_candidate_elapsed_s = (
+                                pending_first_text_delta_elapsed_s
+                                if pending_first_text_delta_elapsed_s is not None
+                                else time.time() - start_time
+                            )
+                    if isinstance(message, self.assistant_message_cls):
+                        pending_first_text_delta_elapsed_s = None
 
             trace_id = getattr(client, "trace_id", None) or getattr(client, "last_trace_id", None)
 
@@ -60,7 +90,28 @@ class ClaudeSDKRunner:
             llm_call_count=llm_call_count,
             usage=usage,
             total_cost_usd=total_cost_usd,
+            first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
         )
+
+    @staticmethod
+    def extract_text_delta_from_stream_event(message: Any) -> str:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict):
+            return ""
+
+        delta = event.get("delta")
+        if isinstance(delta, dict):
+            delta_type = delta.get("type")
+            if delta_type == "text_delta" and isinstance(delta.get("text"), str):
+                return delta["text"]
+
+        if event.get("type") == "content_block_delta" and isinstance(delta, dict):
+            text = delta.get("text")
+            return text if isinstance(text, str) else ""
+
+        return ""
 
     @staticmethod
     def extract_text_from_message(message: Any) -> str:
@@ -108,3 +159,19 @@ class ClaudeSDKRunner:
         if block_type == "text":
             return getattr(block, "text", "") or ""
         return getattr(block, "text", "") if hasattr(block, "text") else ""
+
+    @staticmethod
+    def message_uses_tools(message: Any) -> bool:
+        content = (
+            message.get("content")
+            if isinstance(message, dict)
+            else getattr(message, "content", None)
+        )
+        if not isinstance(content, list):
+            return False
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                return True
+            if getattr(block, "type", None) == "tool_use":
+                return True
+        return False

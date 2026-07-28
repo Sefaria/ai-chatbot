@@ -268,11 +268,98 @@ def chat_stream_v2(request):
     if isinstance(actor, Response):
         return actor
 
+    progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
+    stream_closed = False
+    appetizer_metrics = {}
+
+    def run_appetizer():
+        """Background thread: fast Haiku topic lookup, parallel to main agent."""
+        t_start = time.time()
+        logger.info(
+            "Appetizer thread started at +%dms for: %s",
+            int((t_start - start_time) * 1000),
+            data["text"][:50],
+        )
+        try:
+            from .router.router_service import RouterService, RouteType
+
+            t_classify = time.time()
+            if RouterService._deterministic_classify(data["text"]) == RouteType.TRANSLATION:
+                appetizer_metrics.update(
+                    {
+                        "suppressed": True,
+                        "reason": "translation",
+                        "classify_ms": int((time.time() - t_classify) * 1000),
+                        "total_ms": int((time.time() - t_start) * 1000),
+                    }
+                )
+                return
+            appetizer_metrics["classify_ms"] = int((time.time() - t_classify) * 1000)
+
+            from .appetizer.appetizer_service import get_appetizer_service
+
+            appetizer_service = get_appetizer_service()
+
+            # Normalize locale to "he" for Hebrew interfaces. The frontend
+            # sends navigator.language (e.g. "he-IL") and the widget
+            # interface-lang attribute is "he"; both should produce Hebrew chips.
+            raw_locale = context.get("locale", "")
+            interface_lang = "he" if raw_locale.startswith("he") else raw_locale
+            # Pass appetizer_metrics as the sink so the source decision (what was
+            # returned and why, or why nothing was) is captured even when the
+            # result is None — it is logged to Braintrust under metadata.appetizer.
+            result = asyncio.run(
+                appetizer_service.find_appetizer(
+                    data["text"],
+                    interface_lang=interface_lang,
+                    metrics_sink=appetizer_metrics,
+                )
+            )
+            logger.info("Appetizer result: %s (stream_closed=%s)", result, stream_closed)
+
+            appetizer_metrics["suppressed"] = False
+            appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
+            if result:
+                appetizer_metrics.update(result.metrics)
+                appetizer_metrics["topic_slugs"] = [t.topic_slug for t in result.topics]
+            else:
+                appetizer_metrics["topic_slugs"] = []
+
+            if result and not stream_closed:
+                update = AgentProgressUpdate(
+                    type="appetizer",
+                    text=", ".join(t.topic_title for t in result.topics),
+                    appetizer_data={
+                        "topics": [
+                            {
+                                "topicSlug": t.topic_slug,
+                                "topicTitle": t.topic_title,
+                                "topicUrl": t.topic_url,
+                            }
+                            for t in result.topics
+                        ],
+                    },
+                )
+                try:
+                    progress_queue.put(update, timeout=0.5)
+                    # User-perceived latency: request receipt → appetizer served.
+                    # Seconds, one decimal. Only set when actually served.
+                    appetizer_metrics["time_to_appetizer"] = round(time.time() - start_time, 1)
+                except queue.Full:
+                    pass
+        except Exception:
+            logger.exception("Appetizer thread failed")
+            appetizer_metrics["error"] = True
+            appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
+
     is_load_test = data.get("isLoadTest", False)
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
     labs_enabled = context.get("labs", prompt_slugs.get("labs", False))
+
+    appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    appetizer_executor.submit(run_appetizer)
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
@@ -327,11 +414,21 @@ def chat_stream_v2(request):
           4. On error  → log, persist error message, yield error event
           5. On success → update summary, persist messages, yield final event
         """
-        progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
+        nonlocal stream_closed
+        sse_start = time.time()
+
+        def sse_elapsed():
+            return int((time.time() - start_time) * 1000)
+
+        logger.info(
+            "SSE generator started at +%dms (appetizer has been running for %dms)",
+            sse_elapsed(),
+            int((sse_start - start_time) * 1000),
+            extra={"session_id": data["sessionId"], "turn_id": turn_id},
+        )
         result_holder = {"response": None, "error": None}
         assistant_persisted = False
         final_event_sent = False
-        stream_closed = False
 
         # Initialize the auxiliary-LLM cost accumulator in the outer context so
         # the agent thread (via copy_context) can attribute guardrail/router
@@ -408,7 +505,21 @@ def chat_stream_v2(request):
             _mark_turn_running(user_message.id)
             future = executor.submit(ctx.run, run_agent)
 
+        first_event_yielded = False
+
         try:
+            # Flush reverse-proxy buffers. Many proxies (nginx, gunicorn,
+            # cloud load balancers) buffer the first 4-8KB before forwarding.
+            # This SSE comment is ignored by EventSource but forces the buffer
+            # to flush so subsequent events stream in real-time.
+            logger.info(
+                "SSE proxy flush at +%dms, queue size=%d",
+                sse_elapsed(),
+                progress_queue.qsize(),
+                extra={"session_id": data["sessionId"], "turn_id": turn_id},
+            )
+            yield ": " + " " * 4096 + "\n\n"
+
             # --- Stream progress events to the client ---
             while True:
                 try:
@@ -417,6 +528,15 @@ def chat_stream_v2(request):
                     # None sentinel means the agent thread finished
                     if update is None:
                         break
+
+                    if not first_event_yielded:
+                        logger.info(
+                            "SSE first event at +%dms, type=%s",
+                            sse_elapsed(),
+                            update.type,
+                            extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                        )
+                        first_event_yielded = True
 
                     # Build the SSE payload, including optional tool-call fields
                     event_data = {
@@ -434,6 +554,10 @@ def chat_stream_v2(request):
                         event_data["isError"] = update.is_error
                     if update.output_preview:
                         event_data["outputPreview"] = update.output_preview
+                    if update.appetizer_data:
+                        event_data["appetizerData"] = update.appetizer_data
+                    if update.ref_data:
+                        event_data["refData"] = update.ref_data
 
                     _mark_turn_heartbeat(user_message.id)
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
@@ -491,6 +615,21 @@ def chat_stream_v2(request):
                     "trace_id": agent_response.trace_id,
                 },
             )
+
+            if appetizer_metrics and agent_response.trace_id:
+                try:
+                    bt_logger = _get_bt_logger()
+                    if bt_logger:
+                        span_kwargs = {"metadata": {"appetizer": appetizer_metrics}}
+                        # Emit time_to_appetizer as an aggregatable numeric metric
+                        # (avg/percentiles in Braintrust), not just a metadata blob.
+                        if "time_to_appetizer" in appetizer_metrics:
+                            span_kwargs["metrics"] = {
+                                "time_to_appetizer": appetizer_metrics["time_to_appetizer"]
+                            }
+                        bt_logger.update_span(id=agent_response.trace_id, **span_kwargs)
+                except Exception:
+                    logger.debug("Could not attach appetizer metrics to trace")
 
             # Fold aux LLM costs captured so far (guardrail + router, run on the
             # agent thread) into the turn total before persisting. Summary runs
@@ -633,6 +772,7 @@ def chat_stream_v2(request):
                 except Exception:
                     pass
             executor.shutdown(wait=False)
+            appetizer_executor.shutdown(wait=False)
             # Clear the ContextVar so the next request on this reused WSGI
             # thread can't accidentally read a stale accumulator before its
             # own init_cost_accumulator() call.

@@ -1,10 +1,13 @@
 <script>
+  import Tooltip from './Tooltip.svelte';
   let { className = '', onClick, title, children, ...rest } = $props();
 </script>
 
-<button class={className} onclick={onClick} title={title} aria-label={title} {...rest}>
-  {@render children()}
-</button>
+<Tooltip text={title}>
+  <button class={className} onclick={onClick} aria-label={title} {...rest}>
+    {@render children()}
+  </button>
+</Tooltip>
 
 <style>
   .settings-btn {

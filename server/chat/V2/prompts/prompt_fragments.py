@@ -44,6 +44,14 @@ PAGE_CONTEXT_SECTION = (
     "If the context is relevant, use that information in your response."
 )
 
+# When extended thinking is disabled, the model may externalize its planning
+# as visible text (e.g. "Let me search for..."). This fragment prohibits it.
+NO_THINKING_NARRATION_INSTRUCTION = (
+    "Do not narrate your actions or search steps. "
+    'Never start a response with phrases like "Let me search for...", "I\'ll look up...", etc. '
+    "Begin your response directly with the answer."
+)
+
 
 def build_prompt(
     user_message: str,

@@ -9,7 +9,11 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE
+from ..prompts.prompt_fragments import (
+    ERROR_FALLBACK_MESSAGE,
+    NO_THINKING_NARRATION_INSTRUCTION,
+    SECTION_SEPARATOR,
+)
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
@@ -128,8 +132,12 @@ class TurnOrchestrator:
             tools=sdk_tools,
         )
 
+        system_prompt = prompt_result.full_prompt
+        if self.options_builder.thinking_disabled:
+            system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
+
         options, system_prompt_in_options = self.options_builder.build(
-            system_prompt=prompt_result.full_prompt,
+            system_prompt=system_prompt,
             mcp_server=mcp_server,
             allowed_tools=allowed_tools,
         )
@@ -152,7 +160,11 @@ class TurnOrchestrator:
 
         emitter.emit(AgentProgressUpdate(type="status", text="Thinking..."))
         try:
-            sdk_result = await self.sdk_runner.run(options=options, prompt_text=prompt_text)
+            sdk_start_time = time.time()
+            sdk_result = await self.sdk_runner.run(
+                options=options,
+                prompt_text=prompt_text,
+            )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
@@ -164,12 +176,18 @@ class TurnOrchestrator:
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
         trace_id = sdk_result.trace_id or bt_span.id
         usage = map_usage(sdk_result.usage)
+        time_to_first_final_response_token = None
+        if sdk_result.first_final_text_delta_elapsed_s is not None:
+            time_to_first_final_response_token = (
+                sdk_start_time - start_time + sdk_result.first_final_text_delta_elapsed_s
+            )
         metrics = build_braintrust_metrics(
             latency_ms=latency_ms,
             tool_count=len(tool_calls_list),
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
+            time_to_first_final_response_token=time_to_first_final_response_token,
         )
         self.trace_logger.log_success(
             bt_span=bt_span,
