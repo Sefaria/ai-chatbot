@@ -97,5 +97,7 @@
     "assistant.thinking.array.08": "בדיקת מראי מקומות",
     "assistant.thinking.array.09": "תעדוף מקורות",
     "assistant.thinking.array.10": "חיבור הכול יחד",
-    "assistant.thinking.final": "ניסוח התשובה"
+    "assistant.thinking.final": "ניסוח התשובה",
+    "assistant.loading.delayed": "",
+    "assistant.loading.synthesizing": ""
 }
