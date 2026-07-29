@@ -10,7 +10,7 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import { setLocale, _ } from '../i18n/index.js';
+  import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -18,18 +18,7 @@
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
-  const THINKING_MESSAGE_KEYS = [
-    'assistant.thinking.array.01',
-    'assistant.thinking.array.02',
-    'assistant.thinking.array.03',
-    'assistant.thinking.array.04',
-    'assistant.thinking.array.05',
-    'assistant.thinking.array.06',
-    'assistant.thinking.array.07',
-    'assistant.thinking.array.08',
-    'assistant.thinking.array.09',
-    'assistant.thinking.array.10'
-  ];
+  const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
