@@ -256,7 +256,7 @@
       );
       if (labelled) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
+          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim(), la_version: APP_VERSION });
         }
         return;
       }
@@ -308,7 +308,7 @@
         if (seen.has(el)) continue;
         seen.add(el);
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
+          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name'), la_version: APP_VERSION });
         }
       }
     }, { root, threshold: 0.5 });
@@ -616,7 +616,7 @@
             // the localized sentence frame (same string the user sees).
             if (typeof window.gtag === 'function' && progress.text) {
               const shownText = get(_)('assistant.appetizer.sentence').replace('{topics}', progress.text);
-              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText });
+              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText, la_version: APP_VERSION });
             }
             scrollToLoadingElement();
             return;
