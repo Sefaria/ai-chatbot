@@ -2014,6 +2014,7 @@
     min-height: 20px;
     direction: ltr;
     min-width: 0;
+    width: 100%;
     max-width: 100%;
     overflow: hidden;
   }
@@ -2022,7 +2023,16 @@
     text-align: end;
   }
   .interface-hebrew .lc-thinking-step {
+    direction: ltr;
+    justify-content: flex-end;
+  }
+  .interface-hebrew .lc-thinking-glyph {
+    order: 2;
+  }
+  .interface-hebrew .lc-thinking-label-wrap {
     direction: rtl;
+    order: 1;
+    text-align: right;
   }
   .lc-thinking-glyph,
   .lc-thinking-label {
