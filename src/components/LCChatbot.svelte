@@ -17,7 +17,6 @@
   const DEFAULT_MAX_INPUT_CHARS = 10000;
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
-  const THINKING_MESSAGE_FADE_MS = 600;
   const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
@@ -54,9 +53,7 @@
   let appetizerData = $state(null);
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
-  let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
-  let thinkingMessageFadeTimeout = null;
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
@@ -360,35 +357,19 @@
     }
   }
 
-  function clearThinkingMessageFadeTimer() {
-    if (thinkingMessageFadeTimeout) {
-      clearTimeout(thinkingMessageFadeTimeout);
-      thinkingMessageFadeTimeout = null;
-    }
-  }
-
   function clearThinkingMessageTimers() {
     clearThinkingMessageTimer();
-    clearThinkingMessageFadeTimer();
-  }
-
-  function getThinkingMessageFadeMs() {
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : THINKING_MESSAGE_FADE_MS;
   }
 
   function fadeToThinkingMessage(nextKey, nextIndex = thinkingMessageIndex, scheduleAfterFade = false) {
     clearThinkingMessageTimers();
-    const fadeMs = getThinkingMessageFadeMs();
-    isThinkingMessageFading = true;
-    thinkingMessageFadeTimeout = setTimeout(() => {
+    if (nextKey !== thinkingMessageKey) {
       thinkingMessageKey = nextKey;
-      thinkingMessageIndex = nextIndex;
-      isThinkingMessageFading = false;
-      thinkingMessageFadeTimeout = null;
-      if (scheduleAfterFade) {
-        scheduleNextThinkingMessage();
-      }
-    }, fadeMs);
+    }
+    thinkingMessageIndex = nextIndex;
+    if (scheduleAfterFade) {
+      scheduleNextThinkingMessage();
+    }
   }
 
   function scheduleNextThinkingMessage() {
@@ -407,7 +388,6 @@
     clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
-    isThinkingMessageFading = false;
     scheduleNextThinkingMessage();
   }
 
@@ -415,7 +395,6 @@
     clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
-    isThinkingMessageFading = false;
   }
 
   function showFinalThinkingMessage() {
@@ -1404,7 +1383,7 @@
               <div class="lc-thinking-block">
                 <div class="lc-thinking-step">
                   <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
-                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                  <span class="lc-thinking-label-wrap">
                     <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
                     <span class="lc-thinking-label lc-thinking-label-glow" aria-hidden="true">{$_(thinkingMessageKey)}</span>
                   </span>
@@ -2054,10 +2033,6 @@
     max-width: 100%;
     min-width: 0;
     overflow: hidden;
-    transition: opacity 0.6s ease-in-out;
-  }
-  .lc-thinking-label-wrap.is-fading {
-    opacity: 0;
   }
   .lc-thinking-label {
     overflow: hidden;
@@ -2088,25 +2063,24 @@
     );
     -webkit-mask-size: 250% 100%;
     mask-size: 250% 100%;
-    -webkit-mask-position: 160% 0;
-    mask-position: 160% 0;
-    animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
+    -webkit-mask-position: 220% 0;
+    mask-position: 220% 0;
+    animation: lc-thinking-shimmer-ltr 3.7s linear infinite;
   }
   .interface-hebrew .lc-thinking-label-glow {
+    -webkit-mask-position: -120% 0;
+    mask-position: -120% 0;
     animation-name: lc-thinking-shimmer-rtl;
   }
   @keyframes lc-thinking-shimmer-ltr {
-    from { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
-    to { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
+    from { -webkit-mask-position: 220% 0; mask-position: 220% 0; }
+    to { -webkit-mask-position: -120% 0; mask-position: -120% 0; }
   }
   @keyframes lc-thinking-shimmer-rtl {
-    from { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
-    to { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
+    from { -webkit-mask-position: -120% 0; mask-position: -120% 0; }
+    to { -webkit-mask-position: 220% 0; mask-position: 220% 0; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .lc-thinking-label-wrap {
-      transition: none;
-    }
     .lc-thinking-label-glow {
       animation: none;
       opacity: 0;
