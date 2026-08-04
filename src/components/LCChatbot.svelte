@@ -1515,7 +1515,7 @@
     --lc-icon-primary: var(--functional-icon-icon-primary);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
-    --lc-z-tooltip: 20;
+    --lc-tooltip-text: var(--core-base-white);
 
     display: block;
     font-family: var(--lc-font);
