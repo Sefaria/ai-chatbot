@@ -2068,9 +2068,9 @@
   .lc-thinking-label-glow {
     position: absolute;
     inset: 0;
-    color: #ffffff;
+    color: transparent;
     pointer-events: none;
-    -webkit-mask-image: linear-gradient(
+    background-image: linear-gradient(
       100deg,
       transparent 30%,
       rgba(255,255,255,0.85) 45%,
@@ -2078,30 +2078,24 @@
       rgba(255,255,255,0.85) 55%,
       transparent 70%
     );
-    mask-image: linear-gradient(
-      100deg,
-      transparent 30%,
-      rgba(255,255,255,0.85) 45%,
-      rgba(255,255,255,1) 50%,
-      rgba(255,255,255,0.85) 55%,
-      transparent 70%
-    );
-    -webkit-mask-size: 250% 100%;
-    mask-size: 250% 100%;
-    -webkit-mask-position: 160% 0;
-    mask-position: 160% 0;
+    background-size: 250% 100%;
+    background-position: 160% 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
     animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
   }
   .interface-hebrew .lc-thinking-label-glow {
     animation-name: lc-thinking-shimmer-rtl;
   }
   @keyframes lc-thinking-shimmer-ltr {
-    from { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
-    to { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
+    from { background-position: 160% 0; }
+    to { background-position: -60% 0; }
   }
   @keyframes lc-thinking-shimmer-rtl {
-    from { -webkit-mask-position: -60% 0; mask-position: -60% 0; }
-    to { -webkit-mask-position: 160% 0; mask-position: 160% 0; }
+    from { background-position: -60% 0; }
+    to { background-position: 160% 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .lc-thinking-label-wrap {
