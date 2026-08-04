@@ -9,15 +9,24 @@
  * always fully readable.
  */
 
-const BG = '#3a3a3a';
 const MAX_WIDTH = 252;
 const GAP = 8; // trigger → bubble
 const MARGIN = 8; // bubble → viewport edge
 const CARET_SIZE = 6; // border width; the caret box is twice this
 const CARET_INSET = 16; // keeps the caret clear of the rounded corners
 
+/**
+ * Read a design token off the trigger. The bubble lives in <body> and so cannot
+ * inherit the widget's custom properties, but the trigger is inside the shadow
+ * tree where they are defined — resolve them there and copy the values over.
+ */
+function token(anchor, name, fallback) {
+  return getComputedStyle(anchor).getPropertyValue(name).trim() || fallback;
+}
+
 /** Position an already-mounted bubble (and its caret) relative to the trigger. */
 function place(bubble, caret, anchor) {
+  const bg = bubble.style.background;
   const r = anchor.getBoundingClientRect();
   const w = bubble.offsetWidth;
   const h = bubble.offsetHeight;
@@ -37,8 +46,8 @@ function place(bubble, caret, anchor) {
   Object.assign(caret.style, {
     left: `${Math.round(caretX - CARET_SIZE)}px`,
     top: below ? `${-2 * CARET_SIZE}px` : `${h}px`,
-    borderBottomColor: below ? BG : 'transparent',
-    borderTopColor: below ? 'transparent' : BG,
+    borderBottomColor: below ? bg : 'transparent',
+    borderTopColor: below ? 'transparent' : bg,
   });
 }
 
@@ -62,9 +71,9 @@ export function showTooltip(anchor, text) {
     left: '0',
     maxWidth: `${MAX_WIDTH}px`,
     width: 'max-content',
-    background: BG,
-    color: '#fff',
-    font: '12px/1.4 Roboto, sans-serif',
+    background: token(anchor, '--lc-tooltip-bg', '#3a3a3a'),
+    color: token(anchor, '--lc-tooltip-text', '#fff'),
+    font: `12px/1.4 ${token(anchor, '--lc-font', 'Roboto, sans-serif')}`,
     textAlign: 'start',
     padding: '8px 12px',
     borderRadius: '12px',
