@@ -257,7 +257,7 @@
       );
       if (labelled) {
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
+          window.gtag('event', 'assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim(), la_version: APP_VERSION });
         }
         return;
       }
@@ -309,7 +309,7 @@
         if (seen.has(el)) continue;
         seen.add(el);
         if (typeof window.gtag === 'function') {
-          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
+          window.gtag('event', 'assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name'), la_version: APP_VERSION });
         }
       }
     }, { root, threshold: 0.5 });
@@ -693,7 +693,7 @@
             // the localized sentence frame (same string the user sees).
             if (typeof window.gtag === 'function' && progress.text) {
               const shownText = get(_)('assistant.appetizer.sentence').replace('{topics}', progress.text);
-              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText });
+              window.gtag('event', 'assistant_element_shown', { feature_name: 'related_topics', text: shownText, la_version: APP_VERSION });
             }
             scrollToLoadingElement();
             return;
@@ -1536,7 +1536,7 @@
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: #0056B3;
+    --lc-user-bg: var(--brand-sefaria-blue);
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
@@ -1561,7 +1561,7 @@
     --lc-icon-primary: var(--functional-icon-icon-primary);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
-    --lc-z-tooltip: 20;
+    --lc-tooltip-text: var(--core-base-white);
 
     display: block;
     font-family: var(--lc-font);
@@ -1828,7 +1828,7 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--space-1, 4px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-spacing-large, 16px);
