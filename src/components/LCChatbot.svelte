@@ -1406,7 +1406,6 @@
                   <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                   <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
                     <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
-                    <span class="lc-thinking-label lc-thinking-label-glow" aria-hidden="true">{$_(thinkingMessageKey)}</span>
                   </span>
                 </div>
               </div>
@@ -2040,8 +2039,7 @@
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
   }
-  .lc-thinking-glyph,
-  .lc-thinking-label-base {
+  .lc-thinking-glyph {
     color: var(--semantic-text-secondary, #575757);
   }
   .lc-thinking-glyph {
@@ -2065,45 +2063,44 @@
     white-space: nowrap;
     min-width: 0;
   }
-  .lc-thinking-label-glow {
-    position: absolute;
-    inset: 0;
-    color: transparent;
-    pointer-events: none;
+  .lc-thinking-label-base {
+    color: var(--semantic-text-secondary, #575757);
     background-image: linear-gradient(
       100deg,
-      transparent 30%,
-      rgba(255,255,255,0.85) 45%,
+      currentColor 38%,
+      rgba(255,255,255,0.75) 47%,
       rgba(255,255,255,1) 50%,
-      rgba(255,255,255,0.85) 55%,
-      transparent 70%
+      rgba(255,255,255,0.75) 53%,
+      currentColor 62%
     );
+    background-color: currentColor;
     background-size: 250% 100%;
-    background-position: 160% 0;
+    background-position: 100% 0;
     background-repeat: no-repeat;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
   }
-  .interface-hebrew .lc-thinking-label-glow {
+  .interface-hebrew .lc-thinking-label-base {
     animation-name: lc-thinking-shimmer-rtl;
   }
   @keyframes lc-thinking-shimmer-ltr {
-    from { background-position: 160% 0; }
-    to { background-position: -60% 0; }
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
   }
   @keyframes lc-thinking-shimmer-rtl {
-    from { background-position: -60% 0; }
-    to { background-position: 160% 0; }
+    from { background-position: 0% 0; }
+    to { background-position: 100% 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     .lc-thinking-label-wrap {
       transition: none;
     }
-    .lc-thinking-label-glow {
+    .lc-thinking-label-base {
       animation: none;
-      opacity: 0;
+      background-image: none;
+      -webkit-text-fill-color: currentColor;
     }
   }
 
