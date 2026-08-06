@@ -7,15 +7,18 @@
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
-  import ProgressTrail from './ProgressTrail.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import { setLocale, _ } from '../i18n/index.js';
+  import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  const THINKING_MESSAGE_MIN_MS = 4500;
+  const THINKING_MESSAGE_MAX_MS = 6500;
+  const THINKING_MESSAGE_FADE_MS = 600;
+  const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -48,18 +51,12 @@
   let isResizing = $state(false);
   let resizeEdge = $state(null);
   
-  // Agent progress state
-  let toolHistory = $state([]);
-  let trailEntryId = $state(0);
-  // The trail is the record of tools only. Status events ("Thinking...",
-  // "Synthesizing response...") are excluded — the live status is rendered as a
-  // persistent loader line below the tool record (see the loading block).
-  let displayTrail = $derived(toolHistory.filter(e => e.type === 'tool'));
-  // Final phase: once the backend emits the synthesizing status, the persistent
-  // "Thinking" loader line is replaced by the text-only "Synthesizing Response".
-  // statusKey is only ever set on type: 'status' entries, so checking it alone is sufficient.
-  let isSynthesizing = $derived(toolHistory.some(e => e.statusKey === 'synthesizing'));
   let appetizerData = $state(null);
+  let thinkingMessageKey = $state('assistant.loading.initial');
+  let thinkingMessageIndex = $state(-1);
+  let isThinkingMessageFading = $state(false);
+  let thinkingMessageTimeout = null;
+  let thinkingMessageFadeTimeout = null;
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
@@ -67,6 +64,10 @@
   // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
   const SEFARIA_BASE_URL = 'https://www.sefaria.org';
+  const CONFIGURED_SEFARIA_HOSTNAMES = (import.meta.env.VITE_SEFARIA_HOSTNAMES || '')
+    .split(',')
+    .map(normalizeHostname)
+    .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
   // Settings state
@@ -348,6 +349,83 @@
     document.dispatchEvent(event);
   }
 
+  function sampleThinkingMessageDelay() {
+    return THINKING_MESSAGE_MIN_MS + Math.random() * (THINKING_MESSAGE_MAX_MS - THINKING_MESSAGE_MIN_MS);
+  }
+
+  function clearThinkingMessageTimer() {
+    if (thinkingMessageTimeout) {
+      clearTimeout(thinkingMessageTimeout);
+      thinkingMessageTimeout = null;
+    }
+  }
+
+  function clearThinkingMessageFadeTimer() {
+    if (thinkingMessageFadeTimeout) {
+      clearTimeout(thinkingMessageFadeTimeout);
+      thinkingMessageFadeTimeout = null;
+    }
+  }
+
+  function clearThinkingMessageTimers() {
+    clearThinkingMessageTimer();
+    clearThinkingMessageFadeTimer();
+  }
+
+  function getThinkingMessageFadeMs() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : THINKING_MESSAGE_FADE_MS;
+  }
+
+  function fadeToThinkingMessage(nextKey, nextIndex = thinkingMessageIndex, scheduleAfterFade = false) {
+    clearThinkingMessageTimers();
+    const fadeMs = getThinkingMessageFadeMs();
+    isThinkingMessageFading = true;
+    thinkingMessageFadeTimeout = setTimeout(() => {
+      thinkingMessageKey = nextKey;
+      thinkingMessageIndex = nextIndex;
+      isThinkingMessageFading = false;
+      thinkingMessageFadeTimeout = null;
+      if (scheduleAfterFade) {
+        scheduleNextThinkingMessage();
+      }
+    }, fadeMs);
+  }
+
+  function scheduleNextThinkingMessage() {
+    clearThinkingMessageTimer();
+    thinkingMessageTimeout = setTimeout(() => {
+      if (thinkingMessageIndex < THINKING_MESSAGE_KEYS.length - 1) {
+        const nextIndex = thinkingMessageIndex + 1;
+        fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
+      } else {
+        fadeToThinkingMessage('assistant.thinking.final');
+      }
+    }, sampleThinkingMessageDelay());
+  }
+
+  function startThinkingMessages() {
+    clearThinkingMessageTimers();
+    thinkingMessageKey = 'assistant.loading.initial';
+    thinkingMessageIndex = -1;
+    isThinkingMessageFading = false;
+    scheduleNextThinkingMessage();
+  }
+
+  function stopThinkingMessages() {
+    clearThinkingMessageTimers();
+    thinkingMessageKey = 'assistant.loading.initial';
+    thinkingMessageIndex = -1;
+    isThinkingMessageFading = false;
+  }
+
+  function showFinalThinkingMessage() {
+    fadeToThinkingMessage('assistant.thinking.final');
+  }
+
+  $effect(() => {
+    return () => clearThinkingMessageTimers();
+  });
+
   function openPanel() {
     isOpen = true;
     showSettings = false;
@@ -389,7 +467,7 @@
     isLoadingHistory = false;
     hasMoreHistory = false;
 
-    toolHistory = [];
+    stopThinkingMessages();
     turnCount = 0;
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -599,9 +677,8 @@
 
     isSending = true;
 
-    toolHistory = [];
-    trailEntryId = 0;
     appetizerData = null;
+    startThinkingMessages();
     updateSessionActivity(sessionId);
 
     try {
@@ -621,42 +698,11 @@
             scrollToLoadingElement();
             return;
           }
-          let displayText;
           if (progress?.type === 'status') {
-            displayText = progress.text;
-            toolHistory = [...toolHistory, {
-              id: trailEntryId++,
-              type: 'status',
-              statusKey: /synthesi/i.test(progress.text || '') ? 'synthesizing' : 'thinking',
-              text: displayText?.replace(/…|\.\.\./, '') || '',
-              status: 'running',
-              startTime: Date.now()
-            }];
-            scrollToLoadingElement();
-          } else if (progress?.type === 'tool_start') {
-            displayText = progress.description || `Running ${progress.toolName}`;
-            toolHistory = [...toolHistory, {
-              id: trailEntryId++,
-              type: 'tool',
-              toolName: progress.toolName,
-              description: displayText?.replace(/…|\.\.\./, '') || '',
-              status: 'running',
-              startTime: Date.now(),
-              refData: progress.refData ?? null,
-              toolInput: progress.toolInput ?? null
-            }];
-            scrollToLoadingElement();
-          } else if (progress.type === 'tool_end') {
-            const idx = toolHistory.findLastIndex(t =>
-              t.type === 'tool' && t.status === 'running' && t.toolName === progress.toolName
-            );
-            if (idx !== -1) {
-              toolHistory = toolHistory.map((t, i) =>
-                i === idx
-                  ? { ...t, status: progress.isError ? 'error' : 'complete', duration: Date.now() - t.startTime }
-                  : t
-              );
+            if (/synthesi/i.test(progress.text || '')) {
+              showFinalThinkingMessage();
             }
+            scrollToLoadingElement();
           }
         },
         onError: (error) => {
@@ -674,12 +720,6 @@
           : m
       );
 
-      // Persist only the tool record (no status entries), marking any
-      // still-running tool entries as complete.
-      const finalTrail = toolHistory
-        .filter(t => t.type === 'tool')
-        .map(t => (t.status === 'running' ? { ...t, status: 'complete' } : t));
-
       // Add assistant response
       const assistantMessage = {
         messageId: response.messageId,
@@ -693,7 +733,6 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        toolHistory: finalTrail,
         appetizerData: appetizerData ? {...appetizerData} : null
       };
 
@@ -738,8 +777,7 @@
       });
     } finally {
       isSending = false;
-  
-      toolHistory = [];
+      stopThinkingMessages();
     }
   }
 
@@ -956,9 +994,27 @@
     return { topics: [{ topicSlug: raw.topicSlug, topicTitle: raw.topicTitle, topicUrl: raw.topicUrl }] };
   }
 
-  /** Returns true for sefaria.org, *.sefaria.org (incl. voices.sefaria.org), sefaria.org.il, *.sefaria.org.il */
+  function normalizeHostname(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+    try {
+      return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
+    } catch {
+      return trimmed.split(':')[0];
+    }
+  }
+
+  /**
+   * Returns true for:
+   * - sefaria.org, *.sefaria.org, sefaria.org.il, *.sefaria.org.il
+   * - hostnames listed in VITE_SEFARIA_HOSTNAMES, comma-separated
+   */
   function isSefariaHostname(hostname) {
-    return /(^|\.)sefaria\.org(\.il)?$/.test(hostname);
+    const normalized = normalizeHostname(hostname);
+    return (
+      /(^|\.)sefaria\.org(\.il)?$/.test(normalized) ||
+      CONFIGURED_SEFARIA_HOSTNAMES.includes(normalized)
+    );
   }
 
   function refToUrlPath(ref) {
@@ -1056,7 +1112,7 @@
   }
 
   function handleAppetizerClick(topicSlug, topicUrl) {
-    const onSefaria = window.location.hostname.includes('sefaria.org');
+    const onSefaria = isSefariaHostname(window.location.hostname);
 
     if (onSefaria) {
       // In-page navigation via ReaderApp's existing event listener
@@ -1316,13 +1372,6 @@
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
-              {#if item.toolHistory?.length > 0}
-                <Accordion kind="thought"
-                  expanded={!!expandedSections[`${item.messageId}_thought`]}
-                  onToggle={() => toggleSection(`${item.messageId}_thought`)}>
-                  <ProgressTrail entries={item.toolHistory} />
-                </Accordion>
-              {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
           {:else}
@@ -1353,14 +1402,11 @@
                 <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
               {/if}
               <div class="lc-thinking-block">
-                {#if displayTrail.length > 0}
-                  <ProgressTrail entries={displayTrail} />
-                {/if}
                 <div class="lc-thinking-step">
-                  <span class="lc-loading-spinner" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path fill="currentColor" d="M1.5 8.99983C1.50001 7.416 2.00167 5.87296 2.93262 4.59162C3.86356 3.31028 5.17632 2.35646 6.68262 1.86701C8.18883 1.37766 9.81117 1.37766 11.3174 1.86701C11.7113 1.99501 11.9268 2.41838 11.7988 2.81233C11.6707 3.20599 11.2473 3.42172 10.8535 3.29377C9.64856 2.90236 8.35043 2.90226 7.14551 3.29377C5.94063 3.68536 4.89019 4.4485 4.14551 5.47346C3.40094 6.49845 3.00001 7.73294 3 8.99983C3 10.2667 3.40093 11.5012 4.14551 12.5262C4.89019 13.5512 5.9406 14.3143 7.14551 14.7059C8.35045 15.0974 9.64853 15.0973 10.8535 14.7059C12.0584 14.3144 13.1087 13.552 13.8535 12.5272C14.5983 11.5021 14.9999 10.2669 15 8.99983C15.0002 8.58576 15.3359 8.24983 15.75 8.24983C16.1641 8.24985 16.4998 8.58578 16.5 8.99983C16.4999 10.5835 15.9983 12.1268 15.0674 13.408C14.1364 14.6893 12.8237 15.6433 11.3174 16.1326C9.81118 16.622 8.18881 16.622 6.68262 16.1326C5.17636 15.6432 3.86354 14.6893 2.93262 13.408C2.0017 12.1267 1.5 10.5836 1.5 8.99983Z"/></svg>
+                  <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                    <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
                   </span>
-                  <span class="lc-thinking-label">{isSynthesizing ? $_('assistant.loading.synthesizing') : $_('assistant.status.thinking')}</span>
                 </div>
               </div>
             </div>
@@ -1950,66 +1996,12 @@
     color: #666;
   }
 
-  /* Thinking/Progress Indicator */
-  .thinking-content {
-    min-width: 200px;
-    padding: 12px 16px !important;
-    margin-bottom: 8px;
-    direction: ltr;
-  }
-
-  .message.assistant:has(.thinking-content) {
-     align-self: revert;
-  }
-
-  .status-text {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--lc-text-secondary);
-  }
-
-  .status-text.tool-running {
-    color: var(--brand-sefaria-blue);
-  }
-
-  .status-text.tool-error {
-    color: var(--lc-error);
-  }
-
-.thinking-fallback {
-    padding: 4px 12px;
-    font-size: 12px;
-    color: #777;
-  }
-
-.dots::after {
-  content: '';
-  animation: dots 1.5s steps(4, end) infinite;
-}
-
-@keyframes dots {
-  0%   { content: ''; }
-  25%  { content: '.'; }
-  50%  { content: '..'; }
-  75%  { content: '...'; }
-  100% { content: ''; }
-}
-
-  /* Steps trail + the live status line share one 4px-gapped column so the
-     "Thinking"/"Synthesizing" line always sits 4px below the newest step.
-     F3: Force LTR on both so the Hebrew/RTL interface never flips them. */
+  /* Live thinking message shown while the backend prepares the final response. */
   .lc-thinking-block {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     align-self: stretch;
-    gap: var(--space-1, 4px);
-    /* F3: Hebrew RTL must not flip this block — thinking steps are always LTR */
-    direction: ltr;
-    text-align: start;
-    /* F6: Prevent the block from ever pushing past the container width */
     min-width: 0;
     width: 100%;
     overflow: hidden;
@@ -2019,33 +2011,97 @@
     align-items: center;
     gap: var(--global-dimension-100, 8px);
     min-height: 20px;
-    /* F3: Explicitly LTR so spinner stays on the left even in Hebrew */
     direction: ltr;
-    /* F6: must not overflow the block; min-width:0 lets it shrink */
     min-width: 0;
+    width: 100%;
     max-width: 100%;
     overflow: hidden;
   }
+  .interface-hebrew .lc-thinking-block {
+    align-items: flex-end;
+    text-align: end;
+  }
+  .interface-hebrew .lc-thinking-step {
+    direction: ltr;
+    justify-content: flex-end;
+  }
+  .interface-hebrew .lc-thinking-glyph {
+    order: 2;
+  }
+  .interface-hebrew .lc-thinking-label-wrap {
+    direction: rtl;
+    order: 1;
+    text-align: right;
+  }
+  .lc-thinking-glyph,
   .lc-thinking-label {
     font-family: var(--lc-font);
     font-size: 12px;
     line-height: var(--global-dimension-250, 20px);
+  }
+  .lc-thinking-glyph {
     color: var(--semantic-text-secondary, #575757);
-    /* F6: prevent label from pushing the thinking row wider than the container */
+  }
+  .lc-thinking-glyph {
+    flex-shrink: 0;
+  }
+  .lc-thinking-label-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    transition: opacity 0.6s ease-in-out;
+  }
+  .lc-thinking-label-wrap.is-fading {
+    opacity: 0;
+  }
+  .lc-thinking-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
   }
-  .lc-loading-spinner {
-    display: inline-flex;
-    flex-shrink: 0;
-    color: var(--functional-icon-icon-primary, #666666);
-    animation: lc-loading-spin 0.8s linear infinite;
-    transform-origin: center;
+  .lc-thinking-label-base {
+    color: var(--semantic-text-secondary, #575757);
+    background-image: linear-gradient(
+      100deg,
+      currentColor 38%,
+      rgba(255,255,255,0.75) 47%,
+      rgba(255,255,255,1) 50%,
+      rgba(255,255,255,0.75) 53%,
+      currentColor 62%
+    );
+    background-color: currentColor;
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
   }
-  @keyframes lc-loading-spin {
-    to { transform: rotate(360deg); }
+  .interface-hebrew .lc-thinking-label-base {
+    animation-name: lc-thinking-shimmer-rtl;
+  }
+  @keyframes lc-thinking-shimmer-ltr {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+  }
+  @keyframes lc-thinking-shimmer-rtl {
+    from { background-position: 0% 0; }
+    to { background-position: 100% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lc-thinking-label-wrap {
+      transition: none;
+    }
+    .lc-thinking-label-base {
+      animation: none;
+      background-image: none;
+      -webkit-text-fill-color: currentColor;
+    }
   }
 
   .lc-loading-wrapper {

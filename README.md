@@ -27,6 +27,7 @@ python manage.py runserver 0.0.0.0:8001
 # terminal 2 (frontend)
 cd ..
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -99,8 +100,9 @@ pytest           # Run tests
 | `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
+| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages for local ref detection (defaults include localhost) |
 
-Create a `.env` file in the `server/` directory with your API keys.
+Create a `.env` file in the `server/` directory with backend API keys. For frontend-only local values, copy root `.env.example` to `.env.local`.
 
 ## Documentation
 

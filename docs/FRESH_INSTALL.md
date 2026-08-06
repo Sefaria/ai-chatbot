@@ -32,6 +32,7 @@ cp .env.example .env
 ```bash
 cd ..
 npm install
+cp .env.example .env.local
 ```
 
 ## 3. Configure Environment Variables
@@ -54,6 +55,14 @@ Common optional variables:
 - `BRAINTRUST_PROJECT`
 - `CORE_PROMPT_SLUG`
 - `ENVIRONMENT`
+
+Edit root `.env.local` for frontend-only Vite variables. The default from `.env.example` is:
+
+```bash
+VITE_SEFARIA_HOSTNAMES=localhost,127.0.0.1,::1
+```
+
+This controls which hostnames the widget treats as Sefaria pages for current-source location pin detection during local development. Add any custom local Sefaria hostname you use, comma-separated.
 
 Important auth clarification:
 

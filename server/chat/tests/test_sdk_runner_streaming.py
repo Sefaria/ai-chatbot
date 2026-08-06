@@ -118,3 +118,24 @@ def test_first_final_text_delta_uses_last_text_message_before_result(monkeypatch
     assert result.final_text == "Let me checkI will searchFinal answer"
     assert result.llm_call_count == 3
     assert result.first_final_text_delta_elapsed_s == 10.0
+
+
+def test_first_final_text_delta_callback_waits_for_final_text():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeToolThenFinalClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    events = []
+
+    asyncio.run(
+        runner.run(
+            options=object(),
+            prompt_text="prompt",
+            on_text_delta=lambda delta: events.append(delta),
+            on_first_final_text_delta=lambda: events.append("final-started"),
+        )
+    )
+
+    assert events == ["Let me check", "I will search", "Final", "final-started"]
