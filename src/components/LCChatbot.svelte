@@ -2080,7 +2080,7 @@
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
+    animation: lc-thinking-shimmer-ltr 1.2s linear infinite;
   }
   .interface-hebrew .lc-thinking-label-base {
     animation-name: lc-thinking-shimmer-rtl;
