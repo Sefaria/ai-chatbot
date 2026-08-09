@@ -159,18 +159,28 @@ class TurnOrchestrator:
         )
 
         emitter.emit(AgentProgressUpdate(type="status", text="Thinking..."))
+        synthesis_status_emitted = False
+
+        def emit_synthesis_status_once():
+            nonlocal synthesis_status_emitted
+            if synthesis_status_emitted:
+                return
+            synthesis_status_emitted = True
+            emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
+
         try:
             sdk_start_time = time.time()
             sdk_result = await self.sdk_runner.run(
                 options=options,
                 prompt_text=prompt_text,
+                on_first_final_text_delta=emit_synthesis_status_once,
             )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
 
-        emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
+        emit_synthesis_status_once()
 
         latency_ms = int((time.time() - start_time) * 1000)
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
