@@ -1775,7 +1775,9 @@
     position: absolute;
     top: 100%;
     margin-top: 4px;
+    width: max-content;
     min-width: 200px;
+    max-width: 280px;
     background: var(--lc-bg);
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
@@ -1806,6 +1808,7 @@
     text-decoration: none;
     cursor: pointer;
     text-align: start;
+    white-space: nowrap;
     transition: background 0.15s ease;
   }
 
