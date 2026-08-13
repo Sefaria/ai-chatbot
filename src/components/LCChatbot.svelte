@@ -114,6 +114,10 @@
   let feedbackType = $state(null); // FEEDBACK_UP | FEEDBACK_DOWN
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
+  // Copy-to-clipboard state
+  let copiedMessageId = $state(null);
+  let copyResetTimeout = null;
+
   const STATUS_FAILED = 'failed';
 
   // Feedback score constants (must match backend SCORE_CHOICES)
