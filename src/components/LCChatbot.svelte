@@ -1198,10 +1198,10 @@
           >
             <img
               class:panel-close-icon={mode === 'floating'}
-              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2-18'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg"
               alt=""
-              width={mode === 'floating' ? 16 : 18}
-              height={mode === 'floating' ? 16 : 18}
+              width="16"
+              height="16"
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
