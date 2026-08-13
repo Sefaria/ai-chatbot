@@ -7,6 +7,7 @@
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
+  import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -1354,14 +1355,16 @@
               {#if showFeedback && feedbackProps}
                 <div class="feedback">
                   <div class="feedback-buttons">
-                    <button
-                      class="feedback-btn"
-                      class:active={copiedMessageId === feedbackProps.messageId}
-                      onclick={() => handleCopy(feedbackProps.messageId, content)}
-                      aria-label={copiedMessageId === feedbackProps.messageId ? $_('assistant.messages.copied') : $_('assistant.messages.copy')}
-                    >
-                      {@html copiedMessageId === feedbackProps.messageId ? CHECK_ICON : COPY_ICON}
-                    </button>
+                    <Tooltip text={copiedMessageId === feedbackProps.messageId ? $_('assistant.messages.copied') : $_('assistant.messages.copy')}>
+                      <button
+                        class="feedback-btn"
+                        class:active={copiedMessageId === feedbackProps.messageId}
+                        onclick={() => handleCopy(feedbackProps.messageId, content)}
+                        aria-label={copiedMessageId === feedbackProps.messageId ? $_('assistant.messages.copied') : $_('assistant.messages.copy')}
+                      >
+                        {@html copiedMessageId === feedbackProps.messageId ? CHECK_ICON : COPY_ICON}
+                      </button>
+                    </Tooltip>
                     <button
                       class="feedback-btn"
                       class:active={feedbackProps.feedback === FEEDBACK_UP}
