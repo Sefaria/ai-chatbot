@@ -1443,7 +1443,6 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
-        <div class="lc-messages-fade" aria-hidden="true"></div>
         {#if showScrollToBottomBtn}
           <button
             class="scroll-to-bottom-btn"
@@ -2170,18 +2169,6 @@
     padding: 16px 16px 16px 18px;
     background: transparent;
     border-top: 1px solid var(--lc-border);
-  }
-
-  /* Fades the last stretch of messages into the footer background, so text
-     scrolling up behind the input reads as trailing off rather than clipping. */
-  .lc-messages-fade {
-    position: absolute;
-    bottom: 100%;
-    left: 0;
-    right: 0;
-    height: 44px;
-    background: linear-gradient(to bottom, rgba(249, 250, 251, 0), var(--lc-body-bg));
-    pointer-events: none;
   }
 
   .scroll-to-bottom-btn {
