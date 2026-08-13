@@ -1198,10 +1198,10 @@
           >
             <img
               class:panel-close-icon={mode === 'floating'}
-              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2-18'}.svg"
               alt=""
-              width="16"
-              height="16"
+              width={mode === 'floating' ? 16 : 18}
+              height={mode === 'floating' ? 16 : 18}
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
@@ -1210,10 +1210,6 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg" alt="" width="16" height="16" />
-                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
-                </button>
                 {#if isModerator}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1226,6 +1222,10 @@
                 <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.restart')}
+                </button>
+                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg" alt="" width="16" height="16" />
+                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
