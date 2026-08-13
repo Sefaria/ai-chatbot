@@ -33,7 +33,10 @@
   .panel-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    width: 26px;
+    height: 26px;
     padding: 4px;
     border: 0px;
     background: transparent;
