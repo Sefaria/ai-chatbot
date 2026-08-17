@@ -5,6 +5,7 @@ Chat models for message persistence and metadata.
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class ChatSession(models.Model):
@@ -26,6 +27,15 @@ class ChatSession(models.Model):
         default="",
         help_text="Current conversation label (optional)",
     )
+    title = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="User-visible saved conversation title",
+    )
+    title_updated_at = models.DateTimeField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     # Rolling conversation summary for agent context
     conversation_summary = models.TextField(
@@ -48,6 +58,17 @@ class ChatSession(models.Model):
 
     def __str__(self):
         return f"Session {self.session_id} ({self.user_id})"
+
+    def set_default_title(self, prompt: str) -> bool:
+        """Set the MVP title from the first prompt if the session has no title."""
+        if self.title:
+            return False
+        title = " ".join((prompt or "").split())[:64]
+        if not title:
+            return False
+        self.title = title
+        self.title_updated_at = timezone.now()
+        return True
 
 
 class ConversationSummary(models.Model):

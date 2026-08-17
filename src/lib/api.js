@@ -579,3 +579,111 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
     session: data.session || null
   };
 }
+
+/**
+ * Load saved conversation list for a user.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {string} userId - User ID
+ * @param {string} [query] - Optional search query
+ * @param {number} [limit=50] - Max conversations to load
+ * @returns {Promise<Array>}
+ */
+export async function loadConversations(apiBaseUrl, userId, query = '', limit = 50) {
+  const params = new URLSearchParams({
+    userId,
+    limit: String(limit)
+  });
+  if (query.trim()) {
+    params.set('q', query.trim());
+  }
+
+  const response = await fetch(`${apiBaseUrl}/conversations?${params}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Conversation list request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const data = await response.json();
+  return data.conversations || [];
+}
+
+/**
+ * Load a saved conversation and all its messages.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {string} userId - User ID
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<{ conversation: Object, messages: HistoryMessage[] }>}
+ */
+export async function loadConversation(apiBaseUrl, userId, sessionId) {
+  const params = new URLSearchParams({ userId });
+  const response = await fetch(`${apiBaseUrl}/conversations/${encodeURIComponent(sessionId)}?${params}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Rename a saved conversation.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {string} userId - User ID
+ * @param {string} sessionId - Session ID
+ * @param {string} title - New title, max 64 chars
+ * @returns {Promise<Object>}
+ */
+export async function renameConversation(apiBaseUrl, userId, sessionId, title) {
+  const response = await fetch(`${apiBaseUrl}/conversations/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId, title })
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Rename conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Permanently delete a saved conversation.
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {string} userId - User ID
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<void>}
+ */
+export async function deleteConversation(apiBaseUrl, userId, sessionId) {
+  const params = new URLSearchParams({ userId });
+  const response = await fetch(`${apiBaseUrl}/conversations/${encodeURIComponent(sessionId)}?${params}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Delete conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+}

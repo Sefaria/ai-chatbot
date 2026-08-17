@@ -3,7 +3,16 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
+  import {
+    sendMessageStream,
+    loadHistory,
+    fetchPromptDefaults,
+    sendFeedback,
+    loadConversations,
+    loadConversation,
+    renameConversation,
+    deleteConversation
+  } from '../lib/api.js';
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -72,6 +81,7 @@
 
   // Settings state
   let showSettings = $state(false);
+  let showHistory = $state(false);
   let promptSlugs = $state({
     corePromptSlug: '',
     labs: false
@@ -83,6 +93,14 @@
   let settingsLoaded = $state(false);
   let isLoadingSettings = $state(false);
   let settingsError = $state('');
+
+  // Saved conversation history POC state
+  let historyConversations = $state([]);
+  let historySearch = $state('');
+  let historyError = $state('');
+  let isLoadingConversationList = $state(false);
+  let activeRenameSessionId = $state(null);
+  let renameTitle = $state('');
 
   let expandedSections = $state({});
   function toggleSection(key) {
@@ -429,6 +447,7 @@
   function openPanel() {
     isOpen = true;
     showSettings = false;
+    showHistory = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
@@ -442,6 +461,7 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
+    showHistory = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
   }
@@ -475,6 +495,7 @@
   }
 
   async function openSettings() {
+    showHistory = false;
     showSettings = true;
     settingsError = '';
 
@@ -502,6 +523,104 @@
   function closeSettings() {
     showSettings = false;
     settingsError = '';
+  }
+
+  async function openHistory() {
+    showSettings = false;
+    showHistory = true;
+    closeMenu();
+    await refreshConversationList();
+  }
+
+  function closeHistory() {
+    showHistory = false;
+    historyError = '';
+    activeRenameSessionId = null;
+    renameTitle = '';
+  }
+
+  async function refreshConversationList() {
+    if (!userId || !apiBaseUrl) return;
+    isLoadingConversationList = true;
+    historyError = '';
+    try {
+      historyConversations = await loadConversations(apiBaseUrl, userId, historySearch, 50);
+    } catch (e) {
+      historyError = e.message || 'Failed to load conversation history.';
+    } finally {
+      isLoadingConversationList = false;
+    }
+  }
+
+  async function handleHistorySearchKeydown(e) {
+    if (e.key === 'Enter') {
+      await refreshConversationList();
+    }
+  }
+
+  async function openSavedConversation(savedSessionId) {
+    if (isSending || !savedSessionId) return;
+    historyError = '';
+    try {
+      const result = await loadConversation(apiBaseUrl, userId, savedSessionId);
+      sessionId = savedSessionId;
+      messages = result.messages || [];
+      turnCount = result.conversation?.turnCount ?? 0;
+      hasMoreHistory = false;
+      isLoadingHistory = false;
+      appetizerData = null;
+      stopThinkingMessages();
+      updateSessionActivity(savedSessionId);
+      saveMessagesToStorage();
+      closeHistory();
+      await scrollToBottom();
+    } catch (e) {
+      historyError = e.message || 'Failed to open conversation.';
+    }
+  }
+
+  function startRenameConversation(conversation) {
+    activeRenameSessionId = conversation.sessionId;
+    renameTitle = conversation.title || '';
+  }
+
+  function cancelRenameConversation() {
+    activeRenameSessionId = null;
+    renameTitle = '';
+  }
+
+  async function submitRenameConversation() {
+    const title = renameTitle.trim().slice(0, 64);
+    if (!activeRenameSessionId || !title) return;
+    historyError = '';
+    try {
+      const result = await renameConversation(apiBaseUrl, userId, activeRenameSessionId, title);
+      historyConversations = historyConversations.map(conversation =>
+        conversation.sessionId === activeRenameSessionId
+          ? result.conversation
+          : conversation
+      );
+      cancelRenameConversation();
+    } catch (e) {
+      historyError = e.message || 'Failed to rename conversation.';
+    }
+  }
+
+  async function confirmDeleteConversation(conversation) {
+    if (isSending || !conversation?.sessionId) return;
+    const confirmed = window.confirm($_('assistant.history.delete.confirm'));
+    if (!confirmed) return;
+    historyError = '';
+    try {
+      await deleteConversation(apiBaseUrl, userId, conversation.sessionId);
+      historyConversations = historyConversations.filter(item => item.sessionId !== conversation.sessionId);
+      setStorage(STORAGE_KEYS.MESSAGES + ':' + conversation.sessionId, []);
+      if (conversation.sessionId === sessionId) {
+        handleNewChat();
+      }
+    } catch (e) {
+      historyError = e.message || 'Failed to delete conversation.';
+    }
   }
 
   function saveSettings() {
@@ -1223,6 +1342,14 @@
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.restart')}
                 </button>
+                <button class="menu-item" aria-label={$_('assistant.menu.history.aria')} onclick={openHistory} disabled={isSending} role="menuitem">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+                    <path d="M3 3v6h6"></path>
+                    <path d="M12 7v5l3 2"></path>
+                  </svg>
+                  {$_('assistant.menu.history')}
+                </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
                   {$_('assistant.menu.feedback')}
@@ -1294,6 +1421,72 @@
           </div>
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
+        </div>
+      {:else if showHistory}
+        <div class="history-panel">
+          <div class="history-header">
+            <button class="settings-back" onclick={closeHistory} aria-label={$_('assistant.history.back.aria')}>
+              {$_('assistant.settings.back')}
+            </button>
+            <div class="settings-title">{$_('assistant.history.title')}</div>
+          </div>
+
+          <div class="history-search">
+            <input
+              type="search"
+              bind:value={historySearch}
+              onkeydown={handleHistorySearchKeydown}
+              placeholder={$_('assistant.history.search.placeholder')}
+              aria-label={$_('assistant.history.search.aria')}
+            />
+            <button onclick={refreshConversationList} disabled={isLoadingConversationList}>
+              {$_('assistant.history.search.button')}
+            </button>
+          </div>
+
+          {#if historyError}
+            <div class="settings-error">{historyError}</div>
+          {/if}
+
+          {#if isLoadingConversationList}
+            <div class="settings-loading">{$_('assistant.history.loading')}</div>
+          {:else if historyConversations.length === 0}
+            <div class="history-empty">{$_('assistant.history.empty')}</div>
+          {:else}
+            <div class="history-list" role="list">
+              {#each historyConversations as conversation (conversation.sessionId)}
+                <div class="history-item" role="listitem">
+                  {#if activeRenameSessionId === conversation.sessionId}
+                    <div class="history-rename">
+                      <input
+                        type="text"
+                        bind:value={renameTitle}
+                        maxlength="64"
+                        aria-label={$_('assistant.history.rename.aria')}
+                      />
+                      <button onclick={submitRenameConversation}>{$_('assistant.history.rename.save')}</button>
+                      <button onclick={cancelRenameConversation}>{$_('assistant.history.rename.cancel')}</button>
+                    </div>
+                  {:else}
+                    <button class="history-open" onclick={() => openSavedConversation(conversation.sessionId)}>
+                      <span class="history-item-title">{conversation.title || $_('assistant.history.untitled')}</span>
+                      <span class="history-item-meta">
+                        {new Date(conversation.lastActivity).toLocaleDateString(interfaceLang === 'he' ? 'he-IL' : 'en-US')}
+                      </span>
+                    </button>
+                    <div class="history-item-actions">
+                      <button aria-label={$_('assistant.history.rename.aria')} onclick={() => startRenameConversation(conversation)}>
+                        {$_('assistant.history.rename')}
+                      </button>
+                      <button aria-label={$_('assistant.history.delete.aria')} onclick={() => confirmDeleteConversation(conversation)}>
+                        {$_('assistant.history.delete')}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {:else}
       <!-- Message List -->
@@ -2341,6 +2534,124 @@
   .settings-reset:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  /* Saved Conversation History POC */
+  .history-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px 20px;
+    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+    background: transparent;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .history-search {
+    display: flex;
+    gap: 8px;
+  }
+
+  .history-search input,
+  .history-rename input {
+    min-width: 0;
+    flex: 1;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--lc-font);
+    color: var(--lc-text);
+    background: var(--lc-bg-secondary);
+  }
+
+  .history-search button,
+  .history-rename button,
+  .history-item-actions button {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 8px 10px;
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+    font-size: var(--lc-font-size-sm);
+    font-family: var(--lc-font);
+    cursor: pointer;
+  }
+
+  .history-search button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .history-empty {
+    color: var(--lc-text-secondary);
+    font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
+    padding: 16px 0;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-inline-end: 2px;
+  }
+
+  .history-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    background: var(--lc-bg);
+    padding: 8px;
+  }
+
+  .history-open {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    color: var(--lc-text);
+    font-family: var(--lc-font);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .history-item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .history-item-meta {
+    color: var(--lc-text-muted);
+    font-size: 11px;
+  }
+
+  .history-item-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .history-rename {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
   }
 
   /* Clearing animation for message list */

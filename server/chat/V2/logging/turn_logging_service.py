@@ -122,6 +122,8 @@ class TurnLoggingService:
             session.conversation_summary = summary_text
             session.summary_updated_at = timezone.now()
             update_fields.extend(["conversation_summary", "summary_updated_at"])
+        if session.set_default_title(user_message.content):
+            update_fields.extend(["title", "title_updated_at"])
         session.save(update_fields=update_fields)
 
     def finalize_success(
