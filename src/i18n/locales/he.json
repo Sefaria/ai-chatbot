@@ -99,5 +99,7 @@
     "assistant.thinking.array.10": "מגבש תשובה",
     "assistant.thinking.final": "מנסח תשובה",
     "assistant.loading.delayed": "",
-    "assistant.loading.synthesizing": ""
+    "assistant.loading.synthesizing": "",
+    "assistant.menu.dock": "הגלדה והצמדה לצד",
+    "assistant.menu.undock": "הקטנה וניתוק מהצד"
 }
