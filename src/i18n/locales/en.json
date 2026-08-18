@@ -99,5 +99,7 @@
     "assistant.thinking.array.08": "Checking citations",
     "assistant.thinking.array.09": "Prioritizing sources",
     "assistant.thinking.array.10": "Bringing it all together",
-    "assistant.thinking.final": "Synthesizing response"
+    "assistant.thinking.final": "Synthesizing response",
+    "assistant.menu.dock": "Maximize & move to sidebar",
+    "assistant.menu.undock": "Minimize & detach from sidebar"
 }
