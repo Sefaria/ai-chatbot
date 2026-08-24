@@ -234,7 +234,9 @@ def _detect_absence_claims(text: str) -> list[tuple[str, str]]:
                 "model": LLM_MODEL,
                 "max_tokens": 512,
                 "temperature": 0,
-                "messages": [{"role": "user", "content": _ABSENCE_PROMPT.format(response=plain)}],
+                "messages": [
+                    {"role": "user", "content": _ABSENCE_PROMPT.format(response=plain)}
+                ],
             },
             timeout=30.0,
         )

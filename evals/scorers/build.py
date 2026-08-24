@@ -106,7 +106,9 @@ def build_code_scorer(scorer_file: Path) -> None:
             targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if all(t in TEMPLATE_NAMES for t in targets):
                 continue
-        if isinstance(node, ast.Expr) and isinstance(getattr(node.value, "value", None), str):
+        if isinstance(node, ast.Expr) and isinstance(
+            getattr(node.value, "value", None), str
+        ):
             continue  # skip module docstring
         if body_start is None:
             body_start = node.lineno - 1
