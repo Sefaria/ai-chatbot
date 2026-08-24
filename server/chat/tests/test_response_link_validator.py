@@ -26,6 +26,12 @@ def test_topic_links_are_not_ref_validated():
     assert issue is None
 
 
+def test_multi_segment_sefaria_links_are_not_ref_validated():
+    tref, issue = sefaria_text_ref_from_href("https://www.sefaria.org/sheets/123")
+    assert tref is None
+    assert issue is None
+
+
 def test_external_links_are_rejected():
     tref, issue = sefaria_text_ref_from_href("https://www.deadseascrolls.org.il/")
     assert tref is None

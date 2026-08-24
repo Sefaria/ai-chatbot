@@ -12,27 +12,6 @@ from .sefaria_client import SefariaClient
 
 SEFARIA_HOST_RE = re.compile(r"(^|\.)sefaria\.org(\.il)?$", re.IGNORECASE)
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-NON_TEXT_SEFARIA_PATH_PREFIXES = {
-    "about",
-    "account",
-    "api",
-    "calendars",
-    "collections",
-    "community",
-    "donate",
-    "groups",
-    "login",
-    "people",
-    "person",
-    "profile",
-    "questions",
-    "register",
-    "sheets",
-    "static",
-    "texts",
-    "topics",
-    "visualizations",
-}
 
 
 @dataclass(frozen=True)
@@ -103,8 +82,10 @@ def sefaria_text_ref_from_href(href: str) -> tuple[str | None, str | None]:
     if not path:
         return None, None
 
-    first_segment = path.split("/", 1)[0]
-    if first_segment in NON_TEXT_SEFARIA_PATH_PREFIXES:
+    # Sefaria text refs live in a single path segment, e.g. /Genesis.1.1.
+    # Multi-segment Sefaria paths are product pages/routes such as
+    # /topics/shabbat or /sheets/123, so they are allowed but not ref-validated.
+    if "/" in path:
         return None, None
 
     return path, None
