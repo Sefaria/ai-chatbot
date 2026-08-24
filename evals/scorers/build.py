@@ -93,27 +93,35 @@ def build_code_scorer(scorer_file: Path) -> None:
         print(f"  Skipping {scorer_file.name}: missing handler() function")
         return
 
-    # Extract the handler function using AST to find its boundaries
+    # Extract all scorer-specific code: helpers + handler (everything after imports and template constants)
     tree = ast.parse(content)
     handler_start = None
-    handler_end = None
+    body_start = None
+    TEMPLATE_NAMES = {"NAME", "SLUG", "DESCRIPTION"}
 
-    for i, node in enumerate(tree.body):
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        if isinstance(node, ast.Assign):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if all(t in TEMPLATE_NAMES for t in targets):
+                continue
+        if isinstance(node, ast.Expr) and isinstance(getattr(node.value, "value", None), str):
+            continue  # skip module docstring
+        if body_start is None:
+            body_start = node.lineno - 1
         if isinstance(node, ast.FunctionDef) and node.name == "handler":
             handler_start = node.lineno - 1
-            # Find the end by looking at the next node or end of file
-            if i + 1 < len(tree.body):
-                handler_end = tree.body[i + 1].lineno - 1
-            else:
-                handler_end = len(content.splitlines())
-            break
 
     if handler_start is None:
         print(f"  Skipping {scorer_file.name}: could not extract handler() function")
         return
 
+    if body_start is None:
+        body_start = handler_start
+
     lines = content.splitlines()
-    handler_code = "\n".join(lines[handler_start:handler_end]).rstrip()
+    handler_code = "\n".join(lines[body_start:]).rstrip()
 
     # Extract any imports that the handler needs
     # Filter out imports already in the template (typing.Any, braintrust, pydantic)
