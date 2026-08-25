@@ -19,12 +19,29 @@ from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
 from .prompt_pipeline import build_turn_prompt
+from .response_link_validator import ResponseLinkValidator, format_link_validation_issues
 from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
 from .sdk_runner import ClaudeSDKRunner
 from .tool_runtime import ToolRuntime
 from .tool_schemas import get_tools_for_labs
 from .trace_logger import BraintrustTraceLogger
+
+MAX_RESPONSE_LINK_REPAIR_ATTEMPTS = 1
+LINK_REPAIR_INSTRUCTION = """The draft response below contains links that failed deterministic validation.
+
+Problematic links:
+{issues}
+
+Rewrite the response for the user. Preserve the useful substance, but remove or replace the problematic links. Final response rules:
+- Do not include non-Sefaria links.
+- Sefaria topic, sheet, search, and other app-page links are allowed.
+- Sefaria text/source links must be valid text refs. Use validate_refs if you need to check a ref before linking it.
+- Return only the corrected final response HTML, with no explanation of this validation step.
+
+Draft response:
+{draft_response}
+"""
 
 
 class TurnOrchestrator:
@@ -182,8 +199,43 @@ class TurnOrchestrator:
 
         emit_synthesis_status_once()
 
-        latency_ms = int((time.time() - start_time) * 1000)
+        validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
+        validation_result = await validator.validate_response(output)
+        repair_attempts = 0
+
+        while (
+            not validation_result.is_valid and repair_attempts < MAX_RESPONSE_LINK_REPAIR_ATTEMPTS
+        ):
+            repair_attempts += 1
+            emitter.emit(AgentProgressUpdate(type="status", text="Repairing response links..."))
+            repair_prompt = (
+                prompt_text
+                + SECTION_SEPARATOR
+                + LINK_REPAIR_INSTRUCTION.format(
+                    issues=format_link_validation_issues(validation_result.issues),
+                    draft_response=output,
+                )
+            )
+            repair_result = await self.sdk_runner.run(
+                options=options,
+                prompt_text=repair_prompt,
+                on_first_final_text_delta=emit_synthesis_status_once,
+            )
+            output = repair_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
+            validation_result = await validator.validate_response(output)
+            sdk_result.llm_call_count += repair_result.llm_call_count
+            if repair_result.total_cost_usd is not None:
+                sdk_result.total_cost_usd = (sdk_result.total_cost_usd or 0.0) + (
+                    repair_result.total_cost_usd or 0.0
+                )
+            if repair_result.trace_id:
+                sdk_result.trace_id = repair_result.trace_id
+
+        if not validation_result.is_valid:
+            output = ERROR_FALLBACK_MESSAGE
+
+        latency_ms = int((time.time() - start_time) * 1000)
         trace_id = sdk_result.trace_id or bt_span.id
         usage = map_usage(sdk_result.usage)
         time_to_first_final_response_token = None
