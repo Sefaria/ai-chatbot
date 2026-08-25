@@ -66,6 +66,7 @@ def mock_client():
     client.search_user_source_sheets = AsyncMock(return_value={"sheets": []})
     client.get_source_sheet = AsyncMock(return_value={"sources": []})
     client.create_source_sheet = AsyncMock(return_value={"id": 715437, "sources": []})
+    client.validate_refs = AsyncMock(return_value=[{"input": "Genesis 1:1", "is_valid": True}])
     return client
 
 
@@ -121,6 +122,12 @@ class TestToolDispatch:
                 {"reference": "Psalm 23:1"},
                 "get_english_translations",
                 ("Psalm 23:1",),
+            ),
+            (
+                "validate_refs",
+                {"refs": ["Genesis 1:1"]},
+                "validate_refs",
+                (["Genesis 1:1"],),
             ),
             (
                 "get_topic_details",
@@ -319,6 +326,7 @@ class TestDescribeToolCall:
                 ["prayer", "Talmud"],
             ),
             ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
+            ("validate_refs", {"refs": ["Genesis 1:1"]}, ["Validating refs", "Genesis 1:1"]),
             (
                 "search_user_source_sheets",
                 {"query": "halacha workflow"},

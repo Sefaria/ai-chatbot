@@ -98,6 +98,9 @@ class SefariaToolExecutor:
         elif tool_name == "get_english_translations":
             return await self.client.get_english_translations(input_data["reference"])
 
+        elif tool_name == "validate_refs":
+            return await self.client.validate_refs(input_data["refs"])
+
         elif tool_name == "get_topic_details":
             return await self.client.get_topic_details(
                 input_data["topic_slug"],
@@ -248,6 +251,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
             f"Searching dictionaries for {q(tool_input.get('query'))}"
         ),
         "get_text": lambda: f"Fetching text {q(tool_input.get('reference'))}",
+        "validate_refs": lambda: f"Validating refs {q(tool_input.get('refs'))}",
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
         "get_current_calendar": lambda: "Fetching current Jewish calendar",
