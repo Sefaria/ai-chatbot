@@ -278,6 +278,37 @@ class TestTrackedMessagesCreate:
         client.messages.create.assert_called_once_with(model=TEST_MODEL, max_tokens=10)
         assert response is client.messages.create.return_value
 
+    def test_moves_sampling_kwargs_to_extra_body(self):
+        reset_cost_accumulator()
+        client = self._make_client()
+        tracked_messages_create(
+            client,
+            model=TEST_MODEL,
+            max_tokens=10,
+            temperature=0.0,
+            top_p=0.9,
+            top_k=20,
+        )
+        client.messages.create.assert_called_once_with(
+            model=TEST_MODEL,
+            max_tokens=10,
+            extra_body={"temperature": 0.0, "top_p": 0.9, "top_k": 20},
+        )
+
+    def test_sampling_kwargs_preserve_existing_extra_body_values(self):
+        reset_cost_accumulator()
+        client = self._make_client()
+        tracked_messages_create(
+            client,
+            model=TEST_MODEL,
+            temperature=0.5,
+            extra_body={"temperature": 0.0, "custom": "value"},
+        )
+        client.messages.create.assert_called_once_with(
+            model=TEST_MODEL,
+            extra_body={"temperature": 0.0, "custom": "value"},
+        )
+
     def test_appends_cost_to_bound_accumulator(self):
         reset_cost_accumulator()
         acc = init_cost_accumulator()
