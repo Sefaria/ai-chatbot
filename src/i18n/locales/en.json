@@ -107,6 +107,5 @@
     "assistant.stop.message": "Stopped generating. You can edit your question below, or write a new one.",
     "assistant.input.generating": "Waiting for response...",
     "assistant.stop.tooltip": "Stop",
-    "assistant.stop.aria": "Stop",
-    "test12345": "Test"
+    "assistant.stop.aria": "Stop"
 }
