@@ -101,6 +101,7 @@
   let isLoadingConversationList = $state(false);
   let activeRenameSessionId = $state(null);
   let renameTitle = $state('');
+  let sendingSessionId = $state('');
 
   let expandedSections = $state({});
   function toggleSection(key) {
@@ -119,6 +120,7 @@
   // We want to use the minimum of the two values, thus allowing RemoteConfig to override the hardcoded defaults
   let effectiveMaxPrompts = $derived(Math.min(Number(maxPrompts), DEFAULT_MAX_PROMPTS));
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
+  let effectivePanelWidth = $derived(showHistory ? Math.max(panelWidth, 760) : panelWidth);
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
 
@@ -559,7 +561,7 @@
   }
 
   async function openSavedConversation(savedSessionId) {
-    if (isSending || !savedSessionId) return;
+    if (!savedSessionId) return;
     historyError = '';
     try {
       const result = await loadConversation(apiBaseUrl, userId, savedSessionId);
@@ -569,10 +571,11 @@
       hasMoreHistory = false;
       isLoadingHistory = false;
       appetizerData = null;
-      stopThinkingMessages();
+      if (!isSending || savedSessionId !== sendingSessionId) {
+        stopThinkingMessages();
+      }
       updateSessionActivity(savedSessionId);
       saveMessagesToStorage();
-      closeHistory();
       await scrollToBottom();
     } catch (e) {
       historyError = e.message || 'Failed to open conversation.';
@@ -700,6 +703,24 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + sessionId, messages);
   }
 
+  function getMessagesForSession(targetSessionId) {
+    if (targetSessionId === sessionId) return messages;
+    return getStorage(STORAGE_KEYS.MESSAGES + ':' + targetSessionId, []);
+  }
+
+  function setMessagesForSession(targetSessionId, nextMessages) {
+    setStorage(STORAGE_KEYS.MESSAGES + ':' + targetSessionId, nextMessages);
+    if (targetSessionId === sessionId) {
+      messages = nextMessages;
+    }
+  }
+
+  function updateMessagesForSession(targetSessionId, updater) {
+    const nextMessages = updater(getMessagesForSession(targetSessionId));
+    setMessagesForSession(targetSessionId, nextMessages);
+    return nextMessages;
+  }
+
   async function scrollToBottom() {
     await tick();
     if (messageListRef) {
@@ -768,6 +789,7 @@
     const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
+    const requestSessionId = sessionId;
     // Reset auto-scroll on each new send
     resetScroll();
     if (typeof window.gtag === 'function') {
@@ -781,7 +803,7 @@
     const locationRef = await parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
-      sessionId,
+      sessionId: requestSessionId,
       userId,
       role: 'user',
       content: text,
@@ -790,19 +812,20 @@
       locationRef
     };
 
-    messages = [...messages, userMessage];
-    saveMessagesToStorage();
+    setMessagesForSession(requestSessionId, [...messages, userMessage]);
     scrollToBottom();
 
     isSending = true;
+    sendingSessionId = requestSessionId;
 
     appetizerData = null;
     startThinkingMessages();
-    updateSessionActivity(sessionId);
+    updateSessionActivity(requestSessionId);
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
+      const response = await sendMessageStream(apiBaseUrl, userId, requestSessionId, text, {
         onProgress: (progress) => {
+          if (requestSessionId !== sessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
             // Dump the full served sentence (frame + topic titles) into `text` so
@@ -833,11 +856,11 @@
       }, interfaceLang);
 
       // Update user message status
-      messages = messages.map(m => 
+      updateMessagesForSession(requestSessionId, sessionMessages => sessionMessages.map(m =>
         m.messageId === userMessage.messageId 
           ? { ...m, status: 'sent' }
           : m
-      );
+      ));
 
       // Add assistant response
       const assistantMessage = {
@@ -852,16 +875,20 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: appetizerData ? {...appetizerData} : null
+        appetizerData: requestSessionId === sessionId && appetizerData ? {...appetizerData} : null
       };
 
-      messages = [...messages, assistantMessage];
-      saveMessagesToStorage();
-      scrollToResponseStart();
+      updateMessagesForSession(requestSessionId, sessionMessages => [...sessionMessages, assistantMessage]);
+      if (requestSessionId === sessionId) {
+        scrollToResponseStart();
+      }
 
       // Update turn count from server response
-      if (response.session) {
+      if (response.session && requestSessionId === sessionId) {
         turnCount = response.session.turnCount ?? 0;
+      }
+      if (showHistory) {
+        refreshConversationList();
       }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
@@ -873,7 +900,7 @@
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
-        sessionId,
+        sessionId: requestSessionId,
         toolCalls: response.toolCalls,
         stats: response.stats
       });
@@ -882,12 +909,11 @@
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
-      messages = messages.map(m =>
+      updateMessagesForSession(requestSessionId, sessionMessages => sessionMessages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: STATUS_FAILED }
           : m
-      );
-      saveMessagesToStorage();
+      ));
 
       dispatchEvent('error', {
         type: 'send_failed',
@@ -896,6 +922,9 @@
       });
     } finally {
       isSending = false;
+      if (sendingSessionId === requestSessionId) {
+        sendingSessionId = '';
+      }
       stopThinkingMessages();
     }
   }
@@ -1280,7 +1309,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      style="width: {effectivePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1342,7 +1371,7 @@
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.restart')}
                 </button>
-                <button class="menu-item" aria-label={$_('assistant.menu.history.aria')} onclick={openHistory} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.history.aria')} onclick={openHistory} role="menuitem">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 12a9 9 0 1 0 3-6.7"></path>
                     <path d="M3 3v6h6"></path>
@@ -1422,8 +1451,10 @@
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
-      {:else if showHistory}
-        <div class="history-panel">
+      {:else}
+        <div class="conversation-shell" class:history-split={showHistory}>
+        {#if showHistory}
+        <aside class="history-panel history-sidebar">
           <div class="history-header">
             <button class="settings-back" onclick={closeHistory} aria-label={$_('assistant.history.back.aria')}>
               {$_('assistant.settings.back')}
@@ -1455,7 +1486,7 @@
           {:else}
             <div class="history-list" role="list">
               {#each historyConversations as conversation (conversation.sessionId)}
-                <div class="history-item" role="listitem">
+                <div class="history-item" class:selected={conversation.sessionId === sessionId} role="listitem">
                   {#if activeRenameSessionId === conversation.sessionId}
                     <div class="history-rename">
                       <input
@@ -1487,8 +1518,10 @@
               {/each}
             </div>
           {/if}
-        </div>
-      {:else}
+        </aside>
+        {/if}
+
+        <div class="conversation-pane">
       <!-- Message List -->
       <div
         class="lc-chatbot-messages"
@@ -1589,6 +1622,7 @@
         {/each}
 
         {#if isSending}
+          {#if sessionId === sendingSessionId}
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
@@ -1604,6 +1638,7 @@
               </div>
             </div>
           </div>
+          {/if}
         {/if}
 
         {#if limitReached}
@@ -1644,6 +1679,8 @@
           </svg>
         </button>
       </footer>
+        </div>
+        </div>
       {/if}
 
       <!-- Feedback Modal -->
@@ -1879,6 +1916,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    max-width: calc(100vw - 32px);
     background: var(--lc-body-bg);
     border-radius: var(--lc-radius);
     box-shadow: var(--lc-shadow);
@@ -2010,6 +2048,31 @@
   .menu-item svg {
     flex-shrink: 0;
     color: var(--lc-text-secondary);
+  }
+
+  .conversation-shell {
+    display: flex;
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .conversation-pane {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .conversation-shell.history-split {
+    background: var(--lc-body-bg);
+  }
+
+  .history-sidebar {
+    flex: 0 0 250px;
+    width: 250px;
+    border-inline-end: 1px solid var(--lc-border);
   }
 
   /* Message List */
@@ -2618,6 +2681,11 @@
     padding: 8px;
   }
 
+  .history-item.selected {
+    border-color: var(--brand-sefaria-blue);
+    background: var(--lc-bg-secondary);
+  }
+
   .history-open {
     display: grid;
     gap: 4px;
@@ -2652,6 +2720,20 @@
     grid-column: 1 / -1;
     display: flex;
     gap: 8px;
+  }
+
+  @media (max-width: 700px) {
+    .conversation-shell.history-split {
+      flex-direction: column;
+    }
+
+    .history-sidebar {
+      flex: 0 0 auto;
+      width: auto;
+      max-height: 45%;
+      border-inline-end: none;
+      border-bottom: 1px solid var(--lc-border);
+    }
   }
 
   /* Clearing animation for message list */
