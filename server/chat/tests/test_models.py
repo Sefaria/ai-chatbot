@@ -31,6 +31,25 @@ class TestChatSession:
         assert session.total_tool_calls == 0
         assert session.conversation_summary == ""
         assert session.user_locale == ""
+        assert session.title == ""
+        assert session.is_deleted is False
+
+    def test_set_default_title_from_prompt(self) -> None:
+        session = ChatSession.objects.create(session_id="sess_title", user_id="user")
+        changed = session.set_default_title("  Tell me about Shabbat and candles  ")
+
+        assert changed is True
+        assert session.title == "Tell me about Shabbat and candles"
+        assert session.title_updated_at is not None
+
+    def test_set_default_title_preserves_existing_title(self) -> None:
+        session = ChatSession.objects.create(
+            session_id="sess_title_existing", user_id="user", title="Custom"
+        )
+        changed = session.set_default_title("First prompt")
+
+        assert changed is False
+        assert session.title == "Custom"
 
     def test_session_with_flow_and_summary(self) -> None:
         session = ChatSession.objects.create(

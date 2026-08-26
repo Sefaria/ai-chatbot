@@ -4,7 +4,7 @@ Serializers for chat API.
 
 from rest_framework import serializers
 
-from .models import ChatMessage
+from .models import ChatMessage, ChatSession
 
 
 class MessageContextSerializer(serializers.Serializer):
@@ -100,10 +100,31 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
     sessionId = serializers.CharField(source="session_id")
     userId = serializers.CharField(source="user_id")
     timestamp = serializers.DateTimeField(source="server_timestamp")
+    status = serializers.CharField()
+    traceId = serializers.SerializerMethodField()
+    locationRef = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatMessage
-        fields = ["messageId", "sessionId", "userId", "role", "content", "timestamp"]
+        fields = [
+            "messageId",
+            "sessionId",
+            "userId",
+            "role",
+            "content",
+            "timestamp",
+            "status",
+            "traceId",
+            "locationRef",
+        ]
+
+    def get_traceId(self, obj):
+        return None
+
+    def get_locationRef(self, obj):
+        if obj.role != ChatMessage.Role.USER or not obj.page_url:
+            return None
+        return {"label": obj.page_url, "url": obj.page_url}
 
 
 class HistoryResponseSerializer(serializers.Serializer):
@@ -111,3 +132,52 @@ class HistoryResponseSerializer(serializers.Serializer):
 
     messages = HistoryMessageSerializer(many=True)
     hasMore = serializers.BooleanField()
+
+
+class SavedConversationSerializer(serializers.ModelSerializer):
+    """List item for saved conversations."""
+
+    sessionId = serializers.CharField(source="session_id")
+    title = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at")
+    lastActivity = serializers.DateTimeField(source="last_activity")
+    turnCount = serializers.IntegerField(source="turn_count")
+    messageCount = serializers.IntegerField(source="message_count")
+    totalTokens = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatSession
+        fields = [
+            "sessionId",
+            "title",
+            "createdAt",
+            "lastActivity",
+            "turnCount",
+            "messageCount",
+            "totalTokens",
+        ]
+
+    def get_totalTokens(self, obj):
+        return (obj.total_input_tokens or 0) + (obj.total_output_tokens or 0)
+
+    def get_title(self, obj):
+        if obj.title:
+            return obj.title
+        first_prompt = (
+            ChatMessage.objects.filter(
+                session_id=obj.session_id,
+                user_id=obj.user_id,
+                role=ChatMessage.Role.USER,
+            )
+            .order_by("server_timestamp")
+            .values_list("content", flat=True)
+            .first()
+        )
+        return " ".join((first_prompt or "").split())[:64]
+
+
+class RenameConversationSerializer(serializers.Serializer):
+    """Payload for renaming a saved conversation."""
+
+    userId = serializers.CharField(max_length=512)
+    title = serializers.CharField(max_length=64, allow_blank=False, trim_whitespace=True)
