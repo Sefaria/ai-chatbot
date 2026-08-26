@@ -19,6 +19,8 @@ urlpatterns = [
     path("v2/prompts/defaults", v2_views.prompt_defaults, name="prompt_defaults_v2"),
     # Shared endpoints
     path("history", views.history, name="history"),
+    path("conversations", views.conversations, name="conversations"),
+    path("conversations/<str:session_id>", views.conversation_detail, name="conversation_detail"),
     # Admin/management endpoints
     path("admin/reload-prompts", views.reload_prompts, name="reload_prompts"),
     path("health", views.health, name="health"),

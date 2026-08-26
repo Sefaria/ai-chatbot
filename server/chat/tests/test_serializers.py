@@ -211,5 +211,15 @@ class TestHistoryMessageSerializer:
         for field in excluded_fields:
             assert field not in data
 
-        expected_fields = {"messageId", "sessionId", "userId", "role", "content", "timestamp"}
+        expected_fields = {
+            "messageId",
+            "sessionId",
+            "userId",
+            "role",
+            "content",
+            "timestamp",
+            "status",
+            "traceId",
+            "locationRef",
+        }
         assert set(data.keys()) == expected_fields
