@@ -121,6 +121,22 @@ TOOL_GET_ENGLISH_TRANSLATIONS = {
     },
 }
 
+TOOL_VALIDATE_REFS = {
+    "name": "validate_refs",
+    "description": "Strictly validates one or more Sefaria text references before using them in a final response. Use this when you plan to cite or link to a ref that was not directly returned by a Sefaria tool. Returns canonical Sefaria URL refs for valid refs and marks invalid refs.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "refs": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": 'Text references to validate, e.g. ["Genesis 1:1", "Nahum 2", "The War of the Jews 1:4:1"]',
+            },
+        },
+        "required": ["refs"],
+    },
+}
+
 TOOL_GET_TOPIC_DETAILS = {
     "name": "get_topic_details",
     "description": "Use when the question relates to a topic (e.g. 'What is Shabbat?') to explore a topic's connections. Retrieves detailed information about specific topics in Jewish thought and texts.",
@@ -364,6 +380,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_in_book": TOOL_SEARCH_IN_BOOK,
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,
     "get_english_translations": TOOL_GET_ENGLISH_TRANSLATIONS,
+    "validate_refs": TOOL_VALIDATE_REFS,
     "get_topic_details": TOOL_GET_TOPIC_DETAILS,
     "clarify_name_argument": TOOL_CLARIFY_NAME_ARGUMENT,
     "clarify_search_path_filter": TOOL_CLARIFY_SEARCH_PATH_FILTER,

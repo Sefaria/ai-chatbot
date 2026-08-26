@@ -86,6 +86,7 @@ python manage.py runserver 0.0.0.0:8001
 pytest           # Run tests
 ```
 
+
 ## Environment Variables
 
 | Variable | Required | Description |

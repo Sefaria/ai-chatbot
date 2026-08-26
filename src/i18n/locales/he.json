@@ -116,5 +116,11 @@
     "assistant.thinking.array.10": "מגבש תשובה",
     "assistant.thinking.final": "מנסח תשובה",
     "assistant.loading.delayed": "",
-    "assistant.loading.synthesizing": ""
+    "assistant.loading.synthesizing": "",
+    "assistant.menu.dock": "הגלדה והצמדה לצד",
+    "assistant.menu.undock": "הקטנה וניתוק מהצד",
+    "assistant.stop.message": "התגובה נעצרה. אפשר לערוך את השאלה למטה, או לכתוב שאלה חדשה.",
+    "assistant.input.generating": "ממתינים לתגובה...",
+    "assistant.stop.tooltip": "עצור",
+    "assistant.stop.aria": "עצור"
 }
