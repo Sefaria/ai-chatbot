@@ -1198,10 +1198,10 @@
           >
             <img
               class:panel-close-icon={mode === 'floating'}
-              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'minimize'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg"
               alt=""
-              width="16"
-              height="16"
+              width={mode === 'floating' ? 16 : 18}
+              height={mode === 'floating' ? 16 : 18}
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
@@ -1222,6 +1222,10 @@
                 <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.restart')}
+                </button>
+                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg" alt="" width="16" height="16" />
+                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   {@html FEEDBACK_ICON}
@@ -1771,7 +1775,9 @@
     position: absolute;
     top: 100%;
     margin-top: 4px;
+    width: max-content;
     min-width: 200px;
+    max-width: 280px;
     background: var(--lc-bg);
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
@@ -1802,6 +1808,7 @@
     text-decoration: none;
     cursor: pointer;
     text-align: start;
+    white-space: nowrap;
     transition: background 0.15s ease;
   }
 
