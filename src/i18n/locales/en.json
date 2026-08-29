@@ -59,6 +59,7 @@
     "assistant.messages.retry": "Retry",
     "assistant.messages.feedbackThanks": "Thank you for your feedback!",
     "assistant.messages.loadingHistory": "Loading messages...",
+    "assistant.messages.scrollToBottom": "Scroll to latest message",
     "assistant.status.thinking": "Thinking",
     "assistant.status.done": "Done",
     "assistant.status.toolError": "Tool error",

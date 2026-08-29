@@ -60,6 +60,8 @@
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
+  let showScrollToBottomBtn = $state(false);
+  const SCROLL_TO_BOTTOM_THRESHOLD = 100;
   // Per latency UX spec: on final response the top edge of the response package
   // is scrolled to sit 80px below the container top, clearing the package's top margin/padding.
   const RESPONSE_PACKAGE_TOP_OFFSET = 80;
@@ -588,6 +590,12 @@
     }
   }
 
+  function handleScrollToBottomClick() {
+    showScrollToBottomBtn = false;
+    autoScrollEnabled = true;
+    scrollToBottom();
+  }
+
   /** Returns the scrollTop value that places el's top edge at the container's top edge. */
   function getScrollTopForElement(el) {
     const containerRect = messageListRef.getBoundingClientRect();
@@ -840,6 +848,8 @@
     if (el.scrollTop < 50 && hasMoreHistory && !isLoadingHistory) {
       loadMoreHistory();
     }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    showScrollToBottomBtn = distanceFromBottom > SCROLL_TO_BOTTOM_THRESHOLD;
   }
 
   // Genuine user-scroll intent is detected via explicit input events (wheel/touch)
@@ -1433,6 +1443,17 @@
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
+        {#if showScrollToBottomBtn}
+          <button
+            class="scroll-to-bottom-btn"
+            onclick={handleScrollToBottomClick}
+            aria-label={$_('assistant.messages.scrollToBottom')}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 0.75V11.25M0.75 6L6 11.25L11.25 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        {/if}
         <textarea
           bind:this={inputRef}
           bind:value={inputText}
@@ -2144,12 +2165,36 @@
 
   /* Input Footer */
   .lc-chatbot-input {
+    position: relative;
     display: flex;
     align-items: flex-end;
     gap: 8px;
     padding: 16px 16px 16px 18px;
     background: transparent;
     border-top: 1px solid var(--lc-border);
+  }
+
+  .scroll-to-bottom-btn {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--lc-border-strong);
+    border-radius: 50%;
+    background: var(--lc-bg);
+    color: var(--lc-primary);
+    box-shadow: 0px 0px 10px 0px rgba(83, 83, 83, 0.04), 0px 1px 2px 0px rgba(31, 31, 31, 0.04), 0px 8px 16px 0px rgba(31, 31, 31, 0.05);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .scroll-to-bottom-btn:hover {
+    background: var(--lc-bg-hover);
   }
 
   .lc-chatbot-input textarea {
