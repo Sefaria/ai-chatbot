@@ -57,6 +57,8 @@
     "assistant.settings.note": "Changes apply to new messages.",
     "assistant.messages.aria": "Chat messages",
     "assistant.messages.retry": "Retry",
+    "assistant.messages.copy": "Copy",
+    "assistant.messages.copied": "Copied",
     "assistant.messages.feedbackThanks": "Thank you for your feedback!",
     "assistant.messages.loadingHistory": "Loading messages...",
     "assistant.status.thinking": "Thinking",
