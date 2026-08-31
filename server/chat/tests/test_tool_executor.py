@@ -256,7 +256,11 @@ class TestToolDispatch:
     def test_set_message_context_sets_client_user_session(self, executor, mock_client):
         from chat.V2.agent import MessageContext
 
-        context = MessageContext(user_id="186013", encrypted_user_token="encrypted-token")
+        context = MessageContext(
+            user_id="hashed-user",
+            sefaria_user_id="186013",
+            encrypted_user_token="encrypted-token",
+        )
 
         executor.set_message_context(context)
 

@@ -21,12 +21,16 @@ from chat.V2.agent import AgentResponse
 from chat.V2.views import _compute_turn_count
 
 
-def create_test_token(user_id: str, secret: str, expires_at=None) -> str:
+def create_test_token(
+    user_id: str, secret: str, expires_at=None, payload_override: dict | None = None
+) -> str:
     """Create a valid encrypted token for testing."""
     if expires_at is None:
         expires_at = timezone.now() + timedelta(hours=1)
 
     payload = {"id": user_id, "expiration": expires_at.isoformat()}
+    if payload_override:
+        payload.update(payload_override)
     payload_bytes = json.dumps(payload).encode("utf-8")
 
     key = hashlib.sha256(secret.encode("utf-8")).digest()
@@ -685,7 +689,9 @@ class TestStreamingEndpointIsStaffPropagation:
         self, mock_get_agent, client, secret, mock_agent
     ):
         """The agent context should retain both user_id and the encrypted user token."""
-        user_token = create_test_token("186013", secret)
+        user_token = create_test_token(
+            "hashed-user-id", secret, payload_override={"user_id": 186013}
+        )
         mock_get_agent.return_value = mock_agent
 
         response = client.post(
@@ -705,7 +711,8 @@ class TestStreamingEndpointIsStaffPropagation:
         list(response.streaming_content)
 
         ctx = mock_agent.send_message.call_args.kwargs["context"]
-        assert ctx.user_id == "186013"
+        assert ctx.user_id == "hashed-user-id"
+        assert ctx.sefaria_user_id == "186013"
         assert ctx.encrypted_user_token == user_token
 
 
