@@ -24,17 +24,24 @@ from .V2.prompts import get_prompt_service
 logger = logging.getLogger("chat")
 
 
-def _resolve_user_id(request, raw_user_id: str) -> str:
+def _resolve_user_ids(request, raw_user_id: str) -> list[str]:
     """
-    Resolve encrypted chatbot user tokens to the DB user id used by chat persistence.
+    Resolve encrypted chatbot user tokens to possible persisted DB user ids.
 
     Local tests and some dev tools still pass plain ids, so fall back to the raw value
-    when token auth cannot decode it.
+    when token auth cannot decode it. During the raw-id anonymization rollout,
+    reads accept both the anonymized id and the raw Sefaria id from the token;
+    writes still persist only the anonymized id via Actor.to_db_fields().
     """
     try:
-        return authenticate_request(request, {"userId": raw_user_id}).user_id
+        actor = authenticate_request(request, {"userId": raw_user_id})
     except AuthenticationError:
-        return raw_user_id
+        return [raw_user_id]
+
+    user_ids = [actor.user_id]
+    if actor.sefaria_user_id and actor.sefaria_user_id not in user_ids:
+        user_ids.append(actor.sefaria_user_id)
+    return user_ids
 
 
 def extract_page_type(url: str | None) -> str:
@@ -83,10 +90,10 @@ def history(request):
         return Response(
             {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
         )
-    user_id = _resolve_user_id(request, user_id)
+    user_id_candidates = _resolve_user_ids(request, user_id)
 
     queryset = ChatMessage.objects.filter(
-        user_id=user_id,
+        user_id__in=user_id_candidates,
         session_id=session_id,
     )
 
@@ -109,7 +116,10 @@ def history(request):
 
     # Get session info
     try:
-        session = ChatSession.objects.get(session_id=session_id)
+        session = ChatSession.objects.get(
+            session_id=session_id,
+            user_id__in=user_id_candidates,
+        )
         session_info = {
             "turnCount": session.turn_count,
             "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),
@@ -126,9 +136,9 @@ def history(request):
     )
 
 
-def _saved_conversation_queryset(user_id: str):
+def _saved_conversation_queryset(user_ids: list[str]):
     return ChatSession.objects.filter(
-        user_id=user_id,
+        user_id__in=user_ids,
         is_deleted=False,
         turn_count__gt=0,
     )
@@ -151,13 +161,13 @@ def conversations(request):
 
     if not user_id:
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
-    user_id = _resolve_user_id(request, user_id)
+    user_id_candidates = _resolve_user_ids(request, user_id)
 
-    queryset = _saved_conversation_queryset(user_id)
+    queryset = _saved_conversation_queryset(user_id_candidates)
 
     if query:
         matching_session_ids = ChatMessage.objects.filter(
-            user_id=user_id,
+            user_id__in=user_id_candidates,
             content__icontains=query,
         ).values("session_id")
         queryset = queryset.filter(
@@ -180,11 +190,11 @@ def conversation_detail(request, session_id):
     user_id = request.query_params.get("userId") or request.data.get("userId")
     if not user_id:
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
-    user_id = _resolve_user_id(request, user_id)
+    user_id_candidates = _resolve_user_ids(request, user_id)
 
     session = ChatSession.objects.filter(
         session_id=session_id,
-        user_id=user_id,
+        user_id__in=user_id_candidates,
         is_deleted=False,
     ).first()
     if not session:
@@ -192,7 +202,7 @@ def conversation_detail(request, session_id):
 
     if request.method == "GET":
         messages = ChatMessage.objects.filter(
-            user_id=user_id,
+            user_id__in=user_id_candidates,
             session_id=session_id,
         ).order_by("server_timestamp")
         return Response(
@@ -211,7 +221,7 @@ def conversation_detail(request, session_id):
         return Response({"conversation": SavedConversationSerializer(session).data})
 
     with transaction.atomic():
-        ChatMessage.objects.filter(user_id=user_id, session_id=session_id).delete()
+        ChatMessage.objects.filter(user_id__in=user_id_candidates, session_id=session_id).delete()
         if hasattr(session, "summary"):
             session.summary.delete()
         session.delete()
