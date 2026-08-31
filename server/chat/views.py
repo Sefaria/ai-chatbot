@@ -4,16 +4,36 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
+from .user_token_service import UserTokenError, decrypt_chatbot_user_token
 from .V2 import views as v2_views
 from .V2.prompts import get_prompt_service
 
 logger = logging.getLogger("chat")
+
+
+def _resolve_history_user_id(user_id: str) -> str:
+    """
+    Return the persisted chatbot DB user id for history reads.
+
+    Current clients pass the encrypted Sefaria chatbot token. Older callers and
+    tests may still pass the already-persisted id directly, so invalid token
+    input falls back to the original value.
+    """
+    secret = settings.CHATBOT_USER_TOKEN_SECRET
+    if not secret:
+        return user_id
+
+    try:
+        return decrypt_chatbot_user_token(user_id, secret)
+    except UserTokenError:
+        return user_id
 
 
 def extract_page_type(url: str | None) -> str:
@@ -64,7 +84,7 @@ def history(request):
         )
 
     queryset = ChatMessage.objects.filter(
-        user_id=user_id,
+        user_id=_resolve_history_user_id(user_id),
         session_id=session_id,
     )
 
