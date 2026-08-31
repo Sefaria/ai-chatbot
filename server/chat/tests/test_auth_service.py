@@ -30,23 +30,25 @@ class TestUserTokenAuthentication:
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_valid_user_token_in_body_returns_user_actor(self, factory, secret):
         """Test that valid user token in body returns actor with user_id."""
-        token = create_test_token("user_12345", secret)
+        token = create_test_token("hashed_user_12345", secret, payload_override={"user_id": 12345})
         request = factory.post("/test")
 
         actor = authenticate_request(request, {"userId": token})
 
-        assert actor.user_id == "user_12345"
+        assert actor.user_id == "hashed_user_12345"
+        assert actor.sefaria_user_id == "12345"
         assert actor.encrypted_token == token
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")
     def test_valid_user_token_in_header_returns_user_actor(self, factory, secret):
         """Test that valid user token in X-Api-Key header returns actor with user_id."""
-        token = create_test_token("user_12345", secret)
+        token = create_test_token("hashed_user_12345", secret, payload_override={"user_id": 12345})
         request = factory.post("/test", HTTP_X_API_KEY=token)
 
         actor = authenticate_request(request)
 
-        assert actor.user_id == "user_12345"
+        assert actor.user_id == "hashed_user_12345"
+        assert actor.sefaria_user_id == "12345"
         assert actor.encrypted_token == token
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key")

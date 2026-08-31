@@ -175,7 +175,7 @@ class TestChatAnthropicEndpoint:
     @pytest.fixture
     def user_token(self, secret):
         """Create a valid user token for authentication."""
-        return create_test_token("test-user", secret)
+        return create_test_token("test-user", secret, payload_override={"user_id": 12345})
 
     @pytest.fixture
     def mock_agent_response(self):
@@ -460,7 +460,7 @@ class TestChatAnthropicHTTPIntegration:
     @pytest.fixture
     def user_token(self, secret):
         """Create a valid user token for authentication."""
-        return create_test_token("test-user", secret)
+        return create_test_token("test-user", secret, payload_override={"user_id": 12345})
 
     @pytest.fixture
     def mock_agent_response(self):
@@ -749,4 +749,5 @@ class TestChatAnthropicHTTPIntegration:
         assert response.status_code == 200
         ctx = mock_agent_service.send_message.call_args.kwargs["context"]
         assert ctx.user_id == "test-user"
+        assert ctx.sefaria_user_id == "12345"
         assert ctx.encrypted_user_token == user_token
