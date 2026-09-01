@@ -806,7 +806,7 @@ def chat_recover_v2(request):
         .filter(
             message_id=data["messageId"],
             session_id=data["sessionId"],
-            user_id=actor.user_id,
+            user_id__in=actor.user_id_candidates,
             role=ChatMessage.Role.USER,
         )
         .first()
