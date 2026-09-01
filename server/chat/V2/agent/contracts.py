@@ -41,6 +41,7 @@ class MessageContext:
     is_staff: bool = False
     labs: bool = False
     user_id: str | None = None
+    sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
 
