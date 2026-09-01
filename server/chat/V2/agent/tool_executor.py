@@ -44,7 +44,7 @@ class SefariaToolExecutor:
 
     def set_message_context(self, context: MessageContext) -> None:
         """Propagate per-request auth context to the Sefaria client."""
-        self.client.set_user_session(context.user_id, context.encrypted_user_token)
+        self.client.set_user_session(context.sefaria_user_id, context.encrypted_user_token)
 
     async def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Execute a tool by name. Errors are caught and returned as ToolResult(is_error=True)."""

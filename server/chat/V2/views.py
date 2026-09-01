@@ -396,6 +396,7 @@ def chat_stream_v2(request):
         is_staff=context.get("isStaff", False),
         labs=labs_enabled,
         user_id=actor.user_id,
+        sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
     )
@@ -805,7 +806,7 @@ def chat_recover_v2(request):
         .filter(
             message_id=data["messageId"],
             session_id=data["sessionId"],
-            user_id=actor.user_id,
+            user_id__in=actor.user_id_candidates,
             role=ChatMessage.Role.USER,
         )
         .first()
