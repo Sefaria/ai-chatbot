@@ -387,50 +387,50 @@ class TestStreamingEndpointMessagePersistence:
     def test_real_token_payload_uses_anonymized_id_for_history_and_persistence(
         self, mock_get_agent, client, secret, mock_agent
     ):
-        """Tokens with raw Sefaria ids should still read/write by anonymized id."""
+        """Tokens with raw Sefaria ids should read mixed rows and write anonymized rows."""
         raw_sefaria_user_id = 186013
+        raw_sefaria_user_id_str = str(raw_sefaria_user_id)
         anonymized_user_id = hashlib.sha256(str(raw_sefaria_user_id).encode()).hexdigest()
         user_token = create_test_token(
             anonymized_user_id,
             secret,
             payload_override={"user_id": raw_sefaria_user_id},
         )
-        old_session_id = "sess_existing_anonymized_user"
-        old_message_id = "msg_existing_anonymized_user"
-        new_session_id = "sess_new_anonymized_user"
+        session_id = "sess_existing_raw_user"
+        old_message_id = "msg_existing_raw_user"
         new_message_id = "msg_new_anonymized_user"
         mock_get_agent.return_value = mock_agent
 
         ChatSession.objects.create(
-            session_id=old_session_id,
-            user_id=anonymized_user_id,
+            session_id=session_id,
+            user_id=raw_sefaria_user_id_str,
             turn_count=1,
             message_count=1,
         )
         ChatMessage.objects.create(
             message_id=old_message_id,
-            session_id=old_session_id,
-            user_id=anonymized_user_id,
+            session_id=session_id,
+            user_id=raw_sefaria_user_id_str,
             role="user",
             content="Old conversation message",
         )
 
         history_response = client.get(
             "/api/history",
-            data={"userId": user_token, "sessionId": old_session_id, "limit": 20},
+            data={"userId": user_token, "sessionId": session_id, "limit": 20},
         )
 
         assert history_response.status_code == 200
         assert [message["messageId"] for message in history_response.data["messages"]] == [
             old_message_id
         ]
-        assert history_response.data["messages"][0]["userId"] == anonymized_user_id
+        assert history_response.data["messages"][0]["userId"] == raw_sefaria_user_id_str
 
         stream_response = client.post(
             "/api/v2/chat/stream",
             data={
                 "userId": user_token,
-                "sessionId": new_session_id,
+                "sessionId": session_id,
                 "messageId": new_message_id,
                 "timestamp": timezone.now().isoformat(),
                 "text": "New conversation message",
@@ -440,17 +440,16 @@ class TestStreamingEndpointMessagePersistence:
         assert stream_response.status_code == 200
         list(stream_response.streaming_content)
 
-        assert ChatSession.objects.get(session_id=new_session_id).user_id == anonymized_user_id
+        assert ChatSession.objects.get(session_id=session_id).user_id == anonymized_user_id
         persisted_user_ids = set(
-            ChatMessage.objects.filter(session_id=new_session_id).values_list("user_id", flat=True)
+            ChatMessage.objects.filter(session_id=session_id).values_list("user_id", flat=True)
         )
-        assert persisted_user_ids == {anonymized_user_id}
+        assert persisted_user_ids == {raw_sefaria_user_id_str, anonymized_user_id}
+        assert ChatMessage.objects.get(message_id=new_message_id).user_id == anonymized_user_id
 
         ctx = mock_agent.send_message.call_args.kwargs["context"]
         assert ctx.user_id == anonymized_user_id
-        assert ctx.sefaria_user_id == str(raw_sefaria_user_id)
-        assert not ChatSession.objects.filter(user_id=str(raw_sefaria_user_id)).exists()
-        assert not ChatMessage.objects.filter(user_id=str(raw_sefaria_user_id)).exists()
+        assert ctx.sefaria_user_id == raw_sefaria_user_id_str
 
 
 @pytest.mark.django_db
@@ -917,7 +916,12 @@ class TestStreamingEndpointRecovery:
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_recovery_endpoint_returns_linked_response(self, client, secret):
         """Recovery endpoint should return an already linked assistant response."""
-        session = ChatSession.objects.create(session_id="sess_recover", user_id="user_recover")
+        raw_sefaria_user_id = "186014"
+        anonymized_user_id = hashlib.sha256(raw_sefaria_user_id.encode()).hexdigest()
+        session = ChatSession.objects.create(
+            session_id="sess_recover",
+            user_id=raw_sefaria_user_id,
+        )
         user_msg = ChatMessage.objects.create(
             message_id="msg_recover",
             session_id=session.session_id,
@@ -943,7 +947,11 @@ class TestStreamingEndpointRecovery:
         response = client.post(
             "/api/v2/chat/recover",
             data={
-                "userId": create_test_token("user_recover", secret),
+                "userId": create_test_token(
+                    anonymized_user_id,
+                    secret,
+                    payload_override={"user_id": raw_sefaria_user_id},
+                ),
                 "sessionId": "sess_recover",
                 "messageId": "msg_recover",
             },

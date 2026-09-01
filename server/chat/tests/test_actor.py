@@ -24,6 +24,11 @@ class TestActor:
         assert actor.encrypted_token == "encrypted-token"
         assert actor.sefaria_user_id == "user123"
 
+    def test_user_id_candidates_include_raw_id_for_transition_reads(self):
+        """Dual-read candidates should include raw ids without changing write fields."""
+        actor = Actor(user_id="hashed-user123", sefaria_user_id="user123")
+        assert actor.user_id_candidates == ["hashed-user123", "user123"]
+
     def test_to_db_fields(self):
         """Test to_db_fields returns correct dict."""
         actor = Actor(user_id="user123")
