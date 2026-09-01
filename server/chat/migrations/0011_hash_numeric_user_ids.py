@@ -26,7 +26,7 @@ def _hash_numeric_user_ids(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("chat", "0010_saved_conversation_db_defaults"),
+        ("chat", "0008_chatmessage_processing_heartbeat"),
     ]
 
     operations = [
