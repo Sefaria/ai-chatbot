@@ -4,6 +4,7 @@ These tests ensure backwards compatibility when refactoring the authentication
 and session management code.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -17,7 +18,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from chat.models import ChatMessage, ChatSession
-from chat.V2.agent import AgentResponse
+from chat.V2.agent import AgentResponse, TurnCancelled
 from chat.V2.views import _compute_turn_count
 
 
@@ -1285,3 +1286,282 @@ class TestAppetizerTimeMetric:
         assert ttf >= 0.0
         # One-decimal rounding.
         assert round(ttf, 1) == ttf
+
+
+@pytest.mark.django_db
+class TestChatCancelV2:
+    """Tests for POST /api/v2/chat/cancel."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    def _make_turn(self, processing_state):
+        ChatSession.objects.create(session_id="sess_cancel", user_id="user_cancel")
+        return ChatMessage.objects.create(
+            message_id="msg_cancel",
+            session_id="sess_cancel",
+            user_id="user_cancel",
+            turn_id="turn_cancel",
+            role=ChatMessage.Role.USER,
+            content="Stop me",
+            processing_state=processing_state,
+        )
+
+    def _post(self, client, secret, message_id="msg_cancel"):
+        return client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": create_test_token("user_cancel", secret),
+                "sessionId": "sess_cancel",
+                "messageId": message_id,
+            },
+            format="json",
+        )
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_cancels_a_running_turn(self, client, secret):
+        user_msg = self._make_turn(ChatMessage.ProcessingState.RUNNING)
+
+        response = self._post(client, secret)
+
+        assert response.status_code == 200
+        assert response.data["status"] == "cancelling"
+        user_msg.refresh_from_db()
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+        assert user_msg.processing_finished_at is not None
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_cancels_a_turn_that_has_only_started(self, client, secret):
+        user_msg = self._make_turn(ChatMessage.ProcessingState.STARTED)
+
+        response = self._post(client, secret)
+
+        assert response.data["status"] == "cancelling"
+        user_msg.refresh_from_db()
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_completed_turn_is_left_alone(self, client, secret):
+        """A stop that races a finished answer must not rewrite the completed row."""
+        user_msg = self._make_turn(ChatMessage.ProcessingState.COMPLETED)
+
+        response = self._post(client, secret)
+
+        assert response.status_code == 200
+        assert response.data["status"] == "not_running"
+        assert response.data["processingState"] == ChatMessage.ProcessingState.COMPLETED
+        user_msg.refresh_from_db()
+        assert user_msg.processing_state == ChatMessage.ProcessingState.COMPLETED
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_double_cancel_is_idempotent(self, client, secret):
+        self._make_turn(ChatMessage.ProcessingState.RUNNING)
+
+        assert self._post(client, secret).data["status"] == "cancelling"
+        second = self._post(client, secret)
+
+        assert second.status_code == 200
+        assert second.data["status"] == "not_running"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_unknown_message_returns_404(self, client, secret):
+        self._make_turn(ChatMessage.ProcessingState.RUNNING)
+
+        response = self._post(client, secret, message_id="msg_does_not_exist")
+
+        assert response.status_code == 404
+        assert response.data["status"] == "not_found"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    def test_another_users_turn_cannot_be_cancelled(self, client, secret):
+        user_msg = self._make_turn(ChatMessage.ProcessingState.RUNNING)
+
+        response = client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": create_test_token("someone_else", secret),
+                "sessionId": "sess_cancel",
+                "messageId": "msg_cancel",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 404
+        user_msg.refresh_from_db()
+        assert user_msg.processing_state == ChatMessage.ProcessingState.RUNNING
+
+    def test_invalid_token_is_rejected(self, client):
+        self._make_turn(ChatMessage.ProcessingState.RUNNING)
+
+        response = client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": "not-a-real-token",
+                "sessionId": "sess_cancel",
+                "messageId": "msg_cancel",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 401
+
+    def test_missing_fields_are_rejected(self, client):
+        response = client.post(
+            "/api/v2/chat/cancel", data={"sessionId": "sess_cancel"}, format="json"
+        )
+
+        assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestStreamingEndpointCancellation:
+    """The stream's behaviour when the agent raises TurnCancelled."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @staticmethod
+    def _request_data(secret):
+        return {
+            "userId": create_test_token("user_stop", secret),
+            "sessionId": "sess_stop",
+            "messageId": "msg_stop",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Long question",
+        }
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_cancelled_turn_persists_no_assistant_message(self, mock_get_agent, client, secret):
+        agent = MagicMock()
+        agent.send_message = AsyncMock(side_effect=TurnCancelled())
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream", data=self._request_data(secret), format="json"
+        )
+        body = b"".join(response.streaming_content).decode()
+
+        assert "event: cancelled" in body
+        assert "event: message" not in body
+        assert not ChatMessage.objects.filter(
+            session_id="sess_stop", role=ChatMessage.Role.ASSISTANT
+        ).exists()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_cancelled_turn_is_recorded_on_the_user_message(self, mock_get_agent, client, secret):
+        """This flag is what a later history load reads to redraw the stop note."""
+        agent = MagicMock()
+        agent.send_message = AsyncMock(side_effect=TurnCancelled())
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream", data=self._request_data(secret), format="json"
+        )
+        list(response.streaming_content)
+
+        user_msg = ChatMessage.objects.get(message_id="msg_stop")
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_cancel_check_is_passed_to_the_agent(self, mock_get_agent, client, secret):
+        """Without this the agent has no way to notice a stop mid-run."""
+        agent = MagicMock()
+        agent.send_message = AsyncMock(
+            return_value=AgentResponse(content="Answer", tool_calls=[], latency_ms=10)
+        )
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream", data=self._request_data(secret), format="json"
+        )
+        list(response.streaming_content)
+
+        should_cancel = agent.send_message.await_args.kwargs["should_cancel"]
+        assert callable(should_cancel)
+        assert should_cancel() is False
+
+
+@pytest.mark.django_db(transaction=True)
+class TestStreamingCancelPropagation:
+    """End-to-end: a POST to /chat/cancel actually stops a running agent.
+
+    Exercises the real machinery — the database flag, the SSE loop's poll, and
+    the in-process relay to the agent thread — rather than raising TurnCancelled
+    directly the way the mocked tests above do.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_cancel_request_stops_a_running_agent(self, mock_get_agent, client, secret):
+        observed = {"polls": 0, "saw_cancel": False}
+
+        async def slow_send_message(*, should_cancel=None, **kwargs):
+            # Stand-in for the SDK loop: works until told to stop.
+            for _ in range(400):  # ~20s ceiling so a bug fails the test, not hangs it
+                observed["polls"] += 1
+                if should_cancel and should_cancel():
+                    observed["saw_cancel"] = True
+                    raise TurnCancelled()
+                await asyncio.sleep(0.05)
+            return AgentResponse(content="Never reached", tool_calls=[], latency_ms=0)
+
+        agent = MagicMock()
+        agent.send_message = slow_send_message
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_prop", secret),
+                "sessionId": "sess_prop",
+                "messageId": "msg_prop",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Take your time",
+            },
+            format="json",
+        )
+        stream = response.streaming_content
+
+        # Pull the proxy-flush comment so the generator has started the agent.
+        next(stream)
+
+        cancel = client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": create_test_token("user_prop", secret),
+                "sessionId": "sess_prop",
+                "messageId": "msg_prop",
+            },
+            format="json",
+        )
+        assert cancel.data["status"] == "cancelling"
+
+        body = b"".join(stream).decode()
+
+        assert observed["saw_cancel"] is True, "agent never observed the cancel flag"
+        assert "event: cancelled" in body
+        assert "event: message" not in body
+        assert not ChatMessage.objects.filter(
+            session_id="sess_prop", role=ChatMessage.Role.ASSISTANT
+        ).exists()

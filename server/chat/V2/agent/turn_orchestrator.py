@@ -14,7 +14,14 @@ from ..prompts.prompt_fragments import (
     NO_THINKING_NARRATION_INSTRUCTION,
     SECTION_SEPARATOR,
 )
-from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
+from .contracts import (
+    AgentProgressUpdate,
+    AgentResponse,
+    CancelCheck,
+    ConversationMessage,
+    MessageContext,
+    TurnCancelled,
+)
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
@@ -81,6 +88,7 @@ class TurnOrchestrator:
         core_prompt_id: str | None,
         on_progress: Callable[[AgentProgressUpdate], None] | None,
         context: MessageContext,
+        should_cancel: CancelCheck | None = None,
     ) -> AgentResponse:
         start_time = time.time()
         # The tracing guard (tracing_guard.py) ensures start_span returns
@@ -88,6 +96,14 @@ class TurnOrchestrator:
         # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
+
+        def raise_if_cancelled() -> None:
+            """Checkpoint between phases, so a cancel is honoured even while
+            the turn is between LLM calls rather than inside the SDK loop."""
+            if should_cancel and should_cancel():
+                raise TurnCancelled()
+
+        raise_if_cancelled()
 
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -115,6 +131,8 @@ class TurnOrchestrator:
         )
         if router_prompt_id:
             core_prompt_id = router_prompt_id
+
+        raise_if_cancelled()
 
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.
@@ -191,13 +209,18 @@ class TurnOrchestrator:
                 options=options,
                 prompt_text=prompt_text,
                 on_first_final_text_delta=emit_synthesis_status_once,
+                should_cancel=should_cancel,
             )
+        except TurnCancelled:
+            # A user stopping the turn is not a failure; don't log it as one.
+            raise
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
 
         emit_synthesis_status_once()
+        raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
@@ -221,6 +244,7 @@ class TurnOrchestrator:
                 options=options,
                 prompt_text=repair_prompt,
                 on_first_final_text_delta=emit_synthesis_status_once,
+                should_cancel=should_cancel,
             )
             output = repair_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)

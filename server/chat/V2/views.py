@@ -11,8 +11,10 @@ Request flow:
         2. Streams progress events (tool_start, tool_end, status) in real-time
         3. On success: updates summary, persists response, yields final "message" event
         4. On error: persists error message, yields "error" event
+        5. On cancel: abandons the turn, persists no answer, yields "cancelled" event
 
 Also includes:
+    POST /api/v2/chat/cancel      — abandons an in-flight turn (see chat_cancel_v2)
     GET  /api/v2/prompts/defaults — returns default Braintrust prompt slugs
     POST /api/v2/chat/feedback    — logs user feedback to Braintrust
 """
@@ -23,6 +25,7 @@ import contextvars
 import json
 import logging
 import queue
+import threading
 import time
 from decimal import Decimal
 from urllib.parse import urlsplit
@@ -44,12 +47,19 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import (
+    CancelRequestSerializer,
     ChatRequestSerializer,
     ClientStreamEventSerializer,
     FeedbackRequestSerializer,
     RecoveryRequestSerializer,
 )
-from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
+from .agent import (
+    AgentProgressUpdate,
+    ConversationMessage,
+    MessageContext,
+    TurnCancelled,
+    get_agent_service,
+)
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
@@ -68,6 +78,10 @@ from .utils import get_braintrust_config
 logger = logging.getLogger("chat")
 
 STREAM_KEEPALIVE_INTERVAL_SECONDS = 60
+# The SSE loop wakes on this cadence even when the agent is quiet, so the
+# shared cancel flag is noticed promptly. Keepalive comments are still only
+# emitted every STREAM_KEEPALIVE_INTERVAL_SECONDS of silence.
+STREAM_CANCEL_POLL_SECONDS = 1.0
 STREAM_HEARTBEAT_TIMEOUT_MS = 90_000
 STREAM_PROGRESS_QUEUE_MAXSIZE = 100
 CLIENT_STREAM_EVENT_RATE_LIMIT = 30
@@ -141,6 +155,35 @@ def _mark_turn_failed(user_message_id: int, error: str = "") -> None:
         processing_finished_at=now,
         processing_error=error or "",
     )
+
+
+def _mark_turn_cancelled(user_message_id: int) -> int:
+    """Flag an in-flight turn as cancelled. Returns the number of rows changed.
+
+    Only STARTED/RUNNING turns are eligible, so a cancel that races a turn which
+    already finished is a no-op rather than a rewrite of a completed row.
+    """
+    now = timezone.now()
+    return ChatMessage.objects.filter(
+        id=user_message_id,
+        processing_state__in=[
+            ChatMessage.ProcessingState.STARTED,
+            ChatMessage.ProcessingState.RUNNING,
+        ],
+    ).update(
+        processing_state=ChatMessage.ProcessingState.CANCELLED,
+        processing_heartbeat_at=now,
+        processing_finished_at=now,
+        processing_error="",
+    )
+
+
+def _is_turn_cancelled(user_message_id: int) -> bool:
+    """Read the shared cancel flag. Cross-process: any pod can set it."""
+    return ChatMessage.objects.filter(
+        id=user_message_id,
+        processing_state=ChatMessage.ProcessingState.CANCELLED,
+    ).exists()
 
 
 def _build_recovery_status_payload(user_message: ChatMessage) -> dict:
@@ -270,6 +313,10 @@ def chat_stream_v2(request):
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
+    # In-process relay for the shared cancel flag. The SSE thread polls Postgres
+    # (a sync context, where ORM calls are legal) and sets this; the agent thread
+    # runs async and only ever reads the in-memory flag.
+    cancel_event = threading.Event()
     appetizer_metrics = {}
 
     def run_appetizer():
@@ -427,7 +474,7 @@ def chat_stream_v2(request):
             int((sse_start - start_time) * 1000),
             extra={"session_id": data["sessionId"], "turn_id": turn_id},
         )
-        result_holder = {"response": None, "error": None}
+        result_holder = {"response": None, "error": None, "cancelled": False}
         assistant_persisted = False
         final_event_sent = False
 
@@ -466,6 +513,7 @@ def chat_stream_v2(request):
                         core_prompt_id=core_prompt_slug,
                         on_progress=on_progress,
                         context=msg_context,
+                        should_cancel=cancel_event.is_set,
                     )
 
                 if is_load_test:
@@ -473,6 +521,12 @@ def chat_stream_v2(request):
                         result_holder["response"] = asyncio.run(_send())
                 else:
                     result_holder["response"] = asyncio.run(_send())
+            except TurnCancelled:
+                result_holder["cancelled"] = True
+                logger.info(
+                    "Agent turn cancelled by user",
+                    extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                )
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
                 capture_exception(
@@ -522,9 +576,11 @@ def chat_stream_v2(request):
             yield ": " + " " * 4096 + "\n\n"
 
             # --- Stream progress events to the client ---
+            silent_since = time.time()
             while True:
                 try:
-                    update = progress_queue.get(timeout=STREAM_KEEPALIVE_INTERVAL_SECONDS)
+                    update = progress_queue.get(timeout=STREAM_CANCEL_POLL_SECONDS)
+                    silent_since = time.time()
 
                     # None sentinel means the agent thread finished
                     if update is None:
@@ -564,13 +620,49 @@ def chat_stream_v2(request):
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
-                    # No update in 60s — send a keepalive to prevent
+                    # The agent is quiet. Poll the shared cancel flag, which any
+                    # pod may have set via POST /chat/cancel, and relay it to the
+                    # agent thread.
+                    if not cancel_event.is_set() and _is_turn_cancelled(user_message.id):
+                        cancel_event.set()
+                        logger.info(
+                            "Cancel flag observed; signalling agent",
+                            extra={"session_id": data["sessionId"], "turn_id": turn_id},
+                        )
+                        continue
+
+                    if time.time() - silent_since < STREAM_KEEPALIVE_INTERVAL_SECONDS:
+                        continue
+
+                    # Genuinely idle — send a keepalive to prevent
                     # proxies/load-balancers from closing the connection
+                    silent_since = time.time()
                     _mark_turn_heartbeat(user_message.id)
                     yield ": keepalive\n\n"
 
             latency_ms = int((time.time() - start_time) * 1000)
             logging_service = get_turn_logging_service()
+
+            # --- Cancelled path: no assistant message is persisted ---
+            # The user message keeps processing_state=cancelled, which is what a
+            # later history load reads to redraw the "stopped" note. The client
+            # has usually hung up by now, so the event is best-effort.
+            if result_holder["cancelled"]:
+                # Normally a no-op, since chat_cancel_v2 set this flag to begin
+                # with. Written here anyway so "the agent stopped" always implies
+                # "the row says cancelled", whatever tripped the cancel.
+                _mark_turn_cancelled(user_message.id)
+                logger.info(
+                    "Turn cancelled; no assistant message persisted",
+                    extra={
+                        "session_id": data["sessionId"],
+                        "turn_id": turn_id,
+                        "latency_ms": latency_ms,
+                    },
+                )
+                yield f"event: cancelled\ndata: {json.dumps({'messageId': data['messageId']})}\n\n"
+                final_event_sent = True
+                return
 
             # --- Error path: persist an error message and notify client ---
             if result_holder["error"]:
@@ -882,6 +974,58 @@ def chat_recover_v2(request):
             else "",
             "processingState": user_message.processing_state or "",
             "heartbeatTimeoutMs": STREAM_HEARTBEAT_TIMEOUT_MS,
+        }
+    )
+
+
+@api_view(["POST"])
+def chat_cancel_v2(request):
+    """Abandon an in-flight turn so the agent stops billing for it.
+
+    POST /api/v2/chat/cancel
+
+    Writes the cancel flag to Postgres rather than to process memory: the pod
+    handling this request is not necessarily the pod streaming the turn, and the
+    streaming pod polls this row (see STREAM_CANCEL_POLL_SECONDS).
+    """
+    serializer = CancelRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Invalid request", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
+
+    user_message = ChatMessage.objects.filter(
+        message_id=data["messageId"],
+        session_id=data["sessionId"],
+        user_id__in=actor.user_id_candidates,
+        role=ChatMessage.Role.USER,
+    ).first()
+
+    if user_message is None:
+        return Response({"status": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if _mark_turn_cancelled(user_message.id):
+        logger.info(
+            "Turn cancel requested",
+            extra={
+                "session_id": data["sessionId"],
+                "turn_id": user_message.turn_id,
+                "message_id": data["messageId"],
+            },
+        )
+        return Response({"status": "cancelling"})
+
+    # Already finished, already cancelled, or never started — nothing to stop.
+    return Response(
+        {
+            "status": "not_running",
+            "processingState": user_message.processing_state or "",
         }
     )
 
