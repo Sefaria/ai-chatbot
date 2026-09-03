@@ -19,7 +19,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from chat.models import ChatMessage, ChatSession
-from chat.V2.agent import AgentResponse, TurnCancelled
+from chat.V2.agent import AgentProgressUpdate, AgentResponse, TurnCancelled
 from chat.V2.views import _compute_turn_count
 
 
@@ -1652,3 +1652,157 @@ class TestStreamingCancelWinsOverLateResponse:
         user_msg = ChatMessage.objects.get(message_id="msg_late")
         assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
         assert user_msg.response_message is None
+
+
+@pytest.mark.django_db
+class TestStreamingCancelDuringBusyStream:
+    """A stop must be noticed while the agent is actively emitting progress.
+
+    Regression: the cancel flag used to be read only inside the ``queue.Empty``
+    branch of the SSE loop. A working agent streams progress continuously, so
+    the queue was never empty, the check was never reached, and the turn ran to
+    completion — and cost — after the user had pressed stop.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.STREAM_CANCEL_POLL_SECONDS", 0.05)
+    @patch("chat.V2.views.get_agent_service")
+    def test_cancel_is_seen_while_progress_is_streaming(self, mock_get_agent, client, secret):
+        observed = {"saw_cancel": False}
+
+        async def chatty_send_message(*, should_cancel=None, on_progress=None, **kwargs):
+            # Emits faster than the loop's poll interval, so the queue never
+            # runs dry and the idle branch is never reached.
+            for _ in range(4000):  # ~20s ceiling so a bug fails the test, not hangs it
+                if on_progress:
+                    on_progress(AgentProgressUpdate(type="status", text="Searching sources"))
+                if should_cancel and should_cancel():
+                    observed["saw_cancel"] = True
+                    raise TurnCancelled()
+                await asyncio.sleep(0.005)
+            return AgentResponse(content="Never reached", tool_calls=[], latency_ms=0)
+
+        agent = MagicMock()
+        agent.send_message = chatty_send_message
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_busy", secret),
+                "sessionId": "sess_busy",
+                "messageId": "msg_busy",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Keep talking",
+            },
+            format="json",
+        )
+        stream = response.streaming_content
+
+        # Pull the proxy-flush comment so the generator has started the agent.
+        next(stream)
+
+        cancel = client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": create_test_token("user_busy", secret),
+                "sessionId": "sess_busy",
+                "messageId": "msg_busy",
+            },
+            format="json",
+        )
+        assert cancel.data["status"] == "cancelling"
+
+        body = b"".join(stream).decode()
+
+        assert "event: progress" in body, "the busy path this test exists for was never exercised"
+        assert observed["saw_cancel"] is True, "agent never observed the cancel flag"
+        assert "event: cancelled" in body
+        assert "event: message" not in body
+        assert not ChatMessage.objects.filter(
+            session_id="sess_busy", role=ChatMessage.Role.ASSISTANT
+        ).exists()
+
+
+@pytest.mark.django_db
+class TestStreamingCancelAfterClientDisconnect:
+    """A stop still stops the agent when the browser hangs up immediately.
+
+    The client aborts its read as soon as the cancel POST returns, which can be
+    sooner than the stream loop's next poll. Since ``future.cancel()`` cannot
+    interrupt a thread that is already running, the disconnect path has to relay
+    the flag itself or the turn runs to completion unwatched.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_agent_service")
+    def test_agent_is_stopped_when_the_client_hangs_up(self, mock_get_agent, client, secret):
+        started = threading.Event()
+        saw_cancel = threading.Event()
+
+        async def slow_send_message(*, should_cancel=None, **kwargs):
+            started.set()
+            for _ in range(400):  # ~20s ceiling so a bug fails the test, not hangs it
+                if should_cancel and should_cancel():
+                    saw_cancel.set()
+                    raise TurnCancelled()
+                await asyncio.sleep(0.05)
+            return AgentResponse(content="Never reached", tool_calls=[], latency_ms=0)
+
+        agent = MagicMock()
+        agent.send_message = slow_send_message
+        mock_get_agent.return_value = agent
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_hangup", secret),
+                "sessionId": "sess_hangup",
+                "messageId": "msg_hangup",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Take your time",
+            },
+            format="json",
+        )
+        stream = response.streaming_content
+
+        next(stream)
+        assert started.wait(timeout=5), "agent thread never started"
+
+        cancel = client.post(
+            "/api/v2/chat/cancel",
+            data={
+                "userId": create_test_token("user_hangup", secret),
+                "sessionId": "sess_hangup",
+                "messageId": "msg_hangup",
+            },
+            format="json",
+        )
+        assert cancel.data["status"] == "cancelling"
+
+        # Stands in for the browser hanging up: closing the underlying generator
+        # raises GeneratorExit at the yield, exactly as a dropped socket does.
+        # (Django 4.2 keeps the raw generator on the response as ``_iterator``;
+        # ``streaming_content`` only hands back a map() wrapper around it.)
+        response._iterator.close()
+
+        assert saw_cancel.wait(timeout=10), "agent kept running after the client hung up"
+        assert not ChatMessage.objects.filter(
+            session_id="sess_hangup", role=ChatMessage.Role.ASSISTANT
+        ).exists()

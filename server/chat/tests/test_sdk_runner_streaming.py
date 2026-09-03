@@ -194,12 +194,12 @@ def test_run_raises_turn_cancelled_and_closes_client():
         stream_event_cls=FakeStreamEvent,
     )
 
-    # Runs normally for two messages, then the user hits stop.
-    seen = {"count": 0}
-
+    # Runs normally for two messages, then the user hits stop. Keyed off
+    # messages actually delivered rather than a count of should_cancel() calls,
+    # so the test stays about cancellation behaviour and does not break when the
+    # runner legitimately checks the flag somewhere new.
     def should_cancel():
-        seen["count"] += 1
-        return seen["count"] > 2
+        return bool(clients) and clients[0].messages_yielded >= 3
 
     with pytest.raises(TurnCancelled):
         asyncio.run(runner.run(options=object(), prompt_text="prompt", should_cancel=should_cancel))
@@ -218,3 +218,36 @@ def test_cancel_is_checked_before_the_first_message_is_processed():
 
     with pytest.raises(TurnCancelled):
         asyncio.run(runner.run(options=object(), prompt_text="prompt", should_cancel=lambda: True))
+
+
+def test_cancel_before_the_run_submits_no_billable_request():
+    """A stop that landed before this run must not cost anything.
+
+    The per-message check above still lets the expensive part happen first:
+    opening the client spawns the agent subprocess and query() submits the
+    request. run() is called a second time for the link-repair pass, so a stop
+    arriving during link validation used to buy a full repair query — whole
+    prompt plus draft answer — before the first check was reached.
+    """
+    opened = []
+
+    class TrackingFactory(FakeCancelTrackingClient):
+        def __init__(self, *, options):
+            super().__init__(options=options)
+            self.queried = None
+            opened.append(self)
+
+        async def query(self, prompt_text):
+            self.queried = prompt_text
+
+    runner = ClaudeSDKRunner(
+        client_cls=TrackingFactory,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    with pytest.raises(TurnCancelled):
+        asyncio.run(runner.run(options=object(), prompt_text="prompt", should_cancel=lambda: True))
+
+    assert opened == [], "the SDK client was opened for a turn that was already cancelled"

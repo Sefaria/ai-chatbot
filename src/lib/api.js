@@ -361,6 +361,7 @@ export async function sendMessageStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let finalMessage = null;
+  let cancelled = false;
   let streamError = '';
   let streamReadError = null;
   
@@ -406,6 +407,15 @@ export async function sendMessageStream(
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
                 }
+              } else if (currentEvent === 'cancelled') {
+                // The server abandoned the turn because it saw a stop, and no
+                // final message is coming. Without this branch the stream just
+                // ends unanswered and the recovery path below marks a message
+                // the user deliberately stopped as FAILED. Whether this or the
+                // client's own abort() lands first is a race — most often on a
+                // slow connection, or when the cancel request outruns the 5s
+                // timeout — so both have to end the same way.
+                cancelled = true;
               } else if (currentEvent === 'error') {
                 streamError = data.error || 'Stream error';
                 await reportClientStreamEvent(apiBaseUrl, {
@@ -436,6 +446,8 @@ export async function sendMessageStream(
           currentData = '';
         }
       }
+
+      if (cancelled) break;
     }
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
@@ -451,6 +463,16 @@ export async function sendMessageStream(
     });
   }
   
+  // Reported as an abort so callers need one stopped-turn path, not two: the
+  // caller already treats AbortError as "the user stopped this", which is
+  // exactly what a server-side cancel means.
+  if (cancelled) {
+    const abort = new Error('Turn cancelled');
+    abort.name = 'AbortError';
+    abort.code = 'stream_cancelled';
+    throw abort;
+  }
+
   if (!finalMessage) {
     await reportClientStreamEvent(apiBaseUrl, {
       userId,

@@ -495,6 +495,26 @@ def chat_stream_v2(request):
                     extra={"session_id": data["sessionId"], "turn_id": turn_id},
                 )
 
+        def relay_cancel_if_flagged() -> bool:
+            """Move a cancel set by any pod onto this turn's agent thread.
+
+            The flag lives in the database because the pod serving POST
+            /chat/cancel is not necessarily the one running this stream. Once
+            relayed, cancel_event is what the agent's should_cancel checkpoints
+            actually read. Cheap to call repeatedly: after the first hit the
+            in-memory event short-circuits the query.
+            """
+            if cancel_event.is_set():
+                return True
+            if not _is_turn_cancelled(user_message.id):
+                return False
+            cancel_event.set()
+            logger.info(
+                "Cancel flag observed; signalling agent",
+                extra={"session_id": data["sessionId"], "turn_id": turn_id},
+            )
+            return True
+
         def run_agent():
             """Background thread: runs the async agent and captures the result."""
             # Bind the outer accumulator into this thread's context so
@@ -577,7 +597,18 @@ def chat_stream_v2(request):
 
             # --- Stream progress events to the client ---
             silent_since = time.time()
+            last_cancel_poll = time.time()
             while True:
+                # Poll the cancel flag on a timer rather than only when the
+                # queue runs dry. A turn that is working emits progress
+                # continuously, so the queue.Empty branch below may never be
+                # reached — and the stop would go unnoticed until the agent had
+                # finished, and billed for, an answer nobody is waiting for.
+                now = time.time()
+                if now - last_cancel_poll >= STREAM_CANCEL_POLL_SECONDS:
+                    last_cancel_poll = now
+                    relay_cancel_if_flagged()
+
                 try:
                     update = progress_queue.get(timeout=STREAM_CANCEL_POLL_SECONDS)
                     silent_since = time.time()
@@ -620,17 +651,9 @@ def chat_stream_v2(request):
                     yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
-                    # The agent is quiet. Poll the shared cancel flag, which any
-                    # pod may have set via POST /chat/cancel, and relay it to the
-                    # agent thread.
-                    if not cancel_event.is_set() and _is_turn_cancelled(user_message.id):
-                        cancel_event.set()
-                        logger.info(
-                            "Cancel flag observed; signalling agent",
-                            extra={"session_id": data["sessionId"], "turn_id": turn_id},
-                        )
-                        continue
-
+                    # The agent is quiet. Cancellation is handled at the top of
+                    # the loop, so there is nothing to do here but keep the
+                    # connection alive.
                     if time.time() - silent_since < STREAM_KEEPALIVE_INTERVAL_SECONDS:
                         continue
 
@@ -862,6 +885,18 @@ def chat_stream_v2(request):
                         "agent_completed": result_holder["response"] is not None,
                     },
                 )
+                # The browser hangs up as soon as its cancel POST returns, which
+                # can be sooner than the next poll above. Relay the flag here
+                # too: future.cancel() cannot interrupt a thread that is already
+                # running, so without this the agent would run the turn to
+                # completion and bill for it. Deliberately conditional on the
+                # flag — an ordinary disconnect (closed tab, dropped wifi) must
+                # still finish and persist, or chat_recover_v2 has nothing to
+                # hand back when the user returns.
+                try:
+                    relay_cancel_if_flagged()
+                except Exception:
+                    logger.exception("Could not relay cancel flag after disconnect")
             raise
         finally:
             stream_closed = True

@@ -233,6 +233,12 @@ class TurnOrchestrator:
         while (
             not validation_result.is_valid and repair_attempts < MAX_RESPONSE_LINK_REPAIR_ATTEMPTS
         ):
+            # Link validation resolves every ref in the answer over the network,
+            # one at a time, so this is a multi-second gap late in the turn —
+            # exactly when a waiting user gives up and hits stop. Without this
+            # the repair prompt is still assembled and handed to the runner.
+            raise_if_cancelled()
+
             repair_attempts += 1
             emitter.emit(AgentProgressUpdate(type="status", text="Repairing response links..."))
             repair_prompt = (

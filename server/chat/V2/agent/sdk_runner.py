@@ -67,6 +67,16 @@ class ClaudeSDKRunner:
             first_final_text_delta_notified = True
             on_first_final_text_delta()
 
+        # Checked before the client is opened, not just per streamed message:
+        # entering the context manager spawns the agent subprocess and query()
+        # submits a billable request, both of which happen before the in-loop
+        # check below would ever run. run() is entered more than once per turn
+        # — the link-repair pass in turn_orchestrator.py is a second call — so
+        # a stop that landed during link validation would otherwise still buy a
+        # full repair query.
+        if should_cancel and should_cancel():
+            raise TurnCancelled()
+
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
             async for message in client.receive_response():
