@@ -8,6 +8,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import threading
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1565,3 +1566,89 @@ class TestStreamingCancelPropagation:
         assert not ChatMessage.objects.filter(
             session_id="sess_prop", role=ChatMessage.Role.ASSISTANT
         ).exists()
+
+
+@pytest.mark.django_db
+class TestStreamingCancelWinsOverLateResponse:
+    """A turn cancelled mid-flight must not persist or summarise an answer.
+
+    Regression for a guardrail that was already in flight when the user hit
+    stop: it returned a blocked response, that early return skipped the
+    orchestrator's checkpoints, and the stream took the success path — writing
+    an assistant row and updating the conversation summary after the stop.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views.get_summary_service")
+    @patch("chat.V2.views.get_agent_service")
+    def test_response_returned_after_cancel_is_discarded(
+        self, mock_get_agent, mock_get_summary, client, secret
+    ):
+        cancel_done = threading.Event()
+
+        async def responds_despite_cancel(*, should_cancel=None, **kwargs):
+            # Stands in for the guardrail's early return: ignores should_cancel
+            # entirely and hands back a perfectly good response after the stop.
+            cancel_done.wait(timeout=10)
+            return AgentResponse(
+                content="Blocked by guardrail", tool_calls=[], latency_ms=5, trace_id="t_late"
+            )
+
+        agent = MagicMock()
+        agent.send_message = responds_despite_cancel
+        mock_get_agent.return_value = agent
+        # Return a real string so that, if the guard regresses, the success path
+        # runs to completion and the assertions below report the actual problem
+        # rather than the summary mock blowing up mid-transaction.
+        mock_get_summary.return_value.update_summary.return_value.to_prompt_text.return_value = (
+            "summary"
+        )
+
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_late", secret),
+                "sessionId": "sess_late",
+                "messageId": "msg_late",
+                "timestamp": timezone.now().isoformat(),
+                "text": "Stop me mid-guardrail",
+            },
+            format="json",
+        )
+        stream = response.streaming_content
+        next(stream)  # start the agent
+
+        assert (
+            client.post(
+                "/api/v2/chat/cancel",
+                data={
+                    "userId": create_test_token("user_late", secret),
+                    "sessionId": "sess_late",
+                    "messageId": "msg_late",
+                },
+                format="json",
+            ).data["status"]
+            == "cancelling"
+        )
+        cancel_done.set()
+
+        body = b"".join(stream).decode()
+
+        assert "event: cancelled" in body
+        assert "event: message" not in body
+        assert not ChatMessage.objects.filter(
+            session_id="sess_late", role=ChatMessage.Role.ASSISTANT
+        ).exists(), "an answer was persisted after the user stopped"
+        assert not mock_get_summary.called, "the summary was updated after the user stopped"
+
+        user_msg = ChatMessage.objects.get(message_id="msg_late")
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+        assert user_msg.response_message is None

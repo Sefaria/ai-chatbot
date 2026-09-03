@@ -124,6 +124,9 @@ class TurnOrchestrator:
             start_time=start_time,
         )
         if guardrail_response:
+            # The guardrail may have been in flight when the user stopped, and
+            # this early return would otherwise skip every later checkpoint.
+            raise_if_cancelled()
             return guardrail_response
 
         router_prompt_id, route, messages = await self.router.run_router(

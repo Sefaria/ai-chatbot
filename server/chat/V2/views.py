@@ -647,13 +647,21 @@ def chat_stream_v2(request):
             # The user message keeps processing_state=cancelled, which is what a
             # later history load reads to redraw the "stopped" note. The client
             # has usually hung up by now, so the event is best-effort.
-            if result_holder["cancelled"]:
+            #
+            # The DB is consulted rather than trusting result_holder alone: the
+            # agent can still return a response after a cancel — an early return
+            # that skips the checkpoints (e.g. a guardrail already in flight), or
+            # an answer that simply finished a moment before the click. Guarding
+            # here, at the one place persistence happens, covers every such path
+            # instead of trying to enumerate them.
+            if result_holder["cancelled"] or _is_turn_cancelled(user_message.id):
                 # Normally a no-op, since chat_cancel_v2 set this flag to begin
                 # with. Written here anyway so "the agent stopped" always implies
                 # "the row says cancelled", whatever tripped the cancel.
                 _mark_turn_cancelled(user_message.id)
                 logger.info(
-                    "Turn cancelled; no assistant message persisted",
+                    "Turn cancelled; no assistant message persisted (agent_returned_response=%s)",
+                    result_holder["response"] is not None,
                     extra={
                         "session_id": data["sessionId"],
                         "turn_id": turn_id,
