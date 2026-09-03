@@ -149,6 +149,12 @@ class SefariaToolExecutor:
                 offset=input_data.get("offset", 0),
             )
 
+        elif tool_name == "get_text_or_category_shape":
+            return await self.client.get_text_or_category_shape(input_data["name"])
+
+        elif tool_name == "get_text_catalogue_info":
+            return await self.client.get_text_catalogue_info(input_data["title"])
+
         elif tool_name == "get_available_manuscripts":
             return await self.client.get_available_manuscripts(input_data["reference"])
 
