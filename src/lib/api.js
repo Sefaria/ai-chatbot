@@ -261,6 +261,8 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
+ * @param {{signal?: AbortSignal}} [options] - `signal` aborts the stream; the resulting
+ *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -274,8 +276,11 @@ export async function sendMessageStream(
   isStaff = false,
   labs = false,
   requestMetadata = null,
-  interfaceLang = ''
+  interfaceLang = '',
+  options = {}
 ) {
+  const { signal = null } = options;
+
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
@@ -305,9 +310,13 @@ export async function sendMessageStream(
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
   } catch (error) {
+    // A user-initiated stop is not a stream failure: skip the telemetry and the
+    // recovery poll, which would otherwise wait for a response nobody wants.
+    if (error?.name === 'AbortError') throw error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
       sessionId,
@@ -352,6 +361,7 @@ export async function sendMessageStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let finalMessage = null;
+  let cancelled = false;
   let streamError = '';
   let streamReadError = null;
   
@@ -397,6 +407,15 @@ export async function sendMessageStream(
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
                 }
+              } else if (currentEvent === 'cancelled') {
+                // The server abandoned the turn because it saw a stop, and no
+                // final message is coming. Without this branch the stream just
+                // ends unanswered and the recovery path below marks a message
+                // the user deliberately stopped as FAILED. Whether this or the
+                // client's own abort() lands first is a race — most often on a
+                // slow connection, or when the cancel request outruns the 5s
+                // timeout — so both have to end the same way.
+                cancelled = true;
               } else if (currentEvent === 'error') {
                 streamError = data.error || 'Stream error';
                 await reportClientStreamEvent(apiBaseUrl, {
@@ -427,8 +446,11 @@ export async function sendMessageStream(
           currentData = '';
         }
       }
+
+      if (cancelled) break;
     }
   } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     streamReadError = error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
@@ -441,6 +463,16 @@ export async function sendMessageStream(
     });
   }
   
+  // Reported as an abort so callers need one stopped-turn path, not two: the
+  // caller already treats AbortError as "the user stopped this", which is
+  // exactly what a server-side cancel means.
+  if (cancelled) {
+    const abort = new Error('Turn cancelled');
+    abort.name = 'AbortError';
+    abort.code = 'stream_cancelled';
+    throw abort;
+  }
+
   if (!finalMessage) {
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
@@ -506,6 +538,51 @@ export async function fetchPromptDefaults(apiBaseUrl) {
   }
 
   return response.json();
+}
+
+/** How long to wait for the server to acknowledge a stop before giving up on it. */
+const CANCEL_TIMEOUT_MS = 5000;
+
+/**
+ * Ask the server to abandon an in-flight turn so it stops paying for an answer
+ * nobody will read.
+ *
+ * The flag is written to the database rather than to a single server's memory,
+ * because the pod that receives this request is not necessarily the one running
+ * the stream. Never throws: a failed cancel must not block the UI from
+ * returning to its stopped state.
+ *
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {{userId: string, sessionId: string, messageId: string}} payload
+ * @returns {Promise<boolean>} true when the server confirmed it is stopping
+ */
+export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId }) {
+  // Hand-rolled rather than AbortSignal.timeout(), which is unavailable on
+  // browsers older than mid-2022 and would throw before the request went out —
+  // silently losing the server-side cancel on exactly those clients.
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), CANCEL_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/v2/chat/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ userId, sessionId, messageId }),
+      signal: timeout.signal
+    });
+
+    if (!response.ok) return false;
+    const data = await response.json();
+    return data?.status === 'cancelling';
+  } catch {
+    // Offline, timed out, or the turn already finished — the browser stops
+    // reading either way.
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

@@ -25,7 +25,13 @@ from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
 
 from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
-from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
+from .contracts import (
+    AgentProgressUpdate,
+    AgentResponse,
+    CancelCheck,
+    ConversationMessage,
+    MessageContext,
+)
 from .guardrail_gate import DefaultGuardrailGate
 from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
@@ -148,8 +154,13 @@ class ClaudeAgentService:
         core_prompt_id: str | None = None,
         on_progress: Callable[[AgentProgressUpdate], None] | None = None,
         context: MessageContext | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> AgentResponse:
-        """Run one chat turn and return the final response payload."""
+        """Run one chat turn and return the final response payload.
+
+        `should_cancel` is polled between steps; when it returns True the turn
+        raises TurnCancelled and the agent subprocess is torn down.
+        """
         context = context or MessageContext()
 
         async def run() -> AgentResponse:
@@ -158,6 +169,7 @@ class ClaudeAgentService:
                 core_prompt_id=core_prompt_id,
                 on_progress=on_progress,
                 context=context,
+                should_cancel=should_cancel,
             )
 
         if self.braintrust_logging_enabled:

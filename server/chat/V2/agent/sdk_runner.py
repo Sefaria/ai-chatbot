@@ -10,6 +10,8 @@ from typing import Any
 from claude_agent_sdk import ClaudeSDKClient
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 
+from .contracts import CancelCheck, TurnCancelled
+
 
 @dataclass
 class SDKRunResult:
@@ -44,6 +46,7 @@ class ClaudeSDKRunner:
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
         trace_id = None
@@ -64,9 +67,25 @@ class ClaudeSDKRunner:
             first_final_text_delta_notified = True
             on_first_final_text_delta()
 
+        # Checked before the client is opened, not just per streamed message:
+        # entering the context manager spawns the agent subprocess and query()
+        # submits a billable request, both of which happen before the in-loop
+        # check below would ever run. run() is entered more than once per turn
+        # — the link-repair pass in turn_orchestrator.py is a second call — so
+        # a stop that landed during link validation would otherwise still buy a
+        # full repair query.
+        if should_cancel and should_cancel():
+            raise TurnCancelled()
+
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
             async for message in client.receive_response():
+                # Checked once per streamed message — cheap (an in-memory flag)
+                # and frequent, so a cancel lands within a fraction of a second.
+                # Raising here unwinds out of `async with`, closing the client
+                # and killing the agent subprocess.
+                if should_cancel and should_cancel():
+                    raise TurnCancelled()
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
                 if isinstance(message, self.result_message_cls):

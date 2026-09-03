@@ -63,6 +63,14 @@ class RecoveryRequestSerializer(serializers.Serializer):
     messageId = serializers.CharField(max_length=100)
 
 
+class CancelRequestSerializer(serializers.Serializer):
+    """Request to abandon an in-flight turn."""
+
+    userId = serializers.CharField(max_length=512)
+    sessionId = serializers.CharField(max_length=100)
+    messageId = serializers.CharField(max_length=100)
+
+
 class ClientStreamEventSerializer(serializers.Serializer):
     """Browser-side telemetry for stream failures and recoveries."""
 
@@ -101,9 +109,19 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
     userId = serializers.CharField(source="user_id")
     timestamp = serializers.DateTimeField(source="server_timestamp")
 
+    processingState = serializers.CharField(source="processing_state")
+
     class Meta:
         model = ChatMessage
-        fields = ["messageId", "sessionId", "userId", "role", "content", "timestamp"]
+        fields = [
+            "messageId",
+            "sessionId",
+            "userId",
+            "role",
+            "content",
+            "timestamp",
+            "processingState",
+        ]
 
 
 class HistoryResponseSerializer(serializers.Serializer):
