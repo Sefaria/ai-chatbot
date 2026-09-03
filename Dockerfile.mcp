@@ -1,0 +1,26 @@
+# Public Sefaria MCP server.
+#
+# Separate from the main Dockerfile, which builds the Svelte bundle and the full
+# Django application. This image carries only the tool layer and its MCP wrapper.
+
+FROM python:3.11-alpine3.23
+
+ARG APP_VERSION=0.0.0-dev
+ENV SEFARIA_MCP_VERSION=$APP_VERSION
+
+RUN adduser -D -u 1001 appuser
+
+WORKDIR /server
+COPY server/requirements-mcp.txt .
+RUN pip install --no-cache-dir -U -r requirements-mcp.txt
+
+COPY server/mcp_server ./mcp_server
+COPY server/chat/__init__.py ./chat/__init__.py
+COPY server/chat/V2/__init__.py ./chat/V2/__init__.py
+COPY server/chat/V2/agent ./chat/V2/agent
+
+USER 1001
+
+EXPOSE 8088 9090
+
+ENTRYPOINT ["python", "-m", "mcp_server"]

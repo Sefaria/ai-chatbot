@@ -1,0 +1,13 @@
+# Dependencies for the public MCP server (mcp_server), built as its own image.
+#
+# Deliberately excludes Django, anthropic, braintrust and the Claude Code CLI:
+# the shared tool layer under chat/V2/agent depends only on httpx and stdlib.
+#
+# fastmcp is PINNED on purpose. The previous standalone server left it unpinned
+# with no lockfile, so every image build took whatever was latest that day, and
+# prod and dev drifted onto different versions (3.4.2 vs 3.4.7).
+
+fastmcp==3.4.7
+httpx>=0.27.0
+uvicorn>=0.30
+prometheus-client>=0.20
