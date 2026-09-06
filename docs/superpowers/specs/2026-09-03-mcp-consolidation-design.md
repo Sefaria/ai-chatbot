@@ -1,7 +1,7 @@
 # Consolidating sefaria-mcp into ai-chatbot
 
 **Date:** 2026-09-03
-**Status:** Approved design, not yet implemented
+**Status:** Implemented (cutover pending)
 
 ## Problem
 
@@ -68,27 +68,58 @@ Findings:
 | Hosting | Separate process and image, same repo | Keeps public MCP traffic off the chatbot's capacity and failure path, while collapsing two repos into one |
 | Tool selection | Declarative `"surfaces"` marker on each schema | Extends the existing `LABS_TOOL_NAMES` pattern rather than inventing a parallel one |
 | Tool vocabulary | LA names, single canonical set, no aliases | Names are not part of the contract |
+| Legacy catalogue tools | Kept, marked `mcp`-only | Left as-is pending review; see Dead code below |
 | Package layout | Files stay put; `__init__.py` made lazy | A move would churn ~150 references, mostly `mock.patch` strings, for no functional gain |
 | Transport | Streamable HTTP at `/mcp` **and** SSE at `/sse` | `/sse` is what every existing connector uses; SSE is deprecated in the spec but still supported by FastMCP |
 
 ### Public tool surface
 
-Marked for the `mcp` surface — the LA's general tools:
+19 tools marked for the `mcp` surface:
 
 `get_text`, `semantic_search`, `get_current_calendar`, `specific_keyword_search`,
 `get_links_between_texts`, `search_in_book`, `search_in_dictionaries`,
-`get_english_translations`, `validate_refs`, `get_topic_details`,
-`clarify_name_argument`, `clarify_search_path_filter`, `catalog_get_node`,
-`catalog_get_children`, `catalog_search`, `catalog_query`,
-`get_available_manuscripts`, `get_manuscript_image`.
+`get_english_translations`, `get_topic_details`, `clarify_name_argument`,
+`clarify_search_path_filter`, `catalog_get_node`, `catalog_get_children`,
+`catalog_search`, `catalog_query`, `get_available_manuscripts`,
+`get_manuscript_image`, `get_text_or_category_shape`, `get_text_catalogue_info`.
 
 **Not** marked: `search_user_source_sheets`, `get_source_sheet`,
 `create_source_sheet` — these require a per-user token via `MessageContext`, which an
-authless server cannot supply.
+authless server cannot supply. Also unmarked: `validate_refs`, which is not part of
+today's public surface.
 
-**Dropped** relative to today's public server: `get_text_or_category_shape` and
-`get_text_catalogue_info`. The LA's cached `catalog_*` tools supersede them.
-(`SefariaClient` retains both methods as dead code; removing them is optional cleanup.)
+### Dead code: the two legacy catalogue tools
+
+Investigated rather than assumed. `SefariaClient.get_text_or_category_shape` and
+`get_text_catalogue_info` are unreachable from the agent — no schema, no `_dispatch`
+branch, and `_dispatch` is a plain if/elif chain with no `getattr`, so nothing can
+reach them dynamically. Their removal was deliberate: commit `1a087d6a`
+*"feat: expose library index catalogue to assistant"* (2026-03-22) deleted both
+schemas and both dispatch branches in the same change that added the four cached
+`catalog_*` tools, leaving the client methods behind.
+
+The only surviving references are `docs/ARCHITECTURE.md` (which was stale, and has
+been corrected) and `latency/scripts/plot_latency_partition.py`, which files them
+under `LEGACY_PRODUCT_TOOL_NAMES` to classify historical traces — a live use of the
+name strings, not of the methods.
+
+Both are exposed on the MCP surface, preserving today's public tool set. Whether to
+retire them in favour of `catalog_*` is left as a separate decision.
+
+### Environment
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SEFARIA_MCP_PORT` | `8088` | MCP server port |
+| `SEFARIA_MCP_METRICS_PORT` | `9090` | Prometheus port |
+| `SEFARIA_MCP_VERSION` | `0.0.0-dev` | Reported as `serverInfo.version`; set from the release tag at image build |
+| `SEFARIA_API_BASE_URL` | `https://www.sefaria.org` | Upstream Sefaria API |
+| `SEMANTIC_SEARCH_API_TOKEN` | unset | **Required for `semantic_search`.** Without it `/api/knn-search` returns 401 |
+
+`SEMANTIC_SEARCH_API_TOKEN` is worth a deliberate decision: it means an authless
+public server spends a Sefaria-issued token on anonymous traffic. Semantic search is
+currently broken in prod for an unrelated reason, so declining to set it preserves
+the status quo rather than causing a regression.
 
 ## Architecture
 
@@ -204,5 +235,22 @@ Stand the new service up on a temporary hostname and, against it and
 - Cloudflare DNS changes pointing `mcp.sefaria.org` at the new service.
 - Archiving `Sefaria/sefaria-mcp` (after DNS has moved and soaked).
 - Adding authentication.
-- Removing the now-dead `get_text_or_category_shape` / `get_text_catalogue_info`
-  methods from `SefariaClient`.
+- Retiring the two legacy catalogue tools.
+
+## Implementation notes
+
+Verified during implementation:
+
+- `fastmcp.tools.base.Tool` accepts a raw JSON schema as `parameters`, so schemas
+  pass through verbatim — confirmed by a test asserting `inputSchema` equality.
+- Both transports were exercised against a live server: SSE and Streamable HTTP each
+  complete a handshake, negotiate protocol version `2025-11-25`, list 19 tools, and
+  execute calls. `serverInfo.version` now reports the Sefaria release rather than
+  FastMCP's version.
+- `/.well-known/oauth-*` returns 404, and `/sse` does not redirect.
+- Pinned `fastmcp==3.4.7` — the version `devmcp.sefaria.org` already runs — and
+  verified the server in a clean venv containing only `requirements-mcp.txt`, which
+  also proves the tool layer needs neither Django, `anthropic`, nor `braintrust`.
+  `fastmcp` 4.x exists but a major-version jump was not taken as part of a migration.
+- `chat/V2/agent/__init__.py` is now lazy (PEP 562); importing the tool layer pulls
+  in no heavy dependencies.
