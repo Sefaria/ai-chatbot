@@ -2,7 +2,6 @@
 
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
-import anthropic
 import json
 import os
 import re
@@ -224,19 +223,26 @@ def _detect_absence_claims(text: str) -> list[tuple[str, str]]:
     """Use an LLM to extract absence claims. Returns (book_name, original_claim) pairs."""
     plain = _strip_html(text)
     try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        resp = client.messages.create(
-            model=LLM_MODEL,
-            max_tokens=512,
-            temperature=0,
-            messages=[
-                {
-                    "role": "user",
-                    "content": _ABSENCE_PROMPT.format(response=plain),
-                }
-            ],
+        http_resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": LLM_MODEL,
+                "max_tokens": 512,
+                "temperature": 0,
+                "messages": [
+                    {"role": "user", "content": _ABSENCE_PROMPT.format(response=plain)}
+                ],
+            },
+            timeout=30.0,
         )
-        raw = resp.content[0].text if resp.content else "{}"
+        data = http_resp.json() if http_resp.status_code == 200 else {}
+        content_list = data.get("content", [])
+        raw = content_list[0].get("text", "{}") if content_list else "{}"
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
         parsed = json.loads(raw)
         items = (

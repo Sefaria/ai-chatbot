@@ -630,6 +630,44 @@ class SefariaClient:
         self._ref_cache[tref] = result
         return result
 
+    async def strict_resolve_ref(self, tref: str) -> dict | None:
+        """Resolve a tref using /api/ref only, with no local fallback.
+
+        Use this for safety or correctness validation. The fallback in
+        resolve_ref() is deliberately UI-friendly; this method is deliberately
+        strict so invalid or unverified refs are not treated as valid links.
+        """
+        return await self._fetch_ref(tref)
+
+    async def validate_refs(self, refs: list[str]) -> list[dict[str, Any]]:
+        """Bulk validate text refs via /api/ref, returning per-item results."""
+        results: list[dict[str, Any]] = []
+        for ref in refs:
+            try:
+                ref_data = await self.strict_resolve_ref(ref)
+            except Exception as exc:
+                results.append(
+                    {
+                        "input": ref,
+                        "is_valid": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
+            if not ref_data:
+                results.append({"input": ref, "is_valid": False})
+                continue
+            results.append(
+                {
+                    "input": ref,
+                    "is_valid": True,
+                    "normalized": ref_data.get("en", ""),
+                    "hebrew": ref_data.get("he", ""),
+                    "url_ref": ref_data.get("url_ref", ""),
+                }
+            )
+        return results
+
     async def _fetch_ref(self, tref: str) -> dict | None:
         """Fetch /api/ref/<tref> and return {is_ref, url_ref, en, he}, or None.
 

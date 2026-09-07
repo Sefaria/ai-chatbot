@@ -9,7 +9,7 @@ from django.conf import settings
 from ..user_token_service import (
     UserTokenError,
     UserTokenExpiredError,
-    decrypt_chatbot_user_token,
+    decrypt_chatbot_user_identity,
 )
 from .actor import Actor
 
@@ -85,10 +85,14 @@ def _authenticate_user_token(encrypted_token: str) -> Actor:
         raise InvalidUserToken("server configuration error")
 
     try:
-        user_id = decrypt_chatbot_user_token(encrypted_token, secret)
+        identity = decrypt_chatbot_user_identity(encrypted_token, secret)
     except UserTokenExpiredError as exc:
         raise UserTokenExpired() from exc
     except UserTokenError as exc:
         raise InvalidUserToken(str(exc)) from exc
 
-    return Actor(user_id=user_id, encrypted_token=encrypted_token)
+    return Actor(
+        user_id=identity.user_id,
+        encrypted_token=encrypted_token,
+        sefaria_user_id=identity.sefaria_user_id,
+    )

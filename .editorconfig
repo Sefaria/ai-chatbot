@@ -1,0 +1,14 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Translation files are written by Weblate, which always emits 4-space indent.
+# Keep the repo byte-compatible with Weblate output so syncing the translation
+# branch does not produce whole-file whitespace conflicts.
+[src/i18n/locales/*.json]
+indent_style = space
+indent_size = 4

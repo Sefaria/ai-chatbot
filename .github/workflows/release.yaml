@@ -36,7 +36,7 @@ jobs:
         with:
           working_directory: ./
           extra_plugins: |
-            conventional-changelog-conventionalcommits
+            conventional-changelog-conventionalcommits@6.1.0
             @semantic-release/exec
             @semantic-release/git
             @semantic-release/commit-analyzer
@@ -109,6 +109,8 @@ jobs:
           file: ./Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ needs.release.outputs.version }}
       - name: Determine deploy environment
         id: deploy_env
         run: |

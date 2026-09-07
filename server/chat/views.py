@@ -4,16 +4,44 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
+from .user_token_service import UserTokenError, decrypt_chatbot_user_identity
 from .V2 import views as v2_views
 from .V2.prompts import get_prompt_service
 
 logger = logging.getLogger("chat")
+
+
+def _resolve_history_user_ids(user_id: str) -> list[str]:
+    """
+    Return possible persisted chatbot DB user ids for history reads.
+
+    Current clients pass the encrypted Sefaria chatbot token. Older callers and
+    tests may still pass the already-persisted id directly, so invalid token
+    input falls back to the original value. During the raw-id anonymization
+    rollout, a user may temporarily have rows under both the anonymized id and
+    the raw Sefaria id; reads accept both while writes persist only the
+    anonymized id.
+    """
+    secret = settings.CHATBOT_USER_TOKEN_SECRET
+    if not secret:
+        return [user_id]
+
+    try:
+        identity = decrypt_chatbot_user_identity(user_id, secret)
+    except UserTokenError:
+        return [user_id]
+
+    user_ids = [identity.user_id]
+    if identity.sefaria_user_id and identity.sefaria_user_id not in user_ids:
+        user_ids.append(identity.sefaria_user_id)
+    return user_ids
 
 
 def extract_page_type(url: str | None) -> str:
@@ -63,8 +91,10 @@ def history(request):
             {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
+    user_id_candidates = _resolve_history_user_ids(user_id)
+
     queryset = ChatMessage.objects.filter(
-        user_id=user_id,
+        user_id__in=user_id_candidates,
         session_id=session_id,
     )
 
@@ -87,7 +117,10 @@ def history(request):
 
     # Get session info
     try:
-        session = ChatSession.objects.get(session_id=session_id)
+        session = ChatSession.objects.get(
+            session_id=session_id,
+            user_id__in=user_id_candidates,
+        )
         session_info = {
             "turnCount": session.turn_count,
             "totalTokens": (session.total_input_tokens or 0) + (session.total_output_tokens or 0),

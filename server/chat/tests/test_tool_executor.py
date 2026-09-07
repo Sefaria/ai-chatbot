@@ -66,6 +66,7 @@ def mock_client():
     client.search_user_source_sheets = AsyncMock(return_value={"sheets": []})
     client.get_source_sheet = AsyncMock(return_value={"sources": []})
     client.create_source_sheet = AsyncMock(return_value={"id": 715437, "sources": []})
+    client.validate_refs = AsyncMock(return_value=[{"input": "Genesis 1:1", "is_valid": True}])
     return client
 
 
@@ -121,6 +122,12 @@ class TestToolDispatch:
                 {"reference": "Psalm 23:1"},
                 "get_english_translations",
                 ("Psalm 23:1",),
+            ),
+            (
+                "validate_refs",
+                {"refs": ["Genesis 1:1"]},
+                "validate_refs",
+                (["Genesis 1:1"],),
             ),
             (
                 "get_topic_details",
@@ -249,7 +256,11 @@ class TestToolDispatch:
     def test_set_message_context_sets_client_user_session(self, executor, mock_client):
         from chat.V2.agent import MessageContext
 
-        context = MessageContext(user_id="186013", encrypted_user_token="encrypted-token")
+        context = MessageContext(
+            user_id="hashed-user",
+            sefaria_user_id="186013",
+            encrypted_user_token="encrypted-token",
+        )
 
         executor.set_message_context(context)
 
@@ -319,6 +330,7 @@ class TestDescribeToolCall:
                 ["prayer", "Talmud"],
             ),
             ("get_text", {"reference": "Genesis 1:1"}, ["Fetching text", "Genesis 1:1"]),
+            ("validate_refs", {"refs": ["Genesis 1:1"]}, ["Validating refs", "Genesis 1:1"]),
             (
                 "search_user_source_sheets",
                 {"query": "halacha workflow"},

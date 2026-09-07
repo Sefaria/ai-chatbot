@@ -44,7 +44,7 @@ class SefariaToolExecutor:
 
     def set_message_context(self, context: MessageContext) -> None:
         """Propagate per-request auth context to the Sefaria client."""
-        self.client.set_user_session(context.user_id, context.encrypted_user_token)
+        self.client.set_user_session(context.sefaria_user_id, context.encrypted_user_token)
 
     async def execute(self, tool_name: str, tool_input: dict[str, Any]) -> ToolResult:
         """Execute a tool by name. Errors are caught and returned as ToolResult(is_error=True)."""
@@ -97,6 +97,9 @@ class SefariaToolExecutor:
 
         elif tool_name == "get_english_translations":
             return await self.client.get_english_translations(input_data["reference"])
+
+        elif tool_name == "validate_refs":
+            return await self.client.validate_refs(input_data["refs"])
 
         elif tool_name == "get_topic_details":
             return await self.client.get_topic_details(
@@ -248,6 +251,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
             f"Searching dictionaries for {q(tool_input.get('query'))}"
         ),
         "get_text": lambda: f"Fetching text {q(tool_input.get('reference'))}",
+        "validate_refs": lambda: f"Validating refs {q(tool_input.get('refs'))}",
         "get_links_between_texts": lambda: f"Finding links from {q(tool_input.get('reference'))}",
         "get_topic_details": lambda: f"Loading topic details for {q(tool_input.get('topic_slug'))}",
         "get_current_calendar": lambda: "Fetching current Jewish calendar",

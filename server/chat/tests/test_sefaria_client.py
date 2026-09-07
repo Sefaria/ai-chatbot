@@ -746,6 +746,44 @@ class TestResolveRef:
         await client.resolve_ref("Genesis 1:1")
         assert client._get_json.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_strict_resolve_ref_does_not_use_fallback(self):
+        """Strict validation should not fabricate refs if /api/ref fails."""
+        import httpx
+
+        client = SefariaClient()
+        client._get_json = AsyncMock(side_effect=httpx.HTTPError("boom"))
+        with pytest.raises(httpx.HTTPError):
+            await client.strict_resolve_ref("Genesis 1:1")
+
+    @pytest.mark.asyncio
+    async def test_validate_refs_returns_per_item_results(self):
+        client = SefariaClient()
+        client._get_json = AsyncMock(
+            side_effect=[
+                {
+                    "is_ref": True,
+                    "normalized": "Genesis 1:1",
+                    "hebrew": "בראשית א׳:א׳",
+                    "url_ref": "Genesis.1.1",
+                },
+                {"is_ref": False},
+            ]
+        )
+
+        result = await client.validate_refs(["Genesis 1:1", "Not Ref"])
+
+        assert result == [
+            {
+                "input": "Genesis 1:1",
+                "is_valid": True,
+                "normalized": "Genesis 1:1",
+                "hebrew": "בראשית א׳:א׳",
+                "url_ref": "Genesis.1.1",
+            },
+            {"input": "Not Ref", "is_valid": False},
+        ]
+
 
 class TestFallbackRef:
     """Unit tests for the _fallback_ref module-level helper."""

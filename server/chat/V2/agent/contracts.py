@@ -41,6 +41,7 @@ class MessageContext:
     is_staff: bool = False
     labs: bool = False
     user_id: str | None = None
+    sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
 
@@ -76,7 +77,13 @@ class GuardrailGate(Protocol):
 
 
 class SdkRunner(Protocol):
-    async def run(self, options: Any, prompt_text: str) -> Any: ...
+    async def run(
+        self,
+        options: Any,
+        prompt_text: str,
+        on_text_delta: Callable[[str], None] | None = None,
+        on_first_final_text_delta: Callable[[], None] | None = None,
+    ) -> Any: ...
 
 
 class TraceLogger(Protocol):

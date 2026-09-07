@@ -5,6 +5,7 @@ User token decryption utilities for chat endpoints.
 import base64
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -22,8 +23,25 @@ class UserTokenExpiredError(UserTokenError):
     """Raised when a user token is expired."""
 
 
+@dataclass(frozen=True)
+class ChatbotUserIdentity:
+    """Identity values decrypted from the Sefaria chatbot token."""
+
+    user_id: str
+    sefaria_user_id: str | None = None
+
+
 def _derive_key(secret: str) -> bytes:
     return hashlib.sha256(secret.encode("utf-8")).digest()
+
+
+def _hash_user_id(user_id: str) -> str:
+    return hashlib.sha256(str(user_id).encode("utf-8")).hexdigest()
+
+
+def _persistent_user_id(user_id: str) -> str:
+    user_id = str(user_id)
+    return _hash_user_id(user_id) if user_id.isdigit() else user_id
 
 
 def _urlsafe_b64decode(token: str) -> bytes:
@@ -52,11 +70,11 @@ def _parse_expiration(expiration: str) -> datetime:
     return expires_at
 
 
-def decrypt_chatbot_user_token(
+def decrypt_chatbot_user_identity(
     token: str,
     secret: str,
     now: datetime | None = None,
-) -> str:
+) -> ChatbotUserIdentity:
     if not secret:
         raise UserTokenError("missing secret")
 
@@ -78,7 +96,8 @@ def decrypt_chatbot_user_token(
     except (ValueError, UnicodeDecodeError) as exc:
         raise UserTokenError("invalid payload") from exc
 
-    user_id = payload.get("user_id") or payload.get("id")
+    user_id = payload.get("id")
+    sefaria_user_id = payload.get("user_id")
     expiration = payload.get("expiration")
     if not user_id or not expiration:
         raise UserTokenError("missing fields")
@@ -90,4 +109,16 @@ def decrypt_chatbot_user_token(
     if (now or timezone.now()) > expires_at:
         raise UserTokenExpiredError("token expired")
 
-    return str(user_id)
+    return ChatbotUserIdentity(
+        user_id=_persistent_user_id(str(user_id)),
+        sefaria_user_id=str(sefaria_user_id) if sefaria_user_id else None,
+    )
+
+
+def decrypt_chatbot_user_token(
+    token: str,
+    secret: str,
+    now: datetime | None = None,
+) -> str:
+    """Return the anonymized chatbot DB user id from an encrypted token."""
+    return decrypt_chatbot_user_identity(token, secret, now).user_id

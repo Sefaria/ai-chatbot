@@ -134,6 +134,29 @@ def get_cost_accumulator() -> CostAccumulator | None:
     return _cost_accumulator_var.get()
 
 
+_ANTHROPIC_EXTRA_BODY_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
+
+
+def _normalize_messages_create_kwargs(kwargs: dict) -> dict:
+    """Move removed Anthropic SDK kwargs into extra_body.
+
+    Anthropic SDK v1 removed direct sampling kwargs from messages.create().
+    Older Claude models still accept them as passthrough API fields, so keep
+    call sites stable while sending the shape accepted by both old and new SDKs.
+    """
+    extra_body = kwargs.get("extra_body")
+    normalized_extra_body = dict(extra_body) if extra_body else {}
+
+    for key in _ANTHROPIC_EXTRA_BODY_SAMPLING_KEYS:
+        if key in kwargs:
+            normalized_extra_body.setdefault(key, kwargs.pop(key))
+
+    if normalized_extra_body:
+        kwargs["extra_body"] = normalized_extra_body
+
+    return kwargs
+
+
 def tracked_messages_create(client, **kwargs):
     """Anthropic `messages.create` wrapper that records cost via the accumulator.
 
@@ -141,6 +164,7 @@ def tracked_messages_create(client, **kwargs):
     whose cost should roll up into the per-turn total. No-op (just forwards)
     when no accumulator is bound.
     """
+    kwargs = _normalize_messages_create_kwargs(kwargs)
     response = client.messages.create(**kwargs)
     accumulator = get_cost_accumulator()
     if accumulator and (model := kwargs.get("model")):

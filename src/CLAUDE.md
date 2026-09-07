@@ -39,8 +39,9 @@ npm run build    # Build bundle to dist/
 
 Events (`assistant_click`, `assistant_element_shown`, `assistant_message_sent`) go
 through the `track()` helper in `LCChatbot.svelte`. **Never call `window.gtag`
-directly** — `track()` is the only place `is_staff` is attached, and analysts filter
-on it to exclude internal traffic, so a bypassing event silently skews their reports.
+directly** — `track()` is the only place `is_staff` and `la_version` are attached,
+and analysts filter on `is_staff` to exclude internal traffic, so a bypassing event
+silently skews their reports.
 
 Label a click or impression by adding `data-feature-name` / `data-element-shown-name`
 to the element; host-level listeners pick it up across the shadow-DOM boundary.

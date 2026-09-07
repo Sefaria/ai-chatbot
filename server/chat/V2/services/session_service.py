@@ -23,7 +23,7 @@ def validate_session_ownership(session: ChatSession, actor: Actor) -> None:
     Raises:
         SessionOwnershipError: If the actor doesn't own the session
     """
-    if session.user_id != actor.user_id:
+    if session.user_id not in actor.user_id_candidates:
         raise SessionOwnershipError("Session belongs to different user")
 
 

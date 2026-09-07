@@ -256,6 +256,7 @@ def chat_anthropic_v2(request):
         is_staff=is_staff,
         labs=metadata.get("labs") is True,
         user_id=actor.user_id,
+        sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
     )
 

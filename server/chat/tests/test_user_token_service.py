@@ -12,6 +12,7 @@ from django.utils import timezone
 from chat.user_token_service import (
     UserTokenError,
     UserTokenExpiredError,
+    decrypt_chatbot_user_identity,
     decrypt_chatbot_user_token,
 )
 
@@ -55,18 +56,23 @@ class TestDecryptChatbotUserToken:
         assert result == "user_123"
 
     def test_valid_token_with_numeric_user_id(self, secret):
-        """Token with numeric user ID should work."""
+        """Numeric IDs in the persisted identity field should be anonymized."""
         token = create_test_token("12345", secret)
         result = decrypt_chatbot_user_token(token, secret)
-        assert result == "12345"
+        assert result == hashlib.sha256(b"12345").hexdigest()
 
-    def test_valid_token_with_user_id_field(self, secret):
-        """Token payloads using user_id should be supported."""
-        token = create_test_token(
-            "legacy-id", secret, payload_override={"id": None, "user_id": 186013}
-        )
+    def test_valid_token_with_user_id_field_persists_id_field(self, secret):
+        """Raw Sefaria user_id is not returned as the persisted DB identity."""
+        token = create_test_token("hashed-id", secret, payload_override={"user_id": 186013})
         result = decrypt_chatbot_user_token(token, secret)
-        assert result == "186013"
+        assert result == "hashed-id"
+
+    def test_identity_retains_sefaria_user_id_for_request_time_use(self, secret):
+        """Raw Sefaria user_id is available separately for request-time API calls."""
+        token = create_test_token("hashed-id", secret, payload_override={"user_id": 186013})
+        result = decrypt_chatbot_user_identity(token, secret)
+        assert result.user_id == "hashed-id"
+        assert result.sefaria_user_id == "186013"
 
     def test_expired_token_raises_error(self, secret):
         """Expired token should raise UserTokenExpiredError."""
