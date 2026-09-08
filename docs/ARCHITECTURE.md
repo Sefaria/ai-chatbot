@@ -133,23 +133,38 @@ Tool call stack:
 tool_runtime.py -> tool_executor.py -> sefaria_client.py -> Sefaria HTTP APIs
 ```
 
-The agent currently exposes 15 tools (from `tool_schemas.py`):
+Tools are declared in `tool_schemas.py`. Each schema carries a `surfaces` marker
+naming where it is exposed — `"agent"` (the Library Assistant) and/or `"mcp"` (the
+public MCP server in `mcp_server/`). A schema without the marker is agent-only, so
+forgetting it keeps a tool off the public server rather than leaking it onto it.
+
+Agent tools (18, plus 3 Labs-gated):
 
 1. `get_text`
-2. `text_search`
+2. `specific_keyword_search`
 3. `get_current_calendar`
-4. `english_semantic_search`
+4. `semantic_search`
 5. `get_links_between_texts`
 6. `search_in_book`
 7. `search_in_dictionaries`
 8. `get_english_translations`
-9. `get_topic_details`
-10. `clarify_name_argument`
-11. `clarify_search_path_filter`
-12. `get_text_or_category_shape`
-13. `get_text_catalogue_info`
-14. `get_available_manuscripts`
-15. `get_manuscript_image`
+9. `validate_refs`
+10. `get_topic_details`
+11. `clarify_name_argument`
+12. `clarify_search_path_filter`
+13. `catalog_get_node`
+14. `catalog_get_children`
+15. `catalog_search`
+16. `catalog_query`
+17. `get_available_manuscripts`
+18. `get_manuscript_image`
+
+Labs-gated (`LABS_TOOL_NAMES`, require a user token): `search_user_source_sheets`,
+`get_source_sheet`, `create_source_sheet`.
+
+MCP-only: `get_text_or_category_shape` and `get_text_catalogue_info`. The cached
+`catalog_*` tools superseded these for the agent in `1a087d6a`, but they remain part
+of the public MCP server's contract.
 
 Tool runtime behavior:
 

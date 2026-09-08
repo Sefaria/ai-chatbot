@@ -13,6 +13,7 @@ urlpatterns = [
     path("v2/chat/stream", v2_views.chat_stream_v2, name="chat_stream_v2"),
     path("chat/stream", v2_views.chat_stream_v2, name="chat_stream_v2"),
     path("v2/chat/recover", v2_views.chat_recover_v2, name="chat_recover_v2"),
+    path("v2/chat/cancel", v2_views.chat_cancel_v2, name="chat_cancel_v2"),
     path("v2/chat/client-event", v2_views.chat_client_event_v2, name="chat_client_event_v2"),
     path("v2/chat/anthropic", chat_anthropic_v2, name="chat_anthropic_v2"),
     path("v2/chat/feedback", v2_views.chat_feedback_v2, name="chat_feedback_v2"),
