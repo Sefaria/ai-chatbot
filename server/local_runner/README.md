@@ -93,6 +93,7 @@ window.sefariaLocalMode.disconnect()
 | `SEFARIA_AGENT_PORT` | `8899` | Port to serve on |
 | `SEFARIA_CHATBOT_URL` | `https://chat.sefaria.org` | Server to proxy prompts, guardrail, router and summaries to |
 | `SEFARIA_ALLOWED_ORIGINS` | *(none)* | Extra origins allowed to reach the runner, comma separated. Needed to test against a local build, e.g. `http://localhost:5173` |
+| `SEFARIA_AGENT_ANTHROPIC_API_KEY` | *(none)* | Bill an API key instead of your subscription. Rarely wanted — the runner exists to use the subscription |
 
 ## What is different from the hosted agent
 
@@ -112,6 +113,28 @@ behaviour.
 Summaries are proxied rather than dropped because the agent is handed only the
 current message — the summary carries the entire multi-turn memory, so without it
 local mode would quietly become single-turn.
+
+## Which credentials it uses
+
+The runner clears `ANTHROPIC_API_KEY` from its own environment, because the CLI
+only falls back to your Claude subscription when no API key is set — and the
+server settings it inherits load `server/.env`, which usually has one. Left
+alone, that key would be billed instead of your subscription, and a stale one
+fails every turn with `API key is invalid`.
+
+The startup banner says which is in play:
+
+```
+  auth:     your Claude subscription (via the claude CLI)
+```
+
+To bill an API key instead, set `SEFARIA_AGENT_ANTHROPIC_API_KEY`. The plain
+`ANTHROPIC_API_KEY` is deliberately not honoured, so this cannot happen by
+accident.
+
+The agent also runs with `--strict-mcp-config`, so it gets the Sefaria tools and
+nothing else. Without it the CLI would add whatever MCP servers your machine has
+configured, giving the local agent tools the hosted one does not have.
 
 ## Security
 
@@ -133,6 +156,10 @@ spends your subscription. So:
 
 **`ImportError: cannot import name 'UTC' from 'datetime'`** — you are on Python
 3.10 or older. Run it with `./venv/bin/python -m local_runner`.
+
+**`API error ... 401 "API key is invalid"`** — an `ANTHROPIC_API_KEY` reached the
+CLI. Check the startup banner's `auth:` line; it should say your Claude
+subscription. If it names an API key, unset `SEFARIA_AGENT_ANTHROPIC_API_KEY`.
 
 **`Failed to authenticate: OAuth session expired`** — run `claude login`.
 

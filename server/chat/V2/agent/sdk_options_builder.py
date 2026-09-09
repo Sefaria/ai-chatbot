@@ -74,6 +74,12 @@ class SDKOptionsBuilder:
             options_kwargs["include_partial_messages"] = True
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
+        if self._supports_option("strict_mcp_config"):
+            # Only the Sefaria tools. Without this the CLI also loads whatever
+            # MCP servers the machine has configured — irrelevant on the server,
+            # but on a user's laptop it would hand the agent their personal
+            # servers and quietly break parity with the hosted agent.
+            options_kwargs["strict_mcp_config"] = True
         if self._supports_option("env"):
             env: dict[str, str] = {}
             # Only pass a key we actually have: an empty ANTHROPIC_API_KEY would

@@ -91,6 +91,13 @@ def main() -> None:
     logger.info("  database: %s", database_path())
     logger.info("  server:   %s", server)
 
+    from django.conf import settings as runner_settings
+
+    if runner_settings.AUTH_MODE == "api-key":
+        logger.info("  auth:     ANTHROPIC_API_KEY (%s)", runner_settings.AGENT_KEY_ENV)
+    else:
+        logger.info("  auth:     your Claude subscription (via the claude CLI)")
+
     if args.check:
         logger.info("  check:    ok")
         return

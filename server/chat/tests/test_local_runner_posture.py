@@ -59,6 +59,27 @@ class TestNoServerSecrets:
         assert local_settings.DEBUG is False
 
 
+class TestSubscriptionAuth:
+    """The runner must reach for the user's subscription, not an inherited key."""
+
+    def test_defaults_to_subscription_auth(self):
+        # A developer's server/.env carries an ANTHROPIC_API_KEY, and the base
+        # settings load it. Inheriting it here would bill the key instead of the
+        # subscription — or, if stale, fail every turn with "API key is invalid".
+        assert local_settings.AUTH_MODE == "claude-subscription"
+
+    def test_api_key_is_removed_from_the_environment(self):
+        # Removed, not merely ignored: the CLI reads it from the environment and
+        # only falls back to its OAuth session when it is absent.
+        import os
+
+        assert not os.environ.get("ANTHROPIC_API_KEY")
+
+    def test_opting_in_is_runner_specific(self):
+        # Never the plain ANTHROPIC_API_KEY, so it cannot happen by accident.
+        assert local_settings.AGENT_KEY_ENV == "SEFARIA_AGENT_ANTHROPIC_API_KEY"
+
+
 class TestLocalStorage:
     def test_database_is_sqlite(self):
         assert local_settings.DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"

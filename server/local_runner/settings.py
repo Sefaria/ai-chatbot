@@ -29,6 +29,23 @@ from .paths import database_path
 CHATBOT_USER_TOKEN_SECRET = ""
 os.environ.pop("BRAINTRUST_API_KEY", None)
 
+# The runner exists to spend the user's Claude subscription, and the CLI only
+# falls back to its OAuth session when no API key is set. A developer's
+# server/.env would otherwise be picked up here and silently bill (or, if it is
+# stale, fail with "API key is invalid") instead.
+#
+# Opting in is explicit and runner-specific, so it can never happen by accident.
+ANTHROPIC_KEY_ENV = "ANTHROPIC_API_KEY"
+AGENT_KEY_ENV = "SEFARIA_AGENT_ANTHROPIC_API_KEY"
+
+_explicit_key = os.environ.get(AGENT_KEY_ENV, "").strip()
+if _explicit_key:
+    os.environ[ANTHROPIC_KEY_ENV] = _explicit_key
+    AUTH_MODE = "api-key"
+else:
+    os.environ.pop(ANTHROPIC_KEY_ENV, None)
+    AUTH_MODE = "claude-subscription"
+
 # Traces are buffered locally and replayed by our server, which holds the key.
 BRAINTRUST_LOGGING_ENABLED = False
 
