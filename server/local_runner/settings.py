@@ -82,3 +82,17 @@ MIDDLEWARE = [
 # The daemon cannot decrypt user tokens (that needs the server secret), so it
 # authenticates the runner token and builds the Actor from the pairing record.
 CHAT_AUTH_BACKEND = "local_runner.auth.authenticate_paired_request"
+
+# --- Services that need Braintrust ---------------------------------------------
+
+# The daemon has no Braintrust key, so these three are proxied to our server,
+# which runs the real service. Keyed by class name; see chat/V2/utils.py.
+# The guardrail in particular stays server-side on purpose: a brand-safety check
+# the user's own machine could edit would not be one.
+CHAT_SERVICE_OVERRIDES = {
+    "PromptService": "local_runner.services.ProxyPromptService",
+    "GuardrailService": "local_runner.services.ProxyGuardrailService",
+    "RouterService": "local_runner.services.ProxyRouterService",
+    # Not proxied — disabled. See NullAppetizerService.
+    "AppetizerService": "local_runner.services.NullAppetizerService",
+}

@@ -102,9 +102,9 @@ async function reportClientStreamEvent(
   try {
     await fetch(`${apiBaseUrl}/v2/chat/client-event`, {
       method: 'POST',
-      headers: {
+      headers: withHeaders({
         'Content-Type': 'application/json'
-      },
+      }),
       body: JSON.stringify({
         userId,
         sessionId,
@@ -129,9 +129,9 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
     try {
       const response = await fetch(`${apiBaseUrl}/v2/chat/recover`, {
         method: 'POST',
-        headers: {
+        headers: withHeaders({
           'Content-Type': 'application/json'
-        },
+        }),
         body: JSON.stringify({
           userId,
           sessionId,
@@ -189,6 +189,24 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
  * @param {string} text - Message text
  * @returns {Promise<ChatResponse>}
  */
+/**
+ * Extra headers added to every request.
+ *
+ * Local mode needs a bearer token on all calls, including history and feedback.
+ * Held here rather than threaded through every signature so a call site added
+ * later carries it by default.
+ */
+let extraHeaders = {};
+
+/** Replace the headers added to every request (pass {} to clear). */
+export function setExtraHeaders(headers) {
+  extraHeaders = headers || {};
+}
+
+function withHeaders(base) {
+  return { ...base, ...extraHeaders };
+}
+
 export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
@@ -205,9 +223,9 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
   
   const response = await fetch(`${apiBaseUrl}/chat`, {
     method: 'POST',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(payload)
   });
 
@@ -307,9 +325,9 @@ export async function sendMessageStream(
   try {
     response = await fetch(`${apiBaseUrl}/chat/stream`, {
       method: 'POST',
-      headers: {
+      headers: withHeaders({
         'Content-Type': 'application/json'
-      },
+      }),
       body: JSON.stringify(payload),
       signal
     });
@@ -506,9 +524,9 @@ export async function sendMessageStream(
 export async function fetchPromptDefaults(apiBaseUrl) {
   const response = await fetch(`${apiBaseUrl}/v2/prompts/defaults`, {
     method: 'GET',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   });
 
   if (!response.ok) {
@@ -544,9 +562,9 @@ export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId })
   try {
     const response = await fetch(`${apiBaseUrl}/v2/chat/cancel`, {
       method: 'POST',
-      headers: {
+      headers: withHeaders({
         'Content-Type': 'application/json'
-      },
+      }),
       body: JSON.stringify({ userId, sessionId, messageId }),
       signal: timeout.signal
     });
@@ -572,9 +590,9 @@ export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId })
 export async function sendFeedback(apiBaseUrl, payload) {
   const response = await fetch(`${apiBaseUrl}/v2/chat/feedback`, {
     method: 'POST',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(payload)
   });
 
@@ -615,9 +633,9 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
   
   const response = await fetch(`${apiBaseUrl}/history?${params}`, {
     method: 'GET',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   });
   
   if (!response.ok) {

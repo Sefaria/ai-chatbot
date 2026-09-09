@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 
 from .paths import data_dir
@@ -38,6 +38,10 @@ class Pairing:
     user_id: str
     sefaria_user_id: str | None
     paired_at: str
+    # The browser's current userId token. Stored because the daemon authenticates
+    # to our server as the user when proxying prompts and the guardrail, and
+    # refreshed on each turn because these tokens expire.
+    encrypted_user_token: str | None = None
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -80,16 +84,36 @@ def clear() -> None:
     record_path().unlink(missing_ok=True)
 
 
-def pair(*, user_id: str, sefaria_user_id: str | None) -> Pairing:
+def pair(
+    *,
+    user_id: str,
+    sefaria_user_id: str | None,
+    encrypted_user_token: str | None = None,
+) -> Pairing:
     """Create and persist a new pairing, replacing any existing one."""
     pairing = Pairing(
         runner_token=new_token(),
         user_id=user_id,
         sefaria_user_id=sefaria_user_id,
         paired_at=datetime.now(UTC).isoformat(),
+        encrypted_user_token=encrypted_user_token,
     )
     save(pairing)
     return pairing
+
+
+def refresh_user_token(encrypted_user_token: str | None) -> None:
+    """Store a newer userId token, if the browser sent one.
+
+    These tokens expire, so the one captured at pairing goes stale. Writes only
+    when the value actually changed, so this costs nothing on the common path.
+    """
+    if not encrypted_user_token:
+        return
+    record = load()
+    if record is None or record.encrypted_user_token == encrypted_user_token:
+        return
+    save(replace(record, encrypted_user_token=encrypted_user_token))
 
 
 def token_matches(presented: str | None) -> bool:

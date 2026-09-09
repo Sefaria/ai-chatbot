@@ -3,7 +3,8 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessageStream, cancelStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
+  import { sendMessageStream, cancelStream, loadHistory, fetchPromptDefaults, sendFeedback, setExtraHeaders } from '../lib/api.js';
+  import { resolveTarget, pair as pairRunner, forgetToken, probe as probeRunner } from '../lib/localMode.js';
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -175,7 +176,14 @@
   let messageListRef = $state(null);
   let inputRef = $state(null);
 
-  // Derive static base URL by removing '/api' suffix from apiBaseUrl
+  // Local mode: when a paired runner is listening, API calls go to it instead of
+  // our server. Null until detection finishes, so the server is the default and
+  // any failure simply leaves it that way.
+  let localBaseUrl = $state(null);
+  let isLocalMode = $derived(localBaseUrl !== null);
+  let effectiveApiBaseUrl = $derived(localBaseUrl ?? apiBaseUrl);
+
+  // Static assets always come from our server: the runner serves no icons.
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
@@ -245,7 +253,53 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    detectLocalRunner();
+    exposeLocalModeControls();
   });
+
+  /**
+   * Switch to a paired local runner if one is listening.
+   *
+   * Deliberately quiet: no runner, an unpaired one, or a slow probe all leave
+   * the widget talking to our server, with nothing shown to the user.
+   */
+  async function detectLocalRunner() {
+    try {
+      const target = await resolveTarget(apiBaseUrl);
+      if (!target.local) return;
+      setExtraHeaders(target.headers);
+      localBaseUrl = target.baseUrl;
+    } catch {
+      // Detection must never break the widget; the server remains the target.
+    }
+  }
+
+  /**
+   * Expose pairing on the element so a user can connect a runner.
+   *
+   * A first-run surface belongs in the settings panel; this keeps the beta
+   * usable without shipping UI that has not been designed yet.
+   */
+  function exposeLocalModeControls() {
+    if (typeof window === 'undefined') return;
+    window.sefariaLocalMode = {
+      status: async () => ({ ...(await probeRunner()), active: isLocalMode }),
+      pair: async (code) => {
+        if (!code) return { ok: false, error: 'Enter the code shown in the runner terminal.' };
+        if (!userId) return { ok: false, error: 'Open the chat first so the widget knows who you are.' };
+        const result = await pairRunner(String(code), userId);
+        if (result.ok) await detectLocalRunner();
+        return result;
+      },
+      disconnect: () => {
+        forgetToken();
+        setExtraHeaders({});
+        localBaseUrl = null;
+        return { ok: true };
+      }
+    };
+  }
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
@@ -508,7 +562,7 @@
     if (!settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
       try {
-        const defaults = await fetchPromptDefaults(apiBaseUrl);
+        const defaults = await fetchPromptDefaults(effectiveApiBaseUrl);
         defaultPromptSlugs = {
           corePromptSlug: defaults.corePromptSlug || '',
           labs: defaults.labs === true
@@ -548,7 +602,7 @@
 
     isLoadingSettings = true;
     try {
-      const defaults = await fetchPromptDefaults(apiBaseUrl);
+      const defaults = await fetchPromptDefaults(effectiveApiBaseUrl);
       defaultPromptSlugs = {
         corePromptSlug: defaults.corePromptSlug || '',
         labs: defaults.labs === true
@@ -580,7 +634,7 @@
     if (!userId || !sessionId || !apiBaseUrl) return;
 
     try {
-      const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
+      const result = await loadHistory(effectiveApiBaseUrl, userId, sessionId, null, 20);
 
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
@@ -606,7 +660,7 @@
 
     isLoadingHistory = true;
     try {
-      const result = await loadHistory(apiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
+      const result = await loadHistory(effectiveApiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
       messages = [...withStoppedNotes(result.messages), ...messages];
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
@@ -726,7 +780,7 @@
     updateSessionActivity(sessionId);
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
+      const response = await sendMessageStream(effectiveApiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
@@ -909,7 +963,7 @@
     // Tell the server first so it abandons the work; only then stop reading.
     // cancelStream never throws, so the abort below always runs.
     if (stoppingMessageId) {
-      await cancelStream(apiBaseUrl, { userId, sessionId, messageId: stoppingMessageId });
+      await cancelStream(effectiveApiBaseUrl, { userId, sessionId, messageId: stoppingMessageId });
     }
 
     clearStopSpinnerTimer();
@@ -961,7 +1015,7 @@
     const target = messages.find(m => m.messageId === feedbackModalMessageId);
     try {
       if (target?.traceId) {
-        await sendFeedback(apiBaseUrl, {
+        await sendFeedback(effectiveApiBaseUrl, {
           traceId: target.traceId,
           score: feedbackType,
           userId,

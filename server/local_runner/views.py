@@ -67,6 +67,7 @@ def pair(request):
     record = pairing.pair(
         user_id=resolved.user_id,
         sefaria_user_id=resolved.sefaria_user_id,
+        encrypted_user_token=encrypted_user_token,
     )
     logger.info("paired with sefaria user %s", resolved.sefaria_user_id or "(anonymous)")
 

@@ -72,7 +72,7 @@ class ClaudeAgentService:
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        self.client = get_anthropic_client(api_key)
+        self._api_key = api_key
         self.prompt_service = prompt_service or get_prompt_service()
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
@@ -129,6 +129,16 @@ class ClaudeAgentService:
             logging_enabled=self.braintrust_logging_enabled,
             response_format_prompt_slug=config.response_format_prompt_slug,
         )
+
+    @property
+    def client(self):
+        """Anthropic client, built on first use.
+
+        Lazy because the turn path does not use it: constructing it eagerly would
+        require an API key on hosts that authenticate another way, such as the
+        local runner running against a user's Claude subscription.
+        """
+        return get_anthropic_client(self._api_key)
 
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is initialized for this process.

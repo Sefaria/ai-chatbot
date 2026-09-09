@@ -7,7 +7,7 @@ from django.urls import path
 from . import views
 from .V2 import views as v2_views
 from .V2.anthropic_views import chat_anthropic_v2
-from .V2.local_views import local_identity
+from .V2.local_views import local_guardrail, local_identity, local_prompt, local_route
 
 urlpatterns = [
     # Versioned chat endpoints
@@ -20,6 +20,9 @@ urlpatterns = [
     path("v2/chat/feedback", v2_views.chat_feedback_v2, name="chat_feedback_v2"),
     # Local agent runner
     path("v2/local/identity", local_identity, name="local_identity"),
+    path("v2/local/prompt", local_prompt, name="local_prompt"),
+    path("v2/local/guardrail", local_guardrail, name="local_guardrail"),
+    path("v2/local/route", local_route, name="local_route"),
     path("v2/prompts/defaults", v2_views.prompt_defaults, name="prompt_defaults_v2"),
     # Shared endpoints
     path("history", views.history, name="history"),

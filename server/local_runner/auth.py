@@ -20,9 +20,11 @@ def authenticate_paired_request(request, body_data: dict | None = None) -> Actor
     if record is None:
         raise AuthenticationRequired()
 
-    # The encrypted token still travels with the request; the agent layer passes
-    # it to Sefaria API calls that act on the user's behalf.
+    # The encrypted token travels with each request: the agent layer passes it to
+    # Sefaria calls made on the user's behalf, and the runner presents it when
+    # proxying prompts and the guardrail. Refreshed here because it expires.
     encrypted_token = (body_data or {}).get("userId")
+    pairing.refresh_user_token(encrypted_token)
 
     return Actor(
         user_id=record.user_id,

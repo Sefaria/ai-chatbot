@@ -61,7 +61,9 @@ def _announce_pairing(port: int) -> None:
     logger.info("  To connect this machine, open sefaria.org and enter:")
     logger.info("      %s", code)
     logger.info("")
-    logger.info("  Valid once, for %d minutes. Restart to get a new one.", session.TTL_SECONDS // 60)
+    logger.info(
+        "  Valid once, for %d minutes. Restart to get a new one.", session.TTL_SECONDS // 60
+    )
     logger.info("")
 
 
