@@ -61,6 +61,9 @@ CORS_ALLOW_ALL_ORIGINS = False
 DEFAULT_ALLOWED_ORIGINS = [
     "https://www.sefaria.org",
     "https://sefaria.org",
+    # The Hebrew site is a separate origin, and the widget runs there too.
+    "https://www.sefaria.org.il",
+    "https://sefaria.org.il",
     "https://staging.sefaria.org",
 ]
 CORS_ALLOWED_ORIGINS = DEFAULT_ALLOWED_ORIGINS + [

@@ -113,7 +113,7 @@
   // Plain variable, not $state: it guards initialisation and must never be a
   // reactive dependency of the effect that performs it.
   let localRunnerInitialised = false;
-  let runnerStatus = $state({ available: false, paired: false, checking: false });
+  let runnerStatus = $state({ available: false, paired: false, blocked: false, checking: false });
   let pairingCode = $state('');
   let pairingError = $state('');
   let isPairing = $state(false);
@@ -1603,6 +1603,8 @@
                 {#if localModeEnabled}
                   {#if runnerStatus.checking}
                     <p class="settings-runner-status">{$_('assistant.settings.localRunner.searching')}</p>
+                  {:else if runnerStatus.blocked}
+                    <p class="settings-runner-status warn">{$_('assistant.settings.localRunner.blocked')}</p>
                   {:else if !runnerStatus.available}
                     <p class="settings-runner-status warn">{$_('assistant.settings.localRunner.notFound')}</p>
                   {:else if runnerStatus.paired && isLocalMode}

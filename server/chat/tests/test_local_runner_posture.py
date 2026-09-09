@@ -10,11 +10,21 @@ settings are process-global and the suite runs under ``chatbot_server.test_setti
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from django.urls import Resolver404, resolve
 
 from local_runner import settings as local_settings
 
 URLCONF = "local_runner.urls"
+
+SEFARIA_HOSTS = {
+    "sefaria.org",
+    "www.sefaria.org",
+    "staging.sefaria.org",
+    "sefaria.org.il",
+    "www.sefaria.org.il",
+}
 
 SERVED = [
     "/api/v2/chat/stream",
@@ -67,13 +77,22 @@ class TestNetworkPosture:
     def test_cors_is_not_open(self):
         assert local_settings.CORS_ALLOW_ALL_ORIGINS is False
 
+    def test_cors_covers_both_sefaria_domains(self):
+        # The Hebrew site is a separate origin; omitting it silently reports as
+        # "no runner found" in the widget, which sends people the wrong way.
+        assert "https://www.sefaria.org" in local_settings.DEFAULT_ALLOWED_ORIGINS
+        assert "https://www.sefaria.org.il" in local_settings.DEFAULT_ALLOWED_ORIGINS
+
     def test_cors_defaults_to_sefaria_only(self):
         # Extra origins are opt-in through SEFARIA_ALLOWED_ORIGINS, which is unset
-        # here; the shipped default must never admit anything else.
-        assert all(
-            origin.startswith("https://") and "sefaria.org" in origin
-            for origin in local_settings.DEFAULT_ALLOWED_ORIGINS
-        )
+        # here; the shipped default must never admit anything else. Checked on the
+        # parsed hostname, not a substring: "evil-sefaria.org.attacker.com"
+        # contains "sefaria.org" and must not pass.
+        for origin in local_settings.DEFAULT_ALLOWED_ORIGINS:
+            parsed = urlparse(origin)
+            assert parsed.scheme == "https", origin
+            assert parsed.hostname in SEFARIA_HOSTS, origin
+
         assert local_settings.CORS_ALLOWED_ORIGINS == local_settings.DEFAULT_ALLOWED_ORIGINS
 
     def test_private_network_access_is_answered(self):

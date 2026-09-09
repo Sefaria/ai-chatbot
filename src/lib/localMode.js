@@ -66,6 +66,12 @@ export async function probe(port = DEFAULT_PORT) {
     const response = await fetch(`${runnerOrigin(port)}/health`, {
       signal: controller.signal
     });
+    // A 401 is not "no runner" — it is a runner that refused this origin, which
+    // needs a different fix from starting one. Reporting both as "not found"
+    // sends people looking for a process that is already running.
+    if (response.status === 401 || response.status === 403) {
+      return { available: false, paired: false, blocked: true };
+    }
     if (!response.ok) return { available: false, paired: false };
     const body = await response.json();
     return { available: body.status === 'ok', paired: Boolean(body.paired) };

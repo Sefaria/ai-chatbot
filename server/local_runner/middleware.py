@@ -12,7 +12,14 @@ default instead of by remembering.
 
 from __future__ import annotations
 
+import logging
+
 from django.http import JsonResponse
+
+logger = logging.getLogger("local_runner")
+
+# Origins already reported, so a page that retries does not flood the log.
+_reported_origins: set[str] = set()
 
 # /health answers "is a runner here" before the page holds a token.
 # /pair is how a page gets one; it carries its own proof (the terminal code).
@@ -68,6 +75,25 @@ class OriginAllowlistMiddleware:
 
         origin = request.headers.get("Origin")
         if origin and origin not in settings.CORS_ALLOWED_ORIGINS:
+            self._report_once(origin)
             return _unauthorized("origin not allowed")
 
         return self.get_response(request)
+
+    @staticmethod
+    def _report_once(origin: str) -> None:
+        """Name the rejected origin, once, with the way to allow it.
+
+        Without this the symptom is a silent "no runner found" in the browser
+        and an unexplained 401 in the log — the origin itself is the one piece
+        of information needed to fix it.
+        """
+        if origin in _reported_origins:
+            return
+        _reported_origins.add(origin)
+        logger.warning(
+            "Refused a request from %s: not an allowed origin. "
+            "To allow it, restart with SEFARIA_ALLOWED_ORIGINS=%s",
+            origin,
+            origin,
+        )

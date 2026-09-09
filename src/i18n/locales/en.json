@@ -56,6 +56,7 @@
   "assistant.settings.localRunner.hint": "Uses your own Claude subscription. The runner must be running on this machine.",
   "assistant.settings.localRunner.searching": "Looking for a runner…",
   "assistant.settings.localRunner.notFound": "No runner found on this machine. Start it, then try again.",
+  "assistant.settings.localRunner.blocked": "A runner is running, but it will not accept requests from this site. Restart it with this site allowed.",
   "assistant.settings.localRunner.connected": "Connected. Messages run on this machine.",
   "assistant.settings.localRunner.code": "Pairing code",
   "assistant.settings.localRunner.codeHint": "Enter the code shown in the runner's terminal.",

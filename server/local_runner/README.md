@@ -149,9 +149,11 @@ could not reach the runner; `paired: false` means pair again.
 Restart the runner for a new one. A failed attempt does not burn the code: only a
 pairing that actually completes spends it.
 
-**The widget stays on the server when testing a local build** — the runner only
-accepts sefaria.org origins by default. Set
-`SEFARIA_ALLOWED_ORIGINS=http://localhost:5173`.
+**"No runner found" while the runner is clearly running** — check the runner's
+log for `Refused a request from <origin>`. The runner accepts sefaria.org and
+sefaria.org.il by default; any other origin, including a local build, needs
+`SEFARIA_ALLOWED_ORIGINS=http://localhost:5173`. The settings panel reports this
+case separately from a missing runner.
 
 ## Testing against a local stack
 
