@@ -110,6 +110,17 @@ What remains is the *agent-loop* half, and the coupling is three settings reads:
 `prompt_fragments.py` is free of both Django and Braintrust; only `prompt_service.py` binds to
 Braintrust. `sdk_runner.py`, `sdk_options_builder.py` and `tool_runtime.py` are already clean.
 
+**Implementation note (Phase 1).** Removing those three reads was necessary but not sufficient: the
+loop still pulled Django *transitively*, because `prompts/__init__.py` eagerly imported
+`prompt_service`, and the guardrail and router wrappers imported their Django-backed services at
+module scope. Phase 1 therefore also made the prompts package lazy (PEP 562, matching the agent
+package) and moved those two service lookups into the calls that use them. The classes stay
+importable, so a host can inject its own `GuardrailGate` and prompt service — which is exactly what
+the runner does, since both the guardrail and the prompt bundle come from our server.
+
+`chat/tests/test_agent_django_independence.py` locks this in: it blocks `django` on `sys.meta_path`
+in a subprocess and imports every module a non-Django host needs.
+
 Critically for observability: **`trace_logger.py` and `metrics_mapper.py` are also clean.** They
 build Braintrust payloads against an opaque `bt_span: Any` and import no Braintrust library. This is
 what makes trace parity achievable — see *Observability* below.
@@ -139,7 +150,7 @@ edit. They stay server-side. The runner receives a prompt bundle per session; it
 We are not sending messages **to** a terminal. The browser talks directly to a local process that
 runs the same agent code the server runs, and the server stays in the loop around it.
 
-### Component 1 — `AgentConfig` (shared core)
+### Component 1 — `AgentConfig` (shared core) — **done**
 
 A frozen dataclass in `chat/V2/agent/contracts.py` carrying the three values above.
 `ClaudeAgentService` and `TurnOrchestrator` take it as a constructor argument instead of reading
@@ -332,7 +343,7 @@ is weeks of code-signing and notarization work; earn it with beta adoption numbe
 | Phase | Scope | Ships |
 |-------|-------|-------|
 | 0 | Public MCP at `mcp.sefaria.org` | **Done.** Demand confirmed. |
-| 1 | `AgentConfig` — remove the three settings reads from the agent loop | Production, no behavior change. Stands alone as a cleanup. |
+| 1 | `AgentConfig` + call-time resolution of Django-backed services | **Done** (`3d9c07e`, `91ca04c`). Production, no behavior change. |
 | 2 | `server/local_runner/` + pairing + bundle + guardrail proxy + trace intake + frontend health check | Local mode at parity, closed beta, behind a flag. |
 | 3 | Extension as detector and PNA fallback | Resilience against a browser policy change. |
 | 4 | `"local"` surface: runner-owned structured store (SQLite), typed collection tools | The capability we cannot offer server-side. |
