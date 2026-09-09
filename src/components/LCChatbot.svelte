@@ -5,7 +5,7 @@
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
   import { sendMessageStream, cancelStream, loadHistory, fetchPromptDefaults, sendFeedback, setExtraHeaders } from '../lib/api.js';
   import { resolveTarget, pair as pairRunner, forgetToken, probe as probeRunner } from '../lib/localMode.js';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
@@ -110,6 +110,9 @@
   // target when the user has asked for it, so a runner left running on the
   // machine never silently takes over.
   let localModeEnabled = $state(false);
+  // Plain variable, not $state: it guards initialisation and must never be a
+  // reactive dependency of the effect that performs it.
+  let localRunnerInitialised = false;
   let runnerStatus = $state({ available: false, paired: false, checking: false });
   let pairingCode = $state('');
   let pairingError = $state('');
@@ -263,9 +266,16 @@
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
 
-    localModeEnabled = getStorage(STORAGE_KEYS.LOCAL_MODE, false) === true;
-    detectLocalRunner();
-    exposeLocalModeControls();
+    // untrack + run-once: this is an $effect, not a mount hook. It writes
+    // promptSlugs, and detectLocalRunner reads promptSlugs.labs — tracked, that
+    // read makes the effect retrigger itself forever and freezes the page.
+    untrack(() => {
+      if (localRunnerInitialised) return;
+      localRunnerInitialised = true;
+      localModeEnabled = getStorage(STORAGE_KEYS.LOCAL_MODE, false) === true;
+      detectLocalRunner();
+      exposeLocalModeControls();
+    });
   });
 
   /**
