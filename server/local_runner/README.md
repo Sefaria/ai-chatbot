@@ -28,7 +28,14 @@ key and runs the real services.
    If the CLI's OAuth session has expired the agent fails with
    `Failed to authenticate: OAuth session expired`. Re-run `claude login`.
 
-2. **Dependencies:**
+2. **Python 3.11 or newer.** `datetime.UTC` and other stdlib names used here do
+   not exist earlier. If `python` on your PATH is older (a pyenv default, say),
+   use the server virtualenv explicitly:
+   ```bash
+   ./venv/bin/python -m local_runner
+   ```
+
+3. **Dependencies:**
    ```bash
    pip install -r server/requirements-local.txt
    ```
@@ -119,6 +126,9 @@ spends your subscription. So:
   tools, by design.
 
 ## Troubleshooting
+
+**`ImportError: cannot import name 'UTC' from 'datetime'`** — you are on Python
+3.10 or older. Run it with `./venv/bin/python -m local_runner`.
 
 **`Failed to authenticate: OAuth session expired`** — run `claude login`.
 
