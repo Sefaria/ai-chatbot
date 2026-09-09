@@ -72,6 +72,50 @@ property is not "does not touch the filesystem" — it is:
 If a `db_path` parameter or a `query(sql)` tool ever appears, the property is gone and we are back to
 arbitrary file access with extra steps.
 
+### D3 — The daemon runs Django, not a separate framework
+
+**Decision (Akiva, 2026-09-09): Django + SQLite.**
+
+"No Django" was the wrong constraint. The V2 path reads 17 Django settings and every one is
+non-secret configuration — prompt slugs and model names. What genuinely cannot ship to a user's
+machine is much shorter: `BRAINTRUST_API_KEY`, `CHATBOT_USER_TOKEN_SECRET`, and the Postgres
+connection.
+
+Running Django in the daemon buys the thing parity most depends on: `chat_stream_v2` is ~900 lines of
+SSE framing, cancellation, recovery and `processing_state` bookkeeping, and reimplementing a subset
+of it is where drift would actually appear. The daemon reuses the view itself.
+
+That view is heavily DB-coupled (`ChatMessage.objects` throughout), which is what SQLite is for.
+Turn logging, summarization and history are all plain ORM and run on SQLite unchanged.
+
+### D4 — Local history is authoritative; Braintrust is the record
+
+**Decision (Akiva, 2026-09-09): the server does not record local-mode conversations.**
+
+Because the daemon serves the same Django URLs and the widget points `api-base-url` at it,
+`/api/history`, `/api/v2/chat/recover`, `/api/v2/chat/feedback`, summarization and turn logging all
+work locally with **no new code**.
+
+Making the server canonical instead would cost a turn-ingest endpoint, idempotency on `messageId`, a
+retry queue, server-side session creation, and reconciliation when a user toggles local mode
+mid-session. The blocker is summarization: it reads session history to build the next prompt, so a
+canonical server either puts a write-then-fetch round trip on every turn's critical path, or forces
+double-writes that diverge.
+
+**Accepted losses:** cross-device continuity for local-mode conversations; Postgres product
+analytics for those users; history visibly changing when local mode is toggled.
+
+**Retained:** Braintrust traces carry full conversation content, metrics and `origin:
+"sefaria-local"` — the record that matters for evals and quality analysis.
+
+> [!warning] Dashboards will undercount
+> Any Postgres-based session or message metric silently undercounts once local mode has volume. Wire
+> the `sefaria-local` origin tag up **before** the beta so the gap is measurable.
+
+**Optional add-on, not Phase 2.** A fire-and-forget turn POST (server writes it if it arrives, drops
+it if not) recovers most analytics cheaply — but only while nothing depends on it. If it ever becomes
+authoritative, every cost above comes back.
+
 ---
 
 ## Context: we already run three hosts over one tool layer
@@ -82,7 +126,7 @@ The MCP consolidation (`b67f577`, `de89ee7`) established the pattern this design
 |------|---------|------|----------|
 | Web chatbot | `server/chat/` (Django) | Django, anthropic, braintrust, Claude CLI | `get_tools_for_surface("agent")` |
 | Public MCP | `server/mcp_server/` | fastmcp, httpx, uvicorn — **no Django** | `get_tools_for_surface("mcp")` |
-| **Local runner** | `server/local_runner/` *(proposed)* | claude-agent-sdk, httpx, uvicorn | `get_tools_for_surface("agent")` |
+| **Local runner** | `server/local_runner/` *(proposed)* | Django, claude-agent-sdk, httpx, uvicorn, SQLite | `get_tools_for_surface("agent")` |
 
 `server/requirements-mcp.txt` already documents the invariant we rely on:
 
@@ -162,26 +206,34 @@ behavior change.
 
 ### Component 2 — `server/local_runner/`
 
-A small ASGI app, modeled on `mcp_server/app.py`:
+A Django settings profile and entrypoint, not a second web framework:
 
 ```
 server/local_runner/
 ├── __init__.py
-├── __main__.py       # uvicorn.run(build_app(), host="127.0.0.1", port=...)
-├── app.py            # routes: /health, /pair, /chat/stream
+├── __main__.py       # migrate, then serve 127.0.0.1 (uvicorn over the ASGI app)
+├── settings.py       # local-mode Django settings: SQLite, no Braintrust key, no Postgres
 ├── pairing.py        # code generation, token mint + verify
-├── bundle.py         # fetch prompt bundle + guardrail verdict from our server
-└── trace.py          # buffer spans, POST assembled traces to our server
+├── bundle.py         # fetch prompt bundle + config from our server
+├── prompt_source.py  # PromptService implementation backed by the bundle, not Braintrust
+├── gates.py          # GuardrailGate + Router implementations that call our server
+└── trace.py          # buffering span; POST assembled traces to our server
 server/requirements-local.txt
 ```
 
-Its job: accept a POST matching the current `/chat/stream` request schema, fetch the bundle and
-guardrail verdict, run the agent loop via the shared core, stream SSE events in the existing format,
-and post the assembled trace back.
+`chat_stream_v2` and the rest of the URL surface are reused as-is. What the daemon replaces is only
+what needs our secrets:
 
-**The SSE contract is unchanged** — `event: progress`, `event: message`, `event: cancelled`,
-`event: error` (`chat/V2/views.py:620,836,663,693`). Because the progress events are byte-identical,
-the progress trail and tool cards render with no frontend work.
+| Server-side dependency | Local replacement |
+|---|---|
+| `PromptService` (Braintrust) | `prompt_source.py`, fed by `GET /api/v2/local/bundle` |
+| Guardrail service (Braintrust model call) | `POST /api/v2/local/guardrail` on our server |
+| Router service (Braintrust model call) | `POST /api/v2/local/route` on our server |
+| Braintrust span writes | buffered locally, replayed server-side from `POST .../trace` |
+| Postgres | local SQLite (D4) |
+
+Because these are injected rather than forked, the SSE contract, cancellation semantics and recovery
+path are the production ones by construction rather than by careful reimplementation.
 
 ### Component 3 — server additions
 
@@ -190,7 +242,10 @@ the progress trail and tool cards render with no frontend work.
 | `POST /api/v2/local/pair` | Exchange a pairing code for a runner token bound to the user token |
 | `GET /api/v2/local/bundle` | Prompt bundle, model id, `AgentConfig` values, version verdict |
 | `POST /api/v2/local/guardrail` | Guardrail verdict for one message |
+| `POST /api/v2/local/route` | Router classification for one message |
 | `POST /api/v2/local/trace` | Assembled trace intake, replayed into Braintrust server-side |
+
+No turn-ingest endpoint: local conversations are not recorded in Postgres (D4).
 
 `local/bundle` is also the **version gate and kill switch**: it can refuse an unsupported runner or
 CLI version, and can return `mode: "server"` to force fallback if we need to disable local mode
@@ -201,7 +256,8 @@ globally.
 Minimal. `LCChatbot.svelte:31` already accepts `api-base-url` as an attribute. Local mode is:
 
 1. On load, `GET http://127.0.0.1:8899/health` with a short timeout.
-2. On success and a valid paired token, set the effective base URL to the runner.
+2. On success and a valid paired token, set the effective base URL to the runner — which also
+   redirects history, recovery and feedback to the local store, since the daemon serves those URLs.
 3. On any failure at any point — daemon down, crash, different device — revert to our server
    **silently**. Local mode is an optimization, never a dependency.
 
@@ -282,7 +338,7 @@ Phase 2**; revisit only if the gap actually impairs evals.
 
 | Option | User installs | Verdict |
 |--------|---------------|---------|
-| **Localhost HTTP daemon** | One CLI package | **Chosen.** Speaks our existing SSE contract; debuggable with curl; no browser-store review in the release path. |
+| **Localhost HTTP daemon** | One CLI package | **Chosen.** Serves our existing Django URL surface, so the SSE contract is the production one; debuggable with curl; no browser-store review in the release path. |
 | Extension + native messaging | Extension + native host binary + OS-specific manifest | Rejected for v1. Three-part install, per-browser, Web Store review latency on every change. |
 | Extension alone | Extension | Not viable. An extension cannot spawn the `claude` CLI. |
 | Outbound WebSocket relay | One CLI package | Deferred. The fallback if PNA tightens, and the only option if browser and agent are on different machines. |
@@ -321,6 +377,9 @@ someone's conversation history are real harms:
 - **`Host` header validation** to defeat DNS rebinding.
 - **Store scoping.** Phase 4 tools operate on named collections within the runner-owned database. No
   paths, no raw SQL (D2).
+- **Trim the local URL surface.** The daemon runs Django, so it must expose only the routes local
+  mode needs. Admin, and any management or debug endpoint, stay out of `local_runner/settings.py`;
+  `DEBUG` is never on.
 
 ---
 
@@ -344,8 +403,9 @@ is weeks of code-signing and notarization work; earn it with beta adoption numbe
 |-------|-------|-------|
 | 0 | Public MCP at `mcp.sefaria.org` | **Done.** Demand confirmed. |
 | 1 | `AgentConfig` + call-time resolution of Django-backed services | **Done** (`3d9c07e`, `91ca04c`). Production, no behavior change. |
-| 2 | `server/local_runner/` + pairing + bundle + guardrail proxy + trace intake + frontend health check | Local mode at parity, closed beta, behind a flag. |
+| 2 | `server/local_runner/` Django profile + SQLite + pairing + bundle + guardrail/route proxies + trace intake + frontend health check | Local mode at parity, closed beta, behind a flag. |
 | 3 | Extension as detector and PNA fallback | Resilience against a browser policy change. |
+| 3.5 | *Optional:* fire-and-forget turn POST for analytics (D4) | Only if Postgres undercounting starts to hurt. |
 | 4 | `"local"` surface: runner-owned structured store (SQLite), typed collection tools | The capability we cannot offer server-side. |
 
 Phase 1 is independently valuable and independently reviewable. Do not bundle it into Phase 2.
