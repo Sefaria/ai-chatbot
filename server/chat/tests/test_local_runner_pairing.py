@@ -49,29 +49,38 @@ class TestPairingCode:
 
     def test_correct_code_is_accepted(self):
         session.set_code("123456")
-        assert session.consume("123456") is True
+        assert session.verify("123456") is True
 
-    def test_code_is_single_use(self):
+    def test_code_is_single_use_once_spent(self):
         session.set_code("123456")
-        session.consume("123456")
+        session.verify("123456")
+        session.spend()
         # A replay must not mint a second runner token.
-        assert session.consume("123456") is False
+        assert session.verify("123456") is False
 
-    def test_pairing_closes_after_use(self):
+    def test_pairing_closes_once_spent(self):
         session.set_code("123456")
-        session.consume("123456")
+        session.verify("123456")
+        session.spend()
         assert session.pairing_open() is False
+
+    def test_verifying_without_spending_leaves_the_code_usable(self):
+        session.set_code("123456")
+        assert session.verify("123456") is True
+        # A failure after verification (server unreachable) must not burn the
+        # code — the user should be able to retry without restarting.
+        assert session.verify("123456") is True
 
     def test_wrong_code_is_rejected(self):
         session.set_code("123456")
-        assert session.consume("999999") is False
+        assert session.verify("999999") is False
 
     def test_repeated_guessing_closes_pairing(self):
         session.set_code("123456")
         for _ in range(session.MAX_ATTEMPTS):
-            session.consume("999999")
+            session.verify("999999")
         # Even the right code no longer works: guessing cannot be continued.
-        assert session.consume("123456") is False
+        assert session.verify("123456") is False
         assert session.pairing_open() is False
 
     def test_expired_code_is_rejected(self, monkeypatch):
@@ -79,11 +88,11 @@ class TestPairingCode:
         clock = [1_000_000.0]
         monkeypatch.setattr(session.time, "monotonic", lambda: clock[0])
         clock[0] += session.TTL_SECONDS + 1
-        assert session.consume("123456") is False
+        assert session.verify("123456") is False
 
     def test_no_code_means_closed(self):
         assert session.pairing_open() is False
-        assert session.consume(None) is False
+        assert session.verify(None) is False
 
 
 # ---------------------------------------------------------------------------

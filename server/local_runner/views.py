@@ -10,7 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import identity, pairing
-from .session import consume, pairing_open
+from .session import pairing_open, spend, verify
 
 logger = logging.getLogger("local_runner")
 
@@ -52,9 +52,9 @@ def pair(request):
     if not encrypted_user_token:
         return JsonResponse({"error": "missing_userId"}, status=400)
 
-    # Spends the code: a second attempt with the same one is refused, and a run
-    # of wrong guesses closes pairing until the daemon is restarted.
-    if not consume(body.get("code")):
+    # Checked but not yet spent: a wrong code counts an attempt, while a failure
+    # further down leaves the code usable so the user can simply retry.
+    if not verify(body.get("code")):
         logger.warning("pairing rejected: wrong or spent code")
         return JsonResponse({"error": "invalid_code"}, status=403)
 
@@ -69,6 +69,7 @@ def pair(request):
         sefaria_user_id=resolved.sefaria_user_id,
         encrypted_user_token=encrypted_user_token,
     )
+    spend()
     logger.info("paired with sefaria user %s", resolved.sefaria_user_id or "(anonymous)")
 
     return JsonResponse({"runnerToken": record.runner_token})

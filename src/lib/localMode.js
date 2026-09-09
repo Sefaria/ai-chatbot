@@ -13,8 +13,19 @@ const DEFAULT_PORT = 8899;
 const TOKEN_KEY = 'sefaria-runner-token';
 const PROBE_TIMEOUT_MS = 1500;
 
-export function runnerBaseUrl(port = DEFAULT_PORT) {
+/** Where the daemon itself lives — /health and /pair hang off this. */
+export function runnerOrigin(port = DEFAULT_PORT) {
   return `http://127.0.0.1:${port}`;
+}
+
+/**
+ * The API base the widget should use.
+ *
+ * Must carry the same `/api` prefix the server's base URL does, because call
+ * sites append paths like `/chat/stream` to whatever they are given.
+ */
+export function runnerApiBaseUrl(port = DEFAULT_PORT) {
+  return `${runnerOrigin(port)}/api`;
 }
 
 /** Read the stored runner token. Storage can throw in private windows. */
@@ -52,7 +63,7 @@ export async function probe(port = DEFAULT_PORT) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(`${runnerBaseUrl(port)}/health`, {
+    const response = await fetch(`${runnerOrigin(port)}/health`, {
       signal: controller.signal
     });
     if (!response.ok) return { available: false, paired: false };
@@ -75,7 +86,7 @@ export async function probe(port = DEFAULT_PORT) {
 export async function pair(code, userId, port = DEFAULT_PORT) {
   let response;
   try {
-    response = await fetch(`${runnerBaseUrl(port)}/pair`, {
+    response = await fetch(`${runnerOrigin(port)}/pair`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, userId })
@@ -122,7 +133,7 @@ export async function resolveTarget(serverBaseUrl, port = DEFAULT_PORT) {
   if (!available || !paired) return { baseUrl: serverBaseUrl, local: false };
 
   return {
-    baseUrl: runnerBaseUrl(port),
+    baseUrl: runnerApiBaseUrl(port),
     local: true,
     headers: { Authorization: `Bearer ${token}` }
   };

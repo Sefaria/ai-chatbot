@@ -13,6 +13,7 @@ import logging
 import os
 
 from . import DEFAULT_PORT, pairing, session
+from .identity import ServerNotConfigured, server_base_url
 from .paths import data_dir, database_path, ensure_data_dir
 
 LOOPBACK = "127.0.0.1"
@@ -79,6 +80,14 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
+    try:
+        server = server_base_url()
+    except ServerNotConfigured as exc:
+        # Fail here rather than at the first proxied call: a missing server is a
+        # setup mistake, and it should read like one.
+        logger.error("%s", exc)
+        raise SystemExit(2) from exc
+
     ensure_data_dir()
     _setup_django()
     _migrate()
@@ -86,6 +95,7 @@ def main() -> None:
     logger.info("Sefaria agent runner")
     logger.info("  data:     %s", data_dir())
     logger.info("  database: %s", database_path())
+    logger.info("  server:   %s", server)
 
     if args.check:
         logger.info("  check:    ok")

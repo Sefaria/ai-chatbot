@@ -67,11 +67,14 @@ class TestNetworkPosture:
     def test_cors_is_not_open(self):
         assert local_settings.CORS_ALLOW_ALL_ORIGINS is False
 
-    def test_cors_allows_only_sefaria(self):
+    def test_cors_defaults_to_sefaria_only(self):
+        # Extra origins are opt-in through SEFARIA_ALLOWED_ORIGINS, which is unset
+        # here; the shipped default must never admit anything else.
         assert all(
             origin.startswith("https://") and "sefaria.org" in origin
-            for origin in local_settings.CORS_ALLOWED_ORIGINS
+            for origin in local_settings.DEFAULT_ALLOWED_ORIGINS
         )
+        assert local_settings.CORS_ALLOWED_ORIGINS == local_settings.DEFAULT_ALLOWED_ORIGINS
 
     def test_private_network_access_is_answered(self):
         # Without this Chrome drops the https -> localhost response silently.

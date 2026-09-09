@@ -31,7 +31,9 @@ key and runs the real services.
 ## Running it
 
 ```bash
-cd server && python -m local_runner
+cd server
+export SEFARIA_CHATBOT_URL=https://<the chatbot server>   # required
+python -m local_runner
 ```
 
 It migrates its own SQLite database, prints a pairing code, and serves on
@@ -75,7 +77,8 @@ window.sefariaLocalMode.disconnect()        // forget the token, back to the ser
 |---|---|---|
 | `SEFARIA_AGENT_HOME` | `~/.sefaria-agent` | Data directory (database, pairing record) |
 | `SEFARIA_AGENT_PORT` | `8899` | Port to serve on |
-| `SEFARIA_CHATBOT_URL` | `https://chatbot.sefaria.org` | Server to proxy prompts and the guardrail to |
+| `SEFARIA_CHATBOT_URL` | **required** | Server to proxy prompts, guardrail, router and summaries to |
+| `SEFARIA_ALLOWED_ORIGINS` | *(none)* | Extra origins allowed to reach the runner, comma separated. Needed to test against a local build, e.g. `http://localhost:5173` |
 
 ## What is different from the hosted agent
 
@@ -126,4 +129,31 @@ one.
 could not reach the runner; `paired: false` means pair again.
 
 **Pairing says the code expired** — codes are single use and last 10 minutes.
-Restart the runner for a new one.
+Restart the runner for a new one. A failed attempt does not burn the code: only a
+pairing that actually completes spends it.
+
+**The widget stays on the server when testing a local build** — the runner only
+accepts sefaria.org origins by default. Set
+`SEFARIA_ALLOWED_ORIGINS=http://localhost:5173`.
+
+## Testing against a local stack
+
+```bash
+# 1. the chatbot server (needs a valid ANTHROPIC_API_KEY and BRAINTRUST_API_KEY)
+cd server && python manage.py runserver 127.0.0.1:8001
+
+# 2. the runner
+SEFARIA_CHATBOT_URL=http://127.0.0.1:8001 \
+SEFARIA_ALLOWED_ORIGINS=http://localhost:5173 \
+  python -m local_runner
+
+# 3. the widget
+npm run dev
+```
+
+The demo page generates its own `user-id`, which the server will reject as an
+invalid token. Set a validly minted one on the element to pair:
+
+```js
+document.querySelector('lc-chatbot').setAttribute('user-id', '<minted token>')
+```

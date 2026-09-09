@@ -48,11 +48,12 @@ def pairing_open() -> bool:
         return _code is not None and not _expired()
 
 
-def consume(presented: str | None) -> bool:
-    """Check a presented code and, on success, spend it.
+def verify(presented: str | None) -> bool:
+    """Check a presented code without spending it.
 
-    Returns False and counts an attempt on any mismatch; the code is discarded
-    once attempts run out, so guessing cannot continue past the limit.
+    Separate from :func:`spend` so a recoverable failure later in pairing — the
+    server being unreachable, say — does not burn the code and force a restart.
+    A wrong code still counts an attempt, so guessing is bounded either way.
     """
     global _code, _failed_attempts
     with _lock:
@@ -60,10 +61,16 @@ def consume(presented: str | None) -> bool:
             return False
 
         if presented and secrets.compare_digest(presented, _code):
-            _code = None
             return True
 
         _failed_attempts += 1
         if _failed_attempts >= MAX_ATTEMPTS:
             _code = None
         return False
+
+
+def spend() -> None:
+    """Discard the code after a pairing that actually succeeded."""
+    global _code
+    with _lock:
+        _code = None

@@ -54,10 +54,19 @@ DATABASES = {
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [
+
+# Where the widget is allowed to be served from. Extra origins are opt-in via
+# SEFARIA_ALLOWED_ORIGINS (comma separated) so a developer can point a local
+# build at the runner; without it, only sefaria.org can reach the daemon.
+DEFAULT_ALLOWED_ORIGINS = [
     "https://www.sefaria.org",
     "https://sefaria.org",
     "https://staging.sefaria.org",
+]
+CORS_ALLOWED_ORIGINS = DEFAULT_ALLOWED_ORIGINS + [
+    origin.strip()
+    for origin in os.environ.get("SEFARIA_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
 ]
 
 # Chrome requires this on the https -> localhost preflight; without it the

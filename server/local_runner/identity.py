@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import httpx
 
-DEFAULT_SERVER = "https://chatbot.sefaria.org"
+ENV_SERVER = "SEFARIA_CHATBOT_URL"
 IDENTITY_PATH = "/api/v2/local/identity"
 TIMEOUT_SECONDS = 10
 
@@ -28,8 +28,24 @@ class Identity:
     sefaria_user_id: str | None
 
 
+class ServerNotConfigured(RuntimeError):
+    """SEFARIA_CHATBOT_URL is not set."""
+
+
 def server_base_url() -> str:
-    return os.environ.get("SEFARIA_CHATBOT_URL", DEFAULT_SERVER).rstrip("/")
+    """Return the chatbot server this runner proxies to.
+
+    Required, with no default: the runner cannot fetch prompts or run the
+    guardrail without it, and guessing a host would turn a configuration mistake
+    into a confusing pairing failure much later.
+    """
+    configured = os.environ.get(ENV_SERVER, "").strip()
+    if not configured:
+        raise ServerNotConfigured(
+            f"{ENV_SERVER} is not set. Point it at the Sefaria chatbot server, "
+            "e.g. http://localhost:8001 when running one locally."
+        )
+    return configured.rstrip("/")
 
 
 def resolve(encrypted_user_token: str) -> Identity:
