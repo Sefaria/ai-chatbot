@@ -26,4 +26,5 @@ urlpatterns = [
     path("api/history", shared_views.history, name="history"),
     # Runner-only.
     path("health", runner_views.health, name="runner_health"),
+    path("pair", runner_views.pair, name="runner_pair"),
 ]

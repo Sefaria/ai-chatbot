@@ -67,3 +67,18 @@ CORS_ALLOW_PRIVATE_NETWORK = True
 # Only the routes local mode serves. Notably absent: the Anthropic eval endpoint
 # and the prompt-reload admin route, which are server-side concerns.
 ROOT_URLCONF = "local_runner.urls"
+
+# The runner token is checked before anything else runs, so a route added later
+# is protected by default. CorsMiddleware stays first so preflights still answer.
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "local_runner.middleware.OriginAllowlistMiddleware",
+    "local_runner.middleware.RunnerAuthMiddleware",
+    "django.middleware.common.CommonMiddleware",
+]
+
+# --- Identity ------------------------------------------------------------------
+
+# The daemon cannot decrypt user tokens (that needs the server secret), so it
+# authenticates the runner token and builds the Actor from the pairing record.
+CHAT_AUTH_BACKEND = "local_runner.auth.authenticate_paired_request"

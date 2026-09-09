@@ -12,7 +12,7 @@ import argparse
 import logging
 import os
 
-from . import DEFAULT_PORT
+from . import DEFAULT_PORT, pairing, session
 from .paths import data_dir, database_path, ensure_data_dir
 
 LOOPBACK = "127.0.0.1"
@@ -43,6 +43,28 @@ def _port() -> int:
     return int(os.environ.get("SEFARIA_AGENT_PORT", DEFAULT_PORT))
 
 
+def _announce_pairing(port: int) -> None:
+    """Print the code a browser tab needs to pair with this daemon.
+
+    A fresh code every run: it lives in memory only, so a code from a previous
+    run cannot pair. An already-paired daemon still prints one, because re-pairing
+    is how a user recovers a lost or rotated runner token.
+    """
+    code = pairing.new_code()
+    session.set_code(code)
+
+    existing = pairing.load()
+    if existing:
+        logger.info("  paired:   yes (re-pair to replace)")
+
+    logger.info("")
+    logger.info("  To connect this machine, open sefaria.org and enter:")
+    logger.info("      %s", code)
+    logger.info("")
+    logger.info("  Valid once, for %d minutes. Restart to get a new one.", session.TTL_SECONDS // 60)
+    logger.info("")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="local_runner")
     parser.add_argument("--port", type=int, default=_port())
@@ -66,6 +88,8 @@ def main() -> None:
     if args.check:
         logger.info("  check:    ok")
         return
+
+    _announce_pairing(args.port)
 
     from django.core.wsgi import get_wsgi_application
     from waitress import serve
