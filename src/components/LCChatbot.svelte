@@ -106,6 +106,15 @@
   let isLoadingSettings = $state(false);
   let settingsError = $state('');
 
+  // Local runner. The toggle is the authority: detection only switches the
+  // target when the user has asked for it, so a runner left running on the
+  // machine never silently takes over.
+  let localModeEnabled = $state(false);
+  let runnerStatus = $state({ available: false, paired: false, checking: false });
+  let pairingCode = $state('');
+  let pairingError = $state('');
+  let isPairing = $state(false);
+
   let expandedSections = $state({});
   function toggleSection(key) {
     expandedSections[key] = !expandedSections[key];
@@ -254,6 +263,7 @@
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
 
+    localModeEnabled = getStorage(STORAGE_KEYS.LOCAL_MODE, false) === true;
     detectLocalRunner();
     exposeLocalModeControls();
   });
@@ -265,14 +275,91 @@
    * the widget talking to our server, with nothing shown to the user.
    */
   async function detectLocalRunner() {
+    // Gated on labs as well as the toggle, so the running state can never
+    // outlive the control that governs it: with labs off the setting is hidden,
+    // and a hidden switch must not leave local mode quietly running.
+    if (!localModeEnabled || promptSlugs.labs !== true) {
+      useServer();
+      return;
+    }
     try {
       const target = await resolveTarget(apiBaseUrl);
-      if (!target.local) return;
+      if (!target.local) {
+        useServer();
+        return;
+      }
       setExtraHeaders(target.headers);
       localBaseUrl = target.baseUrl;
     } catch {
       // Detection must never break the widget; the server remains the target.
+      useServer();
     }
+  }
+
+  /** Point every request back at our server. */
+  function useServer() {
+    setExtraHeaders({});
+    localBaseUrl = null;
+  }
+
+  /** Refresh what the settings panel shows about the runner. */
+  async function refreshRunnerStatus() {
+    runnerStatus = { ...runnerStatus, checking: true };
+    const found = await probeRunner();
+    runnerStatus = { ...found, checking: false };
+  }
+
+  /** Keep the runner target in step with the labs gate. */
+  async function onLabsChanged() {
+    if (promptSlugs.labs === true) {
+      await refreshRunnerStatus();
+    }
+    await detectLocalRunner();
+  }
+
+  async function toggleLocalMode() {
+    localModeEnabled = !localModeEnabled;
+    setStorage(STORAGE_KEYS.LOCAL_MODE, localModeEnabled);
+    pairingError = '';
+
+    if (!localModeEnabled) {
+      useServer();
+      return;
+    }
+
+    await refreshRunnerStatus();
+    await detectLocalRunner();
+  }
+
+  async function connectRunner() {
+    pairingError = '';
+    if (!pairingCode.trim()) {
+      pairingError = get(_)('assistant.settings.localRunner.codeHint');
+      return;
+    }
+
+    isPairing = true;
+    try {
+      const result = await pairRunner(pairingCode.trim(), userId);
+      if (!result.ok) {
+        pairingError = result.error;
+        return;
+      }
+      pairingCode = '';
+      await refreshRunnerStatus();
+      await detectLocalRunner();
+    } finally {
+      isPairing = false;
+    }
+  }
+
+  function disconnectRunner() {
+    forgetToken();
+    useServer();
+    localModeEnabled = false;
+    setStorage(STORAGE_KEYS.LOCAL_MODE, false);
+    pairingError = '';
+    runnerStatus = { ...runnerStatus, paired: false };
   }
 
   /**
@@ -558,6 +645,10 @@
   async function openSettings() {
     showSettings = true;
     settingsError = '';
+    pairingError = '';
+    if (promptSlugs.labs) {
+      refreshRunnerStatus();
+    }
 
     if (!settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
@@ -1480,10 +1571,60 @@
               <input
                 type="checkbox"
                 bind:checked={promptSlugs.labs}
+                onchange={onLabsChanged}
                 disabled={isLoadingSettings}
               />
               <span>{$_('assistant.settings.labs')}</span>
             </label>
+
+            {#if promptSlugs.labs}
+              <div class="settings-runner">
+                <label class="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={localModeEnabled}
+                    onchange={toggleLocalMode}
+                    disabled={isLoadingSettings || isPairing}
+                  />
+                  <span>{$_('assistant.settings.localRunner')}</span>
+                </label>
+                <p class="settings-note">{$_('assistant.settings.localRunner.hint')}</p>
+
+                {#if localModeEnabled}
+                  {#if runnerStatus.checking}
+                    <p class="settings-runner-status">{$_('assistant.settings.localRunner.searching')}</p>
+                  {:else if !runnerStatus.available}
+                    <p class="settings-runner-status warn">{$_('assistant.settings.localRunner.notFound')}</p>
+                  {:else if runnerStatus.paired && isLocalMode}
+                    <p class="settings-runner-status ok">{$_('assistant.settings.localRunner.connected')}</p>
+                    <button class="settings-reset" onclick={disconnectRunner}>
+                      {$_('assistant.settings.localRunner.disconnect')}
+                    </button>
+                  {:else}
+                    <label class="settings-field">
+                      <span>{$_('assistant.settings.localRunner.code')}</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        bind:value={pairingCode}
+                        placeholder="000000"
+                        disabled={isPairing}
+                      />
+                    </label>
+                    <button class="settings-save" onclick={connectRunner} disabled={isPairing}>
+                      {isPairing
+                        ? $_('assistant.settings.localRunner.connecting')
+                        : $_('assistant.settings.localRunner.connect')}
+                    </button>
+                  {/if}
+
+                  {#if pairingError}
+                    <p class="settings-runner-status warn">{pairingError}</p>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
           </div>
 
           <div class="settings-actions">
@@ -2597,6 +2738,29 @@
 
   .settings-toggle input:disabled {
     opacity: 0.6;
+  }
+
+  .settings-runner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--lc-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+  }
+
+  .settings-runner-status {
+    margin: 0;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+
+  .settings-runner-status.ok {
+    color: var(--lc-success, #1a7f4b);
+  }
+
+  .settings-runner-status.warn {
+    color: var(--lc-warning, #a8410f);
   }
 
   .settings-note {

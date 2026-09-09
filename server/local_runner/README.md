@@ -63,23 +63,27 @@ Sefaria agent runner
 
 ## Pairing a browser
 
-Open sefaria.org, open the chat so the widget knows who you are, then in the
-browser console:
+Open sefaria.org, open the chat, then in the settings panel (gear → **Agent
+Settings**):
 
-```js
-await window.sefariaLocalMode.pair('418302')   // the code from the terminal
-```
+1. Tick **Labs**. The local runner section only appears with labs on.
+2. Tick **Run against my local runner**.
+3. Enter the code from the terminal and press **Connect**.
 
-Reload. The widget probes the runner on load and switches to it automatically
-from then on.
+The widget switches immediately, and re-detects the runner on every load from
+then on. **Disconnect** forgets the token and returns to the server.
+
+Local mode is gated on labs both ways: with labs off the setting is hidden *and*
+the runner is not used, so the running state never outlives the control that
+governs it.
+
+The same operations are available from the console for scripting:
 
 ```js
 await window.sefariaLocalMode.status()      // { available, paired, active }
-window.sefariaLocalMode.disconnect()        // forget the token, back to the server
+await window.sefariaLocalMode.pair('418302')
+window.sefariaLocalMode.disconnect()
 ```
-
-> A first-run pairing surface belongs in the settings panel. The console entry
-> point keeps the beta usable without shipping UI that has not been designed.
 
 ## Configuration
 
