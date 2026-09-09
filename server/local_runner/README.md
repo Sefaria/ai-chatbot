@@ -13,6 +13,11 @@ reimplementation. What it replaces is only what needs our secrets: prompts, the
 guardrail and the router are proxied to our server, which holds the Braintrust
 key and runs the real services.
 
+> [!IMPORTANT]
+> The `/api/v2/local/*` endpoints this runner depends on are **not deployed to
+> `chat.sefaria.org` yet** — they are on this branch. Until it ships, point
+> `SEFARIA_CHATBOT_URL` at a server you are running locally.
+
 ## Prerequisites
 
 1. **Claude Code, logged in.** The runner spends your subscription through the
@@ -31,9 +36,7 @@ key and runs the real services.
 ## Running it
 
 ```bash
-cd server
-export SEFARIA_CHATBOT_URL=https://<the chatbot server>   # required
-python -m local_runner
+cd server && python -m local_runner
 ```
 
 It migrates its own SQLite database, prints a pairing code, and serves on
@@ -77,7 +80,7 @@ window.sefariaLocalMode.disconnect()        // forget the token, back to the ser
 |---|---|---|
 | `SEFARIA_AGENT_HOME` | `~/.sefaria-agent` | Data directory (database, pairing record) |
 | `SEFARIA_AGENT_PORT` | `8899` | Port to serve on |
-| `SEFARIA_CHATBOT_URL` | **required** | Server to proxy prompts, guardrail, router and summaries to |
+| `SEFARIA_CHATBOT_URL` | `https://chat.sefaria.org` | Server to proxy prompts, guardrail, router and summaries to |
 | `SEFARIA_ALLOWED_ORIGINS` | *(none)* | Extra origins allowed to reach the runner, comma separated. Needed to test against a local build, e.g. `http://localhost:5173` |
 
 ## What is different from the hosted agent

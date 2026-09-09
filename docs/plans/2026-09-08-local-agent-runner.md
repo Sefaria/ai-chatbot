@@ -426,15 +426,18 @@ trace replay lands, the only measure of local usage is the pairing endpoint.
 
 ## Open questions
 
-1. **Sefaria API rate limiting.** Local agents hit sefaria.org directly. Limits keyed to the user
+1. **Deploying the `/api/v2/local/*` endpoints.** The runner is useless against
+   production until `identity`, `prompt`, `guardrail`, `route` and `summary` ship
+   to `chat.sefaria.org`; they return 404 there today. This gates any beta.
+2. **Sefaria API rate limiting.** Local agents hit sefaria.org directly. Limits keyed to the user
    token need to exist before local mode has volume. Owner: needs assignment.
-2. **`PROD_ORIGINS` membership.** Does `"sefaria-local"` count as production for Braintrust tagging?
+3. **`PROD_ORIGINS` membership.** Does `"sefaria-local"` count as production for Braintrust tagging?
    Affects existing dashboards.
-3. **Model pinning vs negotiation** (P1). Does the bundle pin a model and refuse mismatches, or
+4. **Model pinning vs negotiation** (P1). Does the bundle pin a model and refuse mismatches, or
    negotiate one with the runner and record what was used?
-4. **CLI version floor** (P2). What minimum `claude-agent-sdk` / CLI version does the bundle require,
+5. **CLI version floor** (P2). What minimum `claude-agent-sdk` / CLI version does the bundle require,
    and how loudly does the runner fail below it?
-5. **Port collision.** `8899` is a placeholder. Fixed port (simple discovery, collides) or a port file
+6. **Port collision.** `8899` is a placeholder. Fixed port (simple discovery, collides) or a port file
    in a known location (robust, one more thing to find)?
 
 ---
