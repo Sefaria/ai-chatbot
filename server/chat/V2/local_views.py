@@ -4,6 +4,7 @@ See docs/plans/2026-09-08-local-agent-runner.md. These exist so a daemon on a
 user's machine can run the agent without holding any server secret.
 """
 
+import json
 import logging
 
 from rest_framework import status
@@ -19,6 +20,7 @@ from ..auth.auth_service import (
 from .guardrail import get_guardrail_service
 from .prompts import get_prompt_service
 from .router import get_router_service
+from .summarization.summary_service import SUMMARY_PROMPT
 
 logger = logging.getLogger("chat")
 
@@ -118,3 +120,53 @@ def local_route(request):
             "rewrittenMessage": result.rewritten_message,
         }
     )
+
+
+@api_view(["POST"])
+def local_summary(request):
+    """Generate one conversation summary for a runner.
+
+    Only the model call moves: the runner applies the returned fields to its own
+    database, so local history stays local (D4). Summaries matter more than they
+    sound like they do — the agent receives only the current message, so this is
+    the entire multi-turn memory.
+
+    Returns the parsed summary fields, or 502 if the model output was unusable,
+    which the runner treats as a signal to fall back to rule-based extraction.
+
+    POST /api/v2/local/summary
+    """
+    actor = _actor_or_error(request)
+    if isinstance(actor, Response):
+        return actor
+
+    context_parts = []
+    previous = request.data.get("previousSummary")
+    if previous:
+        context_parts.append(f"Previous Summary:\n{previous}")
+    context_parts.append(f"User: {(request.data.get('userMessage') or '')[:1000]}")
+    context_parts.append(f"Assistant: {(request.data.get('assistantResponse') or '')[:1000]}")
+
+    from django.conf import settings
+
+    from .pricing import tracked_messages_create
+    from .utils import get_anthropic_client, strip_markdown_fences
+
+    try:
+        response = tracked_messages_create(
+            get_anthropic_client(),
+            model=settings.SUMMARY_MODEL,
+            max_tokens=500,
+            temperature=0.0,
+            system=SUMMARY_PROMPT,
+            messages=[{"role": "user", "content": "\n\n".join(context_parts)}],
+        )
+        data = json.loads(strip_markdown_fences(response.content[0].text))
+    except (json.JSONDecodeError, IndexError) as exc:
+        logger.warning(f"local summary unparseable: {exc}")
+        return Response({"error": "summary_unavailable"}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as exc:
+        logger.error(f"local summary failed: {exc}")
+        return Response({"error": "summary_unavailable"}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response({"summary": data})

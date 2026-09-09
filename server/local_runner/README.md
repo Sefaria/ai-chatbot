@@ -84,12 +84,17 @@ window.sefariaLocalMode.disconnect()        // forget the token, back to the ser
 | Agent tokens | Our API key | Your Claude subscription |
 | Conversation history | Postgres, cross-device | Local SQLite, this machine only |
 | Prompts, guardrail, router | Direct | Proxied to our server |
+| Conversation summaries | LLM-generated | Proxied — same summaries |
 | Topic appetizer | Yes | **Disabled** — it needs its own Anthropic key |
-| Conversation summaries | LLM-generated | **Rule-based fallback** — same reason |
-| Braintrust traces | Written directly | **Not yet sent** — see below |
+| Braintrust traces | Written directly | **Not sent** |
 
-The last three are known gaps, not intended behaviour. Trace replay is the next
-slice; summaries and the appetizer follow it.
+The last two are known gaps. Neither affects the turn: the appetizer is a topic
+chip the UI already treats as optional, and traces are observability rather than
+behaviour.
+
+Summaries are proxied rather than dropped because the agent is handed only the
+current message — the summary carries the entire multi-turn memory, so without it
+local mode would quietly become single-turn.
 
 ## Security
 

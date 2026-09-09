@@ -93,6 +93,7 @@ CHAT_SERVICE_OVERRIDES = {
     "PromptService": "local_runner.services.ProxyPromptService",
     "GuardrailService": "local_runner.services.ProxyGuardrailService",
     "RouterService": "local_runner.services.ProxyRouterService",
+    "SummaryService": "local_runner.services.ProxySummaryService",
     # Not proxied — disabled. See NullAppetizerService.
     "AppetizerService": "local_runner.services.NullAppetizerService",
 }

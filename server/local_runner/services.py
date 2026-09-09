@@ -22,6 +22,7 @@ import httpx
 from chat.V2.guardrail.guardrail_service import GuardrailResult
 from chat.V2.prompts.prompt_service import CorePrompt
 from chat.V2.router.router_service import RouterResult, RouteType
+from chat.V2.summarization.summary_service import SummaryService
 
 from . import pairing
 from .identity import server_base_url
@@ -135,3 +136,51 @@ class ProxyRouterService:
             core_prompt_id=data.get("corePromptId"),
             rewritten_message=data.get("rewrittenMessage"),
         )
+
+
+class ProxySummaryService(SummaryService):
+    """Summarizes via our server, and stores the result locally.
+
+    Only the model call is proxied. ``_apply_summary_data`` still runs here, so
+    the summary row is written to the runner's own database (D4).
+
+    This matters more than "summaries" suggests: the agent is handed only the
+    current message, so the summary carries the whole multi-turn memory. Without
+    it local mode would silently become single-turn.
+    """
+
+    def __init__(self):
+        # Skip SummaryService.__init__, which builds an Anthropic client we have
+        # no key for. use_llm stays True because we do have a model — remotely.
+        self.api_key = None
+        self.client = None
+        self.model = None
+        self.use_llm = True
+        logger.info("SummaryService initialized (proxied to the server)")
+
+    def _llm_summarize(
+        self,
+        session,
+        current_summary,
+        new_user_message: str,
+        new_assistant_response: str,
+    ):
+        previous = current_summary.to_prompt_text() if current_summary else ""
+        try:
+            data = _post(
+                "/api/v2/local/summary",
+                {
+                    "previousSummary": previous,
+                    "userMessage": new_user_message,
+                    "assistantResponse": new_assistant_response,
+                },
+            )["summary"]
+        except (ProxyError, KeyError) as exc:
+            # Same fallback the real service uses when its own call fails, so a
+            # server hiccup costs summary quality rather than the turn.
+            logger.warning("summary unavailable, using rule-based: %s", exc)
+            return self._simple_summarize(
+                session, current_summary, new_user_message, new_assistant_response
+            )
+
+        return self._apply_summary_data(session=session, current_summary=current_summary, data=data)

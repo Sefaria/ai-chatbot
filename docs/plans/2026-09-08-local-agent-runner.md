@@ -397,12 +397,30 @@ is weeks of code-signing and notarization work; earn it with beta adoption numbe
 |-------|-------|-------|
 | 0 | Public MCP at `mcp.sefaria.org` | **Done.** Demand confirmed. |
 | 1 | `AgentConfig` — settings passed in rather than read from `django.conf` | **Done** (`3d9c07e`). Production, no behavior change. |
-| 2 | `server/local_runner/` Django profile + SQLite + pairing + bundle + guardrail/route proxies + trace intake + frontend health check | Local mode at parity, closed beta, behind a flag. |
+| 2 | `server/local_runner/` Django profile + SQLite + pairing + prompt/guardrail/route/summary proxies + frontend detection | **Built** (`20c9208`, `215a222`, `38b5d62`). Turn path verified end to end. |
+| 2.5 | Braintrust trace replay | Deferred by decision (D5). |
 | 3 | Extension as detector and PNA fallback | Resilience against a browser policy change. |
 | 3.5 | *Optional:* fire-and-forget turn POST for analytics (D4) | Only if Postgres undercounting starts to hurt. |
 | 4 | `"local"` surface: runner-owned structured store (SQLite), typed collection tools | The capability we cannot offer server-side. |
 
 Phase 1 is independently valuable and independently reviewable. Do not bundle it into Phase 2.
+
+---
+
+### D5 — Observability deferred
+
+**Decision (Akiva, 2026-09-09): ship local mode without Braintrust traces.**
+
+Local turns are not logged. Everything else about them matches the hosted agent,
+including summaries, which are proxied rather than dropped: the agent receives
+only the current message, so the summary is the whole multi-turn memory and
+losing it would quietly make local mode single-turn.
+
+The topic appetizer stays disabled — it makes its own Anthropic call, and the UI
+already treats it as optional.
+
+**Consequence:** local-mode turns appear in no dashboard and in no eval. Until
+trace replay lands, the only measure of local usage is the pairing endpoint.
 
 ---
 
