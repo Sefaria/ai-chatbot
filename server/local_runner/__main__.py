@@ -1,0 +1,78 @@
+"""Entrypoint: ``python -m local_runner``.
+
+Serves WSGI with a thread pool, matching how production runs the same views
+(``gunicorn ... --worker-class gthread --threads 4``), so streaming behaves the
+same way here as it does on the server. Waitress rather than gunicorn because the
+daemon has to run on a user's machine, including Windows.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+
+from . import DEFAULT_PORT
+from .paths import data_dir, database_path, ensure_data_dir
+
+LOOPBACK = "127.0.0.1"
+THREADS = 4
+
+logger = logging.getLogger("local_runner")
+
+
+def _setup_django() -> None:
+    import django
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "local_runner.settings")
+    django.setup()
+
+
+def _migrate() -> None:
+    """Bring the local SQLite database up to date.
+
+    Runs on every start: the schema travels with the runner, and a user has no
+    other way to apply migrations after an upgrade.
+    """
+    from django.core.management import call_command
+
+    call_command("migrate", interactive=False, verbosity=0)
+
+
+def _port() -> int:
+    return int(os.environ.get("SEFARIA_AGENT_PORT", DEFAULT_PORT))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="local_runner")
+    parser.add_argument("--port", type=int, default=_port())
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Set up, migrate and exit without serving.",
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    ensure_data_dir()
+    _setup_django()
+    _migrate()
+
+    logger.info("Sefaria agent runner")
+    logger.info("  data:     %s", data_dir())
+    logger.info("  database: %s", database_path())
+
+    if args.check:
+        logger.info("  check:    ok")
+        return
+
+    from django.core.wsgi import get_wsgi_application
+    from waitress import serve
+
+    logger.info("  serving:  http://%s:%s", LOOPBACK, args.port)
+    serve(get_wsgi_application(), host=LOOPBACK, port=args.port, threads=THREADS)
+
+
+if __name__ == "__main__":
+    main()

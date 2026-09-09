@@ -1,0 +1,69 @@
+"""Django settings for the local runner.
+
+Inherits the server settings so prompt slugs, model names, DRF config and logging
+stay identical — that is what makes local mode behave like the hosted agent — then
+overrides everything that must not exist on a user's machine.
+
+Two rules govern this file:
+
+1. **No server secrets.** ``BRAINTRUST_API_KEY`` and ``CHATBOT_USER_TOKEN_SECRET``
+   are cleared explicitly rather than merely left unset, because importing the
+   base settings runs ``load_dotenv`` and would otherwise pick up a developer's
+   own ``.env`` and mask the difference.
+2. **Loopback only.** ``ALLOWED_HOSTS`` and the CORS allowlist are the DNS-rebinding
+   and cross-origin controls; the pairing bearer token is the real authentication.
+"""
+
+from __future__ import annotations
+
+import os
+
+from chatbot_server.settings import *  # noqa: F403
+from chatbot_server.settings import BASE_DIR  # noqa: F401
+
+from .paths import database_path
+
+# --- Never on a user's machine -------------------------------------------------
+
+# Cleared, not just unset: the base settings load a .env if one is present.
+CHATBOT_USER_TOKEN_SECRET = ""
+os.environ.pop("BRAINTRUST_API_KEY", None)
+
+# Traces are buffered locally and replayed by our server, which holds the key.
+BRAINTRUST_LOGGING_ENABLED = False
+
+# Sentry is the server's error channel, not a user's.
+SENTRY_DSN = ""
+
+DEBUG = False
+
+# --- Local storage -------------------------------------------------------------
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": str(database_path()),
+        "OPTIONS": {"timeout": 20},
+    }
+}
+
+# --- Network posture -----------------------------------------------------------
+
+# Rejects a Host header pointing at anything but loopback, which is what stops
+# DNS rebinding from reaching the daemon.
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    "https://www.sefaria.org",
+    "https://sefaria.org",
+    "https://staging.sefaria.org",
+]
+
+# Chrome requires this on the https -> localhost preflight; without it the
+# browser drops the response with no visible error.
+CORS_ALLOW_PRIVATE_NETWORK = True
+
+# Only the routes local mode serves. Notably absent: the Anthropic eval endpoint
+# and the prompt-reload admin route, which are server-side concerns.
+ROOT_URLCONF = "local_runner.urls"
