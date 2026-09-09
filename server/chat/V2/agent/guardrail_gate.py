@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Any
 
+from ..guardrail import get_guardrail_service
 from ..prompts.prompt_fragments import (
     GUARDRAIL_MALFORMED_REASON,
     GUARDRAIL_REJECTION_FALLBACK,
@@ -30,10 +31,6 @@ class DefaultGuardrailGate:
         context: MessageContext,
         start_time: float,
     ) -> AgentResponse | None:
-        # Imported lazily so the agent package imports without Django; the
-        # guardrail service is Django-backed and only needed at call time.
-        from ..guardrail import get_guardrail_service
-
         enriched_message, _ = build_prompt(
             user_message,
             summary_text=context.summary_text,

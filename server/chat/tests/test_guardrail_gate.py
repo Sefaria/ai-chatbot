@@ -35,7 +35,7 @@ class TestGuardrailGateRejection:
     def _run_gate(self, guardrail_result: GuardrailResult) -> MagicMock | None:
         gate = DefaultGuardrailGate()
         bt_span = _make_bt_span()
-        with patch("chat.V2.guardrail.get_guardrail_service") as mock_get_service:
+        with patch("chat.V2.agent.guardrail_gate.get_guardrail_service") as mock_get_service:
             mock_service = MagicMock()
             mock_service.check_message.return_value = guardrail_result
             mock_get_service.return_value = mock_service
