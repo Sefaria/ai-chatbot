@@ -25,7 +25,14 @@ from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
 
 from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
-from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
+from .contracts import (
+    AgentConfig,
+    AgentProgressUpdate,
+    AgentResponse,
+    CancelCheck,
+    ConversationMessage,
+    MessageContext,
+)
 from .guardrail_gate import DefaultGuardrailGate
 from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
@@ -48,13 +55,12 @@ class ClaudeAgentService:
 
     def __init__(
         self,
+        config: AgentConfig,
         api_key: str | None = None,
-        model: str | None = None,
         max_iterations: int = 10,
         max_tokens: int = AGENT_MAX_TOKENS,
         temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
-        is_load_test: bool = False,
     ):
         if (
             ClaudeAgentOptions is None
@@ -66,25 +72,20 @@ class ClaudeAgentService:
                 "claude-agent-sdk is required. Install with `pip install claude-agent-sdk`."
             )
 
-        self.client = get_anthropic_client(api_key)
+        self._api_key = api_key
         self.prompt_service = prompt_service or get_prompt_service()
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
 
-        from django.conf import settings as django_settings
-
-        self.braintrust_logging_enabled = (
-            django_settings.BRAINTRUST_LOGGING_ENABLED and not is_load_test
-        )
+        self.config = config
+        self.braintrust_logging_enabled = config.braintrust_logging_enabled
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key_str
 
-        self.model = model or (
-            django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
-        )
+        self.model = config.model
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -126,7 +127,18 @@ class ClaudeAgentService:
             router=Router(logger=logger),
             trace_logger=trace_logger,
             logging_enabled=self.braintrust_logging_enabled,
+            response_format_prompt_slug=config.response_format_prompt_slug,
         )
+
+    @property
+    def client(self):
+        """Anthropic client, built on first use.
+
+        Lazy because the turn path does not use it: constructing it eagerly would
+        require an API key on hosts that authenticate another way, such as the
+        local runner running against a user's Claude subscription.
+        """
+        return get_anthropic_client(self._api_key)
 
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is initialized for this process.
@@ -148,8 +160,13 @@ class ClaudeAgentService:
         core_prompt_id: str | None = None,
         on_progress: Callable[[AgentProgressUpdate], None] | None = None,
         context: MessageContext | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> AgentResponse:
-        """Run one chat turn and return the final response payload."""
+        """Run one chat turn and return the final response payload.
+
+        `should_cancel` is polled between steps; when it returns True the turn
+        raises TurnCancelled and the agent subprocess is torn down.
+        """
         context = context or MessageContext()
 
         async def run() -> AgentResponse:
@@ -158,6 +175,7 @@ class ClaudeAgentService:
                 core_prompt_id=core_prompt_id,
                 on_progress=on_progress,
                 context=context,
+                should_cancel=should_cancel,
             )
 
         if self.braintrust_logging_enabled:
@@ -168,8 +186,3 @@ class ClaudeAgentService:
     async def close(self) -> None:
         """Close the service and cleanup resources."""
         await self.sefaria_client.close()
-
-
-def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
-    """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService(is_load_test=is_load_test)

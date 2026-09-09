@@ -3,13 +3,15 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
-  import { tick } from 'svelte';
+  import { sendMessageStream, cancelStream, loadHistory, fetchPromptDefaults, sendFeedback, setExtraHeaders } from '../lib/api.js';
+  import { resolveTarget, pair as pairRunner, forgetToken, probe as probeRunner } from '../lib/localMode.js';
+  import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
+  import Tooltip from './Tooltip.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
@@ -55,6 +57,14 @@
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
+  // Set while a stop is being negotiated with the server; drives the loader that
+  // replaces the stop icon so a slow cancel still looks like it is happening.
+  let isStopping = $state(false);
+  // Only true once the cancel round trip has outlasted STOP_SPINNER_DELAY_MS.
+  let isStoppingSlow = $state(false);
+  let streamAbortController = null;
+  let pendingMessageId = null;
+  let stopSpinnerTimeout = null;
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -96,6 +106,18 @@
   let isLoadingSettings = $state(false);
   let settingsError = $state('');
 
+  // Local runner. The toggle is the authority: detection only switches the
+  // target when the user has asked for it, so a runner left running on the
+  // machine never silently takes over.
+  let localModeEnabled = $state(false);
+  // Plain variable, not $state: it guards initialisation and must never be a
+  // reactive dependency of the effect that performs it.
+  let localRunnerInitialised = false;
+  let runnerStatus = $state({ available: false, paired: false, checking: false });
+  let pairingCode = $state('');
+  let pairingError = $state('');
+  let isPairing = $state(false);
+
   let expandedSections = $state({});
   function toggleSection(key) {
     expandedSections[key] = !expandedSections[key];
@@ -127,6 +149,13 @@
   let feedbackReason = $state(''); // For dislikes: selected reason category
 
   const STATUS_FAILED = 'failed';
+  const STATUS_SENT = 'sent';
+  // Marker row appended to `messages` in place of an answer the user stopped.
+  const ROLE_STOPPED = 'stopped';
+  const PROCESSING_STATE_CANCELLED = 'cancelled';
+  // Don't flash a spinner for a cancel that returns immediately; only show it
+  // once the round trip is slow enough to be worth acknowledging.
+  const STOP_SPINNER_DELAY_MS = 200;
 
   // Feedback score constants (must match backend SCORE_CHOICES)
   const FEEDBACK_UP = 'up';
@@ -159,7 +188,14 @@
   let messageListRef = $state(null);
   let inputRef = $state(null);
 
-  // Derive static base URL by removing '/api' suffix from apiBaseUrl
+  // Local mode: when a paired runner is listening, API calls go to it instead of
+  // our server. Null until detection finishes, so the server is the default and
+  // any failure simply leaves it that way.
+  let localBaseUrl = $state(null);
+  let isLocalMode = $derived(localBaseUrl !== null);
+  let effectiveApiBaseUrl = $derived(localBaseUrl ?? apiBaseUrl);
+
+  // Static assets always come from our server: the runner serves no icons.
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
   let staticIconsBaseUrl = `${staticBaseUrl}/static/icons`;
 
@@ -229,7 +265,138 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    // untrack + run-once: this is an $effect, not a mount hook. It writes
+    // promptSlugs, and detectLocalRunner reads promptSlugs.labs — tracked, that
+    // read makes the effect retrigger itself forever and freezes the page.
+    untrack(() => {
+      if (localRunnerInitialised) return;
+      localRunnerInitialised = true;
+      localModeEnabled = getStorage(STORAGE_KEYS.LOCAL_MODE, false) === true;
+      detectLocalRunner();
+      exposeLocalModeControls();
+    });
   });
+
+  /**
+   * Switch to a paired local runner if one is listening.
+   *
+   * Deliberately quiet: no runner, an unpaired one, or a slow probe all leave
+   * the widget talking to our server, with nothing shown to the user.
+   */
+  async function detectLocalRunner() {
+    // Gated on labs as well as the toggle, so the running state can never
+    // outlive the control that governs it: with labs off the setting is hidden,
+    // and a hidden switch must not leave local mode quietly running.
+    if (!localModeEnabled || promptSlugs.labs !== true) {
+      useServer();
+      return;
+    }
+    try {
+      const target = await resolveTarget(apiBaseUrl);
+      if (!target.local) {
+        useServer();
+        return;
+      }
+      setExtraHeaders(target.headers);
+      localBaseUrl = target.baseUrl;
+    } catch {
+      // Detection must never break the widget; the server remains the target.
+      useServer();
+    }
+  }
+
+  /** Point every request back at our server. */
+  function useServer() {
+    setExtraHeaders({});
+    localBaseUrl = null;
+  }
+
+  /** Refresh what the settings panel shows about the runner. */
+  async function refreshRunnerStatus() {
+    runnerStatus = { ...runnerStatus, checking: true };
+    const found = await probeRunner();
+    runnerStatus = { ...found, checking: false };
+  }
+
+  /** Keep the runner target in step with the labs gate. */
+  async function onLabsChanged() {
+    if (promptSlugs.labs === true) {
+      await refreshRunnerStatus();
+    }
+    await detectLocalRunner();
+  }
+
+  async function toggleLocalMode() {
+    localModeEnabled = !localModeEnabled;
+    setStorage(STORAGE_KEYS.LOCAL_MODE, localModeEnabled);
+    pairingError = '';
+
+    if (!localModeEnabled) {
+      useServer();
+      return;
+    }
+
+    await refreshRunnerStatus();
+    await detectLocalRunner();
+  }
+
+  async function connectRunner() {
+    pairingError = '';
+    if (!pairingCode.trim()) {
+      pairingError = get(_)('assistant.settings.localRunner.codeHint');
+      return;
+    }
+
+    isPairing = true;
+    try {
+      const result = await pairRunner(pairingCode.trim(), userId);
+      if (!result.ok) {
+        pairingError = result.error;
+        return;
+      }
+      pairingCode = '';
+      await refreshRunnerStatus();
+      await detectLocalRunner();
+    } finally {
+      isPairing = false;
+    }
+  }
+
+  function disconnectRunner() {
+    forgetToken();
+    useServer();
+    localModeEnabled = false;
+    setStorage(STORAGE_KEYS.LOCAL_MODE, false);
+    pairingError = '';
+    runnerStatus = { ...runnerStatus, paired: false };
+  }
+
+  /**
+   * Expose pairing on the element so a user can connect a runner.
+   *
+   * A first-run surface belongs in the settings panel; this keeps the beta
+   * usable without shipping UI that has not been designed yet.
+   */
+  function exposeLocalModeControls() {
+    if (typeof window === 'undefined') return;
+    window.sefariaLocalMode = {
+      status: async () => ({ ...(await probeRunner()), active: isLocalMode }),
+      pair: async (code) => {
+        if (!code) return { ok: false, error: 'Enter the code shown in the runner terminal.' };
+        if (!userId) return { ok: false, error: 'Open the chat first so the widget knows who you are.' };
+        const result = await pairRunner(String(code), userId);
+        if (result.ok) await detectLocalRunner();
+        return result;
+      },
+      disconnect: () => {
+        forgetToken();
+        setExtraHeaders({});
+        localBaseUrl = null;
+        return { ok: true };
+      }
+    };
+  }
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
@@ -488,11 +655,15 @@
   async function openSettings() {
     showSettings = true;
     settingsError = '';
+    pairingError = '';
+    if (promptSlugs.labs) {
+      refreshRunnerStatus();
+    }
 
     if (!settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
       try {
-        const defaults = await fetchPromptDefaults(apiBaseUrl);
+        const defaults = await fetchPromptDefaults(effectiveApiBaseUrl);
         defaultPromptSlugs = {
           corePromptSlug: defaults.corePromptSlug || '',
           labs: defaults.labs === true
@@ -532,7 +703,7 @@
 
     isLoadingSettings = true;
     try {
-      const defaults = await fetchPromptDefaults(apiBaseUrl);
+      const defaults = await fetchPromptDefaults(effectiveApiBaseUrl);
       defaultPromptSlugs = {
         corePromptSlug: defaults.corePromptSlug || '',
         labs: defaults.labs === true
@@ -547,11 +718,24 @@
     }
   }
 
+  /**
+   * Server history has no row for a stopped answer — the turn is recorded by
+   * flagging the *user* message as cancelled. Re-insert the note so a reload
+   * shows the same thing the user saw before.
+   */
+  function withStoppedNotes(historyMessages) {
+    return historyMessages.flatMap(m =>
+      m.role === 'user' && m.processingState === PROCESSING_STATE_CANCELLED
+        ? [m, buildStoppedMessage(m.messageId)]
+        : [m]
+    );
+  }
+
   async function syncSessionState() {
     if (!userId || !sessionId || !apiBaseUrl) return;
 
     try {
-      const result = await loadHistory(apiBaseUrl, userId, sessionId, null, 20);
+      const result = await loadHistory(effectiveApiBaseUrl, userId, sessionId, null, 20);
 
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
@@ -559,7 +743,7 @@
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
-        messages = result.messages;
+        messages = withStoppedNotes(result.messages);
         hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
         scrollToBottom();
@@ -577,8 +761,8 @@
 
     isLoadingHistory = true;
     try {
-      const result = await loadHistory(apiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
-      messages = [...result.messages, ...messages];
+      const result = await loadHistory(effectiveApiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
+      messages = [...withStoppedNotes(result.messages), ...messages];
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
     } catch (e) {
@@ -684,14 +868,20 @@
     saveMessagesToStorage();
     scrollToBottom();
 
+    // Set when the turn is stopped, so the prompt is only put back after the
+    // input has been unlocked (a disabled textarea cannot take focus).
+    let restoredPrompt = null;
     isSending = true;
+    isStopping = false;
+    streamAbortController = new AbortController();
+    pendingMessageId = userMessage.messageId;
 
     appetizerData = null;
     startThinkingMessages();
     updateSessionActivity(sessionId);
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
+      const response = await sendMessageStream(effectiveApiBaseUrl, userId, sessionId, text, {
         onProgress: (progress) => {
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
@@ -720,7 +910,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang);
+      }, interfaceLang, { signal: streamAbortController.signal });
 
       // Update user message status
       messages = messages.map(m => 
@@ -769,25 +959,125 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
+      if (e?.name === 'AbortError') {
+        // The user stopped this turn. Everything already on the canvas stays as
+        // it was; only the thinking line goes, replaced by the stop note.
+        messages = [
+          ...messages.map(m =>
+            m.messageId === userMessage.messageId ? { ...m, status: STATUS_SENT } : m
+          ),
+          buildStoppedMessage(userMessage.messageId, appetizerData)
+        ];
+        saveMessagesToStorage();
+        restoredPrompt = text;
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
 
-      // Mark message as failed for other errors
-      messages = messages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
-      saveMessagesToStorage();
+        // Mark message as failed for other errors
+        messages = messages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+        saveMessagesToStorage();
 
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
     } finally {
       isSending = false;
+      isStopping = false;
+      isStoppingSlow = false;
+      streamAbortController = null;
+      pendingMessageId = null;
+      clearStopSpinnerTimer();
       stopThinkingMessages();
+      if (restoredPrompt !== null) {
+        await restorePromptToInput(restoredPrompt);
+        restoredPrompt = null;
+      }
     }
+  }
+
+  function clearStopSpinnerTimer() {
+    if (stopSpinnerTimeout) {
+      clearTimeout(stopSpinnerTimeout);
+      stopSpinnerTimeout = null;
+    }
+  }
+
+  /**
+   * The "Stopped generating..." note that stands in for the answer.
+   *
+   * Carries the topics appetizer when one was on screen: per the spec, content
+   * already rendered stays exactly as it was, and only the thinking line goes.
+   */
+  function buildStoppedMessage(userMessageId, appetizer = null) {
+    return {
+      messageId: `${userMessageId}_stopped`,
+      sessionId,
+      userId,
+      role: ROLE_STOPPED,
+      content: '',
+      timestamp: new Date().toISOString(),
+      status: STATUS_SENT,
+      appetizerData: appetizer ? { ...appetizer } : null
+    };
+  }
+
+  /** Put the stopped prompt back so it can be edited or resent as-is. */
+  async function restorePromptToInput(text) {
+    inputText = text;
+    // Wait for isSending=false to lift the textarea's `disabled` attribute;
+    // a disabled element silently ignores focus() and setSelectionRange().
+    await tick();
+    try {
+      inputRef?.focus();
+      inputRef?.setSelectionRange(text.length, text.length);
+    } catch {
+      // Selection APIs are unavailable on some mobile keyboards; focus is enough.
+    }
+  }
+
+  async function handleStop() {
+    if (!isSending || isStopping) return;
+
+    const stoppingMessageId = pendingMessageId;
+    isStopping = true;
+
+    // The stop icon only becomes a loader if the round trip is slow enough to
+    // notice, so a fast cancel doesn't flash a spinner.
+    clearStopSpinnerTimer();
+    stopSpinnerTimeout = setTimeout(() => {
+      isStoppingSlow = true;
+    }, STOP_SPINNER_DELAY_MS);
+
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', 'assistant_response_stopped', {
+        la_version: APP_VERSION
+      });
+    }
+
+    // Tell the server first so it abandons the work; only then stop reading.
+    // cancelStream never throws, so the abort below always runs.
+    if (stoppingMessageId) {
+      await cancelStream(effectiveApiBaseUrl, { userId, sessionId, messageId: stoppingMessageId });
+    }
+
+    clearStopSpinnerTimer();
+    isStoppingSlow = false;
+
+    if (!isSending) {
+      // The answer landed while the cancel was in flight — it is already on the
+      // canvas, so leave it there and just clear the stopping state.
+      isStopping = false;
+      return;
+    }
+
+    streamAbortController?.abort();
   }
 
   function handleKeydown(e) {
@@ -826,7 +1116,7 @@
     const target = messages.find(m => m.messageId === feedbackModalMessageId);
     try {
       if (target?.traceId) {
-        await sendFeedback(apiBaseUrl, {
+        await sendFeedback(effectiveApiBaseUrl, {
           traceId: target.traceId,
           score: feedbackType,
           userId,
@@ -1291,10 +1581,60 @@
               <input
                 type="checkbox"
                 bind:checked={promptSlugs.labs}
+                onchange={onLabsChanged}
                 disabled={isLoadingSettings}
               />
               <span>{$_('assistant.settings.labs')}</span>
             </label>
+
+            {#if promptSlugs.labs}
+              <div class="settings-runner">
+                <label class="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={localModeEnabled}
+                    onchange={toggleLocalMode}
+                    disabled={isLoadingSettings || isPairing}
+                  />
+                  <span>{$_('assistant.settings.localRunner')}</span>
+                </label>
+                <p class="settings-note">{$_('assistant.settings.localRunner.hint')}</p>
+
+                {#if localModeEnabled}
+                  {#if runnerStatus.checking}
+                    <p class="settings-runner-status">{$_('assistant.settings.localRunner.searching')}</p>
+                  {:else if !runnerStatus.available}
+                    <p class="settings-runner-status warn">{$_('assistant.settings.localRunner.notFound')}</p>
+                  {:else if runnerStatus.paired && isLocalMode}
+                    <p class="settings-runner-status ok">{$_('assistant.settings.localRunner.connected')}</p>
+                    <button class="settings-reset" onclick={disconnectRunner}>
+                      {$_('assistant.settings.localRunner.disconnect')}
+                    </button>
+                  {:else}
+                    <label class="settings-field">
+                      <span>{$_('assistant.settings.localRunner.code')}</span>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        bind:value={pairingCode}
+                        placeholder="000000"
+                        disabled={isPairing}
+                      />
+                    </label>
+                    <button class="settings-save" onclick={connectRunner} disabled={isPairing}>
+                      {isPairing
+                        ? $_('assistant.settings.localRunner.connecting')
+                        : $_('assistant.settings.localRunner.connect')}
+                    </button>
+                  {/if}
+
+                  {#if pairingError}
+                    <p class="settings-runner-status warn">{pairingError}</p>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
           </div>
 
           <div class="settings-actions">
@@ -1376,7 +1716,16 @@
         {/if}
 
         {#each messages as item (item.messageId)}
-          {#if item.role === 'assistant'}
+          {#if item.role === ROLE_STOPPED}
+            <div class="message assistant stopped-message">
+              {#if item.appetizerData}
+                <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+              {/if}
+              <div class="message-content">
+                <p>{$_('assistant.stop.message')}</p>
+              </div>
+            </div>
+          {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
                 <Accordion kind="topics"
@@ -1447,22 +1796,43 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          placeholder={limitReached ? "" : (isSending ? $_('assistant.input.generating') : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
           rows="1"
+          class:is-generating={isSending}
           disabled={isSending || limitReached}
         ></textarea>
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
-          aria-label={$_('assistant.input.send.tooltip')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        {#if isSending}
+          <Tooltip text={$_('assistant.stop.tooltip')}>
+            <button
+              type="button"
+              class="stop-btn"
+              onclick={handleStop}
+              disabled={isStopping}
+              aria-label={$_('assistant.stop.aria')}
+            >
+              {#if isStoppingSlow}
+                <span class="stop-spinner" aria-hidden="true"></span>
+              {:else}
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              {/if}
+            </button>
+          </Tooltip>
+        {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || limitReached}
+            aria-label={$_('assistant.input.send.tooltip')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        {/if}
       </footer>
       {/if}
 
@@ -2224,6 +2594,76 @@
     transform: scale(0.95);
   }
 
+  /* Per Figma: while generating, the input reads as locked rather than merely
+     inactive, so it uses the stronger disabled fill than the shared :disabled rule. */
+  .lc-chatbot-input textarea.is-generating:disabled {
+    background: var(--lc-disabled-button);
+  }
+
+  /* Outlined counterpart to the filled send button it replaces; same footprint
+     so the footer doesn't shift when the two swap. */
+  .stop-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: var(--lc-bg);
+    border: 1px solid var(--lc-border-strong);
+    border-radius: var(--lc-radius-sm);
+    color: var(--lc-icon-primary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .stop-btn:hover:not(:disabled) {
+    background: var(--lc-bg-hover);
+  }
+
+  .stop-btn:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  .stop-btn:focus-visible {
+    outline: 2px solid var(--lc-primary);
+    outline-offset: 2px;
+  }
+
+  .stop-btn:disabled {
+    cursor: default;
+  }
+
+  .stop-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--lc-border-strong);
+    border-top-color: var(--lc-icon-primary);
+    border-radius: 50%;
+    animation: lc-stop-spin 0.7s linear infinite;
+  }
+
+  @keyframes lc-stop-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stop-spinner { animation-duration: 2.5s; }
+  }
+
+  /* The stop note stands in for an answer: same column as an assistant message,
+     but muted and without the response chrome (no feedback buttons). */
+  .stopped-message .message-content {
+    color: var(--lc-text-secondary);
+  }
+
+  /* Matches the gap the thinking block left below a streaming appetizer, so the
+     box doesn't jump when the note replaces the thinking line. */
+  .stopped-message :global(.topic-appetizer) {
+    margin-bottom: 12px;
+  }
+
   /* Settings Panel */
   .settings-panel {
     display: flex;
@@ -2308,6 +2748,29 @@
 
   .settings-toggle input:disabled {
     opacity: 0.6;
+  }
+
+  .settings-runner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--lc-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+  }
+
+  .settings-runner-status {
+    margin: 0;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+
+  .settings-runner-status.ok {
+    color: var(--lc-success, #1a7f4b);
+  }
+
+  .settings-runner-status.warn {
+    color: var(--lc-warning, #a8410f);
   }
 
   .settings-note {

@@ -7,6 +7,33 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 
+class TurnCancelled(Exception):
+    """Raised inside the agent when the user abandons the turn.
+
+    Unwinding out of the SDK's `async with` block is what makes the cancel real:
+    it closes the ClaudeSDKClient, which terminates the agent subprocess, so no
+    further model calls are billed.
+    """
+
+
+#: Polled by the agent between steps. True means "stop now".
+CancelCheck = Callable[[], bool]
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    """Host-supplied settings for one agent runtime.
+
+    Keeps the agent package free of ``django.conf.settings`` so it can run under
+    any host. The Django host builds this from settings (see
+    ``chat/V2/agent_factory.py``); other hosts supply their own values.
+    """
+
+    model: str
+    response_format_prompt_slug: str
+    braintrust_logging_enabled: bool = True
+
+
 @dataclass
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
@@ -83,6 +110,7 @@ class SdkRunner(Protocol):
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> Any: ...
 
 

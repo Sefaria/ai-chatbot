@@ -42,5 +42,6 @@ export const STORAGE_KEYS = {
   MESSAGES: 'messages',
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
+  LOCAL_MODE: 'local_mode',
   HAS_USED: 'has_used'
 };

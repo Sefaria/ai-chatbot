@@ -1,7 +1,10 @@
 import asyncio
 from dataclasses import dataclass
 
+import pytest
+
 import chat.V2.agent.sdk_runner as sdk_runner_module
+from chat.V2.agent.contracts import TurnCancelled
 from chat.V2.agent.sdk_runner import ClaudeSDKRunner
 
 
@@ -139,3 +142,79 @@ def test_first_final_text_delta_callback_waits_for_final_text():
     )
 
     assert events == ["Let me check", "I will search", "Final", "final-started"]
+
+
+class FakeCancelTrackingClient(FakeClient):
+    """Records whether the client was closed, so we can prove the subprocess dies."""
+
+    def __init__(self, *, options):
+        super().__init__(options=options)
+        self.closed = False
+        self.messages_yielded = 0
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.closed = True
+        return False
+
+    async def receive_response(self):
+        for _ in range(5):
+            self.messages_yielded += 1
+            yield FakeAssistantMessage(content=[{"type": "text", "text": "chunk"}])
+        yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+
+def test_run_completes_when_should_cancel_stays_false():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(
+        runner.run(options=object(), prompt_text="prompt", should_cancel=lambda: False)
+    )
+
+    assert result.final_text == "Shalom world"
+
+
+def test_run_raises_turn_cancelled_and_closes_client():
+    """Unwinding out of `async with` is what terminates the agent subprocess."""
+    clients = []
+
+    class TrackingFactory(FakeCancelTrackingClient):
+        def __init__(self, *, options):
+            super().__init__(options=options)
+            clients.append(self)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TrackingFactory,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    # Runs normally for two messages, then the user hits stop.
+    seen = {"count": 0}
+
+    def should_cancel():
+        seen["count"] += 1
+        return seen["count"] > 2
+
+    with pytest.raises(TurnCancelled):
+        asyncio.run(runner.run(options=object(), prompt_text="prompt", should_cancel=should_cancel))
+
+    assert clients[0].closed is True
+    assert clients[0].messages_yielded == 3
+
+
+def test_cancel_is_checked_before_the_first_message_is_processed():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeCancelTrackingClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    with pytest.raises(TurnCancelled):
+        asyncio.run(runner.run(options=object(), prompt_text="prompt", should_cancel=lambda: True))

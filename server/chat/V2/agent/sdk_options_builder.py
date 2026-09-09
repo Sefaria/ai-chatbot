@@ -75,9 +75,13 @@ class SDKOptionsBuilder:
         if self._supports_option("continue_conversation"):
             options_kwargs["continue_conversation"] = False
         if self._supports_option("env"):
-            env: dict[str, str] = {
-                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-            }
+            env: dict[str, str] = {}
+            # Only pass a key we actually have: an empty ANTHROPIC_API_KEY would
+            # shadow the CLI's own credentials, which is how the local runner
+            # authenticates against the user's Claude subscription.
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if anthropic_key:
+                env["ANTHROPIC_API_KEY"] = anthropic_key
             if self.braintrust_logging_enabled:
                 env["BRAINTRUST_API_KEY"] = self.braintrust_api_key
                 env["BRAINTRUST_PROJECT"] = self.braintrust_project
