@@ -28,7 +28,7 @@ def _make_service(is_load_test: bool, mock_setup_fn=None):
         patch("chat.V2.agent.claude_service.tool", MagicMock()),
         patch("chat.V2.agent.claude_service.setup_claude_agent_sdk", mock_setup),
         patch("chat.V2.agent.claude_service.get_anthropic_client", MagicMock()),
-        patch("chat.V2.agent.claude_service.get_prompt_service", MagicMock()),
+        patch("chat.V2.prompts.get_prompt_service", MagicMock()),
         patch(
             "chat.V2.agent.claude_service.get_braintrust_config",
             MagicMock(return_value=MagicMock(api_key="bt-key", project="bt-project")),

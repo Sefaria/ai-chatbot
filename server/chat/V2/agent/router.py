@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from ..router import get_router_service
 from .contracts import ConversationMessage
 
 
@@ -19,6 +18,10 @@ class Router:
         Returns (core_prompt_id_override, route, possibly_updated_messages).
         Fails open: errors default to (None, "discovery", original_messages).
         """
+        # Imported lazily so the agent package imports without Django; the
+        # router service is Django-backed and only needed at call time.
+        from ..router import get_router_service
+
         router_span = bt_span.start_span(name="router", type="task")
         try:
             router_result = await asyncio.to_thread(get_router_service().classify, user_message)

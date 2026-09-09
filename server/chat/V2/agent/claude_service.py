@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import braintrust
 from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
@@ -23,7 +24,6 @@ from claude_agent_sdk.types import AssistantMessage, ResultMessage
 
 from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
 
-from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import (
     AgentConfig,
@@ -43,6 +43,9 @@ from .tool_runtime import ToolRuntime
 from .trace_logger import BraintrustTraceLogger
 from .tracing_guard import install_tracing_guard
 from .turn_orchestrator import TurnOrchestrator
+
+if TYPE_CHECKING:  # pragma: no cover - import-time typing only
+    from ..prompts import PromptService
 
 logger = logging.getLogger("chat.agent")
 
@@ -73,7 +76,13 @@ class ClaudeAgentService:
             )
 
         self.client = get_anthropic_client(api_key)
-        self.prompt_service = prompt_service or get_prompt_service()
+        if prompt_service is None:
+            # Imported lazily: prompt_service needs Django settings and Braintrust,
+            # which a non-Django host supplies its own implementation for.
+            from ..prompts import get_prompt_service
+
+            prompt_service = get_prompt_service()
+        self.prompt_service = prompt_service
         bt = get_braintrust_config()
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
