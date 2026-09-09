@@ -1585,7 +1585,6 @@
           placeholder={limitReached ? "" : (isSending ? $_('assistant.input.generating') : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          class:is-generating={isSending}
           disabled={isSending || limitReached}
         ></textarea>
         {#if isSending}
@@ -2378,12 +2377,6 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
-  }
-
-  /* Per Figma: while generating, the input reads as locked rather than merely
-     inactive, so it uses the stronger disabled fill than the shared :disabled rule. */
-  .lc-chatbot-input textarea.is-generating:disabled {
-    background: var(--lc-disabled-button);
   }
 
   /* Outlined counterpart to the filled send button it replaces; same footprint
