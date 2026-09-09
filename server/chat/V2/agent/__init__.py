@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 _EXPORTS = {
     "CatalogService": ".catalog_service",
     "ClaudeAgentService": ".claude_service",
-    "get_agent_service": ".claude_service",
+    "AgentConfig": ".contracts",
     "AgentProgressUpdate": ".contracts",
     "AgentResponse": ".contracts",
     "ConversationMessage": ".contracts",
@@ -37,8 +37,9 @@ _EXPORTS = {
 
 if TYPE_CHECKING:  # pragma: no cover - import-time typing only
     from .catalog_service import CatalogService
-    from .claude_service import ClaudeAgentService, get_agent_service
+    from .claude_service import ClaudeAgentService
     from .contracts import (
+        AgentConfig,
         AgentProgressUpdate,
         AgentResponse,
         ConversationMessage,
@@ -77,6 +78,7 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "ALL_TOOLS",
+    "AgentConfig",
     "AgentProgressUpdate",
     "AgentResponse",
     "CatalogService",
@@ -87,7 +89,6 @@ __all__ = [
     "SefariaClient",
     "SefariaToolExecutor",
     "TurnCancelled",
-    "get_agent_service",
     "get_all_tools",
     "get_tools_by_names",
     "get_tools_for_labs",

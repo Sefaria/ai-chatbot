@@ -26,6 +26,7 @@ from chatbot_server.model_defaults import AGENT_MAX_TOKENS, AGENT_TEMPERATURE
 from ..prompts import PromptService, get_prompt_service
 from ..utils import get_anthropic_client, get_braintrust_config
 from .contracts import (
+    AgentConfig,
     AgentProgressUpdate,
     AgentResponse,
     CancelCheck,
@@ -54,13 +55,12 @@ class ClaudeAgentService:
 
     def __init__(
         self,
+        config: AgentConfig,
         api_key: str | None = None,
-        model: str | None = None,
         max_iterations: int = 10,
         max_tokens: int = AGENT_MAX_TOKENS,
         temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
-        is_load_test: bool = False,
     ):
         if (
             ClaudeAgentOptions is None
@@ -78,19 +78,14 @@ class ClaudeAgentService:
         self.braintrust_api_key = bt.api_key
         self.braintrust_project = bt.project
 
-        from django.conf import settings as django_settings
-
-        self.braintrust_logging_enabled = (
-            django_settings.BRAINTRUST_LOGGING_ENABLED and not is_load_test
-        )
+        self.config = config
+        self.braintrust_logging_enabled = config.braintrust_logging_enabled
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key_str
 
-        self.model = model or (
-            django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
-        )
+        self.model = config.model
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -132,6 +127,7 @@ class ClaudeAgentService:
             router=Router(logger=logger),
             trace_logger=trace_logger,
             logging_enabled=self.braintrust_logging_enabled,
+            response_format_prompt_slug=config.response_format_prompt_slug,
         )
 
     def _setup_braintrust_tracing(self) -> None:
@@ -180,8 +176,3 @@ class ClaudeAgentService:
     async def close(self) -> None:
         """Close the service and cleanup resources."""
         await self.sefaria_client.close()
-
-
-def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
-    """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService(is_load_test=is_load_test)

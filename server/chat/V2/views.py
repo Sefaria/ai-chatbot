@@ -58,9 +58,9 @@ from .agent import (
     ConversationMessage,
     MessageContext,
     TurnCancelled,
-    get_agent_service,
 )
 from .agent.tracing_guard import suppress_tracing
+from .agent_factory import get_agent_service
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator

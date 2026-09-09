@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Any
 
 from braintrust import current_span
-from django.conf import settings
 
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
@@ -67,6 +66,7 @@ class TurnOrchestrator:
         guardrail_gate: DefaultGuardrailGate,
         router: Router,
         trace_logger: BraintrustTraceLogger,
+        response_format_prompt_slug: str,
         logging_enabled: bool = True,
     ):
         self.model = model
@@ -79,6 +79,7 @@ class TurnOrchestrator:
         self.guardrail_gate = guardrail_gate
         self.router = router
         self.trace_logger = trace_logger
+        self.response_format_prompt_slug = response_format_prompt_slug
         self.logging_enabled = logging_enabled
 
     async def run_turn(
@@ -137,7 +138,7 @@ class TurnOrchestrator:
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.
         response_format = self.prompt_service.get_core_prompt(
-            prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG
+            prompt_id=self.response_format_prompt_slug
         )
         core_prompt = self.prompt_service.get_core_prompt(
             prompt_id=core_prompt_id,

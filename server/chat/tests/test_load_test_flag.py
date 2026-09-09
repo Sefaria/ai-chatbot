@@ -44,9 +44,10 @@ def _make_service(is_load_test: bool, mock_setup_fn=None):
         patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}),
     ):
         from chat.V2.agent import claude_service
+        from chat.V2.agent_factory import build_agent_config
 
         claude_service._BRAINTRUST_SETUP_DONE = False
-        service = claude_service.ClaudeAgentService(is_load_test=is_load_test)
+        service = claude_service.ClaudeAgentService(config=build_agent_config(is_load_test))
 
     return service, mock_setup
 
@@ -136,19 +137,50 @@ class TestClaudeAgentServiceLoadTestFlag:
 
 
 class TestGetAgentServiceFactory:
-    def test_default_passes_false(self):
-        with patch("chat.V2.agent.claude_service.ClaudeAgentService") as MockSvc:
-            from chat.V2.agent.claude_service import get_agent_service
+    def test_default_builds_normal_config(self):
+        with patch("chat.V2.agent_factory.ClaudeAgentService") as MockSvc:
+            from chat.V2.agent_factory import build_agent_config, get_agent_service
 
             get_agent_service()
-            MockSvc.assert_called_once_with(is_load_test=False)
+            MockSvc.assert_called_once_with(config=build_agent_config(is_load_test=False))
 
-    def test_passes_true(self):
-        with patch("chat.V2.agent.claude_service.ClaudeAgentService") as MockSvc:
-            from chat.V2.agent.claude_service import get_agent_service
+    def test_passes_load_test_config(self):
+        with patch("chat.V2.agent_factory.ClaudeAgentService") as MockSvc:
+            from chat.V2.agent_factory import build_agent_config, get_agent_service
 
             get_agent_service(is_load_test=True)
-            MockSvc.assert_called_once_with(is_load_test=True)
+            MockSvc.assert_called_once_with(config=build_agent_config(is_load_test=True))
+
+
+# ---------------------------------------------------------------------------
+# build_agent_config — the Django/agent seam
+# ---------------------------------------------------------------------------
+
+
+class TestBuildAgentConfig:
+    """Settings resolve into AgentConfig here, not inside the agent package."""
+
+    @override_settings(AGENT_MODEL="claude-sonnet-test", BRAINTRUST_LOGGING_ENABLED=True)
+    def test_normal_mode_reads_agent_model_and_keeps_logging(self):
+        from chat.V2.agent_factory import build_agent_config
+
+        config = build_agent_config()
+        assert config.model == "claude-sonnet-test"
+        assert config.braintrust_logging_enabled is True
+
+    @override_settings(LOAD_TEST_MODEL="claude-haiku-test", BRAINTRUST_LOGGING_ENABLED=True)
+    def test_load_test_reads_load_test_model_and_disables_logging(self):
+        from chat.V2.agent_factory import build_agent_config
+
+        config = build_agent_config(is_load_test=True)
+        assert config.model == "claude-haiku-test"
+        assert config.braintrust_logging_enabled is False
+
+    @override_settings(RESPONSE_FORMAT_PROMPT_SLUG="response-format-test")
+    def test_carries_response_format_slug(self):
+        from chat.V2.agent_factory import build_agent_config
+
+        assert build_agent_config().response_format_prompt_slug == "response-format-test"
 
 
 # ---------------------------------------------------------------------------

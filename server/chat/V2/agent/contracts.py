@@ -20,6 +20,20 @@ class TurnCancelled(Exception):
 CancelCheck = Callable[[], bool]
 
 
+@dataclass(frozen=True)
+class AgentConfig:
+    """Host-supplied settings for one agent runtime.
+
+    Keeps the agent package free of ``django.conf.settings`` so it can run under
+    any host. The Django host builds this from settings (see
+    ``chat/V2/agent_factory.py``); other hosts supply their own values.
+    """
+
+    model: str
+    response_format_prompt_slug: str
+    braintrust_logging_enabled: bool = True
+
+
 @dataclass
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
