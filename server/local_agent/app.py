@@ -11,6 +11,7 @@ token on every route but ``/health`` and ``/pair``, and an origin allowlist.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -36,6 +37,22 @@ EXEMPT_PATHS = frozenset({"/health", "/pair"})
 # The daemon binds loopback, so a request naming any other host was routed here
 # by a name that resolves to 127.0.0.1 — the shape of a DNS-rebinding attack.
 LOOPBACK_HOSTS = ["127.0.0.1", "localhost"]
+
+# Sent before anything else. Browsers and proxies buffer a response until enough
+# bytes arrive, so without this the first real event can sit unseen for the whole
+# turn — the stream looks stalled and then the answer never lands.
+STREAM_PREAMBLE = ": " + " " * 4096 + "\n\n"
+
+# A real turn can think for a long time between tool calls. Silence that long
+# gets a stream closed; a comment costs nothing and keeps it open.
+KEEPALIVE_SECONDS = 15
+
+SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    # Tells nginx not to buffer, which would defeat the preamble.
+    "X-Accel-Buffering": "no",
+}
 BEARER_PREFIX = "Bearer "
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -207,6 +224,10 @@ async def chat_stream(request: Request) -> StreamingResponse:
     async def stream() -> AsyncIterator[str]:
         started = time.time()
 
+        # Before any work: a stalled-looking stream is indistinguishable from a
+        # slow one, and this is what makes the difference visible immediately.
+        yield STREAM_PREAMBLE
+
         allowed, reason = await _guardrail_allows(record.encrypted_user_token, text)
         if not allowed:
             yield _sse("message", _final_payload(message_id, session_id, reason, [], 0))
@@ -218,17 +239,45 @@ async def chat_stream(request: Request) -> StreamingResponse:
         if conversation.system_prompt is None:
             conversation.system_prompt = await _system_prompt(record.encrypted_user_token)
 
+        # The agent runs in its own task so this loop stays free to emit
+        # keepalives; awaiting the generator directly would go silent for as
+        # long as the model thinks.
+        events: asyncio.Queue = asyncio.Queue()
+
+        async def produce() -> None:
+            try:
+                async for event in conversation.ask(text):
+                    await events.put(event)
+            except Exception as exc:  # noqa: BLE001 - reported to the client below
+                logger.exception("turn failed")
+                await events.put(("__failed__", exc))
+            finally:
+                await events.put(None)
+
+        producer = asyncio.create_task(produce())
         answer = ""
+
         try:
-            async for event_name, payload in conversation.ask(text):
+            while True:
+                try:
+                    item = await asyncio.wait_for(events.get(), timeout=KEEPALIVE_SECONDS)
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+
+                if item is None:
+                    break
+
+                event_name, payload = item
+                if event_name == "__failed__":
+                    yield _sse("error", {"error": str(payload)})
+                    return
                 if payload.get("type") == "complete":
                     answer = payload.get("text", "")
                     continue
                 yield _sse(event_name, payload)
-        except Exception as exc:  # noqa: BLE001 - the turn must always end cleanly
-            logger.exception("turn failed")
-            yield _sse("error", {"error": str(exc)})
-            return
+        finally:
+            producer.cancel()
 
         conversation.turn_count += 1
         yield _sse(
@@ -253,7 +302,9 @@ async def chat_stream(request: Request) -> StreamingResponse:
                 page_url=page_url,
             )
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        stream(), media_type="text/event-stream", headers=SSE_HEADERS
+    )
 
 
 async def history_proxy(request: Request) -> JSONResponse:

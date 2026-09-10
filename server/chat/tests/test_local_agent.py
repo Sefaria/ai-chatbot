@@ -207,6 +207,29 @@ class TestFinalMessagePayload:
         assert payload["session"]["turnCount"] == 3
 
 
+class TestLongTurnsSurvive:
+    """A real turn thinks for tens of seconds between tool calls."""
+
+    def test_a_padding_preamble_is_sent_first(self):
+        from local_agent.app import STREAM_PREAMBLE
+
+        # Browsers and proxies buffer until enough bytes arrive, so without this
+        # the first event can sit unseen for the whole turn.
+        assert STREAM_PREAMBLE.startswith(": ")
+        assert len(STREAM_PREAMBLE) > 4000
+
+    def test_keepalives_are_more_frequent_than_a_proxy_timeout(self):
+        from local_agent.app import KEEPALIVE_SECONDS
+
+        assert 0 < KEEPALIVE_SECONDS <= 30
+
+    def test_buffering_is_disabled_by_header(self):
+        from local_agent.app import SSE_HEADERS
+
+        assert SSE_HEADERS["X-Accel-Buffering"] == "no"
+        assert SSE_HEADERS["Cache-Control"] == "no-cache"
+
+
 def test_sse_framing_matches_the_widget_contract():
     from local_agent.app import _sse
 
