@@ -1,0 +1,10 @@
+# Dependencies for the local agent (local_agent), run on a user's own machine.
+#
+# Deliberately small: this daemon has no models, no settings and no views, so it
+# needs neither Django nor the server's stack. Claude Code is the agent and the
+# Sefaria MCP server provides the tools.
+
+claude-agent-sdk>=0.1.58
+starlette>=0.37
+uvicorn>=0.30
+httpx>=0.27.0

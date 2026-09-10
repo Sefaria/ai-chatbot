@@ -13,6 +13,7 @@ from .V2.local_views import (
     local_prompt,
     local_route,
     local_summary,
+    local_turn,
 )
 
 urlpatterns = [
@@ -30,6 +31,7 @@ urlpatterns = [
     path("v2/local/guardrail", local_guardrail, name="local_guardrail"),
     path("v2/local/route", local_route, name="local_route"),
     path("v2/local/summary", local_summary, name="local_summary"),
+    path("v2/local/turn", local_turn, name="local_turn"),
     path("v2/prompts/defaults", v2_views.prompt_defaults, name="prompt_defaults_v2"),
     # Shared endpoints
     path("history", views.history, name="history"),

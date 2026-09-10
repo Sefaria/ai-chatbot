@@ -170,3 +170,76 @@ def local_summary(request):
         return Response({"error": "summary_unavailable"}, status=status.HTTP_502_BAD_GATEWAY)
 
     return Response({"summary": data})
+
+
+@api_view(["POST"])
+def local_turn(request):
+    """Record one completed turn from a local agent.
+
+    The local agent keeps no database of its own; conversations belong in the
+    same tables the hosted chat writes, which is what makes them readable from
+    the Library Assistant and on another device.
+
+    Idempotent on messageId, because the caller may retry and a turn the user
+    saw once should appear once.
+
+    POST /api/v2/local/turn
+    """
+    actor = _actor_or_error(request)
+    if isinstance(actor, Response):
+        return actor
+
+    session_id = (request.data.get("sessionId") or "").strip()
+    message_id = (request.data.get("messageId") or "").strip()
+    user_text = request.data.get("userText") or ""
+    assistant_text = request.data.get("assistantText") or ""
+
+    if not session_id or not message_id:
+        return Response(
+            {"error": "sessionId and messageId are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from django.db import transaction
+
+    from ..models import ChatMessage, ChatSession
+
+    with transaction.atomic():
+        session, _ = ChatSession.objects.get_or_create(
+            session_id=session_id,
+            defaults={"user_id": actor.user_id},
+        )
+
+        user_message, _ = ChatMessage.objects.update_or_create(
+            message_id=message_id,
+            defaults={
+                "session_id": session_id,
+                "user_id": actor.user_id,
+                "role": ChatMessage.Role.USER,
+                "content": user_text,
+                "status": ChatMessage.Status.SUCCESS,
+                "page_url": request.data.get("pageUrl") or "",
+            },
+        )
+
+        # Derived from the user message id rather than generated, so a retry
+        # updates the same row instead of appending a second reply.
+        assistant_message, _ = ChatMessage.objects.update_or_create(
+            message_id=f"{message_id}-response",
+            defaults={
+                "session_id": session_id,
+                "user_id": actor.user_id,
+                "role": ChatMessage.Role.ASSISTANT,
+                "content": assistant_text,
+                "status": ChatMessage.Status.SUCCESS,
+                "latency_ms": request.data.get("latencyMs"),
+            },
+        )
+
+        user_message.response_message = assistant_message
+        user_message.save(update_fields=["response_message"])
+
+        session.message_count = ChatMessage.objects.filter(session_id=session_id).count()
+        session.save(update_fields=["message_count", "last_activity"])
+
+    return Response({"saved": True, "sessionId": session_id, "messageId": message_id})
