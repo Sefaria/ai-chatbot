@@ -58,7 +58,7 @@ Sefaria agent runner
   To connect this machine, open sefaria.org and enter:
       418302
 
-  Valid once, for 10 minutes. Restart to get a new one.
+  Valid once, for 24 hours. Restart to get a new one.
 ```
 
 ## Pairing a browser
@@ -143,7 +143,7 @@ spends your subscription. So:
 
 - Every route requires the runner token pairing produced. `/health` and `/pair`
   are the only exceptions.
-- The pairing code is single use, expires after 10 minutes, and is discarded
+- The pairing code is single use, expires after 24 hours, and is discarded
   after 5 wrong guesses. It only ever lives in memory.
 - `ALLOWED_HOSTS` is loopback-only, which is what rejects DNS rebinding.
 - Cross-origin requests are refused unless they come from sefaria.org.
@@ -172,7 +172,7 @@ one.
 `await window.sefariaLocalMode.status()`. `available: false` means the browser
 could not reach the runner; `paired: false` means pair again.
 
-**Pairing says the code expired** — codes are single use and last 10 minutes.
+**Pairing says the code expired** — codes are single use and last 24 hours.
 Restart the runner for a new one. A failed attempt does not burn the code: only a
 pairing that actually completes spends it.
 

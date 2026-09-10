@@ -63,7 +63,7 @@ def _announce_pairing(port: int) -> None:
     logger.info("      %s", code)
     logger.info("")
     logger.info(
-        "  Valid once, for %d minutes. Restart to get a new one.", session.TTL_SECONDS // 60
+        "  Valid once, for %d hours. Restart to get a new one.", session.TTL_SECONDS // 3600
     )
     logger.info("")
 

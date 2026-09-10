@@ -7,7 +7,10 @@ Three limits make presenting the code meaningful proof rather than a guessable
 secret with unlimited retries:
 
 * **Single use.** A successful pairing consumes it.
-* **Time limited.** It expires ``TTL_SECONDS`` after being issued.
+* **Time limited.** It expires ``TTL_SECONDS`` after being issued — a day,
+  so a daemon left running overnight can still be paired in the morning.
+  Long is safe here because the attempt limit, not the clock, is what
+  bounds guessing: five wrong tries discard the code whatever the TTL.
 * **Attempt limited.** ``MAX_ATTEMPTS`` wrong guesses close pairing entirely.
 
 Once pairing is closed, the user restarts the daemon to get a new code. That is
@@ -20,7 +23,7 @@ import secrets
 import threading
 import time
 
-TTL_SECONDS = 600
+TTL_SECONDS = 24 * 60 * 60
 MAX_ATTEMPTS = 5
 
 _lock = threading.Lock()
