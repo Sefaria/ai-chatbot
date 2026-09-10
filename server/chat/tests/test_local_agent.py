@@ -207,6 +207,27 @@ class TestFinalMessagePayload:
         assert payload["session"]["turnCount"] == 3
 
 
+class TestHistoryIsOffTheCriticalPath:
+    """Recording a turn must not delay the client seeing it."""
+
+    def test_save_turn_is_async(self):
+        import inspect
+
+        from local_agent import history
+
+        # A synchronous httpx call here blocks the event loop, and the client
+        # only renders once the stream closes — so the answer stayed invisible
+        # and the spinner turned for as long as the write took.
+        assert inspect.iscoroutinefunction(history.save_turn)
+
+    def test_background_tasks_are_referenced(self):
+        from local_agent.app import _background_tasks
+
+        # Without a strong reference the loop can collect a detached task
+        # mid-flight and the write is lost with no error.
+        assert isinstance(_background_tasks, set)
+
+
 class TestLongTurnsSurvive:
     """A real turn thinks for tens of seconds between tool calls."""
 

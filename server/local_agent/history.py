@@ -4,8 +4,9 @@ The daemon keeps no database. Conversations belong in the same tables the hosted
 chat uses, which is what makes them readable from the Library Assistant and from
 another device — the thing a local SQLite file could never give.
 
-Best effort by design: a turn the user has already seen must not fail because
-history could not be written, so a failure here is logged and dropped.
+Best effort, and off the critical path: a turn the user has already seen must
+not fail — or wait — because history could not be written. Recording happens
+after the answer has been streamed, concurrently with the client rendering it.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ TURN_PATH = "/api/v2/local/turn"
 TIMEOUT_SECONDS = 15
 
 
-def save_turn(
+async def save_turn(
     *,
     encrypted_user_token: str,
     session_id: str,
@@ -48,7 +49,8 @@ def save_turn(
     }
 
     try:
-        response = httpx.post(url, json=payload, timeout=TIMEOUT_SECONDS)
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            response = await client.post(url, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("history not saved (%s unreachable): %s", url, exc)
         return False

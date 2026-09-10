@@ -199,6 +199,18 @@ def _final_payload(
     }
 
 
+# Strong references to detached tasks: without them the event loop may collect a
+# task mid-flight and the write is lost silently.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _record_in_background(coro) -> None:
+    """Run a coroutine after the turn, without holding the stream open."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -292,14 +304,19 @@ async def chat_stream(request: Request) -> StreamingResponse:
         )
 
         if message_id:
-            history.save_turn(
-                encrypted_user_token=record.encrypted_user_token,
-                session_id=session_id,
-                message_id=message_id,
-                user_text=text,
-                assistant_text=answer,
-                latency_ms=int((time.time() - started) * 1000),
-                page_url=page_url,
+            # Detached on purpose. The client only renders the answer once the
+            # stream closes, so awaiting the write here would leave the reply
+            # invisible and the spinner turning for as long as the write takes.
+            _record_in_background(
+                history.save_turn(
+                    encrypted_user_token=record.encrypted_user_token,
+                    session_id=session_id,
+                    message_id=message_id,
+                    user_text=text,
+                    assistant_text=answer,
+                    latency_ms=int((time.time() - started) * 1000),
+                    page_url=page_url,
+                )
             )
 
     return StreamingResponse(
