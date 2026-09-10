@@ -378,6 +378,13 @@ export async function sendMessageStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  // Parser state, deliberately outside the read loop below. An event is two
+  // lines, and a network chunk can end between them — resetting per chunk drops
+  // the event whose "event:" and "data:" lines land either side of the split.
+  // When that event is the final message, the answer never arrives and the
+  // client waits forever.
+  let currentEvent = null;
+  let currentData = '';
   let finalMessage = null;
   let streamError = '';
   let streamReadError = null;
@@ -393,9 +400,6 @@ export async function sendMessageStream(
       // Process complete SSE events
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // Keep incomplete line in buffer
-      
-      let currentEvent = null;
-      let currentData = '';
       
       for (const line of lines) {
         if (line.startsWith('event: ')) {
