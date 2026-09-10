@@ -129,9 +129,35 @@ TOOL_GET_ENGLISH_TRANSLATIONS = {
     },
 }
 
+TOOL_VALIDATE_RESPONSE_LINKS = {
+    "name": "validate_response_links",
+    # MCP only. Our own agent already validates links after drafting and asks
+    # itself for a repair (see turn_orchestrator); handing it a second, manual
+    # route to the same check would change hosted behaviour for no gain. The
+    # tool exists for agents we do not orchestrate.
+    "surfaces": ("mcp",),
+    "description": (
+        "Checks every link in a draft response before you send it. Pass the full draft, "
+        "HTML included. Returns whether it is safe to send, plus one issue per bad link: "
+        "non-Sefaria hosts, and Sefaria text links whose ref does not resolve. "
+        "Always run this on a draft that contains links, and fix or remove anything it "
+        "flags rather than sending the draft as written."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "response": {
+                "type": "string",
+                "description": "The complete draft response, exactly as you intend to send it.",
+            },
+        },
+        "required": ["response"],
+    },
+}
+
 TOOL_VALIDATE_REFS = {
     "name": "validate_refs",
-    "surfaces": ("agent",),
+    "surfaces": ("agent", "mcp"),
     "description": "Strictly validates one or more Sefaria text references before using them in a final response. Use this when you plan to cite or link to a ref that was not directly returned by a Sefaria tool. Returns canonical Sefaria URL refs for valid refs and marks invalid refs.",
     "input_schema": {
         "type": "object",
@@ -443,6 +469,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_in_dictionaries": TOOL_SEARCH_IN_DICTIONARIES,
     "get_english_translations": TOOL_GET_ENGLISH_TRANSLATIONS,
     "validate_refs": TOOL_VALIDATE_REFS,
+    "validate_response_links": TOOL_VALIDATE_RESPONSE_LINKS,
     "get_topic_details": TOOL_GET_TOPIC_DETAILS,
     "clarify_name_argument": TOOL_CLARIFY_NAME_ARGUMENT,
     "clarify_search_path_filter": TOOL_CLARIFY_SEARCH_PATH_FILTER,
