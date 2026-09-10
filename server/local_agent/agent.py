@@ -69,6 +69,8 @@ class Conversation:
         self.system_prompt: str | None = None
         self._client: ClaudeSDKClient | None = None
         self.last_result: TurnResult | None = None
+        # Reported to the widget, which uses it for the per-conversation limit.
+        self.turn_count = 0
 
     async def _connected(self) -> ClaudeSDKClient:
         if self._client is None:

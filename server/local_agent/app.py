@@ -15,6 +15,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import httpx
 from starlette.applications import Starlette
@@ -153,6 +154,34 @@ async def _guardrail_allows(encrypted_user_token: str, message: str) -> tuple[bo
     return bool(data.get("allowed")), data.get("reason", "")
 
 
+def _final_payload(
+    message_id: str,
+    session_id: str,
+    answer: str,
+    tool_calls: list[dict],
+    turn_count: int,
+) -> dict:
+    """The final message, in the exact shape the widget reads.
+
+    Two fields are easy to get wrong and both break the UI rather than degrade
+    it. The answer is ``markdown``, not ``text``. And the id must differ from
+    the user message's, because the transcript is a keyed list — reusing it
+    gives two entries the same key and the render fails outright.
+    """
+    return {
+        "messageId": f"{message_id}-response" if message_id else "",
+        "sessionId": session_id,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "markdown": answer,
+        "traceId": None,
+        "toolCalls": tool_calls,
+        "session": {"turnCount": turn_count},
+        "stats": {},
+        "recovered": False,
+        "status": "success",
+    }
+
+
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -180,7 +209,7 @@ async def chat_stream(request: Request) -> StreamingResponse:
 
         allowed, reason = await _guardrail_allows(record.encrypted_user_token, text)
         if not allowed:
-            yield _sse("message", {"text": reason, "messageId": message_id})
+            yield _sse("message", _final_payload(message_id, session_id, reason, [], 0))
             return
 
         yield _sse("progress", {"type": "status", "text": "Thinking..."})
@@ -201,7 +230,17 @@ async def chat_stream(request: Request) -> StreamingResponse:
             yield _sse("error", {"error": str(exc)})
             return
 
-        yield _sse("message", {"text": answer, "messageId": message_id})
+        conversation.turn_count += 1
+        yield _sse(
+            "message",
+            _final_payload(
+                message_id,
+                session_id,
+                answer,
+                (conversation.last_result.tool_calls if conversation.last_result else []),
+                conversation.turn_count,
+            ),
+        )
 
         if message_id:
             history.save_turn(
@@ -215,6 +254,38 @@ async def chat_stream(request: Request) -> StreamingResponse:
             )
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+async def history_proxy(request: Request) -> JSONResponse:
+    """Serve chat history from Sefaria.
+
+    Turns are recorded server-side (see history.save_turn), so the transcript
+    lives there, not here. The widget points every call at this daemon while
+    local mode is on, so without this the history request 404s — and the
+    widget's infinite-scroll loader retries a failed load indefinitely.
+    """
+    record = pairing.load()
+    if record is None:
+        return JSONResponse({"error": "not_paired"}, status_code=401)
+
+    params = dict(request.query_params)
+    params["userId"] = record.encrypted_user_token
+    url = f"{config.chatbot_url()}/api/history"
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(url, params=params)
+    except httpx.HTTPError as exc:
+        logger.warning("history unavailable (%s): %s", url, exc)
+        # An empty page rather than an error: a failed history load must not
+        # leave the widget retrying.
+        return JSONResponse({"messages": [], "hasMore": False})
+
+    if response.status_code != 200:
+        logger.warning("history unavailable: %s returned %s", url, response.status_code)
+        return JSONResponse({"messages": [], "hasMore": False})
+
+    return JSONResponse(response.json())
 
 
 class RunnerAuth:
@@ -266,6 +337,7 @@ def build_app() -> Starlette:
         routes=[
             Route("/health", health, methods=["GET"]),
             Route("/pair", pair, methods=["POST"]),
+            Route("/api/history", history_proxy, methods=["GET"]),
             Route("/api/chat/stream", chat_stream, methods=["POST"]),
             Route("/api/v2/chat/stream", chat_stream, methods=["POST"]),
         ],

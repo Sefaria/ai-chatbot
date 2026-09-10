@@ -766,6 +766,9 @@
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
     } catch (e) {
+      // Stop asking. The scroll handler calls this whenever hasMoreHistory is
+      // true, so leaving it set turns one failed load into an endless retry.
+      hasMoreHistory = false;
       console.warn('[lc-chatbot] Failed to load more history:', e);
     } finally {
       isLoadingHistory = false;

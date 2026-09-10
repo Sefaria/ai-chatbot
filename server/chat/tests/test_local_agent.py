@@ -177,6 +177,36 @@ def _tool_result(tool_use_id: str):
     return UserMessage(content=[_Block(tool_use_id=tool_use_id, is_error=False)])
 
 
+class TestFinalMessagePayload:
+    """The shape the widget reads. Getting it wrong breaks the UI outright."""
+
+    def _payload(self):
+        from local_agent.app import _final_payload
+
+        return _final_payload("msg-1", "sess-1", "The answer.", [{"tool_name": "get_text"}], 3)
+
+    def test_the_answer_is_markdown_not_text(self):
+        # api.js reads data.markdown; a "text" key leaves the message empty and
+        # persists an undefined body to storage.
+        assert self._payload()["markdown"] == "The answer."
+
+    def test_the_assistant_id_differs_from_the_user_message_id(self):
+        # The transcript is a keyed list. Reusing the id gives two entries the
+        # same key and Svelte fails the render rather than degrading.
+        assert self._payload()["messageId"] != "msg-1"
+
+    def test_the_assistant_id_matches_what_history_stores(self):
+        # chat/V2/local_views.local_turn writes "<messageId>-response", so the
+        # streamed id and the stored id have to agree.
+        assert self._payload()["messageId"] == "msg-1-response"
+
+    def test_carries_the_fields_the_widget_reads(self):
+        payload = self._payload()
+        for field in ("messageId", "sessionId", "timestamp", "markdown", "toolCalls", "session"):
+            assert field in payload, field
+        assert payload["session"]["turnCount"] == 3
+
+
 def test_sse_framing_matches_the_widget_contract():
     from local_agent.app import _sse
 
