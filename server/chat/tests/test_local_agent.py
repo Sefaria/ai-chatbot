@@ -44,13 +44,42 @@ class TestToolAccess:
         # which is how a personal Figma server ended up in a Sefaria turn.
         assert agent.build_options("prompt").strict_mcp_config is True
 
-    def test_built_in_tools_are_not_allowed(self):
-        # bypassPermissions without an allowlist would hand the agent Read,
-        # Write and Bash. No filesystem access is a design decision, not an
-        # accident of configuration.
-        allowed = agent.build_options("prompt").allowed_tools
-        assert allowed == [f"mcp__{config.MCP_SERVER_NAME}"]
-        assert not any(tool in allowed for tool in ("Read", "Write", "Bash", "Edit"))
+    def test_the_users_own_settings_are_not_loaded(self):
+        # The root cause of the escape: the user's ~/.claude/settings.json
+        # allow rules pre-approved Bash and Read before any callback ran.
+        assert agent.build_options("prompt").setting_sources == []
+
+    def test_every_tool_call_passes_the_refusal_hook(self):
+        matchers = agent.build_options("prompt").hooks["PreToolUse"]
+        assert matchers[0].matcher is None  # every tool, not a named few
+        assert agent.refuse_non_sefaria_tools in matchers[0].hooks
+
+    def test_obvious_built_ins_are_also_denied_by_name(self):
+        denied = agent.build_options("prompt").disallowed_tools
+        for tool in ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch"):
+            assert tool in denied, tool
+
+    def test_never_bypasses_permissions(self):
+        # bypassPermissions skips the checks entirely.
+        assert agent.build_options("prompt").permission_mode != "bypassPermissions"
+
+    @pytest.mark.asyncio
+    async def test_the_hook_refuses_a_built_in(self):
+        decision = await agent.refuse_non_sefaria_tools({"tool_name": "Bash"}, "t1", None)
+        assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.asyncio
+    async def test_the_hook_refuses_an_unknown_future_tool(self):
+        # Deny by default: a tool no one has heard of yet is refused too.
+        decision = await agent.refuse_non_sefaria_tools({"tool_name": "NewThing"}, "t1", None)
+        assert decision["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.asyncio
+    async def test_the_hook_allows_sefaria_tools(self):
+        decision = await agent.refuse_non_sefaria_tools(
+            {"tool_name": "mcp__sefaria__get_text"}, "t1", None
+        )
+        assert decision == {}
 
 
 class TestTransportChoice:
