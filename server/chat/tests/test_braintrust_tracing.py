@@ -29,6 +29,7 @@ class TestSetupBraintrustOnlyOnce:
                 mock_setup,
             ):
                 from chat.V2.agent import claude_service
+                from chat.V2.agent_factory import build_agent_config
 
                 # Reset the global state
                 claude_service._BRAINTRUST_SETUP_DONE = False
@@ -40,11 +41,11 @@ class TestSetupBraintrustOnlyOnce:
                             with patch.object(claude_service, "tool", MagicMock()):
                                 with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test"}):
                                     try:
-                                        claude_service.ClaudeAgentService()
+                                        claude_service.ClaudeAgentService(config=build_agent_config())
                                         call_count_after_first = mock_setup.call_count
 
                                         # Create another service - should NOT call setup again
-                                        claude_service.ClaudeAgentService()
+                                        claude_service.ClaudeAgentService(config=build_agent_config())
                                         call_count_after_second = mock_setup.call_count
 
                                         assert call_count_after_first == 1, (

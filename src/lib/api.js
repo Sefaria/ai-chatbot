@@ -102,9 +102,9 @@ async function reportClientStreamEvent(
   try {
     await fetch(`${apiBaseUrl}/v2/chat/client-event`, {
       method: 'POST',
-      headers: {
+      headers: withHeaders({
         'Content-Type': 'application/json'
-      },
+      }),
       body: JSON.stringify({
         userId,
         sessionId,
@@ -129,9 +129,9 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
     try {
       const response = await fetch(`${apiBaseUrl}/v2/chat/recover`, {
         method: 'POST',
-        headers: {
+        headers: withHeaders({
           'Content-Type': 'application/json'
-        },
+        }),
         body: JSON.stringify({
           userId,
           sessionId,
@@ -189,6 +189,24 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
  * @param {string} text - Message text
  * @returns {Promise<ChatResponse>}
  */
+/**
+ * Extra headers added to every request.
+ *
+ * Local mode needs a bearer token on all calls, including history and feedback.
+ * Held here rather than threaded through every signature so a call site added
+ * later carries it by default.
+ */
+let extraHeaders = {};
+
+/** Replace the headers added to every request (pass {} to clear). */
+export function setExtraHeaders(headers) {
+  extraHeaders = headers || {};
+}
+
+function withHeaders(base) {
+  return { ...base, ...extraHeaders };
+}
+
 export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
   const messageId = generateMessageId();
   const timestamp = new Date().toISOString();
@@ -205,9 +223,9 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
   
   const response = await fetch(`${apiBaseUrl}/chat`, {
     method: 'POST',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(payload)
   });
 
@@ -261,6 +279,8 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
+ * @param {{signal?: AbortSignal}} [options] - `signal` aborts the stream; the resulting
+ *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -274,8 +294,11 @@ export async function sendMessageStream(
   isStaff = false,
   labs = false,
   requestMetadata = null,
-  interfaceLang = ''
+  interfaceLang = '',
+  options = {}
 ) {
+  const { signal = null } = options;
+
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
@@ -302,12 +325,16 @@ export async function sendMessageStream(
   try {
     response = await fetch(`${apiBaseUrl}/chat/stream`, {
       method: 'POST',
-      headers: {
+      headers: withHeaders({
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
+      }),
+      body: JSON.stringify(payload),
+      signal
     });
   } catch (error) {
+    // A user-initiated stop is not a stream failure: skip the telemetry and the
+    // recovery poll, which would otherwise wait for a response nobody wants.
+    if (error?.name === 'AbortError') throw error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
       sessionId,
@@ -351,6 +378,13 @@ export async function sendMessageStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  // Parser state, deliberately outside the read loop below. An event is two
+  // lines, and a network chunk can end between them — resetting per chunk drops
+  // the event whose "event:" and "data:" lines land either side of the split.
+  // When that event is the final message, the answer never arrives and the
+  // client waits forever.
+  let currentEvent = null;
+  let currentData = '';
   let finalMessage = null;
   let streamError = '';
   let streamReadError = null;
@@ -366,9 +400,6 @@ export async function sendMessageStream(
       // Process complete SSE events
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // Keep incomplete line in buffer
-      
-      let currentEvent = null;
-      let currentData = '';
       
       for (const line of lines) {
         if (line.startsWith('event: ')) {
@@ -429,6 +460,7 @@ export async function sendMessageStream(
       }
     }
   } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     streamReadError = error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
@@ -496,9 +528,9 @@ export async function sendMessageStream(
 export async function fetchPromptDefaults(apiBaseUrl) {
   const response = await fetch(`${apiBaseUrl}/v2/prompts/defaults`, {
     method: 'GET',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   });
 
   if (!response.ok) {
@@ -506,6 +538,51 @@ export async function fetchPromptDefaults(apiBaseUrl) {
   }
 
   return response.json();
+}
+
+/** How long to wait for the server to acknowledge a stop before giving up on it. */
+const CANCEL_TIMEOUT_MS = 5000;
+
+/**
+ * Ask the server to abandon an in-flight turn so it stops paying for an answer
+ * nobody will read.
+ *
+ * The flag is written to the database rather than to a single server's memory,
+ * because the pod that receives this request is not necessarily the one running
+ * the stream. Never throws: a failed cancel must not block the UI from
+ * returning to its stopped state.
+ *
+ * @param {string} apiBaseUrl - Base URL for API
+ * @param {{userId: string, sessionId: string, messageId: string}} payload
+ * @returns {Promise<boolean>} true when the server confirmed it is stopping
+ */
+export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId }) {
+  // Hand-rolled rather than AbortSignal.timeout(), which is unavailable on
+  // browsers older than mid-2022 and would throw before the request went out —
+  // silently losing the server-side cancel on exactly those clients.
+  const timeout = new AbortController();
+  const timeoutId = setTimeout(() => timeout.abort(), CANCEL_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/v2/chat/cancel`, {
+      method: 'POST',
+      headers: withHeaders({
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({ userId, sessionId, messageId }),
+      signal: timeout.signal
+    });
+
+    if (!response.ok) return false;
+    const data = await response.json();
+    return data?.status === 'cancelling';
+  } catch {
+    // Offline, timed out, or the turn already finished — the browser stops
+    // reading either way.
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -517,9 +594,9 @@ export async function fetchPromptDefaults(apiBaseUrl) {
 export async function sendFeedback(apiBaseUrl, payload) {
   const response = await fetch(`${apiBaseUrl}/v2/chat/feedback`, {
     method: 'POST',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify(payload)
   });
 
@@ -560,9 +637,9 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
   
   const response = await fetch(`${apiBaseUrl}/history?${params}`, {
     method: 'GET',
-    headers: {
+    headers: withHeaders({
       'Content-Type': 'application/json'
-    }
+    })
   });
   
   if (!response.ok) {

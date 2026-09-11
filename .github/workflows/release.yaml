@@ -129,3 +129,60 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
           https://api.github.com/repos/Sefaria/AppliedAI-Infrastructure/actions/workflows/chatbot-deploy.yml/dispatches \
           -d '{"ref":"main", "inputs": { "environment": "${{ steps.deploy_env.outputs.environment }}", "appVersion": "${{ needs.release.outputs.version}}" }}'
+  build_mcp:
+    name: Build MCP Server
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: 'projects/${{ secrets.GKE_PROJECT_ID}}/locations/global/workloadIdentityPools/github/providers/github'
+          service_account: '${{ secrets.GKE_SA }}'
+      - name: Login to GAR
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: oauth2accesstoken
+          password: '${{ steps.auth.outputs.access_token }}'
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            us-docker.pkg.dev/${{ secrets.GKE_PROJECT }}/container/sefaria-mcp
+          tags: |
+            type=ref,event=tag
+            type=sha,enable=true,priority=100,prefix=sha-,suffix=-${{ steps.date.outputs.date }},format=short
+            type=sha
+            type=semver,pattern={{raw}},value=${{ needs.release.outputs.version}}
+          flavor: |
+            latest=true
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./
+          push: true
+          file: ./Dockerfile.mcp
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ needs.release.outputs.version }}
+      # No deploy dispatch: the MCP server is deployed manually on the AI cluster
+      # (the old repo's dispatch to AppliedAI-Infrastructure/mcp-deploy.yml is broken).
+      # See docs/superpowers/specs/2026-09-03-mcp-consolidation-design.md.

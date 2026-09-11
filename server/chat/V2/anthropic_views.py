@@ -38,7 +38,8 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import AnthropicRequestSerializer
-from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
+from .agent import AgentResponse, ConversationMessage, MessageContext
+from .agent_factory import get_agent_service
 from .logging import get_turn_logging_service
 from .origin import DEFAULT_ORIGIN, resolve_origin
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE

@@ -65,6 +65,14 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
         InvalidUserToken: User token is invalid
         UserTokenExpired: User token is expired
     """
+    # A host that cannot decrypt user tokens (the local runner) supplies its own
+    # backend and establishes identity another way.
+    backend_path = getattr(settings, "CHAT_AUTH_BACKEND", None)
+    if backend_path:
+        from django.utils.module_loading import import_string
+
+        return import_string(backend_path)(request, body_data)
+
     # Check X-Api-Key header first (for Anthropic-compatible endpoints)
     api_key_header = request.headers.get("X-Api-Key")
     if api_key_header:

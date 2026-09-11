@@ -7,14 +7,20 @@ from collections.abc import Callable
 from typing import Any
 
 from braintrust import current_span
-from django.conf import settings
 
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     NO_THINKING_NARRATION_INSTRUCTION,
     SECTION_SEPARATOR,
 )
-from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
+from .contracts import (
+    AgentProgressUpdate,
+    AgentResponse,
+    CancelCheck,
+    ConversationMessage,
+    MessageContext,
+    TurnCancelled,
+)
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
@@ -60,6 +66,7 @@ class TurnOrchestrator:
         guardrail_gate: DefaultGuardrailGate,
         router: Router,
         trace_logger: BraintrustTraceLogger,
+        response_format_prompt_slug: str,
         logging_enabled: bool = True,
     ):
         self.model = model
@@ -72,6 +79,7 @@ class TurnOrchestrator:
         self.guardrail_gate = guardrail_gate
         self.router = router
         self.trace_logger = trace_logger
+        self.response_format_prompt_slug = response_format_prompt_slug
         self.logging_enabled = logging_enabled
 
     async def run_turn(
@@ -81,6 +89,7 @@ class TurnOrchestrator:
         core_prompt_id: str | None,
         on_progress: Callable[[AgentProgressUpdate], None] | None,
         context: MessageContext,
+        should_cancel: CancelCheck | None = None,
     ) -> AgentResponse:
         start_time = time.time()
         # The tracing guard (tracing_guard.py) ensures start_span returns
@@ -88,6 +97,14 @@ class TurnOrchestrator:
         # unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
+
+        def raise_if_cancelled() -> None:
+            """Checkpoint between phases, so a cancel is honoured even while
+            the turn is between LLM calls rather than inside the SDK loop."""
+            if should_cancel and should_cancel():
+                raise TurnCancelled()
+
+        raise_if_cancelled()
 
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),
@@ -116,10 +133,12 @@ class TurnOrchestrator:
         if router_prompt_id:
             core_prompt_id = router_prompt_id
 
+        raise_if_cancelled()
+
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.
         response_format = self.prompt_service.get_core_prompt(
-            prompt_id=settings.RESPONSE_FORMAT_PROMPT_SLUG
+            prompt_id=self.response_format_prompt_slug
         )
         core_prompt = self.prompt_service.get_core_prompt(
             prompt_id=core_prompt_id,
@@ -191,13 +210,18 @@ class TurnOrchestrator:
                 options=options,
                 prompt_text=prompt_text,
                 on_first_final_text_delta=emit_synthesis_status_once,
+                should_cancel=should_cancel,
             )
+        except TurnCancelled:
+            # A user stopping the turn is not a failure; don't log it as one.
+            raise
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
 
         emit_synthesis_status_once()
+        raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
@@ -221,6 +245,7 @@ class TurnOrchestrator:
                 options=options,
                 prompt_text=repair_prompt,
                 on_first_final_text_delta=emit_synthesis_status_once,
+                should_cancel=should_cancel,
             )
             output = repair_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)

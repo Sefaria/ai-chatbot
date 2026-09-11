@@ -55,6 +55,22 @@ class SefariaToolExecutor:
             logger.error(f"Tool execution error for {tool_name}: {e}")
             return self._wrap_error(str(e))
 
+    async def _validate_response_links(self, response_text: str) -> dict[str, Any]:
+        """Check a draft response's links, as a tool the agent can call itself.
+
+        The hosted agent runs this validation after the fact and asks for a
+        repair. Exposing it as a tool lets an agent we do not orchestrate — one
+        running on someone's own machine against the MCP server — check its own
+        draft before sending it.
+        """
+        from .response_link_validator import ResponseLinkValidator
+
+        result = await ResponseLinkValidator(self.client).validate_response(response_text)
+        return {
+            "safe_to_send": result.is_valid,
+            "issues": [{"link": issue.href, "problem": issue.reason} for issue in result.issues],
+        }
+
     async def _dispatch(self, tool_name: str, input_data: dict[str, Any]) -> Any:
         """Route a tool call to the corresponding SefariaClient method."""
 
@@ -100,6 +116,9 @@ class SefariaToolExecutor:
 
         elif tool_name == "validate_refs":
             return await self.client.validate_refs(input_data["refs"])
+
+        elif tool_name == "validate_response_links":
+            return await self._validate_response_links(input_data["response"])
 
         elif tool_name == "get_topic_details":
             return await self.client.get_topic_details(
@@ -148,6 +167,12 @@ class SefariaToolExecutor:
                 limit=input_data.get("limit", 20),
                 offset=input_data.get("offset", 0),
             )
+
+        elif tool_name == "get_text_or_category_shape":
+            return await self.client.get_text_or_category_shape(input_data["name"])
+
+        elif tool_name == "get_text_catalogue_info":
+            return await self.client.get_text_catalogue_info(input_data["title"])
 
         elif tool_name == "get_available_manuscripts":
             return await self.client.get_available_manuscripts(input_data["reference"])
