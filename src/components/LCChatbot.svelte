@@ -620,11 +620,29 @@
       panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, MAX_WIDTH));
       canvasWidthBeforeHistoryPanel = null;
     }
-    historySearchOpen = false;
+    resetHistorySearchState();
     editingConversationId = null;
     activeHistoryMenuId = null;
     activeHistoryMenuScope = null;
     track('assistant_click', { feature_name: 'Close chat history' });
+  }
+
+  function resetHistorySearchState() {
+    historySearchOpen = false;
+    historySearchText = '';
+    submittedHistorySearch = '';
+    hasLoadedConversations = false;
+  }
+
+  async function toggleHistorySearch() {
+    if (historySearchOpen) {
+      historySearchOpen = false;
+      if (historySearchText || submittedHistorySearch) {
+        await clearHistorySearch();
+      }
+      return;
+    }
+    historySearchOpen = true;
   }
 
   async function loadConversationPage({ reset = false, search = submittedHistorySearch } = {}) {
@@ -632,6 +650,9 @@
     if (!reset && !hasMoreConversations) return;
 
     const offset = reset ? 0 : conversationsOffset;
+    if (reset) {
+      hasLoadedConversations = false;
+    }
     isLoadingConversations = true;
     historyError = '';
     try {
@@ -672,6 +693,13 @@
     historySearchText = '';
     submittedHistorySearch = '';
     await loadConversationPage({ reset: true, search: '' });
+  }
+
+  async function handleHistorySearchInput(e) {
+    historySearchText = e.currentTarget.value;
+    if (!historySearchText.trim() && submittedHistorySearch) {
+      await clearHistorySearch();
+    }
   }
 
   function startRenameConversation(conversation) {
@@ -1679,7 +1707,7 @@
                 </button>
               </Tooltip>
               <Tooltip text={$_('assistant.history.search')}>
-                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.search')} onclick={() => { historySearchOpen = !historySearchOpen; }}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.search')} onclick={toggleHistorySearch}>
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
@@ -1698,6 +1726,7 @@
                 bind:value={historySearchText}
                 aria-label={$_('assistant.history.searchInput')}
                 placeholder={$_('assistant.history.searchPlaceholder')}
+                oninput={handleHistorySearchInput}
               />
               {#if historySearchReady}
                 <button type="submit" class="history-search-submit" aria-label={$_('assistant.history.submitSearch')}>
