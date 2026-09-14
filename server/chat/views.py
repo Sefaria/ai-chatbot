@@ -291,8 +291,7 @@ def conversation_list(request):
     queryset = ChatSession.objects.filter(
         user_id__in=user_id_candidates,
         is_deleted=False,
-        turn_count__gt=0,
-    )
+    ).filter(Q(message_count__gt=0) | Q(turn_count__gt=0))
 
     if search_text:
         matching_session_ids = _search_session_ids(user_id_candidates, search_text)

@@ -100,6 +100,34 @@ def test_conversation_list_and_load_include_appetizer_data(client, token):
 
 @pytest.mark.django_db
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_prompt_only_conversation_appears_before_response_finishes(client, token):
+    session = ChatSession.objects.create(
+        session_id="sess_processing",
+        user_id="user_history",
+        title="what is teshuva?",
+        turn_count=0,
+        message_count=1,
+    )
+    ChatMessage.objects.create(
+        message_id="msg_user_processing",
+        session_id=session.session_id,
+        user_id="user_history",
+        turn_id="turn_processing",
+        role=ChatMessage.Role.USER,
+        content="what is teshuva?",
+        client_timestamp=timezone.now(),
+        processing_state=ChatMessage.ProcessingState.RUNNING,
+    )
+
+    list_response = client.get("/api/history/conversations", {"userId": token})
+
+    assert list_response.status_code == 200
+    assert list_response.data["conversations"][0]["sessionId"] == "sess_processing"
+    assert list_response.data["conversations"][0]["title"] == "what is teshuva?"
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
 def test_missing_conversation_title_is_backfilled_from_first_prompt(client, token):
     long_prompt = (
         "   What are the main rabbinic interpretations of Esther hiding "

@@ -16,6 +16,7 @@
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
+  import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -67,6 +68,7 @@
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
+  let sendingSessionIds = $state({});
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -144,6 +146,8 @@
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, panelWidth + HISTORY_PANEL_WIDTH)) : panelWidth);
   let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
+  let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
+  let currentConversation = $derived(conversations.find(item => item.sessionId === sessionId) || conversationCache[sessionId]?.conversation || null);
 
   // Menu state
   let showMenu = $state(false);
@@ -503,8 +507,6 @@
   }
 
   function handleNewChat() {
-    if (isSending) return;
-
     const { sessionId: newSessionId } = getOrCreateSession(true);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
@@ -518,6 +520,34 @@
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+  }
+
+  function getDefaultConversationTitle(content) {
+    return clampHistoryTitle(content);
+  }
+
+  function upsertConversationSummary(summary) {
+    const normalized = {
+      sessionId: summary.sessionId,
+      title: summary.title || $_('assistant.history.untitled'),
+      createdAt: summary.createdAt || summary.lastActivity || new Date().toISOString(),
+      lastActivity: summary.lastActivity || new Date().toISOString(),
+      messageCount: summary.messageCount ?? 0,
+      turnCount: summary.turnCount ?? 0
+    };
+    const withoutCurrent = conversations.filter(item => item.sessionId !== normalized.sessionId);
+    conversations = [normalized, ...withoutCurrent].sort((a, b) => {
+      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
+    });
+  }
+
+  function setSessionSending(targetSessionId, value) {
+    if (value) {
+      sendingSessionIds = { ...sendingSessionIds, [targetSessionId]: true };
+      return;
+    }
+    const { [targetSessionId]: _done, ...rest } = sendingSessionIds;
+    sendingSessionIds = rest;
   }
 
   function getHistorySearchMinChars(query) {
@@ -688,7 +718,7 @@
   }
 
   async function openConversation(conversation) {
-    if (!conversation?.sessionId || isSending) return;
+    if (!conversation?.sessionId) return;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
@@ -892,8 +922,9 @@
   async function handleSend() {
     const text = inputText.trim();
     const isConfigured = userId && apiBaseUrl;
-    const isReadyToSend = text && !isSending && !limitReached;
+    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
+    const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
     resetScroll();
     track('assistant_message_sent', { length: text.length });
@@ -905,7 +936,7 @@
     const locationRef = await parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
-      sessionId,
+      sessionId: sendingSessionId,
       userId,
       role: 'user',
       content: text,
@@ -918,15 +949,34 @@
     saveMessagesToStorage();
     scrollToBottom();
 
-    isSending = true;
+    setSessionSending(sendingSessionId, true);
+    isSending = Object.keys(sendingSessionIds).length > 0;
 
     appetizerData = null;
     startThinkingMessages();
-    updateSessionActivity(sessionId);
+    updateSessionActivity(sendingSessionId);
+
+    const provisionalConversation = {
+      sessionId: sendingSessionId,
+      title: getDefaultConversationTitle(text),
+      createdAt: userMessage.timestamp,
+      lastActivity: userMessage.timestamp,
+      messageCount: messages.length,
+      turnCount: turnCount || 0
+    };
+    upsertConversationSummary(provisionalConversation);
+    conversationCache = {
+      ...conversationCache,
+      [sendingSessionId]: {
+        conversation: provisionalConversation,
+        messages: [...messages]
+      }
+    };
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
+      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
+          if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
             // Dump the full served sentence (frame + topic titles) into `text` so
@@ -956,9 +1006,12 @@
         timestamp: userMessage.timestamp
       }, interfaceLang);
 
-      // Update user message status
-      messages = messages.map(m => 
-        m.messageId === userMessage.messageId 
+      const cachedPayload = conversationCache[sendingSessionId];
+      const baseMessages = sessionId === sendingSessionId
+        ? messages
+        : (cachedPayload?.messages || [userMessage]);
+      const sentMessages = baseMessages.map(m =>
+        m.messageId === userMessage.messageId
           ? { ...m, status: 'sent' }
           : m
       );
@@ -979,22 +1032,30 @@
         appetizerData: appetizerData ? {...appetizerData} : null
       };
 
-      messages = [...messages, assistantMessage];
-      saveMessagesToStorage();
-      scrollToResponseStart();
+      const completedMessages = [...sentMessages, assistantMessage];
+      if (sessionId === sendingSessionId) {
+        messages = completedMessages;
+        saveMessagesToStorage();
+        scrollToResponseStart();
+      } else {
+        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, completedMessages);
+      }
+      const completedConversation = {
+        ...(cachedPayload?.conversation || provisionalConversation),
+        sessionId: sendingSessionId,
+        title: (cachedPayload?.conversation?.title || provisionalConversation.title || completedMessages.find(m => m.role === 'user')?.content?.slice(0, HISTORY_TITLE_MAX_LENGTH) || ''),
+        lastActivity: assistantMessage.timestamp,
+        turnCount: (cachedPayload?.conversation?.turnCount || turnCount || 0) + 1,
+        messageCount: completedMessages.length
+      };
       conversationCache = {
         ...conversationCache,
-        [sessionId]: {
-          conversation: {
-            sessionId,
-            title: messages.find(m => m.role === 'user')?.content?.slice(0, HISTORY_TITLE_MAX_LENGTH) || '',
-            lastActivity: assistantMessage.timestamp,
-            turnCount: (turnCount || 0) + 1,
-            messageCount: messages.length
-          },
-          messages: [...messages]
+        [sendingSessionId]: {
+          conversation: completedConversation,
+          messages: completedMessages
         }
       };
+      upsertConversationSummary(completedConversation);
       if (showHistoryPanel) {
         loadConversationPage({ reset: true });
       }
@@ -1013,7 +1074,7 @@
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
-        sessionId,
+        sessionId: sendingSessionId,
         toolCalls: response.toolCalls,
         stats: response.stats
       });
@@ -1022,12 +1083,28 @@
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
-      messages = messages.map(m =>
+      const cachedPayload = conversationCache[sendingSessionId];
+      const baseMessages = sessionId === sendingSessionId
+        ? messages
+        : (cachedPayload?.messages || [userMessage]);
+      const failedMessages = baseMessages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: STATUS_FAILED }
           : m
       );
-      saveMessagesToStorage();
+      if (sessionId === sendingSessionId) {
+        messages = failedMessages;
+        saveMessagesToStorage();
+      } else {
+        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, failedMessages);
+      }
+      conversationCache = {
+        ...conversationCache,
+        [sendingSessionId]: {
+          conversation: cachedPayload?.conversation || provisionalConversation,
+          messages: failedMessages
+        }
+      };
 
       dispatchEvent('error', {
         type: 'send_failed',
@@ -1035,8 +1112,12 @@
         error: e.message
       });
     } finally {
-      isSending = false;
-      stopThinkingMessages();
+      setSessionSending(sendingSessionId, false);
+      isSending = Object.keys(sendingSessionIds).length > 0;
+      if (sessionId === sendingSessionId) {
+        stopThinkingMessages();
+        appetizerData = null;
+      }
     }
   }
 
@@ -1104,11 +1185,11 @@
   // Genuine user-scroll intent is detected via explicit input events (wheel/touch)
   // rather than scroll-position drift, which programmatic smooth scrolls trip falsely.
   function handleWheel() {
-    if (isSending) autoScrollEnabled = false;
+    if (isCurrentSessionSending) autoScrollEnabled = false;
   }
 
   function handleTouchMove() {
-    if (isSending) autoScrollEnabled = false;
+    if (isCurrentSessionSending) autoScrollEnabled = false;
   }
 
   async function retryMessage(messageId) {
@@ -1487,11 +1568,10 @@
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
-              class:panel-close-icon={mode === 'floating'}
-              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'minimize' : 'picture-in-picture-2'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg"
               alt=""
-              width={mode === 'floating' ? 16 : 18}
-              height={mode === 'floating' ? 16 : 18}
+              width="18"
+              height="18"
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
@@ -1509,16 +1589,16 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
                   <img src="{staticIconsBaseUrl}/plus.svg" alt="" width="16" height="16" />
                   {$_('assistant.history.newChat')}
                 </button>
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
-                  {@html FEEDBACK_ICON}
+                  <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
                 </a>
 <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
@@ -1543,34 +1623,37 @@
         <aside class="chat-history-panel" aria-label={$_('assistant.history.panelLabel')}>
           <div class="history-toolbar">
             <div class="history-toolbar-group">
-              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.newChat')} onclick={handleRestartConvo} disabled={isSending || messages.length === 0}>
-                <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
-              </button>
-              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.search')} onclick={() => { historySearchOpen = !historySearchOpen; }}>
-                <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
-              </button>
+              <Tooltip text={$_('assistant.history.newChat')}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.newChat')} onclick={handleRestartConvo} disabled={messages.length === 0}>
+                  <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
+              <Tooltip text={$_('assistant.history.search')}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.search')} onclick={() => { historySearchOpen = !historySearchOpen; }}>
+                  <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
             </div>
-            <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.close')} onclick={closeHistoryPanel}>
-              <img src="{staticIconsBaseUrl}/x.svg" alt="" width="16" height="16" />
-            </button>
+            <Tooltip text={$_('assistant.history.close')}>
+              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.close')} onclick={closeHistoryPanel}>
+                <img src="{staticIconsBaseUrl}/chevron-left.svg" alt="" width="18" height="18" />
+              </button>
+            </Tooltip>
           </div>
 
           {#if historySearchOpen}
-            <form class="history-search" class:submitted={!!submittedHistorySearch} onsubmit={(e) => { e.preventDefault(); submitHistorySearch(); }}>
+            <form class="history-search" onsubmit={(e) => { e.preventDefault(); submitHistorySearch(); }}>
               <input
                 type="search"
                 bind:value={historySearchText}
                 aria-label={$_('assistant.history.searchInput')}
                 placeholder={$_('assistant.history.searchPlaceholder')}
               />
-              {#if submittedHistorySearch || historySearchText}
-                <button type="button" class="history-search-clear" aria-label={$_('assistant.history.clearSearch')} onclick={clearHistorySearch}>
-                  <img src="{staticIconsBaseUrl}/x.svg" alt="" width="14" height="14" />
+              {#if historySearchReady}
+                <button type="submit" class="history-search-submit" aria-label={$_('assistant.history.submitSearch')}>
+                  <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
               {/if}
-              <button type="submit" class="history-search-submit" aria-label={$_('assistant.history.submitSearch')} disabled={!historySearchReady}>
-                <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
-              </button>
             </form>
           {/if}
 
@@ -1611,7 +1694,6 @@
                     class:active={conversation.sessionId === sessionId}
                     title={conversation.title}
                     onclick={() => openConversation(conversation)}
-                    disabled={isSending}
                   >
                     <span class="history-row-title">{conversation.title || $_('assistant.history.untitled')}</span>
                     <span class="history-row-date">{formatConversationDate(conversation.lastActivity)}</span>
@@ -1704,6 +1786,40 @@
           <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
       {:else}
+      {#if currentConversation && messages.length > 0}
+        <div class="chat-canvas-titlebar">
+          <div class="chat-canvas-title-wrap">
+            <span class="chat-canvas-title" title={currentConversation.title || $_('assistant.history.untitled')}>
+              {currentConversation.title || $_('assistant.history.untitled')}
+            </span>
+            <div class="chat-canvas-title-menu">
+              <Tooltip text={$_('assistant.history.moreActions')}>
+                <button
+                  type="button"
+                  class="chat-title-menu-trigger"
+                  aria-label={$_('assistant.history.moreActions')}
+                  aria-expanded={activeHistoryMenuId === sessionId}
+                  onclick={(e) => toggleHistoryRowMenu(currentConversation, e)}
+                >
+                  <img src="{staticIconsBaseUrl}/chevron-left.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
+              {#if activeHistoryMenuId === sessionId}
+                <div class="history-row-dropdown canvas-title-dropdown" role="menu">
+                  <button type="button" role="menuitem" aria-label={$_('assistant.history.rename')} onclick={() => startRenameConversation(currentConversation)}>
+                    <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
+                    <span>{$_('assistant.history.renameShort')}</span>
+                  </button>
+                  <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete')} onclick={() => { activeHistoryMenuId = null; deletingConversation = currentConversation; }}>
+                    <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="14" height="14" />
+                    <span>{$_('assistant.history.deleteShort')}</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      {/if}
       <!-- Message List -->
       <div
         class="lc-chatbot-messages"
@@ -1803,7 +1919,7 @@
           {/if}
         {/each}
 
-        {#if isSending}
+        {#if isCurrentSessionSending}
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
@@ -1845,12 +1961,12 @@
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          disabled={isSending || limitReached}
+          disabled={isCurrentSessionSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
+          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2187,11 +2303,11 @@
   }
 
   .history-icon-btn,
+  .chat-title-menu-trigger,
   .history-row-menu-trigger,
   .history-row-dropdown button,
   .history-rename-form button,
-  .history-search-submit,
-  .history-search-clear {
+  .history-search-submit {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2201,6 +2317,17 @@
     cursor: pointer;
     border-radius: 6px;
     transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .history-icon-btn img,
+  .history-row-menu-trigger img,
+  .history-row-dropdown img,
+  .history-rename-form img,
+  .history-search-submit img,
+  .chat-title-menu-trigger img,
+  .header-actions img,
+  .menu-item img {
+    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
   }
 
   .history-icon-btn {
@@ -2215,12 +2342,12 @@
   .history-row-dropdown button:hover,
   .history-rename-form button:hover,
   .history-search-submit:hover:not(:disabled),
-  .history-search-clear:hover {
+  .chat-title-menu-trigger:hover,
+  .history-search-submit:hover {
     background: var(--lc-bg-hover);
   }
 
-  .history-icon-btn:disabled,
-  .history-search-submit:disabled {
+  .history-icon-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
@@ -2229,7 +2356,7 @@
     position: relative;
     display: flex;
     align-items: center;
-    width: 144px;
+    width: calc(100% - 26px);
     height: 35px;
     margin: 8px 13px;
     padding: 10px 8px 10px 12px;
@@ -2267,22 +2394,10 @@
   }
 
   .history-search-submit,
-  .history-search-clear {
+  .chat-title-menu-trigger {
     width: 18px;
     height: 18px;
     flex: 0 0 18px;
-  }
-
-  .history-search-clear {
-    display: none;
-  }
-
-  .history-search.submitted .history-search-clear {
-    display: inline-flex;
-  }
-
-  .history-search.submitted .history-search-submit {
-    display: none;
   }
 
   .history-list-wrap {
@@ -2464,6 +2579,8 @@
   .history-rename-form input {
     height: 30px;
     padding: 5px 8px;
+    font-size: 14px;
+    line-height: 18px;
     font-weight: 600;
   }
 
@@ -2476,13 +2593,20 @@
   .history-loading,
   .history-error {
     color: var(--lc-text-muted);
-    font-size: 12px;
-    line-height: 18px;
-    padding: 12px 8px;
+    font-size: 14px;
+    line-height: 20px;
+    padding: 32px 16px;
     text-align: center;
   }
 
+  .history-empty p {
+    max-width: 170px;
+    margin: 0 auto;
+  }
+
   .history-loading.inline {
+    font-size: 12px;
+    line-height: 18px;
     padding: 10px 8px;
   }
 
@@ -2499,11 +2623,14 @@
   }
 
   .resize-n, .resize-s { height: 8px; left: 8px; right: 8px; cursor: ns-resize; }
-  .resize-e, .resize-w { width: 8px; top: 8px; bottom: 8px; cursor: ew-resize; }
+  .resize-e, .resize-w { width: 12px; top: 8px; bottom: 8px; cursor: ew-resize; }
   .resize-n { top: 0; }
   .resize-s { bottom: 0; }
   .resize-e { right: 0; }
   .resize-w { left: 0; }
+  .lc-chatbot-panel:has(.chat-history-panel) .resize-w {
+    left: 210px;
+  }
 
   .resize-ne, .resize-nw, .resize-se, .resize-sw { width: 16px; height: 16px; }
   .resize-ne { top: 0; right: 0; cursor: nesw-resize; }
@@ -2614,6 +2741,68 @@
   .menu-item svg {
     flex-shrink: 0;
     color: var(--lc-text-secondary);
+  }
+
+  .chat-canvas-titlebar {
+    height: 47px;
+    min-height: 47px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    background: var(--lc-body-bg);
+    border-bottom: 1px solid var(--lc-border);
+  }
+
+  .chat-canvas-title-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .interface-hebrew .chat-canvas-title-wrap {
+    margin-inline-start: auto;
+  }
+
+  .chat-canvas-title {
+    display: block;
+    max-width: min(214px, calc(100% - 26px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--lc-text-secondary);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+
+  .chat-canvas-title-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .chat-title-menu-trigger {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border-radius: 6px;
+  }
+
+  .chat-title-menu-trigger img {
+    transform: rotate(-90deg);
+  }
+
+  .interface-hebrew .chat-title-menu-trigger img {
+    transform: rotate(90deg);
+  }
+
+  .canvas-title-dropdown {
+    inset-block-start: 28px;
+    inset-inline-start: 0;
+    inset-inline-end: auto;
   }
 
   /* Message List */
@@ -2994,10 +3183,6 @@
   }
 
   .interface-hebrew .send-btn svg {
-    transform: scaleX(-1);
-  }
-
-  .interface-hebrew .panel-close-icon {
     transform: scaleX(-1);
   }
 
