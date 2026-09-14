@@ -42,5 +42,7 @@ export const STORAGE_KEYS = {
   MESSAGES: 'messages',
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
-  HAS_USED: 'has_used'
+  HAS_USED: 'has_used',
+  HISTORY_BACKFILL: 'history_backfill',
+  HISTORY_POST_FEATURE_SESSIONS: 'history_post_feature_sessions'
 };
