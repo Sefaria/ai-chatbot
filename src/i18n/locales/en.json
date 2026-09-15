@@ -3,7 +3,6 @@
     "assistant.welcome.restart": "Let me know how I can help.",
     "assistant.welcome.newSession": "**Welcome back! I’m ready to help you explore the Library. You can try things like:**\n\n- Find me sources about gratitude\n- Help me understand this text\n- Translate this passage for me\n\n_Your feedback on responses is always appreciated._",
     "assistant.title": "Library Assistant",
-    "assistant.badge.ai": "AI",
     "assistant.header.close.tooltip": "Close",
     "assistant.header.dock.tooltip": "Maximize & move to sidebar",
     "assistant.header.undock.tooltip": "Minimize & detach from sidebar",

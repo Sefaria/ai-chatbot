@@ -4,7 +4,6 @@
     "assistant.welcome.newSession": "**ברוכים השבים! אני כאן כדי לעזור לכם לחקור את הספרייה. אתם יכולים לנסות דברים כמו:**\n\n- מצא לי מקורות על הכרת הטוב\n\n- עזור לי להבין את הטקסט הזה\n\n- תרגם לי את הקטע הזה\n\nהמשוב שלך על התגובות שלי תמיד מוערך",
     "assistant.title": "עוזר הספרייה",
     "assistant.header.triggerLabel": "עוזר הספרייה",
-    "assistant.badge.ai": "AI",
     "assistant.header.close.tooltip": "סגירה",
     "assistant.header.dock.tooltip": "הגדלה והצמדה לצד",
     "assistant.header.undock.tooltip": "הקטנה וניתוק מהצד",

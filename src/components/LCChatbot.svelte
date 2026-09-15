@@ -25,7 +25,7 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
-  const HISTORY_PANEL_WIDTH = 210;
+  const HISTORY_PANEL_WIDTH = 220;
   const HISTORY_PAGE_SIZE = 20;
   const HISTORY_TITLE_MAX_LENGTH = 64;
   const THINKING_MESSAGE_MIN_MS = 4500;
@@ -141,7 +141,7 @@
   let editingConversationTitle = $state('');
   let deletingConversation = $state(null);
   let activeHistoryMenuId = $state(null);
-  let activeHistoryMenuScope = $state(null);
+  let historyMenuFlipUp = $state(false);
   let canvasWidthBeforeHistoryPanel = $state(null);
   let historyBackfillDecision = $state(HISTORY_BACKFILL_PENDING);
   let postFeatureSessionIds = $state([]);
@@ -154,9 +154,7 @@
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
-  let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
-  let currentConversation = $derived(conversations.find(item => item.sessionId === sessionId) || conversationCache[sessionId]?.conversation || null);
   let canShowHistoryBackfill = $derived(historyBackfillDecision === HISTORY_BACKFILL_PENDING && postFeatureSessionIds.length < HISTORY_BACKFILL_CHAT_LIMIT);
   let visibleConversations = $derived(
     historyBackfillDecision === HISTORY_BACKFILL_ACCEPTED
@@ -620,7 +618,6 @@
     resetHistorySearchState();
     editingConversationId = null;
     activeHistoryMenuId = null;
-    activeHistoryMenuScope = null;
     track('assistant_click', { feature_name: featureName });
   }
 
@@ -700,9 +697,15 @@
     }
   }
 
+  /** Svelte action: focus the input and place the cursor/scroll at the end of its text. */
+  function focusEnd(node) {
+    node.focus();
+    const end = node.value.length;
+    node.setSelectionRange(end, end);
+  }
+
   function startRenameConversation(conversation) {
     activeHistoryMenuId = null;
-    activeHistoryMenuScope = null;
     editingConversationId = conversation.sessionId;
     editingConversationTitle = conversation.title || '';
   }
@@ -712,11 +715,20 @@
     editingConversationTitle = '';
   }
 
-  function toggleHistoryRowMenu(conversation, event, scope = 'row') {
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+
+  function toggleHistoryRowMenu(conversation, event) {
     event?.stopPropagation();
-    const isActive = activeHistoryMenuId === conversation.sessionId && activeHistoryMenuScope === scope;
+    const isActive = activeHistoryMenuId === conversation.sessionId;
     activeHistoryMenuId = isActive ? null : conversation.sessionId;
-    activeHistoryMenuScope = isActive ? null : scope;
+    if (!isActive) {
+      const trigger = event?.currentTarget;
+      const panel = trigger?.closest('.chat-history-panel');
+      const spaceBelow = panel && trigger
+        ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
+        : Infinity;
+      historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    }
   }
 
   async function commitRenameConversation(conversation) {
@@ -755,6 +767,9 @@
       const { [deletedId]: _deleted, ...rest } = conversationCache;
       conversationCache = rest;
       if (sessionId === deletedId) {
+        // Not a first-time user just because their active chat was deleted —
+        // show the "welcome back" copy, not the brand-new-user welcome screen.
+        isRestarted = true;
         handleNewChat();
       }
     } catch (e) {
@@ -790,7 +805,6 @@
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
     activeHistoryMenuId = null;
-    activeHistoryMenuScope = null;
     editingConversationId = null;
     resetScroll();
 
@@ -1625,8 +1639,9 @@
       <!-- Header -->
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
-          <img src="{staticIconsBaseUrl}/AI.svg" alt={$_('assistant.badge.ai')} />
+          <h2>
+            <span class="header-sparkle" aria-hidden="true">✦</span>
+            <span class="header-title-text">{$_('assistant.title')}{#if testingVersion} (V{testingVersion}){/if}</span>
           </h2>
         </div>
         <div class="header-actions">
@@ -1706,14 +1721,21 @@
                 </button>
               </Tooltip>
               <Tooltip text={$_(historySearchOpen ? 'assistant.history.header.search_close.tooltip' : 'assistant.history.header.search_open.tooltip')}>
-                <button class="history-icon-btn" type="button" aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')} data-feature-name="chat_history_search" onclick={toggleHistorySearch}>
+                <button
+                  class="history-icon-btn"
+                  type="button"
+                  aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
+                  data-feature-name="chat_history_search"
+                  onclick={toggleHistorySearch}
+                  disabled={!historySearchOpen && visibleConversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
+                >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
             </div>
             <Tooltip text={$_('assistant.history.header.close.tooltip')}>
               <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.close.aria')} data-feature-name="chat_history_minimize" onclick={(e) => { e.stopPropagation(); closeHistoryPanel(); }}>
-                <img src="{staticIconsBaseUrl}/chevron-left.svg" alt="" width="18" height="18" />
+                <img src="{staticIconsBaseUrl}/x.svg" alt="" width="18" height="18" />
               </button>
             </Tooltip>
           </div>
@@ -1727,11 +1749,18 @@
                 placeholder={$_('assistant.history.search.placeholder')}
                 oninput={handleHistorySearchInput}
               />
-              {#if historySearchReady}
-                <button type="button" class="history-search-submit" aria-label={$_('assistant.history.search_submit.aria')} onclick={(e) => { e.stopPropagation(); submitHistorySearch('search_icon_click'); }}>
-                  <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
+              <Tooltip text={$_(historySearchText ? 'assistant.history.search_clear.tooltip' : 'assistant.history.search_submit.tooltip')}>
+                <button
+                  type="button"
+                  class="history-search-submit"
+                  aria-label={$_(historySearchText ? 'assistant.history.search_clear.aria' : 'assistant.history.search_submit.aria')}
+                  data-feature-name={historySearchText ? 'chat_history_search_clear' : 'chat_history_search_submit'}
+                  disabled={!historySearchText}
+                  onclick={(e) => { e.stopPropagation(); if (historySearchText) { clearHistorySearch(); } else { submitHistorySearch('search_icon_click'); } }}
+                >
+                  <img src="{staticIconsBaseUrl}/{historySearchText ? 'x' : 'search'}.svg" alt="" width="18" height="18" />
                 </button>
-              {/if}
+              </Tooltip>
             </form>
           {/if}
 
@@ -1746,6 +1775,9 @@
             {:else if visibleConversations.length === 0}
               <div class="history-empty">
                 {#if submittedHistorySearch}
+                  <span class="history-empty-icon" aria-hidden="true">
+                    <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
+                  </span>
                   <p>{$_('assistant.history.search.empty')}</p>
                 {:else}
                   <span class="history-empty-icon" aria-hidden="true">
@@ -1768,6 +1800,7 @@
                       aria-label={$_('assistant.history.rename.aria')}
                       onkeydown={(e) => { if (e.key === 'Escape') cancelRenameConversation(); }}
                       onblur={() => commitRenameConversation(conversation)}
+                      use:focusEnd
                     />
                     <button type="submit" aria-label={$_('assistant.history.rename.done.aria')} data-feature-name="rename_saved">
                       <img src="{staticIconsBaseUrl}/check.svg" alt="" width="14" height="14" />
@@ -1790,19 +1823,19 @@
                       type="button"
                       class="history-row-menu-trigger"
                       aria-label={$_('assistant.history.more.aria')}
-                      aria-expanded={activeHistoryMenuId === conversation.sessionId && activeHistoryMenuScope === 'row'}
-                      onclick={(e) => toggleHistoryRowMenu(conversation, e, 'row')}
+                      aria-expanded={activeHistoryMenuId === conversation.sessionId}
+                      onclick={(e) => toggleHistoryRowMenu(conversation, e)}
                     >
                       <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="12" height="12" />
                     </button>
-                    {#if activeHistoryMenuId === conversation.sessionId && activeHistoryMenuScope === 'row'}
-                      <div class="history-row-dropdown" role="menu">
+                    {#if activeHistoryMenuId === conversation.sessionId}
+                      <div class="history-row-dropdown" class:flip-up={historyMenuFlipUp} role="menu">
                         <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
                           <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
                           <span>{$_('assistant.history.menu.rename')}</span>
                         </button>
-                        <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = conversation; }}>
-                          <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="14" height="14" />
+                        <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; deletingConversation = conversation; }}>
+                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="14" height="14" />
                           <span>{$_('assistant.history.menu.delete')}</span>
                         </button>
                       </div>
@@ -1893,40 +1926,6 @@
           <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
       {:else}
-      {#if currentConversation && messages.length > 0}
-        <div class="chat-canvas-titlebar">
-          <div class="chat-canvas-title-wrap">
-            <span class="chat-canvas-title" title={currentConversation.title}>
-              {currentConversation.title}
-            </span>
-            <div class="chat-canvas-title-menu">
-              <Tooltip text={$_('assistant.history.more.aria')}>
-                <button
-                  type="button"
-                  class="chat-title-menu-trigger"
-                  aria-label={$_('assistant.history.more.aria')}
-                  aria-expanded={activeHistoryMenuId === sessionId && activeHistoryMenuScope === 'title'}
-                  onclick={(e) => toggleHistoryRowMenu(currentConversation, e, 'title')}
-                >
-                  <img src="{staticIconsBaseUrl}/chevron-left.svg" alt="" width="18" height="18" />
-                </button>
-              </Tooltip>
-              {#if activeHistoryMenuId === sessionId && activeHistoryMenuScope === 'title'}
-                <div class="history-row-dropdown canvas-title-dropdown" role="menu">
-                  <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(currentConversation)}>
-                    <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
-                    <span>{$_('assistant.history.menu.rename')}</span>
-                  </button>
-                  <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = currentConversation; }}>
-                    <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="14" height="14" />
-                    <span>{$_('assistant.history.menu.delete')}</span>
-                  </button>
-                </div>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
       <!-- Message List -->
       <div
         class="lc-chatbot-messages"
@@ -2376,9 +2375,9 @@
 
   .chat-history-panel {
     display: flex;
-    flex: 0 0 210px;
-    width: 210px;
-    min-width: 210px;
+    flex: 0 0 220px;
+    width: 220px;
+    min-width: 220px;
     flex-direction: column;
     min-height: 0;
     background: var(--lc-bg-secondary);
@@ -2399,7 +2398,8 @@
     gap: 4px;
     height: 40px;
     min-height: 40px;
-    padding: 8px 4px;
+    padding-block: 8px;
+    padding-inline: 10px 4px;
   }
 
   .history-toolbar-group {
@@ -2409,7 +2409,6 @@
   }
 
   .history-icon-btn,
-  .chat-title-menu-trigger,
   .history-row-menu-trigger,
   .history-row-dropdown button,
   .history-rename-form button,
@@ -2430,10 +2429,14 @@
   .history-row-dropdown img,
   .history-rename-form img,
   .history-search-submit img,
-  .chat-title-menu-trigger img,
   .header-actions img,
   .menu-item img {
     filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+  }
+
+  /* trash-2-danger.svg is pre-colored red; the shared gray filter above would flatten it back to gray */
+  .history-row-dropdown button.danger img {
+    filter: none;
   }
 
   .history-icon-btn {
@@ -2444,12 +2447,9 @@
   }
 
   .history-icon-btn:hover:not(:disabled),
-  .history-row-menu-trigger:hover,
   .history-row-dropdown button:hover,
   .history-rename-form button:hover,
-  .history-search-submit:hover:not(:disabled),
-  .chat-title-menu-trigger:hover,
-  .history-search-submit:hover {
+  .history-search-submit:hover:not(:disabled) {
     background: var(--lc-bg-hover);
   }
 
@@ -2462,9 +2462,9 @@
     position: relative;
     display: flex;
     align-items: center;
-    width: calc(100% - 26px);
+    width: calc(100% - 24px);
     height: 35px;
-    margin: 8px 13px;
+    margin: 8px 12px;
     padding: 10px 8px 10px 12px;
     border: 1px solid var(--lc-border);
     border-radius: 8px;
@@ -2494,16 +2494,27 @@
     line-height: 18px;
   }
 
+  /* Our own icon button replaces the native clear affordance (item 16a) */
+  .history-search input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+  }
+
   .history-search input:focus,
   .history-rename-form input:focus {
     border-color: var(--brand-sefaria-blue);
   }
 
-  .history-search-submit,
-  .chat-title-menu-trigger {
+  .history-search-submit {
     width: 18px;
     height: 18px;
     flex: 0 0 18px;
+  }
+
+  .history-search-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .history-list-wrap {
@@ -2517,9 +2528,9 @@
   .history-list {
     flex: 1 1 0;
     min-height: 0;
-    overflow-y: scroll;
+    overflow-y: auto;
     overflow-x: hidden;
-    padding: 8px 1px 0 0;
+    padding: 8px 0 0;
     scrollbar-width: thin;
     scrollbar-color: var(--core-neutral-gray-400, #999) transparent;
   }
@@ -2539,9 +2550,9 @@
 
   .history-list-fade {
     position: absolute;
-    inset-inline-start: 1px;
+    inset-inline-start: 0;
     inset-block-end: 0;
-    width: calc(100% - 2px);
+    width: 100%;
     height: 43px;
     background: linear-gradient(to top, rgba(250, 250, 250, 0.7), rgba(250, 250, 250, 0.2));
     pointer-events: none;
@@ -2561,7 +2572,8 @@
     gap: 1px;
     align-items: stretch;
     justify-content: flex-start;
-    padding: 4px 6px;
+    padding-block: 4px;
+    padding-inline: 12px 6px;
     border: none;
     border-radius: 0;
     background: transparent;
@@ -2584,6 +2596,12 @@
   }
 
   .history-row.active {
+    background: #ddeeff;
+  }
+
+  /* Active + hover keeps the active background — only the kebab menu's own
+     hover-visibility (handled elsewhere) changes on hover while active. */
+  .history-row.active:hover:not(:disabled) {
     background: #ddeeff;
   }
 
@@ -2656,6 +2674,12 @@
     overflow: hidden;
     z-index: 20;
     font-family: var(--lc-font);
+  }
+
+  /* Opens upward instead of downward when there isn't room below within the panel */
+  .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 24px;
   }
 
   .history-row-dropdown button {
@@ -2864,12 +2888,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .lc-chatbot-header h2 {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    min-width: 0;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
     margin: 0;
@@ -2880,13 +2907,24 @@
     font-weight: 600;
   }
 
+  .header-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .interface-hebrew .lc-chatbot-header h2 {
     line-height: normal;
   }
 
 
-  .lc-chatbot-header h2 img {
-    display: block;
+  .header-sparkle {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.36px;
+    color: var(--brand-sefaria-blue);
   }
 
   .header-actions {
@@ -2894,6 +2932,7 @@
     align-items: center;
     gap: 8px;
     margin-inline-start: 15px;
+    flex-shrink: 0;
   }
 
   .menu-container {
@@ -2953,68 +2992,6 @@
   .menu-item svg {
     flex-shrink: 0;
     color: var(--lc-text-secondary);
-  }
-
-  .chat-canvas-titlebar {
-    height: 47px;
-    min-height: 47px;
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    background: var(--lc-body-bg);
-    border-bottom: 1px solid var(--lc-border);
-  }
-
-  .chat-canvas-title-wrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .interface-hebrew .chat-canvas-title-wrap {
-    margin-inline-start: auto;
-  }
-
-  .chat-canvas-title {
-    display: block;
-    max-width: min(214px, calc(100% - 26px));
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--lc-text-secondary);
-    font-family: var(--lc-font);
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 24px;
-  }
-
-  .chat-canvas-title-menu {
-    position: relative;
-    display: inline-flex;
-  }
-
-  .chat-title-menu-trigger {
-    width: 24px;
-    height: 24px;
-    padding: 3px;
-    border-radius: 6px;
-  }
-
-  .chat-title-menu-trigger img {
-    transform: rotate(-90deg);
-  }
-
-  .interface-hebrew .chat-title-menu-trigger img {
-    transform: rotate(90deg);
-  }
-
-  .canvas-title-dropdown {
-    inset-block-start: 28px;
-    inset-inline-start: auto;
-    inset-inline-end: 0;
   }
 
   /* Message List */
