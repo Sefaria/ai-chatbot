@@ -551,7 +551,7 @@
   function upsertConversationSummary(summary) {
     const normalized = {
       sessionId: summary.sessionId,
-      title: summary.title || $_('assistant.history.untitled'),
+      title: summary.title || '',
       createdAt: summary.createdAt || summary.lastActivity || new Date().toISOString(),
       lastActivity: summary.lastActivity || new Date().toISOString(),
       messageCount: summary.messageCount ?? 0,
@@ -664,7 +664,7 @@
       hasMoreConversations = data.hasMore ?? false;
     } catch (e) {
       console.warn('[lc-chatbot] Failed to load conversations:', e);
-      historyError = $_('assistant.history.error');
+      historyError = '';
     } finally {
       hasLoadedConversations = true;
       isLoadingConversations = false;
@@ -740,7 +740,7 @@
       }
     } catch (e) {
       console.warn('[lc-chatbot] Failed to rename conversation:', e);
-      historyError = $_('assistant.history.renameError');
+      historyError = '';
     } finally {
       cancelRenameConversation();
     }
@@ -759,7 +759,7 @@
       }
     } catch (e) {
       console.warn('[lc-chatbot] Failed to delete conversation:', e);
-      historyError = $_('assistant.history.deleteError');
+      historyError = '';
     } finally {
       deletingConversation = null;
     }
@@ -802,7 +802,7 @@
         conversationCache = { ...conversationCache, [conversation.sessionId]: payload };
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
-        historyError = $_('assistant.history.loadError');
+        historyError = '';
         isLoadingHistory = false;
         return;
       }
@@ -1632,7 +1632,7 @@
         <div class="header-actions">
           <HeaderButton
             className="history-btn"
-            title={$_('assistant.history.open')}
+            title={$_('assistant.header.history.tooltip')}
             onClick={(e) => { e.stopPropagation(); showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
             aria-expanded={showHistoryPanel}
             data-feature-name="chat_history_toggle"
@@ -1668,7 +1668,7 @@
                 {/if}
                 <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
-                  {$_('assistant.history.newChat')}
+                  {$_('assistant.history.header.new.tooltip')}
                 </button>
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
@@ -1697,22 +1697,22 @@
 
       <div class="lc-chatbot-body" class:with-history={showHistoryPanel}>
       {#if showHistoryPanel}
-        <aside class="chat-history-panel" aria-label={$_('assistant.history.panelLabel')}>
+        <aside class="chat-history-panel" aria-label={$_('assistant.header.history.aria')}>
           <div class="history-toolbar">
             <div class="history-toolbar-group">
-              <Tooltip text={$_('assistant.history.newChat')}>
-                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.newChat')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0}>
+              <Tooltip text={$_('assistant.history.header.new.tooltip')}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0}>
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
-              <Tooltip text={$_('assistant.history.search')}>
-                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.search')} data-feature-name="chat_history_search" onclick={toggleHistorySearch}>
+              <Tooltip text={$_(historySearchOpen ? 'assistant.history.header.search_close.tooltip' : 'assistant.history.header.search_open.tooltip')}>
+                <button class="history-icon-btn" type="button" aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')} data-feature-name="chat_history_search" onclick={toggleHistorySearch}>
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
             </div>
-            <Tooltip text={$_('assistant.history.close')}>
-              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.close')} data-feature-name="chat_history_minimize" onclick={(e) => { e.stopPropagation(); closeHistoryPanel(); }}>
+            <Tooltip text={$_('assistant.history.header.close.tooltip')}>
+              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.close.aria')} data-feature-name="chat_history_minimize" onclick={(e) => { e.stopPropagation(); closeHistoryPanel(); }}>
                 <img src="{staticIconsBaseUrl}/chevron-left.svg" alt="" width="18" height="18" />
               </button>
             </Tooltip>
@@ -1723,12 +1723,12 @@
               <input
                 type="search"
                 bind:value={historySearchText}
-                aria-label={$_('assistant.history.searchInput')}
-                placeholder={$_('assistant.history.searchPlaceholder')}
+                aria-label={$_('assistant.history.header.search_open.aria')}
+                placeholder={$_('assistant.history.search.placeholder')}
                 oninput={handleHistorySearchInput}
               />
               {#if historySearchReady}
-                <button type="button" class="history-search-submit" aria-label={$_('assistant.history.submitSearch')} onclick={(e) => { e.stopPropagation(); submitHistorySearch('search_icon_click'); }}>
+                <button type="button" class="history-search-submit" aria-label={$_('assistant.history.search_submit.aria')} onclick={(e) => { e.stopPropagation(); submitHistorySearch('search_icon_click'); }}>
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
               {/if}
@@ -1742,17 +1742,17 @@
           <div class="history-list-wrap">
           <div class="history-list" onscroll={handleConversationScroll}>
             {#if conversations.length === 0 && isLoadingConversations}
-              <div class="history-loading">{$_('assistant.history.loading')}</div>
+              <div class="history-loading">{$_('assistant.history.search.loading')}</div>
             {:else if visibleConversations.length === 0}
               <div class="history-empty">
                 {#if submittedHistorySearch}
-                  <p>{$_('assistant.history.noResults')}</p>
+                  <p>{$_('assistant.history.search.empty')}</p>
                 {:else}
                   <span class="history-empty-icon" aria-hidden="true">
                     <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   </span>
-                  <strong>{$_('assistant.history.emptyTitle')}</strong>
-                  <p>{$_('assistant.history.emptyDescription')}</p>
+                  <strong>{$_('assistant.history.list.empty.header')}</strong>
+                  <p>{$_('assistant.history.list.empty.subheader')}</p>
                 {/if}
               </div>
             {/if}
@@ -1765,11 +1765,11 @@
                       type="text"
                       maxlength={HISTORY_TITLE_MAX_LENGTH}
                       bind:value={editingConversationTitle}
-                      aria-label={$_('assistant.history.renameInput')}
+                      aria-label={$_('assistant.history.rename.aria')}
                       onkeydown={(e) => { if (e.key === 'Escape') cancelRenameConversation(); }}
                       onblur={() => commitRenameConversation(conversation)}
                     />
-                    <button type="submit" aria-label={$_('assistant.history.saveRename')} data-feature-name="rename_saved">
+                    <button type="submit" aria-label={$_('assistant.history.rename.done.aria')} data-feature-name="rename_saved">
                       <img src="{staticIconsBaseUrl}/check.svg" alt="" width="14" height="14" />
                     </button>
                   </form>
@@ -1782,14 +1782,14 @@
                     data-feature-name="open_old_chat"
                     onclick={() => openConversation(conversation)}
                   >
-                    <span class="history-row-title">{conversation.title || $_('assistant.history.untitled')}</span>
+                    <span class="history-row-title">{conversation.title}</span>
                     <span class="history-row-date">{formatConversationDate(conversation.lastActivity)}</span>
                   </button>
                   <div class="history-row-menu">
                     <button
                       type="button"
                       class="history-row-menu-trigger"
-                      aria-label={$_('assistant.history.moreActions')}
+                      aria-label={$_('assistant.history.more.aria')}
                       aria-expanded={activeHistoryMenuId === conversation.sessionId && activeHistoryMenuScope === 'row'}
                       onclick={(e) => toggleHistoryRowMenu(conversation, e, 'row')}
                     >
@@ -1797,13 +1797,13 @@
                     </button>
                     {#if activeHistoryMenuId === conversation.sessionId && activeHistoryMenuScope === 'row'}
                       <div class="history-row-dropdown" role="menu">
-                        <button type="button" role="menuitem" aria-label={$_('assistant.history.rename')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
+                        <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
                           <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
-                          <span>{$_('assistant.history.renameShort')}</span>
+                          <span>{$_('assistant.history.menu.rename')}</span>
                         </button>
-                        <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = conversation; }}>
+                        <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = conversation; }}>
                           <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="14" height="14" />
-                          <span>{$_('assistant.history.deleteShort')}</span>
+                          <span>{$_('assistant.history.menu.delete')}</span>
                         </button>
                       </div>
                     {/if}
@@ -1813,7 +1813,7 @@
             {/each}
 
             {#if conversations.length > 0 && isLoadingConversations}
-              <div class="history-loading inline">{$_('assistant.history.loadingMore')}</div>
+              <div class="history-loading inline">{$_('assistant.history.search.loading')}</div>
             {/if}
 
             {#if showHistoryBackfillPrompt}
@@ -1822,15 +1822,15 @@
               {/if}
               <div class="history-backfill-card">
                 <div class="history-backfill-copy">
-                  <strong>{$_('assistant.history.backfillTitle')}</strong>
-                  <span>{$_('assistant.history.backfillDescription')}</span>
+                  <strong>{$_('assistant.history.backfill.header')}</strong>
+                  <span>{$_('assistant.history.backfill.subheader')}</span>
                 </div>
                 <div class="history-backfill-actions">
                   <button type="button" class="history-backfill-primary" data-feature-name="load_old_messages" onclick={() => setHistoryBackfillDecision(HISTORY_BACKFILL_ACCEPTED)}>
-                    {$_('assistant.history.backfillFind')}
+                    {$_('assistant.history.backfill.opt_in')}
                   </button>
                   <button type="button" class="history-backfill-secondary" data-feature-name="dismiss_old_messages" onclick={() => setHistoryBackfillDecision(HISTORY_BACKFILL_DISMISSED)}>
-                    {$_('assistant.history.backfillDismiss')}
+                    {$_('assistant.history.backfill.opt_out')}
                   </button>
                 </div>
               </div>
@@ -1896,15 +1896,15 @@
       {#if currentConversation && messages.length > 0}
         <div class="chat-canvas-titlebar">
           <div class="chat-canvas-title-wrap">
-            <span class="chat-canvas-title" title={currentConversation.title || $_('assistant.history.untitled')}>
-              {currentConversation.title || $_('assistant.history.untitled')}
+            <span class="chat-canvas-title" title={currentConversation.title}>
+              {currentConversation.title}
             </span>
             <div class="chat-canvas-title-menu">
-              <Tooltip text={$_('assistant.history.moreActions')}>
+              <Tooltip text={$_('assistant.history.more.aria')}>
                 <button
                   type="button"
                   class="chat-title-menu-trigger"
-                  aria-label={$_('assistant.history.moreActions')}
+                  aria-label={$_('assistant.history.more.aria')}
                   aria-expanded={activeHistoryMenuId === sessionId && activeHistoryMenuScope === 'title'}
                   onclick={(e) => toggleHistoryRowMenu(currentConversation, e, 'title')}
                 >
@@ -1913,13 +1913,13 @@
               </Tooltip>
               {#if activeHistoryMenuId === sessionId && activeHistoryMenuScope === 'title'}
                 <div class="history-row-dropdown canvas-title-dropdown" role="menu">
-                  <button type="button" role="menuitem" aria-label={$_('assistant.history.rename')} data-feature-name="rename_started" onclick={() => startRenameConversation(currentConversation)}>
+                  <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(currentConversation)}>
                     <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
-                    <span>{$_('assistant.history.renameShort')}</span>
+                    <span>{$_('assistant.history.menu.rename')}</span>
                   </button>
-                  <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = currentConversation; }}>
+                  <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; activeHistoryMenuScope = null; deletingConversation = currentConversation; }}>
                     <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="14" height="14" />
-                    <span>{$_('assistant.history.deleteShort')}</span>
+                    <span>{$_('assistant.history.menu.delete')}</span>
                   </button>
                 </div>
               {/if}
@@ -2135,14 +2135,13 @@
         <div class="feedback-modal-overlay" onclick={() => { deletingConversation = null; }}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal delete-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">{$_('assistant.history.deleteTitle')}</h3>
-            <p class="feedback-modal-subtitle">{$_('assistant.history.deleteDescription')}</p>
+            <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.text')}</h3>
             <div class="feedback-modal-actions">
               <button class="feedback-modal-btn submit danger" data-feature-name="delete_chat_confirmed" onclick={confirmDeleteConversation}>
-                {$_('assistant.history.deleteConfirm')}
+                {$_('assistant.history.delete_modal.delete')}
               </button>
               <button class="feedback-modal-btn skip" data-feature-name="delete_chat_cancelled" onclick={() => { deletingConversation = null; }}>
-                {$_('assistant.history.deleteCancel')}
+                {$_('assistant.history.delete_modal.cancel')}
               </button>
             </div>
           </div>
@@ -3583,13 +3582,6 @@ inset: 8px;
     font-size: 12px;
     line-height: 18px;
     margin-bottom: 4px;
-  }
-
-  .delete-modal .feedback-modal-subtitle {
-    color: #000;
-    font-size: 12px;
-    line-height: 18px;
-    margin-bottom: 12px;
   }
 
   .delete-modal .feedback-modal-actions {
