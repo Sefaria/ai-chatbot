@@ -66,6 +66,10 @@
     window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
   }
 
+  function trackAssistantClick(featureName) {
+    track('assistant_click', { feature_name: featureName });
+  }
+
   // State
   let mode = $state('floating');
   let isOpen = $state(false);
@@ -1859,10 +1863,10 @@
                   <span>{$_('assistant.history.backfill.subheader')}</span>
                 </div>
                 <div class="history-backfill-actions">
-                  <button type="button" class="history-backfill-primary" data-feature-name="load_old_messages" onclick={() => setHistoryBackfillDecision(HISTORY_BACKFILL_ACCEPTED)}>
+                  <button type="button" class="history-backfill-primary" onclick={(e) => { e.stopPropagation(); trackAssistantClick('load_old_messages'); setHistoryBackfillDecision(HISTORY_BACKFILL_ACCEPTED); }}>
                     {$_('assistant.history.backfill.opt_in')}
                   </button>
-                  <button type="button" class="history-backfill-secondary" data-feature-name="dismiss_old_messages" onclick={() => setHistoryBackfillDecision(HISTORY_BACKFILL_DISMISSED)}>
+                  <button type="button" class="history-backfill-secondary" onclick={(e) => { e.stopPropagation(); trackAssistantClick('dismiss_old_messages'); setHistoryBackfillDecision(HISTORY_BACKFILL_DISMISSED); }}>
                     {$_('assistant.history.backfill.opt_out')}
                   </button>
                 </div>
@@ -2136,10 +2140,10 @@
           <div class="feedback-modal delete-modal" onclick={(e) => e.stopPropagation()}>
             <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.text')}</h3>
             <div class="feedback-modal-actions">
-              <button class="feedback-modal-btn submit danger" data-feature-name="delete_chat_confirmed" onclick={confirmDeleteConversation}>
+              <button class="feedback-modal-btn submit danger" onclick={(e) => { e.stopPropagation(); trackAssistantClick('delete_chat_confirmed'); confirmDeleteConversation(); }}>
                 {$_('assistant.history.delete_modal.delete')}
               </button>
-              <button class="feedback-modal-btn skip" data-feature-name="delete_chat_cancelled" onclick={() => { deletingConversation = null; }}>
+              <button class="feedback-modal-btn skip" onclick={(e) => { e.stopPropagation(); trackAssistantClick('delete_chat_cancelled'); deletingConversation = null; }}>
                 {$_('assistant.history.delete_modal.cancel')}
               </button>
             </div>
