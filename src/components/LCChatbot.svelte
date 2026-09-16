@@ -197,11 +197,6 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
-  let historyListRef = $state(null);
-  // Actual reserved scrollbar gutter (varies by browser — e.g. Firefox's
-  // `scrollbar-width: thin` isn't a fixed 4px), measured so row backgrounds
-  // can extend into it exactly rather than guessing a value.
-  let historyScrollbarWidth = $state(0);
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
@@ -297,25 +292,6 @@
     if (inputText) {
       setStorage(STORAGE_KEYS.DRAFT, { text: inputText });
     }
-  });
-
-  // Measure the history list's actual reserved scrollbar gutter (varies by
-  // browser/OS — not a fixed value) so row backgrounds can extend into it.
-  // A scrollbar appearing from row-count growth doesn't resize the list's own
-  // box (it's flex-constrained), so ResizeObserver alone won't catch it —
-  // re-measure whenever the row count changes too.
-  $effect(() => {
-    const el = historyListRef;
-    if (!el) return;
-    void conversations.length;
-    // Svelte effects run after the DOM update, so the list's layout (and any
-    // scrollbar it triggered) is already settled — no need to defer this.
-    historyScrollbarWidth = Math.max(0, el.offsetWidth - el.clientWidth);
-    const ro = new ResizeObserver(() => {
-      historyScrollbarWidth = Math.max(0, el.offsetWidth - el.clientWidth);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
   });
 
   // GA4 tracking: attach listener on the host element (light DOM) so it
@@ -1774,8 +1750,8 @@
             <p class="history-error">{historyError}</p>
           {/if}
 
-          <div class="history-list-wrap" style="--history-scrollbar-w: {historyScrollbarWidth}px">
-          <div class="history-list" bind:this={historyListRef} onscroll={handleConversationScroll}>
+          <div class="history-list-wrap">
+          <div class="history-list" onscroll={handleConversationScroll}>
             {#if conversations.length === 0 && isLoadingConversations}
               <div class="history-loading">{$_('assistant.history.search.loading')}</div>
             {:else if conversations.length === 0}
@@ -2524,26 +2500,18 @@
   }
 
   .history-list {
+    /* Same scrollbar treatment as .lc-chatbot-messages: no custom styling,
+       plain browser default. A custom-styled (narrower) scrollbar gutter is
+       reserved by the browser independent of the visible thumb's own width,
+       so row content can claim to extend into it via CSS width tricks but
+       still gets clipped by the scrollport at the true reserved boundary —
+       trying to make row backgrounds reach the edge fought that clipping
+       and lost. Matching the messages area sidesteps the problem instead. */
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 8px 0 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--core-neutral-gray-400, #999) transparent;
-  }
-
-  .history-list::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .history-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .history-list::-webkit-scrollbar-thumb {
-    background: var(--core-neutral-gray-400, #999);
-    border-radius: 99px;
   }
 
   .history-list-fade {
@@ -2562,11 +2530,7 @@
   }
 
   .history-row {
-    /* Extends into the scrollbar gutter (--history-scrollbar-w, measured in JS
-       since it's not a fixed value across browsers) so the hover/active
-       background reaches the panel's edge even when a scrollbar is present,
-       without covering the kebab menu. */
-    width: calc(100% + var(--history-scrollbar-w, 0px));
+    width: 100%;
     height: 53px;
     min-height: 53px;
     display: flex;
