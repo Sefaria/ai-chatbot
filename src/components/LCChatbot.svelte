@@ -32,10 +32,6 @@
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
   const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
-  const HISTORY_BACKFILL_ACCEPTED = 'accepted';
-  const HISTORY_BACKFILL_DISMISSED = 'dismissed';
-  const HISTORY_BACKFILL_PENDING = 'pending';
-  const HISTORY_BACKFILL_CHAT_LIMIT = 6;
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -147,8 +143,6 @@
   let activeHistoryMenuId = $state(null);
   let historyMenuFlipUp = $state(false);
   let canvasWidthBeforeHistoryPanel = $state(null);
-  let historyBackfillDecision = $state(HISTORY_BACKFILL_PENDING);
-  let postFeatureSessionIds = $state([]);
 
   // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are default absolute maximums
   // We want to use the minimum of the two values, thus allowing RemoteConfig to override the hardcoded defaults
@@ -160,14 +154,6 @@
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
   let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
-  let canShowHistoryBackfill = $derived(historyBackfillDecision === HISTORY_BACKFILL_PENDING && postFeatureSessionIds.length < HISTORY_BACKFILL_CHAT_LIMIT);
-  let visibleConversations = $derived(
-    historyBackfillDecision === HISTORY_BACKFILL_ACCEPTED
-      ? conversations
-      : conversations.filter(item => postFeatureSessionIds.includes(item.sessionId))
-  );
-  let hasHiddenBackfillConversations = $derived(conversations.some(item => !postFeatureSessionIds.includes(item.sessionId)));
-  let showHistoryBackfillPrompt = $derived(!submittedHistorySearch && canShowHistoryBackfill && hasHiddenBackfillConversations);
 
   // Menu state
   let showMenu = $state(false);
@@ -282,11 +268,6 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
-  });
-
-  $effect(() => {
-    historyBackfillDecision = getStorage(STORAGE_KEYS.HISTORY_BACKFILL, HISTORY_BACKFILL_PENDING);
-    postFeatureSessionIds = getStorage(STORAGE_KEYS.HISTORY_POST_FEATURE_SESSIONS, []);
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
@@ -564,18 +545,6 @@
     conversations = [normalized, ...withoutCurrent].sort((a, b) => {
       return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
     });
-  }
-
-  function setHistoryBackfillDecision(decision) {
-    historyBackfillDecision = decision;
-    setStorage(STORAGE_KEYS.HISTORY_BACKFILL, decision);
-  }
-
-  function recordPostFeatureChatStarted(targetSessionId) {
-    if (!targetSessionId || postFeatureSessionIds.includes(targetSessionId)) return;
-    const nextSessionIds = [...postFeatureSessionIds, targetSessionId];
-    postFeatureSessionIds = nextSessionIds;
-    setStorage(STORAGE_KEYS.HISTORY_POST_FEATURE_SESSIONS, nextSessionIds);
   }
 
   function setSessionSending(targetSessionId, value) {
@@ -1015,7 +984,6 @@
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
-    const isStartingPostFeatureChat = messages.length === 0;
     // Reset auto-scroll on each new send
     resetScroll();
     track('assistant_message_sent', { length: text.length });
@@ -1046,9 +1014,6 @@
     appetizerData = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
-    if (isStartingPostFeatureChat) {
-      recordPostFeatureChatStarted(sendingSessionId);
-    }
 
     const provisionalConversation = {
       sessionId: sendingSessionId,
@@ -1733,7 +1698,7 @@
                   aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
                   data-feature-name="chat_history_search"
                   onclick={toggleHistorySearch}
-                  disabled={!historySearchOpen && visibleConversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
+                  disabled={!historySearchOpen && conversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
                 >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
@@ -1779,7 +1744,7 @@
           <div class="history-list" onscroll={handleConversationScroll}>
             {#if conversations.length === 0 && isLoadingConversations}
               <div class="history-loading">{$_('assistant.history.search.loading')}</div>
-            {:else if visibleConversations.length === 0}
+            {:else if conversations.length === 0}
               <div class="history-empty">
                 {#if submittedHistorySearch}
                   <span class="history-empty-icon" aria-hidden="true">
@@ -1796,7 +1761,7 @@
               </div>
             {/if}
 
-            {#each visibleConversations as conversation (conversation.sessionId)}
+            {#each conversations as conversation (conversation.sessionId)}
               <div class="history-row-wrap">
                 {#if editingConversationId === conversation.sessionId}
                   <form class="history-rename-form" onsubmit={(e) => { e.preventDefault(); commitRenameConversation(conversation); }}>
@@ -1856,28 +1821,8 @@
             {#if conversations.length > 0 && isLoadingConversations}
               <div class="history-loading inline">{$_('assistant.history.search.loading')}</div>
             {/if}
-
-            {#if showHistoryBackfillPrompt}
-              {#if visibleConversations.length > 0}
-                <div class="history-backfill-divider" aria-hidden="true"></div>
-              {/if}
-              <div class="history-backfill-card">
-                <div class="history-backfill-copy">
-                  <strong>{$_('assistant.history.backfill.header')}</strong>
-                  <span>{$_('assistant.history.backfill.subheader')}</span>
-                </div>
-                <div class="history-backfill-actions">
-                  <button type="button" class="history-backfill-primary" onclick={(e) => { e.stopPropagation(); trackAssistantClick('load_old_messages'); setHistoryBackfillDecision(HISTORY_BACKFILL_ACCEPTED); }}>
-                    {$_('assistant.history.backfill.opt_in')}
-                  </button>
-                  <button type="button" class="history-backfill-secondary" onclick={(e) => { e.stopPropagation(); trackAssistantClick('dismiss_old_messages'); setHistoryBackfillDecision(HISTORY_BACKFILL_DISMISSED); }}>
-                    {$_('assistant.history.backfill.opt_out')}
-                  </button>
-                </div>
-              </div>
-            {/if}
           </div>
-          {#if visibleConversations.length > 0}
+          {#if conversations.length > 0}
             <div class="history-list-fade" aria-hidden="true"></div>
           {/if}
           </div>
@@ -2801,73 +2746,6 @@
     color: var(--lc-text-muted);
     font-size: 12px;
     line-height: 16px;
-  }
-
-  .history-backfill-divider {
-    height: 1px;
-    margin: 8px 10px;
-    background: var(--lc-border);
-  }
-
-  .history-backfill-card {
-    width: calc(100% - 16px);
-    margin: 8px;
-    padding: 8px 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid var(--core-blue-tbr-250, #d2dcff);
-    border-radius: 4px;
-    background: var(--core-blue-tbr-50, #f2f8ff);
-  }
-
-  .history-backfill-copy {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    color: var(--lc-text-muted);
-    font-size: 10px;
-    line-height: 16px;
-  }
-
-  .history-backfill-copy strong {
-    color: var(--lc-text-secondary);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 16px;
-  }
-
-  .history-backfill-actions {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 8px;
-  }
-
-  .history-backfill-actions button {
-    min-height: 24px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-family: var(--lc-font);
-    font-size: 10px;
-    font-weight: 500;
-    line-height: 20px;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  .history-backfill-primary {
-    border: 1px solid var(--brand-sefaria-blue);
-    background: var(--brand-sefaria-blue);
-    color: var(--lc-bg);
-  }
-
-  .history-backfill-secondary {
-    border: 1px solid var(--core-neutral-gray-300, #ccc);
-    background: var(--lc-bg);
-    color: var(--lc-text-muted);
   }
 
   .history-loading.inline {

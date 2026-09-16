@@ -132,9 +132,5 @@
     "assistant.history.delete_modal.cancel": "Cancel",
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
-    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
-    "assistant.history.backfill.header": "Looking for older chats?",
-    "assistant.history.backfill.subheader": "We can try to recreate them for you.",
-    "assistant.history.backfill.opt_in": "Load my chats",
-    "assistant.history.backfill.opt_out": "No thanks"
+    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here."
 }

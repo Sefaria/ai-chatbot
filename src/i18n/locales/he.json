@@ -132,9 +132,5 @@
     "assistant.history.delete_modal.cancel": "ביטול",
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
-    "assistant.history.list.empty.subheader": "שיחות שמתחילים עם עוזר הספרייה יופיעו כאן.",
-    "assistant.history.backfill.header": "מחפשים שיחות ישנות יותר?",
-    "assistant.history.backfill.subheader": "אנחנו יכולים לנסות למצוא אותם בשבילך.",
-    "assistant.history.backfill.opt_in": "חפש שיחות ישנות יותר",
-    "assistant.history.backfill.opt_out": "לא,תודה"
+    "assistant.history.list.empty.subheader": "שיחות שמתחילים עם עוזר הספרייה יופיעו כאן."
 }
