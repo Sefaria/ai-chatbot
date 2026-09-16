@@ -159,6 +159,7 @@
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
+  let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
   let canShowHistoryBackfill = $derived(historyBackfillDecision === HISTORY_BACKFILL_PENDING && postFeatureSessionIds.length < HISTORY_BACKFILL_CHAT_LIMIT);
   let visibleConversations = $derived(
     historyBackfillDecision === HISTORY_BACKFILL_ACCEPTED
@@ -1641,6 +1642,7 @@
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
       <!-- Header -->
+      <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
           <h2>
@@ -1753,16 +1755,17 @@
                 placeholder={$_('assistant.history.search.placeholder')}
                 oninput={handleHistorySearchInput}
               />
-              <Tooltip text={$_(historySearchText ? 'assistant.history.search_clear.tooltip' : 'assistant.history.search_submit.tooltip')}>
+              <Tooltip text={$_(submittedHistorySearch ? 'assistant.history.search_clear.tooltip' : 'assistant.history.search_submit.tooltip')}>
                 <button
                   type="button"
                   class="history-search-submit"
-                  aria-label={$_(historySearchText ? 'assistant.history.search_clear.aria' : 'assistant.history.search_submit.aria')}
-                  data-feature-name={historySearchText ? 'chat_history_search_clear' : 'chat_history_search_submit'}
-                  disabled={!historySearchText}
-                  onclick={(e) => { e.stopPropagation(); if (historySearchText) { clearHistorySearch(); } else { submitHistorySearch('search_icon_click'); } }}
+                  class:is-clear={!!submittedHistorySearch}
+                  aria-label={$_(submittedHistorySearch ? 'assistant.history.search_clear.aria' : 'assistant.history.search_submit.aria')}
+                  data-feature-name={submittedHistorySearch ? 'chat_history_search_clear' : 'chat_history_search_submit'}
+                  disabled={!submittedHistorySearch && !historySearchReady}
+                  onclick={(e) => { e.stopPropagation(); if (submittedHistorySearch) { clearHistorySearch(); } else { submitHistorySearch('search_icon_click'); } }}
                 >
-                  <img src="{staticIconsBaseUrl}/{historySearchText ? 'x' : 'search'}.svg" alt="" width="18" height="18" />
+                  <img src="{staticIconsBaseUrl}/{submittedHistorySearch ? 'x' : 'search'}.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
             </form>
@@ -1815,11 +1818,12 @@
                     type="button"
                     class="history-row"
                     class:active={conversation.sessionId === sessionId}
-                    title={conversation.title}
                     data-feature-name="open_old_chat"
                     onclick={() => openConversation(conversation)}
                   >
-                    <span class="history-row-title">{conversation.title}</span>
+                    <Tooltip text={conversation.title}>
+                      <span class="history-row-title">{conversation.title}</span>
+                    </Tooltip>
                     <span class="history-row-date">{formatConversationDate(conversation.lastActivity)}</span>
                   </button>
                   <div class="history-row-menu">
@@ -2088,6 +2092,7 @@
       {/if}
       </section>
       </div>
+      </div>
 
       <!-- Feedback Modal -->
       {#if showFeedbackModal}
@@ -2135,7 +2140,7 @@
       {/if}
       {#if deletingConversation}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="feedback-modal-overlay" onclick={() => { deletingConversation = null; }}>
+        <div class="feedback-modal-overlay delete-modal-overlay" onclick={() => { deletingConversation = null; }}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal delete-modal" onclick={(e) => e.stopPropagation()}>
             <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.text')}</h3>
@@ -2215,8 +2220,8 @@
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
-    --lc-danger: #A83F2A;
-    --lc-danger-hover: #8F321F;
+    --lc-danger: #C03522;
+    --lc-danger-hover: #A02C1C;
 
     display: block;
     font-family: var(--lc-font);
@@ -2273,7 +2278,7 @@
     border-radius: 12px;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
     margin-inline-start: 10px;
-    margin-inline-end: 42px;
+    margin-inline-end: 10px;
     margin-bottom: 0;
   }
 
@@ -2391,8 +2396,13 @@
 
   .interface-hebrew .chat-history-panel {
     order: 2;
-    border-inline-start: 1px solid var(--lc-border);
+    /* .lc-chatbot-body stays LTR in Hebrew — `order` alone flips the panel to the
+       visual right, so the divider facing the canvas is the panel's PHYSICAL left
+       edge, not its logical inline-start (which follows this panel's own
+       direction:rtl and would resolve to the physical right instead). */
+    border-inline-start: 0;
     border-inline-end: 0;
+    border-left: 1px solid var(--lc-border);
   }
 
   .history-toolbar {
@@ -2450,11 +2460,14 @@
     border-radius: 6px;
   }
 
+  /* Matches the LA's existing icon-hover convention (see HeaderButton.svelte's
+     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma. */
   .history-icon-btn:hover:not(:disabled),
   .history-row-dropdown button:hover,
   .history-rename-form button:hover,
-  .history-search-submit:hover:not(:disabled) {
-    background: var(--lc-bg-hover);
+  .history-search-submit.is-clear:hover:not(:disabled) {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text);
   }
 
   .history-icon-btn:disabled {
@@ -2568,7 +2581,10 @@
   }
 
   .history-row {
-    width: 100%;
+    /* Extends 4px into the scrollbar gutter (see .history-list::-webkit-scrollbar)
+       so the hover/active background reaches the panel's edge even when a
+       scrollbar could be present, without covering the kebab menu. */
+    width: calc(100% + 4px);
     height: 53px;
     min-height: 53px;
     display: flex;
@@ -2630,6 +2646,13 @@
 
   .history-row.active .history-row-title {
     color: #121212;
+  }
+
+  /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
+     overrides the Heebo inherited from .lc-chatbot-container.interface-hebrew */
+  .interface-hebrew .history-row-title {
+    font-family: Heebo, Arial, sans-serif;
+    font-weight: 700;
   }
 
   .history-row-date {
@@ -2878,6 +2901,19 @@
   .resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
   .resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 
+  .lc-chatbot-dimmable {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .lc-chatbot-dimmable.dimmed {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
   /* Header */
   .lc-chatbot-header {
     display: flex;
@@ -2919,6 +2955,7 @@
   }
 
   .interface-hebrew .lc-chatbot-header h2 {
+    font-family: Heebo, Arial, sans-serif;
     line-height: normal;
   }
 
@@ -2926,7 +2963,11 @@
   .header-sparkle {
     font-size: 12px;
     font-weight: 500;
-    line-height: 1.2;
+    /* Inherit the title's line-height (rather than an independent fixed value)
+       so the two elements share the same vertical metrics — needed for
+       .interface-hebrew, where the title's line-height switches to "normal"
+       and a font-dependent mismatch would otherwise throw off centering. */
+    line-height: inherit;
     letter-spacing: 0.36px;
     color: var(--brand-sefaria-blue);
   }
@@ -3526,8 +3567,8 @@
 
   /* Feedback Modal */
   .feedback-modal-overlay {
-position: absolute;
-inset: 8px;
+    position: absolute;
+    inset: 8px;
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
@@ -3535,6 +3576,14 @@ inset: 8px;
     z-index: 10001;
     animation: fadeIn 0.15s ease;
     border-radius: calc(var(--lc-radius) - 4px);
+  }
+
+  /* Delete confirmation dims the whole widget (see .lc-chatbot-dimmable) rather
+     than painting a dark scrim, so this overlay is just a full-bleed click-catcher. */
+  .delete-modal-overlay {
+    inset: 0;
+    background: transparent;
+    border-radius: var(--lc-radius);
   }
 
   @keyframes fadeIn {
@@ -3559,17 +3608,28 @@ inset: 8px;
   }
 
   .delete-modal .feedback-modal-title {
-    color: #000;
-    font-size: 12px;
+    color: #121212;
+    font-size: 14px;
+    font-weight: 600;
     line-height: 18px;
-    margin-bottom: 4px;
+    margin-bottom: 16px;
   }
 
   .delete-modal .feedback-modal-actions {
     flex-direction: row-reverse;
-    justify-content: center;
-    gap: 16px;
+    justify-content: flex-start;
+    gap: 20px;
     margin-top: 0;
+  }
+
+  .delete-modal .feedback-modal-btn.skip {
+    border: 1px solid var(--core-neutral-gray-300, #ccc);
+    color: var(--lc-text-secondary);
+    background: var(--core-base-white, #fff);
+  }
+
+  .delete-modal .feedback-modal-btn.skip:hover {
+    background: var(--semantic-surface-hover, #eee);
   }
 
   .delete-modal .feedback-modal-btn {
