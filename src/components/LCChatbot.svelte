@@ -705,14 +705,19 @@
     event?.stopPropagation();
     const isActive = activeHistoryMenuId === conversation.sessionId;
     activeHistoryMenuId = isActive ? null : conversation.sessionId;
-    if (!isActive) {
-      const trigger = event?.currentTarget;
-      const panel = trigger?.closest('.chat-history-panel');
-      const spaceBelow = panel && trigger
-        ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
-        : Infinity;
-      historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    if (isActive) {
+      // Closing via re-clicking the trigger — the button keeps native focus
+      // otherwise, which would keep the kebab visible via :focus-within even
+      // after the mouse moves off the row.
+      event?.currentTarget?.blur?.();
+      return;
     }
+    const trigger = event?.currentTarget;
+    const panel = trigger?.closest('.chat-history-panel');
+    const spaceBelow = panel && trigger
+      ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
+      : Infinity;
+    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
   }
 
   async function commitRenameConversation(conversation) {
@@ -1389,6 +1394,34 @@
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener('click', handleClickOutside);
+    };
+  });
+
+  // Close a chat history row's kebab menu on an outside click, and blur its
+  // trigger so :focus-within stops keeping the kebab icon visible once the
+  // mouse moves off the row.
+  $effect(() => {
+    if (!activeHistoryMenuId) return;
+
+    function handleClickOutsideRowMenu(e) {
+      const insideMenu = e.composedPath().some(
+        el => el instanceof Element && el.classList?.contains('history-row-menu')
+      );
+      if (!insideMenu) {
+        activeHistoryMenuId = null;
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutsideRowMenu);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutsideRowMenu);
     };
   });
 
