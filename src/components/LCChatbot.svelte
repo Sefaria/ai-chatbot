@@ -2469,9 +2469,10 @@
     position: relative;
     display: flex;
     align-items: center;
-    width: calc(100% - 24px);
+    width: calc(100% - 14px);
     height: 35px;
-    margin: 8px 12px;
+    margin-block: 8px;
+    margin-inline: 10px 4px;
     padding: 10px 8px 10px 12px;
     border: 1px solid var(--lc-border);
     border-radius: 8px;
@@ -2545,7 +2546,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 8px 0 0;
+    padding: 0;
   }
 
   .history-list-fade {
