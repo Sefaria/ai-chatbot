@@ -13,7 +13,7 @@
     renameConversation,
     deleteConversation
   } from '../lib/api.js';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -273,7 +273,7 @@
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
     if (sessionId && apiBaseUrl && isOpen) {
-      if (chatJustRestarted) {
+      if (untrack(() => chatJustRestarted)) {
         chatJustRestarted = false;
         return;
       }
@@ -811,6 +811,7 @@
       }
     }
 
+    chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
     sessionId = conversation.sessionId;
     messages = await historyMessagesToUiMessages(payload.messages);
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
@@ -818,7 +819,6 @@
     isLoadingHistory = false;
     isRestarted = false;
     isNewSession = false;
-    chatJustRestarted = true;
     saveMessagesToStorage();
     await scrollToBottom();
   }
