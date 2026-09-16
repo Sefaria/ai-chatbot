@@ -197,6 +197,11 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+  let historyListRef = $state(null);
+  // Actual reserved scrollbar gutter (varies by browser — e.g. Firefox's
+  // `scrollbar-width: thin` isn't a fixed 4px), measured so row backgrounds
+  // can extend into it exactly rather than guessing a value.
+  let historyScrollbarWidth = $state(0);
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
@@ -292,6 +297,25 @@
     if (inputText) {
       setStorage(STORAGE_KEYS.DRAFT, { text: inputText });
     }
+  });
+
+  // Measure the history list's actual reserved scrollbar gutter (varies by
+  // browser/OS — not a fixed value) so row backgrounds can extend into it.
+  // A scrollbar appearing from row-count growth doesn't resize the list's own
+  // box (it's flex-constrained), so ResizeObserver alone won't catch it —
+  // re-measure whenever the row count changes too.
+  $effect(() => {
+    const el = historyListRef;
+    if (!el) return;
+    void conversations.length;
+    // Svelte effects run after the DOM update, so the list's layout (and any
+    // scrollbar it triggered) is already settled — no need to defer this.
+    historyScrollbarWidth = Math.max(0, el.offsetWidth - el.clientWidth);
+    const ro = new ResizeObserver(() => {
+      historyScrollbarWidth = Math.max(0, el.offsetWidth - el.clientWidth);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   // GA4 tracking: attach listener on the host element (light DOM) so it
@@ -1740,8 +1764,8 @@
             <p class="history-error">{historyError}</p>
           {/if}
 
-          <div class="history-list-wrap">
-          <div class="history-list" onscroll={handleConversationScroll}>
+          <div class="history-list-wrap" style="--history-scrollbar-w: {historyScrollbarWidth}px">
+          <div class="history-list" bind:this={historyListRef} onscroll={handleConversationScroll}>
             {#if conversations.length === 0 && isLoadingConversations}
               <div class="history-loading">{$_('assistant.history.search.loading')}</div>
             {:else if conversations.length === 0}
@@ -2406,11 +2430,12 @@
   }
 
   /* Matches the LA's existing icon-hover convention (see HeaderButton.svelte's
-     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma. */
+     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma.
+     The search bar's icon (search glyph or its clear/X state) never gets a
+     hover treatment in either state — see .history-search-submit below. */
   .history-icon-btn:hover:not(:disabled),
   .history-row-dropdown button:hover,
-  .history-rename-form button:hover,
-  .history-search-submit.is-clear:hover:not(:disabled) {
+  .history-rename-form button:hover {
     background: var(--lc-bg-tertiary);
     color: var(--lc-text);
   }
@@ -2526,10 +2551,11 @@
   }
 
   .history-row {
-    /* Extends 4px into the scrollbar gutter (see .history-list::-webkit-scrollbar)
-       so the hover/active background reaches the panel's edge even when a
-       scrollbar could be present, without covering the kebab menu. */
-    width: calc(100% + 4px);
+    /* Extends into the scrollbar gutter (--history-scrollbar-w, measured in JS
+       since it's not a fixed value across browsers) so the hover/active
+       background reaches the panel's edge even when a scrollbar is present,
+       without covering the kebab menu. */
+    width: calc(100% + var(--history-scrollbar-w, 0px));
     height: 53px;
     min-height: 53px;
     display: flex;
@@ -3495,7 +3521,7 @@
 
   .delete-modal .feedback-modal-actions {
     flex-direction: row-reverse;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 20px;
     margin-top: 0;
   }
