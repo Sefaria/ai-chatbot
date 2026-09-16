@@ -596,6 +596,16 @@
     return new Intl.DateTimeFormat(interfaceLang === 'he' ? 'he' : 'en', options).format(date);
   }
 
+  function formatMessageTimestamp(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(interfaceLang === 'he' ? 'he' : 'en', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date);
+  }
+
   function clampHistoryTitle(title) {
     return String(title || '').trim().slice(0, HISTORY_TITLE_MAX_LENGTH);
   }
@@ -1992,6 +2002,7 @@
                     {$_('assistant.messages.retry')}
                   </button>
                 {/if}
+                <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
               </div>
               {#if item.locationRef}
                 <div class="message-location-tag">
@@ -3066,6 +3077,24 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
+  }
+
+  .message.user .message-meta {
+    justify-content: flex-end;
+  }
+
+  .message-timestamp {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--lc-text-muted);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .message.user:hover .message-timestamp,
+  .message.user:focus-within .message-timestamp {
+    opacity: 1;
   }
 
   .message-location-tag {
