@@ -2478,7 +2478,7 @@
     align-items: center;
     width: calc(100% - 24px);
     height: 35px;
-    margin: 8px 12px;
+    margin: 4px 12px 12px;
     padding: 10px 8px 10px 12px;
     border: 1px solid var(--lc-border);
     border-radius: 8px;
@@ -2537,6 +2537,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    border-top: 1px solid var(--lc-border);
   }
 
   .history-list {
@@ -2551,7 +2552,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 8px 0 0;
+    padding: 0;
   }
 
   .history-list-fade {
