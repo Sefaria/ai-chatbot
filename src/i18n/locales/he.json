@@ -4,7 +4,6 @@
     "assistant.welcome.newSession": "**ברוכים השבים! אני כאן כדי לעזור לכם לחקור את הספרייה. אתם יכולים לנסות דברים כמו:**\n\n- מצא לי מקורות על הכרת הטוב\n\n- עזור לי להבין את הטקסט הזה\n\n- תרגם לי את הקטע הזה\n\nהמשוב שלך על התגובות שלי תמיד מוערך",
     "assistant.title": "עוזר הספרייה",
     "assistant.header.triggerLabel": "עוזר הספרייה",
-    "assistant.badge.ai": "AI",
     "assistant.header.close.tooltip": "סגירה",
     "assistant.header.dock.tooltip": "הגדלה והצמדה לצד",
     "assistant.header.undock.tooltip": "הקטנה וניתוק מהצד",
@@ -129,14 +128,10 @@
     "assistant.history.rename.aria": "שינוי שם השיחה",
     "assistant.history.rename.done.aria": "שמירת שינויים",
     "assistant.history.delete.aria": "מחיקת שיחה",
+    "assistant.history.delete_modal.header": "למחוק את השיחה?",
     "assistant.history.delete_modal.text": "לא ניתן לשחזר אותה אחר כך.",
     "assistant.history.delete_modal.cancel": "ביטול",
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
-    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
-    "assistant.history.backfill.header": "מחפשים שיחות ישנות יותר?",
-    "assistant.history.backfill.subheader": "אנחנו יכולים לנסות למצוא אותם בשבילך.",
-    "assistant.history.backfill.opt_in": "חיפוש שיחות ישנות",
-    "assistant.history.backfill.opt_out": "לא,תודה",
-    "assistant.history.delete_modal.header": "למחוק את השיחה?"
+    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן."
 }

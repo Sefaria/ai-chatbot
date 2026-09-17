@@ -186,6 +186,21 @@ def _build_response_payload(
     }
 
 
+def _build_appetizer_payload(result) -> dict:
+    return {
+        "version": 1,
+        "topics": [
+            {
+                "topicSlug": topic.topic_slug,
+                "topicTitle": topic.topic_title,
+                "topicUrl": topic.topic_url,
+            }
+            for topic in result.topics
+        ],
+        "servedAt": timezone.now().isoformat(),
+    }
+
+
 def _is_stream_break_test_enabled() -> bool:
     return bool(getattr(settings, "CHAT_STREAM_BREAK_TESTING_ENABLED", settings.DEBUG))
 
@@ -326,19 +341,20 @@ def chat_stream_v2(request):
                 appetizer_metrics["topic_slugs"] = []
 
             if result and not stream_closed:
+                appetizer_payload = _build_appetizer_payload(result)
+                appetizer_metrics["appetizer_data"] = appetizer_payload
+                try:
+                    ChatMessage.objects.filter(
+                        message_id=data["messageId"],
+                        session_id=data["sessionId"],
+                        role=ChatMessage.Role.USER,
+                    ).update(appetizer_data=appetizer_payload)
+                except Exception:
+                    logger.debug("Could not persist appetizer data immediately")
                 update = AgentProgressUpdate(
                     type="appetizer",
                     text=", ".join(t.topic_title for t in result.topics),
-                    appetizer_data={
-                        "topics": [
-                            {
-                                "topicSlug": t.topic_slug,
-                                "topicTitle": t.topic_title,
-                                "topicUrl": t.topic_url,
-                            }
-                            for t in result.topics
-                        ],
-                    },
+                    appetizer_data=appetizer_payload,
                 )
                 try:
                     progress_queue.put(update, timeout=0.5)
@@ -385,6 +401,9 @@ def chat_stream_v2(request):
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
     )
+    if appetizer_metrics.get("appetizer_data"):
+        user_message.appetizer_data = appetizer_metrics["appetizer_data"]
+        user_message.save(update_fields=["appetizer_data"])
     _mark_turn_started(user_message.id)
 
     msg_context = MessageContext(

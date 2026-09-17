@@ -30,7 +30,8 @@
   }
 
   .menu-btn,
-  .panel-btn {
+  .panel-btn,
+  .history-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -50,24 +51,28 @@
 
   .menu-btn:hover,
   .panel-btn:hover,
+  .history-btn:hover,
   .menu-btn:focus-visible,
   .panel-btn:focus-visible,
+  .history-btn:focus-visible,
   .menu-btn:active,
-  .panel-btn:active {
+  .panel-btn:active,
+  .history-btn:active {
     background: var(--lc-bg-tertiary);
     color: var(--lc-text);
     border-color: var(--lc-border);
   }
 
   .close-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
+    padding: 4px;
     background: transparent;
     border: none;
-    border-radius: var(--lc-radius-sm);
+    border-radius: 6px;
     cursor: pointer;
     color: var(--lc-text-secondary);
     transition: all 0.15s ease;
