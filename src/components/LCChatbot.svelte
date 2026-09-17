@@ -2140,7 +2140,8 @@
         <div class="feedback-modal-overlay delete-modal-overlay" onclick={() => { deletingConversation = null; }}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="feedback-modal delete-modal" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.text')}</h3>
+            <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.header')}</h3>
+            <p class="delete-modal-subtext">{$_('assistant.history.delete_modal.text')}</p>
             <div class="feedback-modal-actions">
               <button class="feedback-modal-btn submit danger" onclick={(e) => { e.stopPropagation(); trackAssistantClick('delete_chat_confirmed'); confirmDeleteConversation(); }}>
                 {$_('assistant.history.delete_modal.delete')}
@@ -3559,7 +3560,14 @@
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
-    margin-bottom: 16px;
+    margin-bottom: 4px;
+  }
+
+  .delete-modal-subtext {
+    color: var(--lc-text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+    margin: 0 0 16px;
   }
 
   .delete-modal .feedback-modal-actions {
