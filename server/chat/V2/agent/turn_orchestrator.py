@@ -15,6 +15,7 @@ from ..prompts.prompt_fragments import (
     SECTION_SEPARATOR,
 )
 from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, MessageContext
+from .flows import get_flow_prompt_slug
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
@@ -110,11 +111,19 @@ class TurnOrchestrator:
         if guardrail_response:
             return guardrail_response
 
-        router_prompt_id, route, messages = await self.router.run_router(
-            bt_span, last_user_message, messages
-        )
-        if router_prompt_id:
-            core_prompt_id = router_prompt_id
+        # A client-initiated flow (e.g. "Report an issue") owns its prompt outright.
+        # Skipping the router — on every turn, not just the first — is what stops a
+        # later message in the conversation from being reclassified onto another prompt.
+        flow_prompt_id = get_flow_prompt_slug(context.flow)
+        if flow_prompt_id:
+            core_prompt_id = flow_prompt_id
+            route = context.flow
+        else:
+            router_prompt_id, route, messages = await self.router.run_router(
+                bt_span, last_user_message, messages
+            )
+            if router_prompt_id:
+                core_prompt_id = router_prompt_id
 
         # Fetch the response-format prompt and pass it as a template variable.
         # Braintrust prompts that include {{response_format}} will get it substituted.

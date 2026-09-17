@@ -50,6 +50,7 @@ from ..serializers import (
     RecoveryRequestSerializer,
 )
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
+from .agent.flows import normalize_flow
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
@@ -418,6 +419,7 @@ def chat_stream_v2(request):
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
+        flow=normalize_flow(context.get("flow")),
     )
 
     def generate_sse():

@@ -3,6 +3,7 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { START_FLOW_EVENT, buildReportSeed, parseStartFlowDetail } from '../lib/reportFlow.js';
   import {
     sendMessageStream,
     loadHistory,
@@ -69,6 +70,10 @@
   // State
   let mode = $state('floating');
   let isOpen = $state(false);
+  // Active client-initiated flow (e.g. 'report_issue'). Held in memory only:
+  // it is sent with every turn of this conversation, and a report chat reopened
+  // later from history deliberately falls back to the normal assistant.
+  let activeFlow = $state('');
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
@@ -351,6 +356,40 @@
     return () => host.removeEventListener('click', trackClick);
   });
 
+  // Inbound flow entry. The host page (Sefaria) dispatches `chatbot:start-flow`
+  // when a reader clicks "Report an issue" on a machine-translated segment. Every
+  // report opens a NEW chat: an in-progress conversation is left untouched in
+  // history rather than having the report appended to it.
+  $effect(() => {
+    function handleStartFlow(event) {
+      const request = parseStartFlowDetail(event?.detail);
+      if (!request) {
+        console.warn('[lc-chatbot] Ignoring malformed chatbot:start-flow event', event?.detail);
+        return;
+      }
+
+      // An in-flight response on the previous chat is left to finish: the stream
+      // handlers key off sendingSessionId, so its result still lands in that
+      // conversation's cache and history, not in this new report.
+      openPanel();
+      handleNewChat();           // clears activeFlow — set it after, not before
+      activeFlow = request.flow;
+      inputText = buildReportSeed(request, effectiveMaxInputChars);
+      setStorage(STORAGE_KEYS.DRAFT, { text: inputText });
+      track('assistant_click', { feature_name: 'Report an issue' });
+
+      // Drop the caret after "Comment: " so the reader types straight into place.
+      tick().then(() => {
+        if (!inputRef) return;
+        inputRef.focus();
+        inputRef.setSelectionRange(inputText.length, inputText.length);
+      });
+    }
+
+    document.addEventListener(START_FLOW_EVENT, handleStartFlow);
+    return () => document.removeEventListener(START_FLOW_EVENT, handleStartFlow);
+  });
+
   // GA4 tracking: fire 'assistant_element_shown' the first time an element with
   // data-element-shown-name scrolls into view within the messages panel. Content
   // (thinking steps, appetizer topics, location tag) streams in after mount, so
@@ -514,6 +553,7 @@
 
   function handleNewChat() {
     const { sessionId: newSessionId } = getOrCreateSession(true);
+    activeFlow = '';
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
     messages = [];
@@ -813,6 +853,7 @@
     }
 
     chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
+    activeFlow = ''; // Flow isn't persisted server-side; a reopened report chat is a normal chat.
     sessionId = conversation.sessionId;
     messages = await historyMessagesToUiMessages(payload.messages);
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
@@ -1007,6 +1048,8 @@
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
+    // Captured with the session so a flow change mid-stream can't retag this request.
+    const sendingFlow = activeFlow;
     // Reset auto-scroll on each new send
     resetScroll();
     track('assistant_message_sent', { length: text.length });
@@ -1086,7 +1129,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang);
+      }, interfaceLang, sendingFlow);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId

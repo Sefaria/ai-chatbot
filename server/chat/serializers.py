@@ -7,6 +7,23 @@ from rest_framework import serializers
 from .models import ChatMessage
 
 
+class LenientFlowField(serializers.CharField):
+    """A flow hint that can never fail the request.
+
+    The flow only selects a prompt. A client that sends junk — a stale build, a
+    wrong type, an over-long string — should still get a normal answer rather
+    than a 400, so anything unusable degrades to blank here and is dropped
+    downstream by chat.V2.agent.flows.normalize_flow.
+    """
+
+    MAX_LENGTH = 40
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            return ""
+        return super().to_internal_value(data[: self.MAX_LENGTH])
+
+
 class MessageContextSerializer(serializers.Serializer):
     """Context information sent with each message."""
 
@@ -17,6 +34,10 @@ class MessageContextSerializer(serializers.Serializer):
     isStaff = serializers.BooleanField(required=False, default=False)
     labs = serializers.BooleanField(required=False, default=False)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
+    # Client-initiated flow (e.g. 'report_issue'). Validated against the known
+    # flows in chat.V2.agent.flows, not here — an unrecognised value is dropped
+    # rather than rejected, so a stale client still gets a normal answer.
+    flow = LenientFlowField(required=False, allow_blank=True)
 
 
 class PromptSlugsSerializer(serializers.Serializer):

@@ -44,6 +44,7 @@ class MessageContext:
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
+    flow: str | None = None
 
 
 @dataclass
