@@ -787,7 +787,8 @@
       traceId: null,
       toolCalls: item.toolCalls || null,
       appetizerData: item.appetizerData || null,
-      locationRef: item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null
+      locationRef: item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null,
+      noEntryAnimation: true
     })));
   }
 
@@ -897,7 +898,7 @@
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
-        messages = result.messages;
+        messages = result.messages.map(m => ({ ...m, noEntryAnimation: true }));
         hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
         scrollToBottom({ instant: true });
@@ -916,7 +917,7 @@
     isLoadingHistory = true;
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
-      messages = [...result.messages, ...messages];
+      messages = [...result.messages.map(m => ({ ...m, noEntryAnimation: true })), ...messages];
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
     } catch (e) {
@@ -1943,7 +1944,7 @@
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
-          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED}>
+          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED} class:no-entry-animation={feedbackProps?.noEntryAnimation}>
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
@@ -2008,7 +2009,7 @@
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
           {:else}
-            <div class="message user">
+            <div class="message user" class:no-entry-animation={item.noEntryAnimation}>
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
@@ -2980,6 +2981,14 @@
     display: flex;
     flex-direction: column;
     animation: fadeInUp 0.2s ease;
+  }
+
+  /* Messages bulk-loaded from history (opening a past conversation, restoring
+     on panel open, paginating older messages) shouldn't play the entrance
+     animation meant for a newly-sent/streamed message — with 20 messages
+     firing it at once, it reads as the whole conversation subtly scrolling. */
+  .message.no-entry-animation {
+    animation: none;
   }
 
   @keyframes fadeInUp {
