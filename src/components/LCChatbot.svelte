@@ -820,7 +820,7 @@
     isRestarted = false;
     isNewSession = false;
     saveMessagesToStorage();
-    await scrollToBottom();
+    await scrollToBottom({ instant: true });
   }
 
   async function openSettings() {
@@ -900,7 +900,7 @@
         messages = result.messages;
         hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
-        scrollToBottom();
+        scrollToBottom({ instant: true });
       }
     } catch (e) {
       console.warn('[lc-chatbot] Failed to sync session state:', e);
@@ -930,10 +930,17 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + sessionId, messages);
   }
 
-  async function scrollToBottom() {
+  async function scrollToBottom({ instant = false } = {}) {
     await tick();
-    if (messageListRef) {
-      messageListRef.scrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
+    if (!messageListRef) return;
+    const top = messageListRef.scrollHeight - messageListRef.clientHeight;
+    // .lc-chatbot-messages has scroll-behavior: smooth for in-conversation scrolling
+    // (new replies, etc). Arriving into a conversation that's already scrolled to the
+    // bottom should be instant, not an animated scroll the user has to watch play out.
+    if (instant) {
+      messageListRef.scrollTo({ top, behavior: 'instant' });
+    } else {
+      messageListRef.scrollTop = top;
     }
   }
 
