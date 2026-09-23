@@ -33,6 +33,9 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 
 DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
+# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service> (+repo).
+USER_AGENT = "Sefaria/library-assistant (+https://github.com/Sefaria/ai-chatbot)"
+
 
 def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
@@ -158,7 +161,9 @@ class SefariaClient:
             except Exception:
                 pass
 
-        self._client = httpx.AsyncClient(timeout=self.timeout)
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout, headers={"User-Agent": USER_AGENT}
+        )
         self._client_loop = loop
         return self._client
 
