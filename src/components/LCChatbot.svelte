@@ -1120,6 +1120,17 @@
     }
   }
 
+  function trackAppetizerOpen(topicSlug) {
+    const el = $host();
+    if (el) {
+      el.dispatchEvent(new CustomEvent('appetizer_click', {
+        detail: { topicSlug, sessionId },
+        bubbles: true,
+        composed: true
+      }));
+    }
+  }
+
   function handleAppetizerClick(topicSlug, topicUrl) {
     const onSefaria = isSefariaHostname(window.location.hostname);
 
@@ -1133,14 +1144,7 @@
       window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
     }
 
-    const el = $host();
-    if (el) {
-      el.dispatchEvent(new CustomEvent('appetizer_click', {
-        detail: { topicSlug, sessionId },
-        bubbles: true,
-        composed: true
-      }));
-    }
+    trackAppetizerOpen(topicSlug);
   }
 
   function getEmptyStateMessage() {
@@ -1382,7 +1386,7 @@
                 <Accordion kind="topics"
                   expanded={!!expandedSections[`${item.messageId}_topics`]}
                   onToggle={() => toggleSection(`${item.messageId}_topics`)}>
-                  <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
+                  <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} onTrackTopicOpen={trackAppetizerOpen} />
                 </Accordion>
               {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
@@ -1412,7 +1416,7 @@
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
-                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} onTrackTopicOpen={trackAppetizerOpen} />
               {/if}
               <div class="lc-thinking-block">
                 <div class="lc-thinking-step">
