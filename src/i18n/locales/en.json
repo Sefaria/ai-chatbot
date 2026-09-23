@@ -3,7 +3,6 @@
     "assistant.welcome.restart": "Let me know how I can help.",
     "assistant.welcome.newSession": "**Welcome back! I’m ready to help you explore the Library. You can try things like:**\n\n- Find me sources about gratitude\n- Help me understand this text\n- Translate this passage for me\n\n_Your feedback on responses is always appreciated._",
     "assistant.title": "Library Assistant",
-    "assistant.badge.ai": "AI",
     "assistant.header.close.tooltip": "Close",
     "assistant.header.dock.tooltip": "Maximize & move to sidebar",
     "assistant.header.undock.tooltip": "Minimize & detach from sidebar",
@@ -129,14 +128,10 @@
     "assistant.history.rename.aria": "Rename chat",
     "assistant.history.rename.done.aria": "Save changes",
     "assistant.history.delete.aria": "Delete chat",
+    "assistant.history.delete_modal.header": "Delete chat?",
     "assistant.history.delete_modal.text": "You can't undo this action.",
     "assistant.history.delete_modal.cancel": "Cancel",
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
-    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
-    "assistant.history.backfill.header": "Looking for older chats?",
-    "assistant.history.backfill.subheader": "We can try to recreate them for you.",
-    "assistant.history.backfill.opt_in": "Load my chats",
-    "assistant.history.backfill.opt_out": "No thanks",
-    "assistant.history.delete_modal.header": "Delete chat?"
+    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here."
 }

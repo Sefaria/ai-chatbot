@@ -19,6 +19,11 @@ class ChatSession(models.Model):
     message_count = models.IntegerField(default=0)
     turn_count = models.IntegerField(default=0)
 
+    title = models.CharField(max_length=64, blank=True, default="")
+    title_updated_at = models.DateTimeField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     # Legacy flow state (unused in v2 agent flow)
     current_flow = models.CharField(
         max_length=20,
@@ -269,6 +274,11 @@ class ChatMessage(models.Model):
     llm_calls = models.IntegerField(null=True, blank=True)
     tool_calls_count = models.IntegerField(null=True, blank=True)
     tool_calls_data = models.JSONField(null=True, blank=True)  # List of tool calls
+    appetizer_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Prompt-level topic appetizer metadata displayed in chat history",
+    )
     input_tokens = models.IntegerField(null=True, blank=True)
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_tokens = models.IntegerField(null=True, blank=True)

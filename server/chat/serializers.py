@@ -100,10 +100,29 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
     sessionId = serializers.CharField(source="session_id")
     userId = serializers.CharField(source="user_id")
     timestamp = serializers.DateTimeField(source="server_timestamp")
+    pageUrl = serializers.CharField(source="page_url")
+    responseMessageId = serializers.SerializerMethodField()
+    appetizerData = serializers.JSONField(source="appetizer_data")
+    toolCalls = serializers.JSONField(source="tool_calls_data")
 
     class Meta:
         model = ChatMessage
-        fields = ["messageId", "sessionId", "userId", "role", "content", "timestamp"]
+        fields = [
+            "messageId",
+            "sessionId",
+            "userId",
+            "role",
+            "content",
+            "timestamp",
+            "status",
+            "pageUrl",
+            "responseMessageId",
+            "appetizerData",
+            "toolCalls",
+        ]
+
+    def get_responseMessageId(self, obj):
+        return obj.response_message.message_id if obj.response_message else None
 
 
 class HistoryResponseSerializer(serializers.Serializer):

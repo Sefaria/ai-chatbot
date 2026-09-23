@@ -3,10 +3,20 @@
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
-  import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
-  import { tick } from 'svelte';
+  import {
+    sendMessageStream,
+    loadHistory,
+    fetchPromptDefaults,
+    sendFeedback,
+    loadConversationList,
+    loadConversation,
+    renameConversation,
+    deleteConversation
+  } from '../lib/api.js';
+  import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
+  import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -15,6 +25,9 @@
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
+  const HISTORY_PANEL_WIDTH = 220;
+  const HISTORY_PAGE_SIZE = 20;
+  const HISTORY_TITLE_MAX_LENGTH = 64;
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
@@ -49,12 +62,17 @@
     window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
   }
 
+  function trackAssistantClick(featureName) {
+    track('assistant_click', { feature_name: featureName });
+  }
+
   // State
   let mode = $state('floating');
   let isOpen = $state(false);
   let messages = $state([]);
   let inputText = $state('');
   let isSending = $state(false);
+  let sendingSessionIds = $state({});
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -108,6 +126,23 @@
 
   let turnCount = $state(0);
   let chatJustRestarted = $state(false);
+  let showHistoryPanel = $state(false);
+  let conversations = $state([]);
+  let conversationCache = $state({});
+  let conversationsOffset = $state(0);
+  let hasMoreConversations = $state(false);
+  let isLoadingConversations = $state(false);
+  let hasLoadedConversations = $state(false);
+  let historySearchOpen = $state(false);
+  let historySearchText = $state('');
+  let submittedHistorySearch = $state('');
+  let historyError = $state('');
+  let editingConversationId = $state(null);
+  let editingConversationTitle = $state('');
+  let deletingConversation = $state(null);
+  let activeHistoryMenuId = $state(null);
+  let historyMenuFlipUp = $state(false);
+  let canvasWidthBeforeHistoryPanel = $state(null);
 
   // maxPrompts and maxInputChars are set by admins in RemoteConfig but for security's sake, there are default absolute maximums
   // We want to use the minimum of the two values, thus allowing RemoteConfig to override the hardcoded defaults
@@ -115,6 +150,10 @@
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
+  let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
+  let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
+  let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
+  let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
 
   // Menu state
   let showMenu = $state(false);
@@ -234,11 +273,17 @@
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
     if (sessionId && apiBaseUrl && isOpen) {
-      if (chatJustRestarted) {
+      if (untrack(() => chatJustRestarted)) {
         chatJustRestarted = false;
         return;
       }
       syncSessionState();
+    }
+  });
+
+  $effect(() => {
+    if (showHistoryPanel && !hasLoadedConversations && !isLoadingConversations) {
+      loadConversationPage({ reset: true });
     }
   });
 
@@ -468,8 +513,6 @@
   }
 
   function handleNewChat() {
-    if (isSending) return;
-
     const { sessionId: newSessionId } = getOrCreateSession(true);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
@@ -483,6 +526,302 @@
 
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
     setStorage(STORAGE_KEYS.MESSAGES + ':' + newSessionId, []);
+  }
+
+  function getDefaultConversationTitle(content) {
+    return clampHistoryTitle(content);
+  }
+
+  function upsertConversationSummary(summary) {
+    const normalized = {
+      sessionId: summary.sessionId,
+      title: summary.title || '',
+      createdAt: summary.createdAt || summary.lastActivity || new Date().toISOString(),
+      lastActivity: summary.lastActivity || new Date().toISOString(),
+      messageCount: summary.messageCount ?? 0,
+      turnCount: summary.turnCount ?? 0
+    };
+    const withoutCurrent = conversations.filter(item => item.sessionId !== normalized.sessionId);
+    conversations = [normalized, ...withoutCurrent].sort((a, b) => {
+      return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
+    });
+  }
+
+  function setSessionSending(targetSessionId, value) {
+    if (value) {
+      sendingSessionIds = { ...sendingSessionIds, [targetSessionId]: true };
+      return;
+    }
+    const { [targetSessionId]: _done, ...rest } = sendingSessionIds;
+    sendingSessionIds = rest;
+  }
+
+  function getHistorySearchMinChars(query) {
+    return /[\u0590-\u05FF]/.test(query || '') ? 2 : 3;
+  }
+
+  function formatConversationDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const now = new Date();
+    const options = { month: 'short', day: 'numeric' };
+    if (date.getFullYear() !== now.getFullYear()) {
+      options.year = 'numeric';
+    }
+    return new Intl.DateTimeFormat(interfaceLang === 'he' ? 'he' : 'en', options).format(date);
+  }
+
+  function formatMessageTimestamp(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(interfaceLang === 'he' ? 'he' : 'en', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date);
+  }
+
+  function clampHistoryTitle(title) {
+    return String(title || '').trim().slice(0, HISTORY_TITLE_MAX_LENGTH);
+  }
+
+  function openHistoryPanel() {
+    canvasWidthBeforeHistoryPanel = panelWidth;
+    panelWidth = Math.min(panelWidth, MAX_WIDTH - HISTORY_PANEL_WIDTH);
+    showHistoryPanel = true;
+    track('assistant_click', { feature_name: 'chat_history_toggle' });
+  }
+
+  function closeHistoryPanel(featureName = 'chat_history_minimize') {
+    showHistoryPanel = false;
+    if (canvasWidthBeforeHistoryPanel != null) {
+      panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, MAX_WIDTH));
+      canvasWidthBeforeHistoryPanel = null;
+    }
+    resetHistorySearchState();
+    editingConversationId = null;
+    activeHistoryMenuId = null;
+    track('assistant_click', { feature_name: featureName });
+  }
+
+  function resetHistorySearchState() {
+    historySearchOpen = false;
+    historySearchText = '';
+    submittedHistorySearch = '';
+    hasLoadedConversations = false;
+  }
+
+  async function toggleHistorySearch() {
+    if (historySearchOpen) {
+      historySearchOpen = false;
+      if (historySearchText || submittedHistorySearch) {
+        await clearHistorySearch();
+      }
+      return;
+    }
+    historySearchOpen = true;
+  }
+
+  async function loadConversationPage({ reset = false, search = submittedHistorySearch } = {}) {
+    if (!apiBaseUrl || !userId || isLoadingConversations) return;
+    if (!reset && !hasMoreConversations) return;
+
+    const offset = reset ? 0 : conversationsOffset;
+    if (reset) {
+      hasLoadedConversations = false;
+    }
+    isLoadingConversations = true;
+    historyError = '';
+    try {
+      const data = await loadConversationList(apiBaseUrl, userId, {
+        limit: HISTORY_PAGE_SIZE,
+        offset,
+        search
+      });
+      const nextConversations = data.conversations || [];
+      conversations = reset ? nextConversations : [...conversations, ...nextConversations];
+      conversationsOffset = offset + nextConversations.length;
+      hasMoreConversations = data.hasMore ?? false;
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to load conversations:', e);
+      historyError = '';
+    } finally {
+      hasLoadedConversations = true;
+      isLoadingConversations = false;
+    }
+  }
+
+  function handleConversationScroll(e) {
+    const el = e.target;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom && hasMoreConversations && !isLoadingConversations) {
+      loadConversationPage();
+    }
+  }
+
+  async function submitHistorySearch(source = 'enter_click') {
+    const query = historySearchText.trim();
+    if (query && query.length < getHistorySearchMinChars(query)) return;
+    track('assistant_search_submitted', { source, search_text: query });
+    submittedHistorySearch = query;
+    await loadConversationPage({ reset: true, search: query });
+  }
+
+  async function clearHistorySearch() {
+    historySearchText = '';
+    submittedHistorySearch = '';
+    await loadConversationPage({ reset: true, search: '' });
+  }
+
+  async function handleHistorySearchInput(e) {
+    historySearchText = e.currentTarget.value;
+    if (!historySearchText.trim() && submittedHistorySearch) {
+      await clearHistorySearch();
+    }
+  }
+
+  /** Svelte action: focus the input and place the cursor/scroll at the end of its text. */
+  function focusEnd(node) {
+    node.focus();
+    const end = node.value.length;
+    node.setSelectionRange(end, end);
+  }
+
+  function startRenameConversation(conversation) {
+    activeHistoryMenuId = null;
+    editingConversationId = conversation.sessionId;
+    editingConversationTitle = conversation.title || '';
+  }
+
+  function cancelRenameConversation() {
+    editingConversationId = null;
+    editingConversationTitle = '';
+  }
+
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+
+  function toggleHistoryRowMenu(conversation, event) {
+    event?.stopPropagation();
+    const isActive = activeHistoryMenuId === conversation.sessionId;
+    activeHistoryMenuId = isActive ? null : conversation.sessionId;
+    if (isActive) {
+      // Closing via re-clicking the trigger — the button keeps native focus
+      // otherwise, which would keep the kebab visible via :focus-within even
+      // after the mouse moves off the row.
+      event?.currentTarget?.blur?.();
+      return;
+    }
+    const trigger = event?.currentTarget;
+    const panel = trigger?.closest('.chat-history-panel');
+    const spaceBelow = panel && trigger
+      ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
+      : Infinity;
+    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+  }
+
+  async function commitRenameConversation(conversation) {
+    const title = clampHistoryTitle(editingConversationTitle);
+    if (!title || title === conversation.title) {
+      cancelRenameConversation();
+      return;
+    }
+    try {
+      const data = await renameConversation(apiBaseUrl, userId, conversation.sessionId, title);
+      const updated = data.conversation || { ...conversation, title };
+      conversations = conversations.map(item => item.sessionId === conversation.sessionId ? updated : item);
+      if (conversationCache[conversation.sessionId]) {
+        conversationCache = {
+          ...conversationCache,
+          [conversation.sessionId]: {
+            ...conversationCache[conversation.sessionId],
+            conversation: updated
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to rename conversation:', e);
+      historyError = '';
+    } finally {
+      cancelRenameConversation();
+    }
+  }
+
+  async function confirmDeleteConversation() {
+    if (!deletingConversation) return;
+    const deletedId = deletingConversation.sessionId;
+    try {
+      await deleteConversation(apiBaseUrl, userId, deletedId);
+      conversations = conversations.filter(item => item.sessionId !== deletedId);
+      const { [deletedId]: _deleted, ...rest } = conversationCache;
+      conversationCache = rest;
+      if (sessionId === deletedId) {
+        // Not a first-time user just because their active chat was deleted —
+        // show the "welcome back" copy, not the brand-new-user welcome screen.
+        isRestarted = true;
+        handleNewChat();
+      }
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to delete conversation:', e);
+      historyError = '';
+    } finally {
+      deletingConversation = null;
+    }
+  }
+
+  async function pageUrlToLocationRef(pageUrl) {
+    if (!pageUrl) return null;
+    return await parseSefariaRef(pageUrl);
+  }
+
+  async function historyMessagesToUiMessages(historyMessages) {
+    return await Promise.all((historyMessages || []).map(async item => ({
+      messageId: item.messageId,
+      sessionId: item.sessionId,
+      userId: item.userId,
+      role: item.role,
+      content: item.content || '',
+      timestamp: item.timestamp,
+      status: item.status || 'sent',
+      feedback: null,
+      traceId: null,
+      toolCalls: item.toolCalls || null,
+      appetizerData: item.appetizerData || null,
+      locationRef: item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null,
+      noEntryAnimation: true
+    })));
+  }
+
+  async function openConversation(conversation) {
+    if (!conversation?.sessionId) return;
+    activeHistoryMenuId = null;
+    editingConversationId = null;
+    resetScroll();
+
+    let payload = conversationCache[conversation.sessionId];
+    if (!payload) {
+      isLoadingHistory = true;
+      try {
+        payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
+        conversationCache = { ...conversationCache, [conversation.sessionId]: payload };
+      } catch (e) {
+        console.warn('[lc-chatbot] Failed to load conversation:', e);
+        historyError = '';
+        isLoadingHistory = false;
+        return;
+      }
+    }
+
+    chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
+    sessionId = conversation.sessionId;
+    messages = await historyMessagesToUiMessages(payload.messages);
+    turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
+    hasMoreHistory = false;
+    isLoadingHistory = false;
+    isRestarted = false;
+    isNewSession = false;
+    saveMessagesToStorage();
+    await scrollToBottom({ instant: true });
   }
 
   async function openSettings() {
@@ -559,10 +898,10 @@
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
-        messages = result.messages;
+        messages = result.messages.map(m => ({ ...m, noEntryAnimation: true }));
         hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
-        scrollToBottom();
+        scrollToBottom({ instant: true });
       }
     } catch (e) {
       console.warn('[lc-chatbot] Failed to sync session state:', e);
@@ -578,7 +917,7 @@
     isLoadingHistory = true;
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
-      messages = [...result.messages, ...messages];
+      messages = [...result.messages.map(m => ({ ...m, noEntryAnimation: true })), ...messages];
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
     } catch (e) {
@@ -592,10 +931,17 @@
     setStorage(STORAGE_KEYS.MESSAGES + ':' + sessionId, messages);
   }
 
-  async function scrollToBottom() {
+  async function scrollToBottom({ instant = false } = {}) {
     await tick();
-    if (messageListRef) {
-      messageListRef.scrollTop = messageListRef.scrollHeight - messageListRef.clientHeight;
+    if (!messageListRef) return;
+    const top = messageListRef.scrollHeight - messageListRef.clientHeight;
+    // .lc-chatbot-messages has scroll-behavior: smooth for in-conversation scrolling
+    // (new replies, etc). Arriving into a conversation that's already scrolled to the
+    // bottom should be instant, not an animated scroll the user has to watch play out.
+    if (instant) {
+      messageListRef.scrollTo({ top, behavior: 'instant' });
+    } else {
+      messageListRef.scrollTop = top;
     }
   }
 
@@ -658,8 +1004,9 @@
   async function handleSend() {
     const text = inputText.trim();
     const isConfigured = userId && apiBaseUrl;
-    const isReadyToSend = text && !isSending && !limitReached;
+    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
+    const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
     resetScroll();
     track('assistant_message_sent', { length: text.length });
@@ -671,7 +1018,7 @@
     const locationRef = await parseSefariaRef(window.location.href);
     const userMessage = {
       messageId: generateMessageId(),
-      sessionId,
+      sessionId: sendingSessionId,
       userId,
       role: 'user',
       content: text,
@@ -684,15 +1031,34 @@
     saveMessagesToStorage();
     scrollToBottom();
 
-    isSending = true;
+    setSessionSending(sendingSessionId, true);
+    isSending = Object.keys(sendingSessionIds).length > 0;
 
     appetizerData = null;
     startThinkingMessages();
-    updateSessionActivity(sessionId);
+    updateSessionActivity(sendingSessionId);
+
+    const provisionalConversation = {
+      sessionId: sendingSessionId,
+      title: getDefaultConversationTitle(text),
+      createdAt: userMessage.timestamp,
+      lastActivity: userMessage.timestamp,
+      messageCount: messages.length,
+      turnCount: turnCount || 0
+    };
+    upsertConversationSummary(provisionalConversation);
+    conversationCache = {
+      ...conversationCache,
+      [sendingSessionId]: {
+        conversation: provisionalConversation,
+        messages: [...messages]
+      }
+    };
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
+      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
+          if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
             // Dump the full served sentence (frame + topic titles) into `text` so
@@ -722,9 +1088,12 @@
         timestamp: userMessage.timestamp
       }, interfaceLang);
 
-      // Update user message status
-      messages = messages.map(m => 
-        m.messageId === userMessage.messageId 
+      const cachedPayload = conversationCache[sendingSessionId];
+      const baseMessages = sessionId === sendingSessionId
+        ? messages
+        : (cachedPayload?.messages || [userMessage]);
+      const sentMessages = baseMessages.map(m =>
+        m.messageId === userMessage.messageId
           ? { ...m, status: 'sent' }
           : m
       );
@@ -745,9 +1114,33 @@
         appetizerData: appetizerData ? {...appetizerData} : null
       };
 
-      messages = [...messages, assistantMessage];
-      saveMessagesToStorage();
-      scrollToResponseStart();
+      const completedMessages = [...sentMessages, assistantMessage];
+      if (sessionId === sendingSessionId) {
+        messages = completedMessages;
+        saveMessagesToStorage();
+        scrollToResponseStart();
+      } else {
+        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, completedMessages);
+      }
+      const completedConversation = {
+        ...(cachedPayload?.conversation || provisionalConversation),
+        sessionId: sendingSessionId,
+        title: (cachedPayload?.conversation?.title || provisionalConversation.title || completedMessages.find(m => m.role === 'user')?.content?.slice(0, HISTORY_TITLE_MAX_LENGTH) || ''),
+        lastActivity: assistantMessage.timestamp,
+        turnCount: (cachedPayload?.conversation?.turnCount || turnCount || 0) + 1,
+        messageCount: completedMessages.length
+      };
+      conversationCache = {
+        ...conversationCache,
+        [sendingSessionId]: {
+          conversation: completedConversation,
+          messages: completedMessages
+        }
+      };
+      upsertConversationSummary(completedConversation);
+      if (showHistoryPanel) {
+        loadConversationPage({ reset: true });
+      }
 
       // Update turn count from server response
       if (response.session) {
@@ -763,7 +1156,7 @@
 
       dispatchEvent('message_sent', {
         messageId: userMessage.messageId,
-        sessionId,
+        sessionId: sendingSessionId,
         toolCalls: response.toolCalls,
         stats: response.stats
       });
@@ -772,12 +1165,28 @@
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
-      messages = messages.map(m =>
+      const cachedPayload = conversationCache[sendingSessionId];
+      const baseMessages = sessionId === sendingSessionId
+        ? messages
+        : (cachedPayload?.messages || [userMessage]);
+      const failedMessages = baseMessages.map(m =>
         m.messageId === userMessage.messageId
           ? { ...m, status: STATUS_FAILED }
           : m
       );
-      saveMessagesToStorage();
+      if (sessionId === sendingSessionId) {
+        messages = failedMessages;
+        saveMessagesToStorage();
+      } else {
+        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, failedMessages);
+      }
+      conversationCache = {
+        ...conversationCache,
+        [sendingSessionId]: {
+          conversation: cachedPayload?.conversation || provisionalConversation,
+          messages: failedMessages
+        }
+      };
 
       dispatchEvent('error', {
         type: 'send_failed',
@@ -785,8 +1194,12 @@
         error: e.message
       });
     } finally {
-      isSending = false;
-      stopThinkingMessages();
+      setSessionSending(sendingSessionId, false);
+      isSending = Object.keys(sendingSessionIds).length > 0;
+      if (sessionId === sendingSessionId) {
+        stopThinkingMessages();
+        appetizerData = null;
+      }
     }
   }
 
@@ -854,11 +1267,11 @@
   // Genuine user-scroll intent is detected via explicit input events (wheel/touch)
   // rather than scroll-position drift, which programmatic smooth scrolls trip falsely.
   function handleWheel() {
-    if (isSending) autoScrollEnabled = false;
+    if (isCurrentSessionSending) autoScrollEnabled = false;
   }
 
   function handleTouchMove() {
-    if (isSending) autoScrollEnabled = false;
+    if (isCurrentSessionSending) autoScrollEnabled = false;
   }
 
   async function retryMessage(messageId) {
@@ -897,7 +1310,8 @@
 
       if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
-        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, MAX_WIDTH));
+        const maxWidth = showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH;
+        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
       }
 
       if (allowVertical) {
@@ -991,6 +1405,34 @@
     };
   });
 
+  // Close a chat history row's kebab menu on an outside click, and blur its
+  // trigger so :focus-within stops keeping the kebab icon visible once the
+  // mouse moves off the row.
+  $effect(() => {
+    if (!activeHistoryMenuId) return;
+
+    function handleClickOutsideRowMenu(e) {
+      const insideMenu = e.composedPath().some(
+        el => el instanceof Element && el.classList?.contains('history-row-menu')
+      );
+      if (!insideMenu) {
+        activeHistoryMenuId = null;
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutsideRowMenu);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutsideRowMenu);
+    };
+  });
+
   function handleRestartConvo() {
     closeMenu();
     isRestarted = true;
@@ -1063,33 +1505,56 @@
     if (!tref) {
       return null;
     }
+    let originalUrl = href;
+    try {
+      originalUrl = new URL(href, sefariaBase()).href;
+    } catch {
+      originalUrl = `${sefariaBase()}/${refToUrlPath(tref) || tref}`;
+    }
     const refData = await fetchRefData(tref);
     if (refData && refData.is_ref) {
       const label = (interfaceLang === 'he' && refData.hebrew) ? refData.hebrew : refData.normalized;
-      return { label, url: `${sefariaBase()}/${refData.url_ref}` };
+      return { label, url: originalUrl };
     }
     // Fallback (feature: location pin) — /api/ref unavailable: derive URL+label from the tref.
     const fallbackPath = refToUrlPath(tref);
     if (!fallbackPath) {
       return null;
     }
-    return { label: refLabelFromTref(tref), url: `${sefariaBase()}/${fallbackPath}` };
+    return { label: refLabelFromTref(tref), url: originalUrl };
+  }
+
+  function findRefLikeString(value) {
+    const decoded = decodeURIComponent(String(value || ''));
+    const matches = decoded.match(/[A-Za-z][A-Za-z0-9_'’\-]*(?:_[A-Za-z0-9_'’\-]+)*\.\d[\w.:\-–]*/g) || [];
+    return matches.find(match => !/^(v|version|lang)\./i.test(match)) || null;
   }
 
   function extractCandidateTref(href) {
     let url;
     try {
-      url = new URL(href);
+      url = new URL(href, sefariaBase());
     } catch {
       return null;
     }
     if (!isSefariaHostname(url.hostname)) {
       return null;
     }
-    const path = decodeURIComponent(url.pathname).replace(/^\//, '');
+    const path = decodeURIComponent(url.pathname).replace(/^\//, '').replace(/\/$/, '');
+    const routeOnly = /^(texts|topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)$/i;
     const skip = /^(topics|sheets|search|profile|collections|groups|community|static|api|questions|calendars|donate|account|login|register)\//i;
     if (!path || skip.test(path)) {
       return null;
+    }
+    if (/^texts\//i.test(path)) {
+      const refLikeSegment = path
+        .split('/')
+        .reverse()
+        .find(segment => /\.\d/.test(segment));
+      return refLikeSegment || findRefLikeString(`${url.search} ${url.hash}`);
+    }
+    if (routeOnly.test(path)) {
+      return findRefLikeString(`${url.search} ${url.hash}`);
     }
     return path;
   }
@@ -1170,7 +1635,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {panelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1193,24 +1658,34 @@
       <div class="resize-handle resize-sw" onmousedown={(e) => startResize('sw', e)}></div>
 
       <!-- Header -->
+      <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
       <header class="lc-chatbot-header" role="banner">
         <div class="header-left">
-          <h2>{$_('assistant.title')} {#if testingVersion}(V{testingVersion}){/if}
-          <img src="{staticIconsBaseUrl}/AI.svg" alt={$_('assistant.badge.ai')} />
+          <h2>
+            <span class="header-sparkle" aria-hidden="true">✦</span>
+            <span class="header-title-text">{$_('assistant.title')}{#if testingVersion} (V{testingVersion}){/if}</span>
           </h2>
         </div>
         <div class="header-actions">
+          <HeaderButton
+            className="history-btn"
+            title={$_('assistant.header.history.tooltip')}
+            onClick={(e) => { e.stopPropagation(); showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
+            aria-expanded={showHistoryPanel}
+            data-feature-name="chat_history_toggle"
+          >
+            <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
+          </HeaderButton>
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
           >
             <img
-              class:panel-close-icon={mode === 'floating'}
-              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg"
+              src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg"
               alt=""
-              width={mode === 'floating' ? 16 : 18}
-              height={mode === 'floating' ? 16 : 18}
+              width="18"
+              height="18"
             />
           </HeaderButton>
           <div class="menu-container" bind:this={menuContainer}>
@@ -1228,16 +1703,16 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} onclick={handleRestartConvo} disabled={isSending} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/rotate-ccw.svg" alt="" width="16" height="16" />
-                  {$_('assistant.menu.restart')}
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
+                  {$_('assistant.history.header.new.tooltip')}
                 </button>
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'panel-right-close' : 'picture-in-picture-2'}.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
-                  {@html FEEDBACK_ICON}
+                  <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
                 </a>
 <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
@@ -1252,14 +1727,160 @@
             {/if}
           </div>
           <HeaderButton className="close-btn" onClick={closePanel} title={$_('assistant.header.close.tooltip')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+            <img src="{staticIconsBaseUrl}/minus.svg" alt="" width="18" height="18" />
           </HeaderButton>
         </div>
       </header>
 
+      <div class="lc-chatbot-body" class:with-history={showHistoryPanel}>
+      {#if showHistoryPanel}
+        <aside class="chat-history-panel" aria-label={$_('assistant.header.history.aria')}>
+          <div class="history-toolbar">
+            <div class="history-toolbar-group">
+              <Tooltip text={$_('assistant.history.header.new.tooltip')}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0}>
+                  <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
+              <Tooltip text={$_(historySearchOpen ? 'assistant.history.header.search_close.tooltip' : 'assistant.history.header.search_open.tooltip')}>
+                <button
+                  class="history-icon-btn"
+                  type="button"
+                  aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
+                  data-feature-name="chat_history_search"
+                  onclick={toggleHistorySearch}
+                  disabled={!historySearchOpen && conversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
+                >
+                  <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
+            </div>
+            <Tooltip text={$_('assistant.history.header.close.tooltip')}>
+              <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.close.aria')} data-feature-name="chat_history_minimize" onclick={(e) => { e.stopPropagation(); closeHistoryPanel(); }}>
+                <img src="{staticIconsBaseUrl}/x.svg" alt="" width="18" height="18" />
+              </button>
+            </Tooltip>
+          </div>
+
+          {#if historySearchOpen}
+            <form class="history-search" onsubmit={(e) => { e.preventDefault(); submitHistorySearch('enter_click'); }}>
+              <input
+                type="search"
+                bind:value={historySearchText}
+                aria-label={$_('assistant.history.header.search_open.aria')}
+                placeholder={$_('assistant.history.search.placeholder')}
+                oninput={handleHistorySearchInput}
+              />
+              <Tooltip text={$_(submittedHistorySearch ? 'assistant.history.search_clear.tooltip' : 'assistant.history.search_submit.tooltip')}>
+                <button
+                  type="button"
+                  class="history-search-submit"
+                  class:is-clear={!!submittedHistorySearch}
+                  aria-label={$_(submittedHistorySearch ? 'assistant.history.search_clear.aria' : 'assistant.history.search_submit.aria')}
+                  data-feature-name={submittedHistorySearch ? 'chat_history_search_clear' : 'chat_history_search_submit'}
+                  disabled={!submittedHistorySearch && !historySearchReady}
+                  onclick={(e) => { e.stopPropagation(); if (submittedHistorySearch) { clearHistorySearch(); } else { submitHistorySearch('search_icon_click'); } }}
+                >
+                  <img src="{staticIconsBaseUrl}/{submittedHistorySearch ? 'x' : 'search'}.svg" alt="" width="18" height="18" />
+                </button>
+              </Tooltip>
+            </form>
+          {/if}
+
+          {#if historyError}
+            <p class="history-error">{historyError}</p>
+          {/if}
+
+          <div class="history-list-wrap">
+          <div class="history-list" onscroll={handleConversationScroll}>
+            {#if conversations.length === 0 && isLoadingConversations}
+              <div class="history-loading">{$_('assistant.history.search.loading')}</div>
+            {:else if conversations.length === 0}
+              <div class="history-empty">
+                {#if submittedHistorySearch}
+                  <span class="history-empty-icon" aria-hidden="true">
+                    <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
+                  </span>
+                  <p>{$_('assistant.history.search.empty')}</p>
+                {:else}
+                  <span class="history-empty-icon" aria-hidden="true">
+                    <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
+                  </span>
+                  <strong>{$_('assistant.history.list.empty.header')}</strong>
+                  <p>{$_('assistant.history.list.empty.subheader')}</p>
+                {/if}
+              </div>
+            {/if}
+
+            {#each conversations as conversation (conversation.sessionId)}
+              <div class="history-row-wrap">
+                {#if editingConversationId === conversation.sessionId}
+                  <form class="history-rename-form" onsubmit={(e) => { e.preventDefault(); commitRenameConversation(conversation); }}>
+                    <input
+                      type="text"
+                      maxlength={HISTORY_TITLE_MAX_LENGTH}
+                      bind:value={editingConversationTitle}
+                      aria-label={$_('assistant.history.rename.aria')}
+                      onkeydown={(e) => { if (e.key === 'Escape') cancelRenameConversation(); }}
+                      onblur={() => commitRenameConversation(conversation)}
+                      use:focusEnd
+                    />
+                    <button type="submit" aria-label={$_('assistant.history.rename.done.aria')} data-feature-name="rename_saved">
+                      <img src="{staticIconsBaseUrl}/check.svg" alt="" width="14" height="14" />
+                    </button>
+                  </form>
+                {:else}
+                  <button
+                    type="button"
+                    class="history-row"
+                    class:active={conversation.sessionId === sessionId}
+                    data-feature-name="open_old_chat"
+                    onclick={() => openConversation(conversation)}
+                  >
+                    <Tooltip text={conversation.title}>
+                      <span class="history-row-title">{conversation.title}</span>
+                    </Tooltip>
+                    <span class="history-row-date">{formatConversationDate(conversation.lastActivity)}</span>
+                  </button>
+                  <div class="history-row-menu">
+                    <button
+                      type="button"
+                      class="history-row-menu-trigger"
+                      aria-label={$_('assistant.history.more.aria')}
+                      aria-expanded={activeHistoryMenuId === conversation.sessionId}
+                      onclick={(e) => toggleHistoryRowMenu(conversation, e)}
+                    >
+                      <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="12" height="12" />
+                    </button>
+                    {#if activeHistoryMenuId === conversation.sessionId}
+                      <div class="history-row-dropdown" class:flip-up={historyMenuFlipUp} role="menu">
+                        <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
+                          <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
+                          <span>{$_('assistant.history.menu.rename')}</span>
+                        </button>
+                        <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; deletingConversation = conversation; }}>
+                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="14" height="14" />
+                          <span>{$_('assistant.history.menu.delete')}</span>
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+
+            {#if conversations.length > 0 && isLoadingConversations}
+              <div class="history-loading inline">{$_('assistant.history.search.loading')}</div>
+            {/if}
+          </div>
+          {#if conversations.length > 0}
+            <div class="history-list-fade" aria-hidden="true"></div>
+          {/if}
+          </div>
+        </aside>
+      {/if}
+
+      <section class="lc-chatbot-canvas">
       {#if showSettings}
         <div class="settings-panel">
           <div class="settings-header">
@@ -1323,7 +1944,7 @@
         aria-live="polite"
       >
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
-          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED}>
+          <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED} class:no-entry-animation={feedbackProps?.noEntryAnimation}>
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
@@ -1388,7 +2009,7 @@
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
           {:else}
-            <div class="message user">
+            <div class="message user" class:no-entry-animation={item.noEntryAnimation}>
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
@@ -1398,6 +2019,7 @@
                     {$_('assistant.messages.retry')}
                   </button>
                 {/if}
+                <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
               </div>
               {#if item.locationRef}
                 <div class="message-location-tag">
@@ -1408,7 +2030,7 @@
           {/if}
         {/each}
 
-        {#if isSending}
+        {#if isCurrentSessionSending}
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
@@ -1450,12 +2072,12 @@
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          disabled={isSending || limitReached}
+          disabled={isCurrentSessionSending || limitReached}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isSending || limitReached}
+          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1465,6 +2087,9 @@
         </button>
       </footer>
       {/if}
+      </section>
+      </div>
+      </div>
 
       <!-- Feedback Modal -->
       {#if showFeedbackModal}
@@ -1505,6 +2130,24 @@
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
                 {$_('assistant.feedback.modal.skip')}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      {#if deletingConversation}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay delete-modal-overlay" onclick={() => { deletingConversation = null; }}>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="feedback-modal delete-modal" onclick={(e) => e.stopPropagation()}>
+            <h3 class="feedback-modal-title">{$_('assistant.history.delete_modal.header')}</h3>
+            <p class="delete-modal-subtext">{$_('assistant.history.delete_modal.text')}</p>
+            <div class="feedback-modal-actions">
+              <button class="feedback-modal-btn submit danger" onclick={(e) => { e.stopPropagation(); trackAssistantClick('delete_chat_confirmed'); confirmDeleteConversation(); }}>
+                {$_('assistant.history.delete_modal.delete')}
+              </button>
+              <button class="feedback-modal-btn skip" onclick={(e) => { e.stopPropagation(); trackAssistantClick('delete_chat_cancelled'); deletingConversation = null; }}>
+                {$_('assistant.history.delete_modal.cancel')}
               </button>
             </div>
           </div>
@@ -1575,6 +2218,8 @@
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
+    --lc-danger: #C03522;
+    --lc-danger-hover: #A02C1C;
 
     display: block;
     font-family: var(--lc-font);
@@ -1631,7 +2276,7 @@
     border-radius: 12px;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
     margin-inline-start: 10px;
-    margin-inline-end: 42px;
+    margin-inline-end: 10px;
     margin-bottom: 0;
   }
 
@@ -1710,6 +2355,454 @@
     user-select: none;
   }
 
+  .lc-chatbot-body {
+    display: flex;
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    background: var(--lc-body-bg);
+  }
+
+  .interface-hebrew .lc-chatbot-body {
+    direction: ltr;
+  }
+
+  .lc-chatbot-canvas {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .interface-hebrew .lc-chatbot-canvas,
+  .interface-hebrew .chat-history-panel {
+    direction: rtl;
+  }
+
+  .chat-history-panel {
+    display: flex;
+    flex: 0 0 220px;
+    width: 220px;
+    min-width: 220px;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--lc-bg-secondary);
+    border-inline-end: 1px solid var(--lc-border);
+    order: 0;
+  }
+
+  .interface-hebrew .chat-history-panel {
+    order: 2;
+    /* .lc-chatbot-body stays LTR in Hebrew — `order` alone flips the panel to the
+       visual right, so the divider facing the canvas is the panel's PHYSICAL left
+       edge, not its logical inline-start (which follows this panel's own
+       direction:rtl and would resolve to the physical right instead). */
+    border-inline-start: 0;
+    border-inline-end: 0;
+    border-left: 1px solid var(--lc-border);
+  }
+
+  .history-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    height: 40px;
+    min-height: 40px;
+    padding-block: 8px;
+    padding-inline: 10px 4px;
+  }
+
+  .history-toolbar-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .history-icon-btn,
+  .history-row-menu-trigger,
+  .history-row-dropdown button,
+  .history-rename-form button,
+  .history-search-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--lc-icon-primary);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .history-icon-btn img,
+  .history-row-menu-trigger img,
+  .history-row-dropdown img,
+  .history-rename-form img,
+  .history-search-submit img,
+  .header-actions img,
+  .menu-item img {
+    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+  }
+
+  /* trash-2-danger.svg is pre-colored red; the shared gray filter above would flatten it back to gray */
+  .history-row-dropdown button.danger img {
+    filter: none;
+  }
+
+  .history-icon-btn {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border-radius: 6px;
+  }
+
+  /* Matches the LA's existing icon-hover convention (see HeaderButton.svelte's
+     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma.
+     The search bar's icon (search glyph or its clear/X state) never gets a
+     hover treatment in either state — see .history-search-submit below. */
+  .history-icon-btn:hover:not(:disabled),
+  .history-row-dropdown button:hover,
+  .history-rename-form button:hover {
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text);
+  }
+
+  .history-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .history-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: calc(100% - 24px);
+    height: 35px;
+    margin: 4px 12px 12px;
+    padding: 10px 8px 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: 8px;
+    background: var(--lc-bg);
+    overflow: hidden;
+  }
+
+  .history-search input,
+  .history-rename-form input {
+    min-width: 0;
+    width: 100%;
+    border: 1px solid var(--lc-border);
+    border-radius: 6px;
+    color: var(--lc-text);
+    background: var(--lc-bg);
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+
+  .history-search input {
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    font-size: 14px;
+    line-height: 18px;
+  }
+
+  /* Our own icon button replaces the native clear affordance (item 16a) */
+  .history-search input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+  }
+
+  .history-search input:focus,
+  .history-rename-form input:focus {
+    border-color: var(--brand-sefaria-blue);
+  }
+
+  .history-search-submit {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+  }
+
+  .history-search-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .history-list-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--lc-border);
+  }
+
+  .history-list {
+    /* Same scrollbar treatment as .lc-chatbot-messages: no custom styling,
+       plain browser default. A custom-styled (narrower) scrollbar gutter is
+       reserved by the browser independent of the visible thumb's own width,
+       so row content can claim to extend into it via CSS width tricks but
+       still gets clipped by the scrollport at the true reserved boundary —
+       trying to make row backgrounds reach the edge fought that clipping
+       and lost. Matching the messages area sidesteps the problem instead. */
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0;
+  }
+
+  .history-list-fade {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-end: 0;
+    width: 100%;
+    height: 43px;
+    background: linear-gradient(to top, rgba(250, 250, 250, 0.7), rgba(250, 250, 250, 0.2));
+    pointer-events: none;
+  }
+
+  .history-row-wrap {
+    position: relative;
+    min-width: 0;
+  }
+
+  .history-row {
+    width: 100%;
+    height: 53px;
+    min-height: 53px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding-block: 4px;
+    padding-inline: 12px 6px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--lc-text);
+    cursor: pointer;
+    font-family: var(--lc-font);
+    text-align: start;
+    transition: padding 0.1s ease;
+  }
+
+  /* Only reserve room for the row-menu trigger once it's actually visible,
+     so titles can use the full row width the rest of the time. */
+  .history-row-wrap:hover .history-row,
+  .history-row-wrap:has(.history-row-menu-trigger[aria-expanded="true"]) .history-row {
+    padding-inline-end: 26px;
+  }
+
+  .history-row:hover:not(:disabled) {
+    background: #f0f7ff;
+  }
+
+  .history-row.active {
+    background: #ddeeff;
+  }
+
+  /* Active + hover keeps the active background — only the kebab menu's own
+     hover-visibility (handled elsewhere) changes on hover while active. */
+  .history-row.active:hover:not(:disabled) {
+    background: #ddeeff;
+  }
+
+  .history-row:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .history-row-title {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+    color: var(--lc-text-secondary);
+    padding: 3px 4px;
+  }
+
+  .history-row.active .history-row-title {
+    color: #121212;
+  }
+
+  /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
+     overrides the Heebo inherited from .lc-chatbot-container.interface-hebrew */
+  .interface-hebrew .history-row-title {
+    font-family: Heebo, Arial, sans-serif;
+    font-weight: 700;
+  }
+
+  .history-row-date {
+    color: #999;
+    font-size: 12px;
+    line-height: 20px;
+    white-space: nowrap;
+    padding-inline-start: 4px;
+  }
+
+  .history-row.active .history-row-date {
+    color: var(--lc-text-secondary);
+  }
+
+  .history-row-menu {
+    position: absolute;
+    inset-block-start: 10px;
+    inset-inline-end: 7px;
+    display: flex;
+    align-items: center;
+    z-index: 3;
+  }
+
+  .history-row-menu-trigger {
+    width: 18px;
+    height: 18px;
+    opacity: 0;
+    color: var(--lc-icon-primary);
+  }
+
+  .history-row-wrap:hover .history-row-menu-trigger,
+  .history-row-menu:focus-within .history-row-menu-trigger,
+  .history-row-menu-trigger[aria-expanded="true"] {
+    opacity: 1;
+  }
+
+  .history-row-dropdown {
+    position: absolute;
+    inset-block-start: 24px;
+    inset-inline-end: 0;
+    width: 110px;
+    background: var(--lc-bg);
+    border: 1px solid var(--lc-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgba(13, 3, 32, 0.14);
+    overflow: hidden;
+    z-index: 20;
+    font-family: var(--lc-font);
+  }
+
+  /* Opens upward instead of downward when there isn't room below within the panel */
+  .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 24px;
+  }
+
+  .history-row-dropdown button {
+    width: 100%;
+    height: 39px;
+    min-height: 39px;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 12px;
+    border-radius: 0;
+    font-family: var(--lc-font);
+    font-size: 12px !important;
+    font-weight: 400;
+    line-height: 21px;
+    color: var(--lc-text);
+  }
+
+  .history-row-dropdown button span {
+    font-size: 12px;
+    line-height: 21px;
+  }
+
+  .history-row-dropdown button.danger {
+    color: var(--lc-danger);
+  }
+
+  .history-rename-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px;
+    align-items: center;
+    min-height: 50px;
+    padding: 8px;
+  }
+
+  .history-rename-form input {
+    height: 30px;
+    padding: 5px 8px;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .history-rename-form button {
+    width: 26px;
+    height: 26px;
+  }
+
+  .history-empty,
+  .history-loading,
+  .history-error {
+    color: var(--lc-text-muted);
+    font-size: 14px;
+    line-height: 20px;
+    padding: 32px 16px;
+    text-align: center;
+  }
+
+  .history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding-top: 64px;
+  }
+
+  .history-empty-icon {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--core-neutral-gray-200, #ededec);
+    color: var(--lc-text-secondary);
+  }
+
+  .history-empty-icon img {
+    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+  }
+
+  .history-empty strong {
+    color: var(--lc-text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+
+  .history-empty p {
+    max-width: 170px;
+    margin: 0 auto;
+    color: var(--lc-text-muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .history-loading.inline {
+    font-size: 12px;
+    line-height: 18px;
+    padding: 10px 8px;
+  }
+
+  .history-error {
+    color: var(--lc-danger);
+    border-bottom: 1px solid var(--lc-border);
+  }
+
   /* Resize Handles */
   .resize-handle {
     position: absolute;
@@ -1718,7 +2811,7 @@
   }
 
   .resize-n, .resize-s { height: 8px; left: 8px; right: 8px; cursor: ns-resize; }
-  .resize-e, .resize-w { width: 8px; top: 8px; bottom: 8px; cursor: ew-resize; }
+  .resize-e, .resize-w { width: 12px; top: 8px; bottom: 8px; cursor: ew-resize; }
   .resize-n { top: 0; }
   .resize-s { bottom: 0; }
   .resize-e { right: 0; }
@@ -1729,6 +2822,19 @@
   .resize-nw { top: 0; left: 0; cursor: nwse-resize; }
   .resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
   .resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+  .lc-chatbot-dimmable {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .lc-chatbot-dimmable.dimmed {
+    opacity: 0.5;
+    pointer-events: none;
+  }
 
   /* Header */
   .lc-chatbot-header {
@@ -1744,29 +2850,48 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .lc-chatbot-header h2 {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    min-width: 0;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
     color: var(--brand-sefaria-blue);
-    font-family: Roboto;
+    font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
   }
 
+  .header-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .interface-hebrew .lc-chatbot-header h2 {
+    font-family: Heebo, Arial, sans-serif;
     line-height: normal;
   }
 
 
-  .lc-chatbot-header h2 img {
-    display: block;
+  .header-sparkle {
+    font-size: 12px;
+    font-weight: 500;
+    /* Inherit the title's line-height (rather than an independent fixed value)
+       so the two elements share the same vertical metrics — needed for
+       .interface-hebrew, where the title's line-height switches to "normal"
+       and a font-dependent mismatch would otherwise throw off centering. */
+    line-height: inherit;
+    letter-spacing: 0.36px;
+    color: var(--brand-sefaria-blue);
   }
 
   .header-actions {
@@ -1774,6 +2899,7 @@
     align-items: center;
     gap: 8px;
     margin-inline-start: 15px;
+    flex-shrink: 0;
   }
 
   .menu-container {
@@ -1856,6 +2982,14 @@
     display: flex;
     flex-direction: column;
     animation: fadeInUp 0.2s ease;
+  }
+
+  /* Messages bulk-loaded from history (opening a past conversation, restoring
+     on panel open, paginating older messages) shouldn't play the entrance
+     animation meant for a newly-sent/streamed message — with 20 messages
+     firing it at once, it reads as the whole conversation subtly scrolling. */
+  .message.no-entry-animation {
+    animation: none;
   }
 
   @keyframes fadeInUp {
@@ -1958,6 +3092,24 @@
     gap: 8px;
     margin-top: 4px;
     padding: 0 4px;
+  }
+
+  .message.user .message-meta {
+    justify-content: flex-end;
+  }
+
+  .message-timestamp {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--lc-text-muted);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .message.user:hover .message-timestamp,
+  .message.user:focus-within .message-timestamp {
+    opacity: 1;
   }
 
   .message-location-tag {
@@ -2216,10 +3368,6 @@
     transform: scaleX(-1);
   }
 
-  .interface-hebrew .panel-close-icon {
-    transform: scaleX(-1);
-  }
-
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
   }
@@ -2367,8 +3515,8 @@
 
   /* Feedback Modal */
   .feedback-modal-overlay {
-position: absolute;
-inset: 8px;
+    position: absolute;
+    inset: 8px;
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
@@ -2376,6 +3524,14 @@ inset: 8px;
     z-index: 10001;
     animation: fadeIn 0.15s ease;
     border-radius: calc(var(--lc-radius) - 4px);
+  }
+
+  /* Delete confirmation dims the whole widget (see .lc-chatbot-dimmable) rather
+     than painting a dark scrim, so this overlay is just a full-bleed click-catcher. */
+  .delete-modal-overlay {
+    inset: 0;
+    background: transparent;
+    border-radius: var(--lc-radius);
   }
 
   @keyframes fadeIn {
@@ -2391,6 +3547,53 @@ inset: 8px;
     max-width: calc(100% - 32px);
     box-shadow: var(--lc-shadow);
     animation: slideUp 0.2s ease;
+  }
+
+  .delete-modal {
+    width: 260px;
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .delete-modal .feedback-modal-title {
+    color: #121212;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 18px;
+    margin-bottom: 4px;
+  }
+
+  .delete-modal-subtext {
+    color: var(--lc-text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+    margin: 0 0 16px;
+  }
+
+  .delete-modal .feedback-modal-actions {
+    flex-direction: row-reverse;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 0;
+  }
+
+  .delete-modal .feedback-modal-btn.skip {
+    border: 1px solid var(--core-neutral-gray-300, #ccc);
+    color: var(--lc-text-secondary);
+    background: var(--core-base-white, #fff);
+  }
+
+  .delete-modal .feedback-modal-btn.skip:hover {
+    background: var(--semantic-surface-hover, #eee);
+  }
+
+  .delete-modal .feedback-modal-btn {
+    flex: 0 0 auto;
+    min-width: 65px;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: 4px;
   }
 
   @keyframes slideUp {
@@ -2503,6 +3706,15 @@ inset: 8px;
 
   .feedback-modal-btn.submit:hover:not(:disabled) {
     background: var(--lc-primary-hover);
+  }
+
+  .feedback-modal-btn.submit.danger {
+    background: var(--lc-danger);
+    border: none;
+  }
+
+  .feedback-modal-btn.submit.danger:hover:not(:disabled) {
+    background: var(--lc-danger-hover);
   }
 
   .feedback-modal-btn.submit:disabled {

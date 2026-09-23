@@ -579,3 +579,108 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
     session: data.session || null
   };
 }
+
+/**
+ * Load saved conversation summaries for the chat history sidebar.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {{ limit?: number, offset?: number, search?: string }} [options]
+ */
+export async function loadConversationList(apiBaseUrl, userId, options = {}) {
+  const params = new URLSearchParams({
+    userId,
+    limit: String(options.limit ?? 20),
+    offset: String(options.offset ?? 0)
+  });
+  if (options.search) {
+    params.set('search', options.search);
+  }
+
+  const response = await fetch(`${apiBaseUrl}/history/conversations?${params}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Conversation list request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Load one saved conversation with full messages.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {string} sessionId
+ */
+export async function loadConversation(apiBaseUrl, userId, sessionId) {
+  const params = new URLSearchParams({ userId });
+  const response = await fetch(`${apiBaseUrl}/history/conversations/${sessionId}?${params}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Rename a saved conversation.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {string} sessionId
+ * @param {string} title
+ */
+export async function renameConversation(apiBaseUrl, userId, sessionId, title) {
+  const response = await fetch(`${apiBaseUrl}/history/conversations/${sessionId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId, title })
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Rename conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Delete a saved conversation.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {string} sessionId
+ */
+export async function deleteConversation(apiBaseUrl, userId, sessionId) {
+  const response = await fetch(`${apiBaseUrl}/history/conversations/${sessionId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Delete conversation request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
