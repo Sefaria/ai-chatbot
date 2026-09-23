@@ -3086,10 +3086,16 @@
     cursor: pointer;
   }
 
+  /* height:0 + overflow:visible lets the timestamp paint below this box
+     without the box itself contributing to the flex column's height — so
+     the reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below). */
   .message-meta {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
+    height: 0;
+    overflow: visible;
     margin-top: 4px;
     padding: 0 4px;
   }
@@ -3112,14 +3118,25 @@
     opacity: 1;
   }
 
+  /* Bubble and pin sit flush by default (no reserved timestamp gap). On
+     hover the pin transforms down to make room for the timestamp fading in
+     above it — a transform doesn't affect layout, so nothing below this
+     message (the next one in the list) ever shifts. */
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
     margin-top: 4px;
+    transform: translateY(0);
+    transition: transform 0.15s ease;
     /* Figma: max width = chat bubble width (560px), but never exceed the
        available message column so long refs truncate instead of overflowing. */
     max-width: min(560px, 100%);
     align-self: flex-end;
+  }
+
+  .message.user:hover .message-location-tag,
+  .message.user:focus-within .message-location-tag {
+    transform: translateY(18px);
   }
 
   .message-status {
