@@ -5,6 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
+        ("chat", "0009_saved_conversation_metadata"),
         ("chat", "0011_hash_numeric_user_ids"),
     ]
 
