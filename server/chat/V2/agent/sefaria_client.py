@@ -33,8 +33,21 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 
 DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
-# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service>.
+# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service> (<env>).
 USER_AGENT = "Sefaria/library-assistant"
+
+
+def _user_agent() -> str:
+    """Build the User-Agent, appending the deployment environment when one is configured.
+
+    Reads ``settings.ENVIRONMENT`` (the same value Sentry is tagged with) lazily so this
+    module does not import Django settings at import time.
+    """
+    from django.conf import settings
+
+    env = str(getattr(settings, "ENVIRONMENT", "") or "")
+    env = env.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
+    return f"{USER_AGENT} ({env})" if env else USER_AGENT
 
 
 def _get_default_sefaria_base_url() -> str:
@@ -162,7 +175,7 @@ class SefariaClient:
                 pass
 
         self._client = httpx.AsyncClient(
-            timeout=self.timeout, headers={"User-Agent": USER_AGENT}
+            timeout=self.timeout, headers={"User-Agent": _user_agent()}
         )
         self._client_loop = loop
         return self._client

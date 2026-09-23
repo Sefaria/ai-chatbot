@@ -830,8 +830,8 @@ class TestFallbackRef:
 class TestUserAgent:
     """Every request to the Sefaria API self-identifies with a Sefaria User-Agent."""
 
-    @pytest.mark.asyncio
-    async def test_get_and_post_carry_sefaria_user_agent(self, client):
+    async def _issue_get_and_post(self, client):
+        """Send a GET and a POST through the client over a mock transport; return the requests."""
         import functools
 
         import httpx
@@ -857,5 +857,32 @@ class TestUserAgent:
                 await client.close()
 
         assert [r.method for r in seen] == ["GET", "POST"]
+        return seen
+
+    @pytest.mark.asyncio
+    async def test_get_and_post_carry_sefaria_user_agent_with_environment(self, client):
+        from django.test import override_settings
+
+        with override_settings(ENVIRONMENT="prod"):
+            seen = await self._issue_get_and_post(client)
+
+        for request in seen:
+            assert request.headers["User-Agent"] == "Sefaria/library-assistant (prod)"
+
+    @pytest.mark.asyncio
+    async def test_get_and_post_carry_bare_user_agent_without_environment(self, client):
+        from django.test import override_settings
+
+        with override_settings(ENVIRONMENT=""):
+            seen = await self._issue_get_and_post(client)
+
         for request in seen:
             assert request.headers["User-Agent"] == "Sefaria/library-assistant"
+
+    def test_environment_is_sanitized(self):
+        from django.test import override_settings
+
+        from chat.V2.agent.sefaria_client import _user_agent
+
+        with override_settings(ENVIRONMENT="  (pr\nod)  "):
+            assert _user_agent() == "Sefaria/library-assistant (prod)"
