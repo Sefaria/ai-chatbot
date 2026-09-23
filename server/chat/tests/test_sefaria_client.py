@@ -831,7 +831,6 @@ class TestUserAgent:
     """Every request to the Sefaria API self-identifies with a Sefaria User-Agent."""
 
     async def _issue_get_and_post(self, client):
-        """Send a GET and a POST through the client over a mock transport; return the requests."""
         import functools
 
         import httpx

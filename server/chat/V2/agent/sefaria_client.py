@@ -33,19 +33,19 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 
 DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
-# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service> (<env>).
+# Sefaria/<service> (<env>) is the format the Sefaria API expects from first-party callers.
 USER_AGENT = "Sefaria/library-assistant"
 
 
 def _user_agent() -> str:
-    """Build the User-Agent, appending the deployment environment when one is configured.
+    """Append ``settings.ENVIRONMENT`` (the value Sentry is tagged with) when it is set.
 
-    Reads ``settings.ENVIRONMENT`` (the same value Sentry is tagged with) lazily so this
-    module does not import Django settings at import time.
+    Imports settings lazily so this module can be imported before Django is configured.
     """
     from django.conf import settings
 
     env = str(getattr(settings, "ENVIRONMENT", "") or "")
+    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
     env = env.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
     return f"{USER_AGENT} ({env})" if env else USER_AGENT
 

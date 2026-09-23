@@ -19,7 +19,7 @@ MAX_URLS_TO_VALIDATE = 20
 MAX_REFS_TO_FETCH = 10
 MIN_QUOTE_LEN = 8
 API_BASE = "https://www.sefaria.org"
-# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service>.
+# Fixed value: the scorer runs inside Braintrust, which has no deployment environment.
 USER_AGENT = "Sefaria/library-assistant-evals"
 TIMEOUT = 5.0
 LLM_MODEL = "claude-haiku-4-5-20251001"
