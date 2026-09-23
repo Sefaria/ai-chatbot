@@ -19,8 +19,8 @@ MAX_URLS_TO_VALIDATE = 20
 MAX_REFS_TO_FETCH = 10
 MIN_QUOTE_LEN = 8
 API_BASE = "https://www.sefaria.org"
-# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service> (+repo).
-USER_AGENT = "Sefaria/library-assistant-evals (+https://github.com/Sefaria/ai-chatbot)"
+# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service>.
+USER_AGENT = "Sefaria/library-assistant-evals"
 TIMEOUT = 5.0
 LLM_MODEL = "claude-haiku-4-5-20251001"
 

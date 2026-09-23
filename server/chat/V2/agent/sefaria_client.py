@@ -33,8 +33,8 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 
 DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
-# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service> (+repo).
-USER_AGENT = "Sefaria/library-assistant (+https://github.com/Sefaria/ai-chatbot)"
+# Self-identify to the Sefaria API (API Key Program, Phase 0): Sefaria/<service>.
+USER_AGENT = "Sefaria/library-assistant"
 
 
 def _get_default_sefaria_base_url() -> str:

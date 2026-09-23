@@ -825,3 +825,37 @@ class TestFallbackRef:
         from chat.V2.agent.sefaria_client import _fallback_ref
 
         assert _fallback_ref("") is None
+
+
+class TestUserAgent:
+    """Every request to the Sefaria API self-identifies with a Sefaria User-Agent."""
+
+    @pytest.mark.asyncio
+    async def test_get_and_post_carry_sefaria_user_agent(self, client):
+        import functools
+
+        import httpx
+
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={})
+
+        real_async_client = httpx.AsyncClient
+        with patch.object(
+            sefaria_client_module.httpx,
+            "AsyncClient",
+            functools.partial(real_async_client, transport=httpx.MockTransport(handler)),
+        ):
+            try:
+                await client._get_json("api/texts/Genesis.1.1")
+                await client._post_form_json("api/name/Genesis", data={"q": "Genesis"})
+            finally:
+                await client.close()
+
+        assert [r.method for r in seen] == ["GET", "POST"]
+        for request in seen:
+            assert request.headers["User-Agent"] == "Sefaria/library-assistant"
