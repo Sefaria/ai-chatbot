@@ -64,13 +64,20 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildMessageContext(origin = '', isStaff = false, labs = false, interfaceLang = '') {
+function buildMessageContext(origin = '', isStaff = false, labs = false, interfaceLang = '', flow = '') {
   /** @type {MessageContext} */
   const context = {
     pageUrl: window.location.href,
     locale: interfaceLang || navigator.language || 'en',
     clientVersion: CLIENT_VERSION
   };
+  // Declaring a flow makes its prompt authoritative server-side and skips the
+  // router. Sent on every turn of the conversation, not just the first — the
+  // router classifies each message independently, so dropping it mid-flow would
+  // reclassify the reader onto a different prompt.
+  if (flow) {
+    context.flow = flow;
+  }
   if (origin !== undefined && origin !== '') {
     context.origin = origin;
   }
@@ -261,6 +268,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
+ * @param {string} [flow] - Active client-initiated flow (e.g. 'report_issue'); pins the server prompt and skips the router
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -274,12 +282,13 @@ export async function sendMessageStream(
   isStaff = false,
   labs = false,
   requestMetadata = null,
-  interfaceLang = ''
+  interfaceLang = '',
+  flow = ''
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
-  const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  const context = buildMessageContext(origin, isStaff, labs, interfaceLang, flow);
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }
