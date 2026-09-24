@@ -20,7 +20,7 @@ import os
 import re
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urljoin, urlsplit
 
 import httpx
 
@@ -59,6 +59,35 @@ REF_CACHE_MAX_SIZE = 512
 # The API returns ref/text completions first for book-name queries, which we drop
 # by type; a wide window keeps the real Topic from being crowded out.
 TOPIC_NAME_FETCH_FLOOR = 25
+
+# get_manuscript_image fetches a model-supplied URL, so it may only reach the host
+# that /api/manuscripts serves image_url and thumbnail_url from.
+MANUSCRIPT_IMAGE_HOSTS = frozenset({"manuscripts.sefaria.org"})
+MAX_MANUSCRIPT_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_MANUSCRIPT_IMAGE_REDIRECTS = 3
+
+
+class ManuscriptImageRejected(ValueError):
+    """The manuscript image URL, or the response it produced, is not one we will fetch."""
+
+
+def _validate_manuscript_image_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https":
+        raise ManuscriptImageRejected("manuscript image URLs must use https")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ManuscriptImageRejected("manuscript image URL has an invalid port") from None
+    if parsed.username or parsed.password or port not in (None, 443):
+        raise ManuscriptImageRejected("manuscript image URL must not include credentials or a port")
+    if (parsed.hostname or "").lower() not in MANUSCRIPT_IMAGE_HOSTS:
+        allowed = ", ".join(sorted(MANUSCRIPT_IMAGE_HOSTS))
+        raise ManuscriptImageRejected(
+            f"manuscript images can only be fetched from {allowed}; "
+            "use an image_url returned by get_available_manuscripts"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Ref fallback helpers — construct a usable ref dict from a tref string when
@@ -513,13 +542,9 @@ class SefariaClient:
     async def get_manuscript_image(
         self, image_url: str, manuscript_title: str | None = None
     ) -> dict[str, Any]:
-        """Download a manuscript image."""
-        client = await self._get_client()
-        response = await client.get(image_url)
-        response.raise_for_status()
-
-        content_type = response.headers.get("content-type", "image/jpeg")
-        image_data = base64.b64encode(response.content).decode("utf-8")
+        """Download a manuscript image from an allowlisted Sefaria manuscript host."""
+        body, content_type = await self._fetch_manuscript_image(image_url)
+        image_data = base64.b64encode(body).decode("utf-8")
 
         filename = image_url.split("/")[-1] or "manuscript.jpg"
         title = manuscript_title or f"Manuscript: {filename}"
@@ -528,13 +553,46 @@ class SefariaClient:
             "success": True,
             "image_data": image_data,
             "mime_type": content_type,
-            "size": len(response.content),
-            "original_size": len(response.content),
+            "size": len(body),
+            "original_size": len(body),
             "was_resized": False,
             "filename": filename,
             "title": title,
             "source_url": image_url,
         }
+
+    async def _fetch_manuscript_image(self, url: str) -> tuple[bytes, str]:
+        """Return (body, content type), re-validating the host on every redirect hop."""
+        client = await self._get_client()
+        for _ in range(MAX_MANUSCRIPT_IMAGE_REDIRECTS + 1):
+            _validate_manuscript_image_url(url)
+            async with client.stream("GET", url, follow_redirects=False) as response:
+                if response.is_redirect:
+                    url = urljoin(url, response.headers["location"])
+                    continue
+                response.raise_for_status()
+
+                content_type = (
+                    response.headers.get("content-type", "").split(";")[0].strip().lower()
+                )
+                if not content_type.startswith("image/"):
+                    raise ManuscriptImageRejected(
+                        f"expected an image but got {content_type or 'no content type'}"
+                    )
+
+                too_large = ManuscriptImageRejected(
+                    f"manuscript image exceeds the {MAX_MANUSCRIPT_IMAGE_BYTES:,}-byte limit"
+                )
+                declared_length = response.headers.get("content-length", "")
+                if declared_length.isdigit() and int(declared_length) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                    raise too_large
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                        raise too_large
+                return bytes(body), content_type
+        raise ManuscriptImageRejected("too many redirects while fetching manuscript image")
 
     async def search_user_source_sheets(
         self, query: str | None = None, limit: int = 10
