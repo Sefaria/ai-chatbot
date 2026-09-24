@@ -57,9 +57,15 @@ class SDKOptionsBuilder:
         allowed_tools: list[str],
     ) -> tuple[Any, bool]:
         """Construct options and return (options, system_prompt_in_options)."""
+        # The agent may only call our in-process MCP tools: `tools=[]` removes every
+        # Claude Code built-in (Bash, Read, Write, WebFetch, Task, ...), and "dontAsk"
+        # denies any tool not listed in `allowed_tools` instead of auto-approving it.
+        # These are passed unconditionally so an SDK without them fails loudly.
         options_kwargs: dict[str, Any] = {
             "model": self.model,
-            "permission_mode": "bypassPermissions",
+            "tools": [],
+            "permission_mode": "dontAsk",
+            "strict_mcp_config": True,
             "mcp_servers": {self.mcp_server_name: mcp_server},
             "allowed_tools": allowed_tools,
         }
