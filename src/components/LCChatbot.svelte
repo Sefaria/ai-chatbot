@@ -867,6 +867,7 @@
 
     chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
     sessionId = conversation.sessionId;
+    onboarding = null;
     messages = await historyMessagesToUiMessages(payload.messages);
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
