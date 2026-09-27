@@ -92,7 +92,6 @@
     "assistant.personalize.placeholder.choice": "Choose an answer above, or type your own",
     "assistant.personalize.placeholder.notes": "Up to 250 characters",
     "assistant.personalize.done": "Great, we’re done! Go ahead and let me know what you’d like help with in your learning. You can update your personal memory in the menu.",
-    "assistant.personalize.saveFailed": "Sorry, I couldn’t save your answers. Please try again from the menu.",
     "assistant.personalize.cleared": "Your personal memory has been cleared.",
     "assistant.menu.personalize": "Personalize responses",
     "assistant.menu.memory.update": "Update personal memory",

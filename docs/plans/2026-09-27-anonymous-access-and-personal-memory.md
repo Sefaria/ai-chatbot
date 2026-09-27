@@ -28,9 +28,15 @@ Status: in review. [ai-chatbot#222](https://github.com/Sefaria/ai-chatbot/pull/2
 - **Known gap: no per-IP cap.** Clearing storage gets a new `anonId`, and a script can mint
   ids freely. The right place for a per-client limit is the edge (Envoy/Cloudflare), where
   the real client IP is known; doing it here risks keying on the load balancer's IP.
-- **Memory lives in this service** (`UserMemory`, keyed by the hashed user id), because only
-  the assistant uses it. Fields: `experience`, `orientation`, `hebrew` (option keys, or the
-  user's own words if they typed instead of clicking) and `notes` (≤ 250 chars).
+- **Memory lives in the browser** (`localStorage`, key `lc_chatbot:memory`) and is sent with
+  every message as `memory` on `POST /v2/chat/stream`. The server validates it
+  (`experience`/`orientation`/`hebrew` ≤ 100 chars: option keys or the user's own words;
+  `notes` ≤ 250) and renders it into that turn's prompt; nothing is stored server-side, and
+  anonymous requests' memory is ignored. Chosen over a `UserMemory` table (built first, in
+  the git history of this branch) because the Coolify PR preview doesn't run migrations, so
+  the table never existed there. Trade-off: memory is per browser, not per account (it
+  doesn't follow the user to another device), and it is cleared when the widget sees a
+  logout, so the next person on a shared browser doesn't inherit it.
 - **Prompt placement:** core prompt → memory → conversation summary → page context → message.
   The section frames the content as background, never instructions, because `notes` is
   free text.
@@ -42,12 +48,12 @@ Status: in review. [ai-chatbot#222](https://github.com/Sefaria/ai-chatbot/pull/2
 
 - [x] Backend: `anonId` auth path (`authenticate_request(..., allow_anonymous=True)`) for
       stream, recover and client-event; free-response quota; tests
-- [x] Backend: `UserMemory` model + migration `0013`, `GET/PUT/DELETE /api/v2/memory`,
-      prompt section, trace input; tests
+- [x] Backend: `memory` on the stream request → prompt section and trace input; tests.
+      (A `UserMemory` table + `/api/v2/memory` endpoint was built first and replaced.)
 - [x] Widget: anonymous mode (no `user-id`), login-required bubble, input lock; history,
       opt-out link hidden when anonymous; logging in or out starts a new session
 - [x] Widget: Personalize tab, question flow with option chips, 250-char final answer,
-      save, menu items (update / clear). The tab sits on the edge between the message list
+      saved to `localStorage`, menu items (update / clear). The tab sits on the edge between the message list
       and the input, and shows until a memory is saved. While the questions run, typed
       text answers the current question instead of going to the agent; the last question
       has a Skip chip. Questions and answers are local messages (`local: true`), never sent

@@ -264,7 +264,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
- * @param {{messageId?: string, timestamp?: string, anonId?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId)
+ * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: Object}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the signed-in user's Personalize answers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
  * @returns {Promise<ChatResponse>}
  */
@@ -284,6 +284,7 @@ export async function sendMessageStream(
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
   const anonId = userId ? undefined : requestMetadata?.anonId;
+  const memory = userId ? requestMetadata?.memory || undefined : undefined;
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (shouldForceStreamBreak(text)) {
@@ -298,7 +299,8 @@ export async function sendMessageStream(
     messageId,
     timestamp,
     text,
-    context
+    context,
+    memory
   };
 
   if (promptSlugs) {
@@ -698,42 +700,4 @@ export async function deleteConversation(apiBaseUrl, userId, sessionId) {
   }
 
   return response.json();
-}
-
-/**
- * Personal memory (answers from the "Personalize Responses" onboarding).
- * @typedef {{experience?: string, orientation?: string, hebrew?: string, notes?: string}} UserMemory
- */
-
-async function memoryRequest(apiBaseUrl, method, userId, body = null) {
-  const query = body ? '' : `?${new URLSearchParams({ userId })}`;
-  const response = await fetch(`${apiBaseUrl}/v2/memory${query}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: body ? JSON.stringify({ userId, ...body }) : undefined
-  });
-
-  if (!response.ok) {
-    const error = new Error(`Memory request failed: ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return (await response.json()).memory;
-}
-
-/** @returns {Promise<UserMemory | null>} */
-export function loadMemory(apiBaseUrl, userId) {
-  return memoryRequest(apiBaseUrl, 'GET', userId);
-}
-
-/** @param {UserMemory} memory */
-export function saveMemory(apiBaseUrl, userId, memory) {
-  return memoryRequest(apiBaseUrl, 'PUT', userId, memory);
-}
-
-export function clearMemory(apiBaseUrl, userId) {
-  return memoryRequest(apiBaseUrl, 'DELETE', userId);
 }

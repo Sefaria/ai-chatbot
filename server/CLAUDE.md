@@ -8,7 +8,7 @@ Django REST API with Claude Agent SDK integration.
 server/
 ├── chat/
 │   ├── views.py                 # Shared endpoints (history, health)
-│   ├── models.py                # ChatSession, ChatMessage, UserMemory
+│   ├── models.py                # ChatSession, ChatMessage
 │   ├── serializers.py           # Request/response validation
 │   ├── auth/
 │   │   ├── auth_service.py      # Token authentication
@@ -16,7 +16,7 @@ server/
 │   └── V2/
 │       ├── views.py             # V2 streaming endpoints
 │       ├── anthropic_views.py   # Anthropic Messages API endpoint
-│       ├── memory.py            # Personal memory endpoint + prompt text
+│       ├── memory.py            # Personal memory → prompt text (sent by the widget)
 │       ├── utils.py             # Shared helpers (clients, config)
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
@@ -58,7 +58,6 @@ server/
 | `/api/v2/chat/anthropic` | POST | Anthropic Messages API format (for Braintrust) |
 | `/api/v2/chat/feedback` | POST | Feedback for trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
-| `/api/v2/memory` | GET/PUT/DELETE | Signed-in user's personal memory |
 | `/api/history` | GET | Conversation history |
 | `/api/health` | GET | Health check |
 

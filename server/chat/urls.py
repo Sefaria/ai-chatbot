@@ -7,7 +7,6 @@ from django.urls import path
 from . import views
 from .V2 import views as v2_views
 from .V2.anthropic_views import chat_anthropic_v2
-from .V2.memory import user_memory_v2
 
 urlpatterns = [
     # Versioned chat endpoints
@@ -18,7 +17,6 @@ urlpatterns = [
     path("v2/chat/anthropic", chat_anthropic_v2, name="chat_anthropic_v2"),
     path("v2/chat/feedback", v2_views.chat_feedback_v2, name="chat_feedback_v2"),
     path("v2/prompts/defaults", v2_views.prompt_defaults, name="prompt_defaults_v2"),
-    path("v2/memory", user_memory_v2, name="user_memory_v2"),
     # Shared endpoints
     path("history/conversations", views.conversation_list, name="conversation_list"),
     path(

@@ -47,5 +47,7 @@ export const STORAGE_KEYS = {
   ANON_ID: 'anon_id',
   ANON_LOGIN_REQUIRED: 'anon_login_required',
   // 'user' | 'anon' — the identity the stored session belongs to
-  IDENTITY: 'identity'
+  IDENTITY: 'identity',
+  // Signed-in user's "Personalize Responses" answers, sent with every message
+  MEMORY: 'memory'
 };

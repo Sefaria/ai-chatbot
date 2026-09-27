@@ -11,10 +11,7 @@
     loadConversationList,
     loadConversation,
     renameConversation,
-    deleteConversation,
-    loadMemory,
-    saveMemory,
-    clearMemory
+    deleteConversation
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
@@ -60,9 +57,10 @@
   let anonId = $state('');
   let anonLoginRequired = $state(false);
 
-  // "Personalize Responses": scripted questions whose answers the server keeps as the
-  // signed-in user's memory and adds to every prompt. Option values are the keys the
-  // backend understands (server/chat/V2/memory.py); a typed answer is stored as-is.
+  // "Personalize Responses": scripted questions whose answers become the signed-in user's
+  // memory. It lives in this browser's storage and goes with every message, where the
+  // server adds it to the prompt. Option values are the keys the backend understands
+  // (server/chat/V2/memory.py); a typed answer is kept as-is.
   const MEMORY_NOTES_MAX_CHARS = 250;
   const MEMORY_CHOICE_MAX_CHARS = 100;
   const ONBOARDING_STEPS = [
@@ -72,7 +70,6 @@
     { field: 'notes', options: ['skip'] }
   ];
   let memory = $state(null);
-  let memoryLoaded = $state(false);
   let onboarding = $state(null); // { step, answers, questionMessageId } while the questions run
   let isNotesStep = $derived(onboarding?.step === ONBOARDING_STEPS.length - 1);
 
@@ -180,7 +177,7 @@
     !onboarding ? effectiveMaxInputChars : isNotesStep ? MEMORY_NOTES_MAX_CHARS : MEMORY_CHOICE_MAX_CHARS
   );
   let showPersonalizeTab = $derived(
-    !isAnonymous && memoryLoaded && !memory && !onboarding && !limitReached && !isCurrentSessionSending
+    !isAnonymous && !memory && !onboarding && !limitReached && !isCurrentSessionSending
   );
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
@@ -265,6 +262,10 @@
     if (!userId) {
       anonId = getOrCreateAnonId();
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
+      // Logged out: forget the memory so the next person on this browser doesn't inherit it.
+      if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
+    } else {
+      memory = getStorage(STORAGE_KEYS.MEMORY, null);
     }
 
     // Initialize session
@@ -319,17 +320,6 @@
         return;
       }
       syncSessionState();
-    }
-  });
-
-  $effect(() => {
-    if (isOpen && userId && apiBaseUrl && !untrack(() => memoryLoaded)) {
-      loadMemory(apiBaseUrl, userId)
-        .then(saved => {
-          memory = saved;
-          memoryLoaded = true;
-        })
-        .catch(e => console.warn('[lc-chatbot] Failed to load memory:', e));
     }
   });
 
@@ -1116,26 +1106,19 @@
     }
   }
 
-  async function finishOnboarding(answers) {
+  function finishOnboarding(answers) {
     onboarding = null;
-    try {
-      memory = await saveMemory(apiBaseUrl, userId, answers);
-      addLocalMessage('assistant', get(_)('assistant.personalize.done'));
-      track('assistant_click', { feature_name: 'personalize_completed' });
-    } catch (e) {
-      console.warn('[lc-chatbot] Failed to save memory:', e);
-      addLocalMessage('assistant', get(_)('assistant.personalize.saveFailed'));
-    }
+    memory = answers;
+    setStorage(STORAGE_KEYS.MEMORY, answers);
+    addLocalMessage('assistant', get(_)('assistant.personalize.done'));
+    track('assistant_click', { feature_name: 'personalize_completed' });
   }
 
-  async function handleClearMemory() {
+  function handleClearMemory() {
     closeMenu();
-    try {
-      memory = await clearMemory(apiBaseUrl, userId);
-      addLocalMessage('assistant', get(_)('assistant.personalize.cleared'));
-    } catch (e) {
-      console.warn('[lc-chatbot] Failed to clear memory:', e);
-    }
+    memory = null;
+    setStorage(STORAGE_KEYS.MEMORY, null);
+    addLocalMessage('assistant', get(_)('assistant.personalize.cleared'));
   }
 
   async function handleSend() {
@@ -1231,7 +1214,8 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp,
-        anonId
+        anonId,
+        memory
       }, interfaceLang);
 
       const cachedPayload = conversationCache[sendingSessionId];
@@ -1879,7 +1863,7 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                {#if !isAnonymous && memoryLoaded}
+                {#if !isAnonymous}
                 <button class="menu-item" data-feature-name={memory ? 'memory_update_menu' : 'personalize_menu'} onclick={() => startOnboarding(memory ? 'memory_update_menu' : 'personalize_menu')} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="16" height="16" />
                   {$_(memory ? 'assistant.menu.memory.update' : 'assistant.menu.personalize')}
