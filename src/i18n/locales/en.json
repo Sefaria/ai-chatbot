@@ -68,6 +68,8 @@
     "assistant.source.readWhileWaiting": "Found a source — read while you wait",
     "assistant.source.readOnSefaria": "Read on Sefaria",
     "assistant.limit.reached": "The conversation has reached its limit.",
+    "assistant.anon.loginRequired": "I’ve enjoyed learning with you! To continue, please log in to your free Sefaria account.",
+    "assistant.anon.login": "Log in to continue",
     "assistant.limit.startNew": "Start a new chat to keep exploring.",
     "assistant.limit.maxTurnsRestart.aria": "Max turns restart",
     "assistant.feedback.modal.title": "Want to add more detail? (optional)",

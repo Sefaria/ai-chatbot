@@ -42,7 +42,8 @@ Status: in progress (branch `claude/gracious-noether-3tuqmy`, paired Sefaria-Pro
       stream, recover and client-event; free-response quota; tests
 - [x] Backend: `UserMemory` model + migration `0013`, `GET/PUT/DELETE /api/v2/memory`,
       prompt section, trace input; tests
-- [ ] Widget: anonymous mode (no `user-id`), login-required bubble, input lock
+- [x] Widget: anonymous mode (no `user-id`), login-required bubble, input lock; history,
+      opt-out link hidden when anonymous; logging in or out starts a new session
 - [ ] Widget: Personalize tab, question flow with option chips, 250-char final answer,
       save, menu items (update / clear)
 - [ ] Sefaria-Project: render LA for logged-out visitors (remote-config kill switch), hide the

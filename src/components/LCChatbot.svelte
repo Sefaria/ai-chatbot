@@ -2,7 +2,7 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, getOrCreateAnonId } from '../lib/session.js';
   import {
     sendMessageStream,
     loadHistory,
@@ -47,8 +47,15 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    'login-url': loginUrl = '/login'
   } = $props();
+
+  // No user-id means a logged-out visitor: they chat under an anonymous id until the
+  // server's free responses run out, then get a login prompt in the canvas.
+  let isAnonymous = $derived(!userId);
+  let anonId = $state('');
+  let anonLoginRequired = $state(false);
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -226,8 +233,17 @@
 
   // Initialize on mount
   $effect(() => {
+    // A stored session belongs to whoever started it; logging in or out starts a new one.
+    const identity = userId ? 'user' : 'anon';
+    const identityChanged = getStorage(STORAGE_KEYS.IDENTITY, identity) !== identity;
+    setStorage(STORAGE_KEYS.IDENTITY, identity);
+    if (!userId) {
+      anonId = getOrCreateAnonId();
+      anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
+    }
+
     // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession();
+    const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
@@ -1001,10 +1017,22 @@
     }
   }
 
+  function requireLogin() {
+    anonLoginRequired = true;
+    setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
+  }
+
+  // Built at click time: the host navigates client-side, so the page can change under us.
+  function goToLogin(e) {
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    const separator = loginUrl.includes('?') ? '&' : '?';
+    e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
+  }
+
   async function handleSend() {
     const text = inputText.trim();
-    const isConfigured = userId && apiBaseUrl;
-    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
+    const isConfigured = (userId || anonId) && apiBaseUrl;
+    const isReadyToSend = text && !isCurrentSessionSending && !limitReached && !anonLoginRequired;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
@@ -1085,7 +1113,8 @@
         }
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
-        timestamp: userMessage.timestamp
+        timestamp: userMessage.timestamp,
+        anonId
       }, interfaceLang);
 
       const cachedPayload = conversationCache[sendingSessionId];
@@ -1146,6 +1175,9 @@
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
       }
+      if (isAnonymous && response.anonResponsesRemaining === 0) {
+        requireLogin();
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -1162,6 +1194,15 @@
       });
 
     } catch (e) {
+      if (e.code === 'login_required') {
+        // Not an error to retry: drop the prompt back into the draft so it survives the login.
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        inputText = text;
+        setStorage(STORAGE_KEYS.DRAFT, { text });
+        requireLogin();
+        return;
+      }
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
@@ -1667,6 +1708,7 @@
           </h2>
         </div>
         <div class="header-actions">
+          {#if !isAnonymous}
           <HeaderButton
             className="history-btn"
             title={$_('assistant.header.history.tooltip')}
@@ -1676,6 +1718,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {/if}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1719,10 +1762,12 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                {#if !isAnonymous}
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.optout')}
                 </a>
+                {/if}
               </div>
             {/if}
           </div>
@@ -2060,6 +2105,17 @@
             </div>
           </div>
         {/if}
+
+        {#if anonLoginRequired}
+          <div class="message assistant limit-message" data-element-shown-name="anon_login_prompt">
+            <div class="message-content">
+              <p>{$_('assistant.anon.loginRequired')}</p>
+              <p>
+                <a class="link-like" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>
+              </p>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <!-- Input Footer -->
@@ -2069,15 +2125,15 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          placeholder={limitReached || anonLoginRequired ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          disabled={isCurrentSessionSending || limitReached}
+          disabled={isCurrentSessionSending || limitReached || anonLoginRequired}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+          disabled={!inputText.trim() || isCurrentSessionSending || limitReached || anonLoginRequired}
           aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

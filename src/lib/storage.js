@@ -42,5 +42,10 @@ export const STORAGE_KEYS = {
   MESSAGES: 'messages',
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
-  HAS_USED: 'has_used'
+  HAS_USED: 'has_used',
+  // Logged-out visitors: stable anonymous id, and whether its free responses are used up
+  ANON_ID: 'anon_id',
+  ANON_LOGIN_REQUIRED: 'anon_login_required',
+  // 'user' | 'anon' — the identity the stored session belongs to
+  IDENTITY: 'identity'
 };
