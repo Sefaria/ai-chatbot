@@ -44,7 +44,11 @@ Status: in progress (branch `claude/gracious-noether-3tuqmy`, paired Sefaria-Pro
       prompt section, trace input; tests
 - [x] Widget: anonymous mode (no `user-id`), login-required bubble, input lock; history,
       opt-out link hidden when anonymous; logging in or out starts a new session
-- [ ] Widget: Personalize tab, question flow with option chips, 250-char final answer,
-      save, menu items (update / clear)
+- [x] Widget: Personalize tab, question flow with option chips, 250-char final answer,
+      save, menu items (update / clear). The tab sits on the edge between the message list
+      and the input, and shows until a memory is saved. While the questions run, typed
+      text answers the current question instead of going to the agent; the last question
+      has a Skip chip. Questions and answers are local messages (`local: true`), never sent
+      to the chat endpoint. New strings are in `en.json` only; Hebrew comes through Weblate.
 - [ ] Sefaria-Project: render LA for logged-out visitors (remote-config kill switch), hide the
       promo banner while LA is shown, update e2e LA-NEG-003/004

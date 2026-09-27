@@ -11,7 +11,10 @@
     loadConversationList,
     loadConversation,
     renameConversation,
-    deleteConversation
+    deleteConversation,
+    loadMemory,
+    saveMemory,
+    clearMemory
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
@@ -56,6 +59,22 @@
   let isAnonymous = $derived(!userId);
   let anonId = $state('');
   let anonLoginRequired = $state(false);
+
+  // "Personalize Responses": scripted questions whose answers the server keeps as the
+  // signed-in user's memory and adds to every prompt. Option values are the keys the
+  // backend understands (server/chat/V2/memory.py); a typed answer is stored as-is.
+  const MEMORY_NOTES_MAX_CHARS = 250;
+  const MEMORY_CHOICE_MAX_CHARS = 100;
+  const ONBOARDING_STEPS = [
+    { field: 'experience', options: ['never', 'a_bit', 'grew_up', 'recent'] },
+    { field: 'orientation', options: ['spiritual', 'intellectual', 'both', 'unsure'] },
+    { field: 'hebrew', options: ['none', 'alphabet', 'some', 'strong', 'fluent'] },
+    { field: 'notes', options: ['skip'] }
+  ];
+  let memory = $state(null);
+  let memoryLoaded = $state(false);
+  let onboarding = $state(null); // { step, answers, questionMessageId } while the questions run
+  let isNotesStep = $derived(onboarding?.step === ONBOARDING_STEPS.length - 1);
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -157,6 +176,12 @@
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
+  let inputMaxChars = $derived(
+    !onboarding ? effectiveMaxInputChars : isNotesStep ? MEMORY_NOTES_MAX_CHARS : MEMORY_CHOICE_MAX_CHARS
+  );
+  let showPersonalizeTab = $derived(
+    !isAnonymous && memoryLoaded && !memory && !onboarding && !limitReached && !isCurrentSessionSending
+  );
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
@@ -294,6 +319,17 @@
         return;
       }
       syncSessionState();
+    }
+  });
+
+  $effect(() => {
+    if (isOpen && userId && apiBaseUrl && !untrack(() => memoryLoaded)) {
+      loadMemory(apiBaseUrl, userId)
+        .then(saved => {
+          memory = saved;
+          memoryLoaded = true;
+        })
+        .catch(e => console.warn('[lc-chatbot] Failed to load memory:', e));
     }
   });
 
@@ -536,6 +572,7 @@
     inputText = '';
     isLoadingHistory = false;
     hasMoreHistory = false;
+    onboarding = null;
 
     stopThinkingMessages();
     turnCount = 0;
@@ -1023,14 +1060,93 @@
   }
 
   // Built at click time: the host navigates client-side, so the page can change under us.
+  // A real page load, so the message list's in-page link routing must not see this click.
   function goToLogin(e) {
+    e.stopPropagation();
     const here = window.location.pathname + window.location.search + window.location.hash;
     const separator = loginUrl.includes('?') ? '&' : '?';
     e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
   }
 
+  function addLocalMessage(role, content, extra = {}) {
+    const message = {
+      messageId: generateMessageId(),
+      sessionId,
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+      local: true,
+      ...extra
+    };
+    messages = [...messages, message];
+    saveMessagesToStorage();
+    scrollToBottom();
+    return message;
+  }
+
+  function startOnboarding(featureName) {
+    closeMenu();
+    showSettings = false;
+    track('assistant_click', { feature_name: featureName });
+    onboarding = { step: 0, answers: {}, questionMessageId: null };
+    askOnboardingQuestion(0);
+  }
+
+  function askOnboardingQuestion(step) {
+    const { field, options } = ONBOARDING_STEPS[step];
+    const t = get(_);
+    const question = addLocalMessage('assistant', t(`assistant.personalize.${field}.question`), {
+      options: options.map(value => ({ value, label: t(`assistant.personalize.${field}.${value}`) }))
+    });
+    onboarding = { ...onboarding, step, questionMessageId: question.messageId };
+    inputRef?.focus();
+  }
+
+  function answerOnboarding(value, label) {
+    const { field } = ONBOARDING_STEPS[onboarding.step];
+    addLocalMessage('user', label);
+    const answers = { ...onboarding.answers, [field]: value };
+    if (onboarding.step < ONBOARDING_STEPS.length - 1) {
+      onboarding = { ...onboarding, answers };
+      askOnboardingQuestion(onboarding.step + 1);
+    } else {
+      finishOnboarding(answers);
+    }
+  }
+
+  async function finishOnboarding(answers) {
+    onboarding = null;
+    try {
+      memory = await saveMemory(apiBaseUrl, userId, answers);
+      addLocalMessage('assistant', get(_)('assistant.personalize.done'));
+      track('assistant_click', { feature_name: 'personalize_completed' });
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to save memory:', e);
+      addLocalMessage('assistant', get(_)('assistant.personalize.saveFailed'));
+    }
+  }
+
+  async function handleClearMemory() {
+    closeMenu();
+    try {
+      memory = await clearMemory(apiBaseUrl, userId);
+      addLocalMessage('assistant', get(_)('assistant.personalize.cleared'));
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to clear memory:', e);
+    }
+  }
+
   async function handleSend() {
     const text = inputText.trim();
+    if (onboarding) {
+      // While the questions run, whatever the user types is their answer.
+      if (!text) return;
+      inputText = '';
+      setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+      answerOnboarding(text.slice(0, inputMaxChars), text);
+      return;
+    }
     const isConfigured = (userId || anonId) && apiBaseUrl;
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached && !anonLoginRequired;
     if (!isConfigured || !isReadyToSend) return;
@@ -1762,6 +1878,18 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                {#if !isAnonymous && memoryLoaded}
+                <button class="menu-item" data-feature-name={memory ? 'memory_update_menu' : 'personalize_menu'} onclick={() => startOnboarding(memory ? 'memory_update_menu' : 'personalize_menu')} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="16" height="16" />
+                  {$_(memory ? 'assistant.menu.memory.update' : 'assistant.menu.personalize')}
+                </button>
+                {#if memory}
+                <button class="menu-item" data-feature-name="memory_clear_menu" onclick={handleClearMemory} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="16" height="16" />
+                  {$_('assistant.menu.memory.clear')}
+                </button>
+                {/if}
+                {/if}
                 {#if !isAnonymous}
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
@@ -2042,7 +2170,18 @@
         {/if}
 
         {#each messages as item (item.messageId)}
-          {#if item.role === 'assistant'}
+          {#if item.role === 'assistant' && item.local}
+            {@render assistantBubble(item.content, false, item)}
+            {#if item.options && onboarding?.questionMessageId === item.messageId}
+              <div class="onboarding-options" role="group" aria-label={item.content}>
+                {#each item.options as option (option.value)}
+                  <button type="button" class="onboarding-option" onclick={() => answerOnboarding(option.value === 'skip' ? '' : option.value, option.label)}>
+                    {option.label}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
                 <Accordion kind="topics"
@@ -2118,14 +2257,22 @@
         {/if}
       </div>
 
+      {#if showPersonalizeTab}
+        <div class="personalize-tab-anchor">
+          <button type="button" class="personalize-tab" data-feature-name="personalize_tab" data-element-shown-name="personalize_tab" onclick={() => startOnboarding('personalize_tab')}>
+            <span aria-hidden="true">✦</span> {$_('assistant.personalize.tab')}
+          </button>
+        </div>
+      {/if}
+
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
         <textarea
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={effectiveMaxInputChars}
-          placeholder={limitReached || anonLoginRequired ? "" : $_('assistant.input.placeholder')}
+          maxlength={inputMaxChars}
+          placeholder={limitReached || anonLoginRequired ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
           disabled={isCurrentSessionSending || limitReached || anonLoginRequired}
@@ -2142,6 +2289,9 @@
           </svg>
         </button>
       </footer>
+      {#if isNotesStep}
+        <div class="input-char-count" aria-live="polite">{inputText.length}/{MEMORY_NOTES_MAX_CHARS}</div>
+      {/if}
       {/if}
       </section>
       </div>
@@ -3426,6 +3576,70 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  /* Personalize Responses: a tab rising out of the canvas's bottom edge */
+  .personalize-tab-anchor {
+    position: relative;
+    height: 0;
+  }
+
+  .personalize-tab {
+    position: absolute;
+    /* Overlap the footer's top border so the tab reads as part of the edge */
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px 4px;
+    background: var(--lc-body-bg);
+    color: var(--lc-primary);
+    border: 1px solid var(--lc-border);
+    border-bottom: none;
+    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 -2px 6px rgb(0 0 0 / 0.05);
+  }
+
+  .personalize-tab:hover {
+    background: var(--lc-topics-bg);
+  }
+
+  .onboarding-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: calc(-1 * var(--global-dimension-100, 8px));
+  }
+
+  .onboarding-option {
+    padding: 6px 12px;
+    background: var(--lc-bg);
+    color: var(--lc-primary);
+    border: 1px solid var(--lc-primary);
+    border-radius: 999px;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .onboarding-option:hover {
+    background: var(--lc-topics-bg);
+  }
+
+  .input-char-count {
+    padding: 0 18px 8px;
+    margin-top: -10px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-muted);
+    text-align: end;
   }
 
   /* Settings Panel */
