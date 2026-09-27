@@ -8,7 +8,7 @@ Django REST API with Claude Agent SDK integration.
 server/
 ├── chat/
 │   ├── views.py                 # Shared endpoints (history, health)
-│   ├── models.py                # ChatSession, ChatMessage
+│   ├── models.py                # ChatSession, ChatMessage, UserMemory
 │   ├── serializers.py           # Request/response validation
 │   ├── auth/
 │   │   ├── auth_service.py      # Token authentication
@@ -16,6 +16,7 @@ server/
 │   └── V2/
 │       ├── views.py             # V2 streaming endpoints
 │       ├── anthropic_views.py   # Anthropic Messages API endpoint
+│       ├── memory.py            # Personal memory endpoint + prompt text
 │       ├── utils.py             # Shared helpers (clients, config)
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
@@ -57,6 +58,7 @@ server/
 | `/api/v2/chat/anthropic` | POST | Anthropic Messages API format (for Braintrust) |
 | `/api/v2/chat/feedback` | POST | Feedback for trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
+| `/api/v2/memory` | GET/PUT/DELETE | Signed-in user's personal memory |
 | `/api/history` | GET | Conversation history |
 | `/api/health` | GET | Health check |
 
@@ -79,6 +81,7 @@ pytest                                    # Run tests
 | `APPETIZER_MODEL` | No | Model for the topic appetizer (default: same as `AGENT_MODEL`) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
+| `CHATBOT_ANON_FREE_RESPONSES` | No | Answers a logged-out visitor (`anonId`) gets before `login_required` (default: 2; 0 disables) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
 
 ## Load Testing

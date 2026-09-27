@@ -40,7 +40,7 @@ Status: in progress (branch `claude/gracious-noether-3tuqmy`, paired Sefaria-Pro
 
 - [x] Backend: `anonId` auth path (`authenticate_request(..., allow_anonymous=True)`) for
       stream, recover and client-event; free-response quota; tests
-- [ ] Backend: `UserMemory` model + migration `0013`, `GET/PUT/DELETE /api/v2/memory`,
+- [x] Backend: `UserMemory` model + migration `0013`, `GET/PUT/DELETE /api/v2/memory`,
       prompt section, trace input; tests
 - [ ] Widget: anonymous mode (no `user-id`), login-required bubble, input lock
 - [ ] Widget: Personalize tab, question flow with option chips, 250-char final answer,

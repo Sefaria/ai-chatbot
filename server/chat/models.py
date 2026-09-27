@@ -322,3 +322,22 @@ class ChatMessage(models.Model):
     def generate_turn_id(cls):
         """Generate a unique turn ID."""
         return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+class UserMemory(models.Model):
+    """Personalization a signed-in user shares once; applied to all of their sessions.
+
+    Choice fields hold an option key from chat.V2.memory (or the user's own words
+    when they typed an answer instead of picking one).
+    """
+
+    user_id = models.CharField(max_length=100, unique=True)
+    experience = models.CharField(max_length=100, blank=True, default="")
+    orientation = models.CharField(max_length=100, blank=True, default="")
+    hebrew = models.CharField(max_length=100, blank=True, default="")
+    notes = models.CharField(max_length=250, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Memory ({self.user_id})"
