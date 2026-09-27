@@ -57,10 +57,11 @@
   let anonId = $state('');
   let anonLoginRequired = $state(false);
 
-  // "Personalize Responses": scripted questions whose answers become the signed-in user's
-  // memory. It lives in this browser's storage and goes with every message, where the
-  // server adds it to the prompt. Option values are the keys the backend understands
-  // (server/chat/V2/memory.py); a typed answer is kept as-is.
+  // "Personalize Responses": the signed-in user's memory is a short text about them that
+  // goes with every message, where the server adds it to the prompt. It lives in this
+  // browser's storage. The first time, scripted questions draft it (each picked answer
+  // becomes a statement, the last answer is kept verbatim); after that it is edited as text.
+  const MEMORY_MAX_CHARS = 1000;
   const MEMORY_NOTES_MAX_CHARS = 250;
   const MEMORY_CHOICE_MAX_CHARS = 100;
   const ONBOARDING_STEPS = [
@@ -69,7 +70,9 @@
     { field: 'hebrew', options: ['none', 'alphabet', 'some', 'strong', 'fluent'] },
     { field: 'notes', options: ['skip'] }
   ];
-  let memory = $state(null);
+  let memory = $state(null); // string | null
+  let showMemoryEditor = $state(false);
+  let memoryDraft = $state('');
   let onboarding = $state(null); // { step, answers, questionMessageId } while the questions run
   let isNotesStep = $derived(onboarding?.step === ONBOARDING_STEPS.length - 1);
 
@@ -265,7 +268,8 @@
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
     } else {
-      memory = getStorage(STORAGE_KEYS.MEMORY, null);
+      const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
+      memory = typeof savedMemory === 'string' ? savedMemory : null;
     }
 
     // Initialize session
@@ -542,6 +546,7 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
+    showMemoryEditor = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
   }
@@ -870,6 +875,7 @@
 
   async function openSettings() {
     showSettings = true;
+    showMemoryEditor = false;
     settingsError = '';
 
     if (!settingsLoaded && apiBaseUrl) {
@@ -1106,19 +1112,50 @@
     }
   }
 
+  /** Picked answers become statements ("The user knows some Hebrew."); typed ones stay as typed. */
+  function composeMemory(answers) {
+    const t = get(_);
+    const statements = ONBOARDING_STEPS.slice(0, -1)
+      .map(({ field, options }) => {
+        const value = answers[field];
+        if (!value) return '';
+        return options.includes(value) ? t(`assistant.personalize.${field}.${value}.memory`) : value;
+      })
+      .filter(Boolean);
+    return [statements.join('\n'), answers.notes].filter(Boolean).join('\n\n');
+  }
+
+  function setMemory(text) {
+    memory = text || null;
+    setStorage(STORAGE_KEYS.MEMORY, memory);
+  }
+
   function finishOnboarding(answers) {
     onboarding = null;
-    memory = answers;
-    setStorage(STORAGE_KEYS.MEMORY, answers);
+    setMemory(composeMemory(answers));
     addLocalMessage('assistant', get(_)('assistant.personalize.done'));
     track('assistant_click', { feature_name: 'personalize_completed' });
   }
 
-  function handleClearMemory() {
+  function openMemoryEditor() {
     closeMenu();
-    memory = null;
-    setStorage(STORAGE_KEYS.MEMORY, null);
+    showSettings = false;
+    memoryDraft = memory || '';
+    showMemoryEditor = true;
+    track('assistant_click', { feature_name: 'memory_editor_open' });
+  }
+
+  function saveMemoryDraft() {
+    setMemory(memoryDraft.trim());
+    showMemoryEditor = false;
+    track('assistant_click', { feature_name: 'memory_editor_save' });
+  }
+
+  function clearMemory() {
+    setMemory(null);
+    showMemoryEditor = false;
     addLocalMessage('assistant', get(_)('assistant.personalize.cleared'));
+    track('assistant_click', { feature_name: 'memory_editor_clear' });
   }
 
   async function handleSend() {
@@ -1864,16 +1901,10 @@
                   {$_('assistant.menu.help')}
                 </a>
                 {#if !isAnonymous}
-                <button class="menu-item" data-feature-name={memory ? 'memory_update_menu' : 'personalize_menu'} onclick={() => startOnboarding(memory ? 'memory_update_menu' : 'personalize_menu')} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
+                <button class="menu-item" onclick={() => (memory ? openMemoryEditor() : startOnboarding('personalize_menu'))} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="16" height="16" />
                   {$_(memory ? 'assistant.menu.memory.update' : 'assistant.menu.personalize')}
                 </button>
-                {#if memory}
-                <button class="menu-item" data-feature-name="memory_clear_menu" onclick={handleClearMemory} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/trash-2.svg" alt="" width="16" height="16" />
-                  {$_('assistant.menu.memory.clear')}
-                </button>
-                {/if}
                 {/if}
                 {#if !isAnonymous}
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
@@ -2086,6 +2117,29 @@
           </div>
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
+        </div>
+      {:else if showMemoryEditor}
+        <div class="settings-panel memory-panel">
+          <div class="settings-header">
+            <button class="settings-back" onclick={() => (showMemoryEditor = false)} aria-label={$_('assistant.settings.back.aria')}>
+              {$_('assistant.settings.back')}
+            </button>
+            <div class="settings-title">{$_('assistant.memory.title')}</div>
+          </div>
+          <p class="settings-note">{$_('assistant.memory.description')}</p>
+          <textarea
+            class="memory-textarea"
+            bind:value={memoryDraft}
+            maxlength={MEMORY_MAX_CHARS}
+            rows="10"
+            placeholder={$_('assistant.memory.placeholder')}
+            aria-label={$_('assistant.memory.title')}
+          ></textarea>
+          <div class="memory-char-count" aria-live="polite">{memoryDraft.length}/{MEMORY_MAX_CHARS}</div>
+          <div class="settings-actions">
+            <button class="settings-save" onclick={saveMemoryDraft}>{$_('assistant.memory.save')}</button>
+            <button class="settings-reset" onclick={clearMemory}>{$_('assistant.memory.clear')}</button>
+          </div>
         </div>
       {:else}
       <!-- Message List -->
@@ -3617,6 +3671,31 @@
 
   .onboarding-option:hover {
     background: var(--lc-topics-bg);
+  }
+
+  .memory-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size);
+    line-height: 1.5;
+    color: var(--lc-text);
+    background: var(--lc-bg);
+    resize: vertical;
+    outline: none;
+  }
+
+  .memory-textarea:focus {
+    border-color: var(--brand-sefaria-blue);
+  }
+
+  .memory-char-count {
+    margin-top: -8px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-muted);
+    text-align: end;
   }
 
   .input-char-count {

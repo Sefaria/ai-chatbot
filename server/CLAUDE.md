@@ -16,7 +16,6 @@ server/
 │   └── V2/
 │       ├── views.py             # V2 streaming endpoints
 │       ├── anthropic_views.py   # Anthropic Messages API endpoint
-│       ├── memory.py            # Personal memory → prompt text (sent by the widget)
 │       ├── utils.py             # Shared helpers (clients, config)
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration

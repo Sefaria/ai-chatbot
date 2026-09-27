@@ -52,7 +52,6 @@ from ..serializers import (
 from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get_agent_service
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
-from .memory import build_memory_prompt_text
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
@@ -425,9 +424,7 @@ def chat_stream_v2(request):
 
     msg_context = MessageContext(
         summary_text=summary_text,
-        user_memory_text=None
-        if actor.is_anonymous
-        else build_memory_prompt_text(data.get("memory")),
+        user_memory_text=None if actor.is_anonymous else (data.get("memory") or None),
         page_url=page_url or None,
         session_id=data["sessionId"],
         # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).

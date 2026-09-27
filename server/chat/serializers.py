@@ -26,15 +26,6 @@ class PromptSlugsSerializer(serializers.Serializer):
     labs = serializers.BooleanField(required=False, default=False)
 
 
-class UserMemorySerializer(serializers.Serializer):
-    """Personalize Responses answers: option keys (chat.V2.memory) or the user's own words."""
-
-    experience = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    orientation = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    hebrew = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    notes = serializers.CharField(max_length=250, required=False, allow_blank=True)
-
-
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
@@ -46,7 +37,8 @@ class ChatRequestSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
-    memory = UserMemorySerializer(required=False)
+    # The signed-in user's personal memory ("Personalize Responses"), kept by the widget
+    memory = serializers.CharField(max_length=1000, required=False, allow_blank=True)
     isLoadTest = serializers.BooleanField(required=False, default=False)
 
 
