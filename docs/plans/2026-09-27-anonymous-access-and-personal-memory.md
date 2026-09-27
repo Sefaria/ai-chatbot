@@ -1,6 +1,8 @@
 # Anonymous access + personal memory
 
-Status: in progress (branch `claude/gracious-noether-3tuqmy`, paired Sefaria-Project branch of the same name)
+Status: in review. [ai-chatbot#222](https://github.com/Sefaria/ai-chatbot/pull/222) +
+[Sefaria-Project#3762](https://github.com/Sefaria/Sefaria-Project/pull/3762) (both branch
+`claude/gracious-noether-3tuqmy`; the cauldron's image segment is `claudegracious-noether-3tuqmy`)
 
 ## Goals
 
@@ -50,5 +52,7 @@ Status: in progress (branch `claude/gracious-noether-3tuqmy`, paired Sefaria-Pro
       text answers the current question instead of going to the agent; the last question
       has a Skip chip. Questions and answers are local messages (`local: true`), never sent
       to the chat endpoint. New strings are in `en.json` only; Hebrew comes through Weblate.
-- [ ] Sefaria-Project: render LA for logged-out visitors (remote-config kill switch), hide the
-      promo banner while LA is shown, update e2e LA-NEG-003/004
+- [x] Sefaria-Project: render LA for logged-out visitors (remote config
+      `feature.chatbot.anonymous_enabled`, default on), hide the promo banner while LA is
+      shown, e2e LA-NEG-003/004 → LA-ANON-001/002 (and the Hebrew pair)
+- [ ] Cauldron + preview QA; Hebrew strings via Weblate
