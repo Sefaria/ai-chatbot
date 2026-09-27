@@ -9,6 +9,9 @@ The saved answers are rendered into a prompt section on every turn
 (see prompt_fragments.USER_MEMORY_SECTION).
 """
 
+import logging
+
+from django.db import DatabaseError
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -16,6 +19,9 @@ from rest_framework.response import Response
 from ..auth import AuthenticationError, authenticate_request
 from ..models import UserMemory
 from .prompts.prompt_fragments import USER_MEMORY_SECTION
+from .sentry import capture_exception
+
+logger = logging.getLogger("chat")
 
 # Option keys the widget sends → how the agent reads them.
 EXPERIENCE = {
@@ -69,9 +75,17 @@ def build_memory_prompt_text(memory: UserMemory | None) -> str | None:
 
 
 def load_memory_prompt_text(actor) -> str | None:
+    """Memory for this turn's prompt. Personalization is optional, so a failed read
+    (e.g. the table not migrated yet) is reported and the turn goes on without it."""
     if actor.is_anonymous:
         return None
-    return build_memory_prompt_text(UserMemory.objects.filter(user_id=actor.user_id).first())
+    try:
+        memory = UserMemory.objects.filter(user_id=actor.user_id).first()
+    except DatabaseError as exc:
+        logger.exception("Could not load user memory; answering without it")
+        capture_exception(exc, endpoint="chat_stream_v2", phase="load_user_memory")
+        return None
+    return build_memory_prompt_text(memory)
 
 
 def _serialize(memory: UserMemory) -> dict:

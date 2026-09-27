@@ -139,3 +139,14 @@ def test_stream_passes_memory_to_agent(mock_get_agent, client, token):
 
     ctx = agent.send_message.call_args.kwargs["context"]
     assert "fluent Hebrew" in ctx.user_memory_text
+
+
+@pytest.mark.django_db
+def test_memory_read_failure_does_not_block_the_turn():
+    from django.db import DatabaseError
+
+    from chat.auth import Actor
+    from chat.V2.memory import load_memory_prompt_text
+
+    with patch("chat.V2.memory.UserMemory.objects.filter", side_effect=DatabaseError("no table")):
+        assert load_memory_prompt_text(Actor(user_id="hashed-user")) is None
