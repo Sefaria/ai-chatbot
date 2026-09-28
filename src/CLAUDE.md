@@ -63,6 +63,20 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
+## Host Events
+
+- Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
+- Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu). `detail.source` becomes the GA4 `feature_name`.
+
+## Phones
+
+Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-screen sheet, not a floating/docked panel:
+
+- Never opens on load, whatever `default-open` or saved state says. The closed button recedes while the page scrolls forward.
+- Owns one history entry (`lib/sheetHistory.js`), so Back closes it. Its popstate listener is registered at bundle load so it runs before the host's; Sefaria loads the bundle in `<head>`. In-page links close the sheet and navigate after the pop.
+- Locks page scroll and follows `visualViewport`, so the input stays above the keyboard. Input is 16px (smaller makes iOS zoom).
+- No dock mode. History covers the chat; picking a chat returns to it.
+
 ## i18n
 
 User-facing strings live in `src/i18n/locales/{en,he}.json` and are looked up via `$_('key')` (svelte-i18n). Production translations are managed in Weblate at:
