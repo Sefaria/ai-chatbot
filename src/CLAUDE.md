@@ -53,15 +53,34 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `user-id` | string | Yes | Encrypted user token |
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
-| `default-open` | boolean | No | Open on load |
+| `default-open` | boolean | No | Open on load. Ignored on compact viewports (see below), where the widget always starts closed |
 | `max-input-chars` | number | No | Max characters allowed in the textarea (default: 10000) |
 | `max-prompts` | number | No | Max prompts per conversation before blocking (default: 100) |
-| `mode` | `"floating"` \| `"panel"` | No | Display mode |
+| `mode` | `"floating"` \| `"docked"` | No | Display mode; the user can toggle it, and the choice persists in localStorage |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
+
+## Compact viewports (mobile web)
+
+`COMPACT_MEDIA_QUERY` in `LCChatbot.svelte` (`(max-width: 767px), (max-height: 520px)`)
+sets `isCompact` / the `.is-compact` class. When compact:
+
+- the open widget is a full-screen sheet (`position: fixed; inset: 0`), sized from
+  `visualViewport` via `--lc-viewport-height` / `--lc-viewport-top` so the input stays
+  above the soft keyboard; the page behind gets `overflow: hidden` while open
+- it never opens on page load (following a link out of a conversation must land on the
+  text), the dock/undock controls are hidden, the launcher is icon-only, and chat history
+  overlays the conversation instead of widening the panel
+- the textarea is 16px so iOS Safari does not zoom on focus
+
+## Host events
+
+Dispatched on `document`: `chatbot:opened`, `chatbot:closed`, `chatbot:message_sent`,
+`chatbot:error`. Listened for on `document`: `chatbot:open` — a host page can open the
+widget from its own entry point (Sefaria's mobile drawer does this).
 
 ## i18n
 

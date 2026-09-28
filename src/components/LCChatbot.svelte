@@ -68,6 +68,9 @@
 
   // State
   let mode = $state('floating');
+  // True on phone-sized viewports (COMPACT_MEDIA_QUERY): the open widget is then a
+  // full-screen sheet rather than a floating or docked panel.
+  let isCompact = $state(false);
   let isOpen = $state(false);
   let messages = $state([]);
   let inputText = $state('');
@@ -223,6 +226,10 @@
   const MIN_HEIGHT = 456;
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
+  // Below this a 300x456 floating panel cannot sit beside the page content, so the
+  // open widget covers the viewport instead: portrait phones by width, landscape
+  // phones by height.
+  const COMPACT_MEDIA_QUERY = '(max-width: 767px), (max-height: 520px)';
 
   // Initialize on mount
   $effect(() => {
@@ -232,9 +239,16 @@
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
 
-    // Restore UI state
+    const compactQuery = window.matchMedia(COMPACT_MEDIA_QUERY);
+    isCompact = compactQuery.matches;
+    const onCompactChange = (e) => { isCompact = e.matches; };
+    compactQuery.addEventListener('change', onCompactChange);
+
+    // Restore UI state. On compact viewports the sheet covers the page, so it never
+    // opens on load: following a link out of a conversation must land on the text,
+    // not on the assistant again.
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    isOpen = isCompact ? false : (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -268,6 +282,42 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    return () => compactQuery.removeEventListener('change', onCompactChange);
+  });
+
+  // Full-screen sheet: the page behind must not scroll, and the sheet tracks the
+  // visual viewport so the input stays above the soft keyboard (iOS keeps the
+  // layout viewport full-height and scrolls it instead).
+  $effect(() => {
+    if (!isCompact || !isOpen) return;
+    const host = $host();
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      host.style.setProperty('--lc-viewport-height', `${Math.round(viewport?.height ?? window.innerHeight)}px`);
+      host.style.setProperty('--lc-viewport-top', `${Math.round(viewport?.offsetTop ?? 0)}px`);
+    };
+    syncViewport();
+    viewport?.addEventListener('resize', syncViewport);
+    viewport?.addEventListener('scroll', syncViewport);
+    window.addEventListener('resize', syncViewport);
+    return () => {
+      root.style.overflow = previousOverflow;
+      host.style.removeProperty('--lc-viewport-height');
+      host.style.removeProperty('--lc-viewport-top');
+      viewport?.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('scroll', syncViewport);
+      window.removeEventListener('resize', syncViewport);
+    };
+  });
+
+  // Lets the host page add its own entry point (Sefaria's mobile header button).
+  $effect(() => {
+    document.addEventListener('chatbot:open', openPanel);
+    return () => document.removeEventListener('chatbot:open', openPanel);
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
@@ -490,7 +540,9 @@
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
-    // Focus input after panel opens
+    // Focus input after panel opens. Not on compact viewports: the soft keyboard
+    // would cover the welcome content the user just opened.
+    if (isCompact) return;
     setTimeout(() => {
       inputRef?.focus();
     }, 100);
@@ -1619,8 +1671,9 @@
 
 <div
   class="lc-chatbot-container"
-  class:mode-floating={mode === 'floating'}
-  class:mode-docked={mode === 'docked'}
+  class:mode-floating={mode === 'floating' || isCompact}
+  class:mode-docked={mode === 'docked' && !isCompact}
+  class:is-compact={isCompact}
   class:is-open={isOpen}
   class:interface-hebrew={interfaceLang === 'he'}
 >
@@ -1635,7 +1688,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      style={isCompact ? '' : `width: ${visiblePanelWidth}px;${mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1676,6 +1729,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if !isCompact}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1688,6 +1742,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1707,10 +1762,12 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if !isCompact}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2286,6 +2343,80 @@
   .lc-chatbot-container.mode-docked .resize-nw,
   .lc-chatbot-container.mode-docked .resize-se,
   .lc-chatbot-container.mode-docked .resize-sw {
+    display: none;
+  }
+
+  /* Compact viewports (COMPACT_MEDIA_QUERY, applied as .is-compact): the open widget
+     is a full-screen sheet. These follow the docked rules so they win at equal
+     specificity; --lc-viewport-* are set on the host from visualViewport. */
+  .lc-chatbot-container.is-compact.is-open {
+    position: fixed;
+    top: var(--lc-viewport-top, 0px);
+    bottom: auto;
+    inset-inline: 0;
+    width: 100%;
+    height: var(--lc-viewport-height, 100dvh);
+    margin: 0;
+    padding: 0;
+  }
+
+  .lc-chatbot-container.is-compact.is-open .lc-chatbot-panel {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .lc-chatbot-container.is-compact .resize-handle {
+    display: none;
+  }
+
+  .lc-chatbot-container.is-compact .lc-chatbot-header {
+    padding-top: calc(16px + env(safe-area-inset-top));
+  }
+
+  .lc-chatbot-container.is-compact .lc-chatbot-input {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* iOS Safari zooms the page into any focused field smaller than 16px */
+  .lc-chatbot-container.is-compact .lc-chatbot-input textarea {
+    font-size: var(--lc-font-size-lg);
+  }
+
+  /* Reaching the end of the conversation must not scroll the page behind the sheet */
+  .lc-chatbot-container.is-compact .lc-chatbot-messages {
+    overscroll-behavior: contain;
+  }
+
+  /* History overlays the conversation instead of widening the panel */
+  .lc-chatbot-container.is-compact .lc-chatbot-body {
+    position: relative;
+  }
+
+  .lc-chatbot-container.is-compact .chat-history-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+    z-index: 1;
+  }
+
+  /* Touch has no hover: keep hover-revealed controls visible */
+  .lc-chatbot-container.is-compact .history-row-menu-trigger,
+  .lc-chatbot-container.is-compact .message-timestamp {
+    opacity: 1;
+  }
+
+  /* Closed: an icon-only launcher, so it covers as little of the text as possible */
+  .lc-chatbot-container.is-compact .lc-chatbot-trigger {
+    padding: 12px;
+  }
+
+  .lc-chatbot-container.is-compact .trigger-label {
     display: none;
   }
 
