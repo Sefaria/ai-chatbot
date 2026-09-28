@@ -224,6 +224,12 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Below this width the panel goes full-screen (see the mobile block in <style>).
+  // Matches Sefaria's own mobile breakpoint (sefaria-project static/css/breakpoints.scss: --bp-tablet-min).
+  const MOBILE_MAX_WIDTH = 842;
+  const isMobileViewport = () =>
+    typeof window !== 'undefined' && window.matchMedia(`(max-width: ${MOBILE_MAX_WIDTH}px)`).matches;
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -232,9 +238,11 @@
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
 
-    // Restore UI state
+    // Restore UI state. On mobile a full-screen assistant should never cover the text
+    // uninvited, so a first-time mobile visitor starts closed regardless of `defaultOpen`;
+    // a returning visitor's own saved state (mobile or not) is always honored.
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    isOpen = savedUI?.isOpen ?? (isMobileViewport() ? false : defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -1680,6 +1688,7 @@
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
             onClick={(e) => { e.stopPropagation(); toggleMode(); }}
+            data-mode-toggle
           >
             <img
               src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg"
@@ -1707,7 +1716,7 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
-                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
+                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem" data-mode-toggle>
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
@@ -2287,6 +2296,45 @@
   .lc-chatbot-container.mode-docked .resize-se,
   .lc-chatbot-container.mode-docked .resize-sw {
     display: none;
+  }
+
+  /* Mobile: a mostly-full-screen sheet under the fixed site header, open state only.
+     Floating and docked look identical here -- there's no room on a phone for a "corner
+     widget" vs. "sidebar" distinction, so both are pinned to the same full-bleed sheet.
+     842px matches Sefaria's own mobile breakpoint (sefaria-project static/css/breakpoints.scss:
+     --bp-tablet-min); the two can't share a CSS variable across the shadow-DOM/bundle boundary,
+     so keep them in sync by hand. Closed state is untouched: the small corner trigger button
+     is the mobile entry point too. */
+  @media (max-width: 842px) {
+    .lc-chatbot-container.mode-floating.is-open,
+    .lc-chatbot-container.mode-docked.is-open {
+      position: fixed;
+      inset: var(--lc-docked-top-offset) 0 0 0;
+      margin: 0;
+      width: auto;
+      height: auto;
+      max-height: none;
+      padding: 0;
+    }
+
+    .lc-chatbot-container.mode-floating.is-open .lc-chatbot-panel,
+    .lc-chatbot-container.mode-docked.is-open .lc-chatbot-panel {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none;
+      max-height: 100%;
+      margin: 0;
+      border-radius: 0;
+    }
+
+    /* Dragging to resize, and docking/undocking, don't mean anything on a full-screen sheet. */
+    .lc-chatbot-container .resize-handle {
+      display: none;
+    }
+
+    .lc-chatbot-container [data-mode-toggle] {
+      display: none;
+    }
   }
 
   /* Trigger Button */
