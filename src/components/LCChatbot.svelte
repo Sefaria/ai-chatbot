@@ -2564,7 +2564,18 @@
     min-height: 44px;
   }
 
-  /* Chat history */
+  /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
+  .mode-fullscreen .history-toolbar {
+    height: 60px;
+    min-height: 60px;
+    padding-block: 8px;
+    padding-inline: 6px 12px;
+  }
+
+  .mode-fullscreen .history-toolbar-group {
+    gap: 8px;
+  }
+
   .mode-fullscreen .history-icon-btn {
     width: 44px;
     height: 44px;
