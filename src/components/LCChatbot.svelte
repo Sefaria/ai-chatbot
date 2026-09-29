@@ -2736,6 +2736,17 @@
     height: 20px;
   }
 
+  /* Open clear of the 44px trigger, wide enough for the 15px labels */
+  .mode-fullscreen .history-row-dropdown {
+    inset-block-start: 44px;
+    width: 160px;
+  }
+
+  .mode-fullscreen .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 44px;
+  }
+
   .mode-fullscreen .history-row-dropdown button {
     height: 48px;
     min-height: 48px;
@@ -3144,6 +3155,12 @@
     display: flex;
     align-items: center;
     z-index: 3;
+  }
+
+  /* Each row's menu is its own stacking context, so the open one must outrank the
+     rows below it or their kebabs paint over its dropdown */
+  .history-row-menu:has(.history-row-dropdown) {
+    z-index: 4;
   }
 
   .history-row-menu-trigger {
