@@ -2597,6 +2597,12 @@
     line-height: 22px;
   }
 
+  /* Rotating loading text ("Searching the library", "Synthesizing response") and its glyph */
+  .mode-fullscreen :is(.lc-thinking-glyph, .lc-thinking-label) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
   .mode-fullscreen :global(.progress-trail-toggle) {
     min-height: 44px;
     font-size: 13px;
