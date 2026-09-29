@@ -1776,6 +1776,7 @@
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
+      class:sheet-lifted={sheetOffset > 0 || sheetSettling}
       style={isFullscreen ? (sheetOffset ? `transform: translateY(${sheetOffset}px);` : '') : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
@@ -2504,6 +2505,12 @@
 
   .mode-fullscreen .lc-chatbot-panel.sheet-settling {
     transition: transform 0.2s ease;
+  }
+
+  /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
+  .mode-fullscreen .lc-chatbot-panel.sheet-lifted {
+    border-radius: var(--lc-radius) var(--lc-radius) 0 0;
+    box-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
   }
 
   .mode-fullscreen .header-actions {
