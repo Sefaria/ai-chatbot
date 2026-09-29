@@ -264,7 +264,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
- * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the signed-in user's personal memory text
+ * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the visitor's personal memory text
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
  * @returns {Promise<ChatResponse>}
  */
@@ -284,7 +284,7 @@ export async function sendMessageStream(
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
   const anonId = userId ? undefined : requestMetadata?.anonId;
-  const memory = userId ? requestMetadata?.memory || undefined : undefined;
+  const memory = requestMetadata?.memory || undefined;
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (shouldForceStreamBreak(text)) {
