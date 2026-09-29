@@ -2576,6 +2576,30 @@
     gap: 8px;
   }
 
+  /* Search field: 48px tall, with a full 44px search/clear button at its end */
+  .mode-fullscreen .history-search {
+    height: 48px;
+    margin: 0 12px 12px;
+    padding: 0 1px 0 16px;
+    gap: 4px;
+  }
+
+  .mode-fullscreen .history-search input {
+    height: 100%;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-search-submit {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .mode-fullscreen .history-search-submit img {
+    width: 22px;
+    height: 22px;
+  }
+
   .mode-fullscreen .history-icon-btn {
     width: 44px;
     height: 44px;
@@ -2614,7 +2638,7 @@
   }
 
   /* Icons: CSS size wins over the width/height attributes */
-  .mode-fullscreen :is(.header-actions, .history-icon-btn, .history-search-submit) img,
+  .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
   .mode-fullscreen .send-btn svg {
     width: 24px;
     height: 24px;
