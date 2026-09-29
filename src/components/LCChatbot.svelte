@@ -2513,7 +2513,6 @@
   .mode-fullscreen .link-like,
   .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
     padding-block: 6px;
-    text-underline-offset: 3px;
     -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
   }
 
