@@ -2646,6 +2646,36 @@
     min-height: 44px;
   }
 
+  /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
+  .mode-fullscreen .delete-modal {
+    width: 320px;
+    padding: 24px 20px 20px;
+    border-radius: 12px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-title {
+    font-size: 18px;
+    line-height: 24px;
+    margin-bottom: 8px;
+  }
+
+  .mode-fullscreen .delete-modal-subtext {
+    font-size: 15px;
+    line-height: 22px;
+    margin-bottom: 24px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-actions {
+    gap: 12px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-btn {
+    flex: 1 1 0;
+    height: 48px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
   /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
   .mode-fullscreen .history-toolbar {
     height: 60px;
