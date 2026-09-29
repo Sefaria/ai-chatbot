@@ -267,10 +267,10 @@
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
+    } else {
+      const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
+      memory = typeof savedMemory === 'string' ? savedMemory : null;
     }
-    // Logged-out visitors keep a memory too once a host-sent ask ran the questions for them.
-    const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
-    memory = typeof savedMemory === 'string' ? savedMemory : null;
 
     // Initialize session
     const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
@@ -1101,10 +1101,10 @@
     askOnboardingQuestion(0);
   }
 
-  function askOnboardingQuestion(step, questionKey = null) {
+  function askOnboardingQuestion(step) {
     const { field, options } = ONBOARDING_STEPS[step];
     const t = get(_);
-    const question = addLocalMessage('assistant', t(questionKey || `assistant.personalize.${field}.question`), {
+    const question = addLocalMessage('assistant', t(`assistant.personalize.${field}.question`), {
       options: options.map(value => ({ value, label: t(`assistant.personalize.${field}.${value}`) }))
     });
     onboarding = { ...onboarding, step, questionMessageId: question.messageId };
@@ -1142,17 +1142,19 @@
   }
 
   function finishOnboarding(answers) {
-    const pendingAsk = onboarding?.pendingAsk;
     onboarding = null;
     setMemory(composeMemory(answers));
-    track('assistant_click', { feature_name: 'personalize_completed' });
-    if (pendingAsk) {
-      // The questions came from a host ask: now answer it, personalized. Its bubble is already shown.
-      handleSend({ text: pendingAsk, echo: false });
-      return;
-    }
     addLocalMessage('assistant', get(_)('assistant.personalize.done'));
+    track('assistant_click', { feature_name: 'personalize_completed' });
   }
+
+  // Sent with the host's "suggest things to learn" ask. Two questions in one message, so a
+  // logged-out visitor still has an answer left for the suggestions.
+  const INTERVIEW_INSTRUCTION =
+    '(Before suggesting anything, interview me briefly: in one short, friendly message, ask me ' +
+    'two questions, about my background with Jewish texts and Hebrew, and about what I hope to ' +
+    'get out of learning (a topic, a holiday, a habit, a class). Offer a few example answers for ' +
+    'each. Once I reply, suggest three specific places on Sefaria to start, with links.)';
 
   function consumePendingAsk() {
     const ask = window.lcChatbotPendingAsk;
@@ -1162,9 +1164,9 @@
   }
 
   /**
-   * Open with a prompt from the host, in a fresh conversation. intent 'personalize' first
-   * runs the Personalize Responses questions (scripted, so they come back instantly), then
-   * sends the prompt with the memory they produce. Any other intent sends it right away.
+   * Open with a prompt from the host, in a fresh conversation. intent 'interview' shows the
+   * prompt as asked but tells the model to interview the visitor briefly before suggesting.
+   * Nothing from the interview is saved to personal memory. Any other intent sends it as is.
    */
   async function runAsk({ text, intent }) {
     if (isCurrentSessionSending || anonLoginRequired) return;
@@ -1172,14 +1174,7 @@
     if (!isOpen) openPanel();
     await tick();
     track('assistant_click', { feature_name: 'host_ask', text, intent: intent || 'send' });
-    if (intent === 'personalize') {
-      addLocalMessage('user', text);
-      addLocalMessage('assistant', get(_)('assistant.ask.personalizeIntro'));
-      onboarding = { step: 0, answers: {}, questionMessageId: null, pendingAsk: text };
-      askOnboardingQuestion(0, 'assistant.ask.firstQuestion');
-      return;
-    }
-    handleSend({ text });
+    handleSend({ text, modelText: intent === 'interview' ? `${text}\n\n${INTERVIEW_INSTRUCTION}` : null });
   }
 
   function openMemoryEditor() {
@@ -1203,9 +1198,9 @@
     track('assistant_click', { feature_name: 'memory_editor_clear' });
   }
 
-  // With text, sends that instead of the input box (a host ask); echo: false skips the
-  // user bubble when it is already on screen.
-  async function handleSend({ text: askedText = null, echo = true } = {}) {
+  // With text, sends that instead of the input box (a host ask); modelText, when set, is what
+  // the model receives in place of the text shown in the user's bubble.
+  async function handleSend({ text: askedText = null, modelText = null } = {}) {
     const fromInput = askedText === null;
     const text = (fromInput ? inputText : askedText).trim();
     if (onboarding && fromInput) {
@@ -1242,11 +1237,9 @@
       locationRef
     };
 
-    if (echo) {
-      messages = [...messages, userMessage];
-      saveMessagesToStorage();
-      scrollToBottom();
-    }
+    messages = [...messages, userMessage];
+    saveMessagesToStorage();
+    scrollToBottom();
 
     setSessionSending(sendingSessionId, true);
     isSending = Object.keys(sendingSessionIds).length > 0;
@@ -1273,7 +1266,7 @@
     };
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
+      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, modelText || text, {
         onProgress: (progress) => {
           if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {

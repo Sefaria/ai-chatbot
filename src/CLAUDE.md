@@ -69,8 +69,8 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 A host page can open the widget with a prompt: set `window.lcChatbotPendingAsk = { text, intent }`
 and dispatch `new Event('chatbot:ask')` on `document`. The widget takes it on mount or on the
 event (whichever comes first), starts a fresh conversation and sends `text`. With
-`intent: 'personalize'` it first runs the Personalize Responses questions (logged-out visitors
-too), then sends `text` with the memory they produced.
+`intent: 'interview'` the model is told to ask two short questions about the visitor before
+suggesting where to start; nothing from it goes into personal memory.
 
 ## i18n
 

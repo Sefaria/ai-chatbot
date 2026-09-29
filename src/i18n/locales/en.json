@@ -106,8 +106,6 @@
     "assistant.personalize.placeholder.notes": "Up to 250 characters",
     "assistant.personalize.done": "Great, we’re done! Go ahead and let me know what you’d like help with in your learning. You can update your personal memory in the menu.",
     "assistant.personalize.cleared": "Your personal memory has been cleared.",
-    "assistant.ask.personalizeIntro": "Happy to! A few quick questions first, so my suggestions fit you.",
-    "assistant.ask.firstQuestion": "Have you learned Jewish texts before?",
     "assistant.menu.personalize": "Personalize responses",
     "assistant.menu.memory.update": "Update personal memory",
     "assistant.memory.title": "Personal memory",
