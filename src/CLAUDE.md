@@ -64,6 +64,14 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
+## Host asks
+
+A host page can open the widget with a prompt: set `window.lcChatbotPendingAsk = { text, intent }`
+and dispatch `new Event('chatbot:ask')` on `document`. The widget takes it on mount or on the
+event (whichever comes first), starts a fresh conversation and sends `text`. With
+`intent: 'personalize'` it first runs the Personalize Responses questions (logged-out visitors
+too), then sends `text` with the memory they produced.
+
 ## i18n
 
 User-facing strings live in `src/i18n/locales/{en,he}.json` and are looked up via `$_('key')` (svelte-i18n). Production translations are managed in Weblate at:

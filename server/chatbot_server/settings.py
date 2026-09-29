@@ -221,7 +221,7 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 
 # Logged-out visitors (no userId, client-generated anonId) get this many
 # successful responses before the server answers `login_required`. 0 disables.
-CHATBOT_ANON_FREE_RESPONSES = int(os.environ.get("CHATBOT_ANON_FREE_RESPONSES", "2"))
+CHATBOT_ANON_FREE_RESPONSES = int(os.environ.get("CHATBOT_ANON_FREE_RESPONSES", "3"))
 
 # ============================================================================
 # Anthropic API Configuration

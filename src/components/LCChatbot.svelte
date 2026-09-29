@@ -267,10 +267,10 @@
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
-    } else {
-      const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
-      memory = typeof savedMemory === 'string' ? savedMemory : null;
     }
+    // Logged-out visitors keep a memory too once a host-sent ask ran the questions for them.
+    const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
+    memory = typeof savedMemory === 'string' ? savedMemory : null;
 
     // Initialize session
     const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
@@ -314,6 +314,17 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    // An ask the host queued before the widget mounted (outside this effect's tracking)
+    setTimeout(consumePendingAsk, 0);
+  });
+
+  // The host page can open the assistant with a prompt (e.g. Sefaria's first-visit welcome):
+  // it sets window.lcChatbotPendingAsk = { text, intent } and dispatches 'chatbot:ask' on
+  // document. Whichever of mount or the event runs first takes it, so it runs once.
+  $effect(() => {
+    document.addEventListener('chatbot:ask', consumePendingAsk);
+    return () => document.removeEventListener('chatbot:ask', consumePendingAsk);
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
@@ -1090,10 +1101,10 @@
     askOnboardingQuestion(0);
   }
 
-  function askOnboardingQuestion(step) {
+  function askOnboardingQuestion(step, questionKey = null) {
     const { field, options } = ONBOARDING_STEPS[step];
     const t = get(_);
-    const question = addLocalMessage('assistant', t(`assistant.personalize.${field}.question`), {
+    const question = addLocalMessage('assistant', t(questionKey || `assistant.personalize.${field}.question`), {
       options: options.map(value => ({ value, label: t(`assistant.personalize.${field}.${value}`) }))
     });
     onboarding = { ...onboarding, step, questionMessageId: question.messageId };
@@ -1131,10 +1142,44 @@
   }
 
   function finishOnboarding(answers) {
+    const pendingAsk = onboarding?.pendingAsk;
     onboarding = null;
     setMemory(composeMemory(answers));
-    addLocalMessage('assistant', get(_)('assistant.personalize.done'));
     track('assistant_click', { feature_name: 'personalize_completed' });
+    if (pendingAsk) {
+      // The questions came from a host ask: now answer it, personalized. Its bubble is already shown.
+      handleSend({ text: pendingAsk, echo: false });
+      return;
+    }
+    addLocalMessage('assistant', get(_)('assistant.personalize.done'));
+  }
+
+  function consumePendingAsk() {
+    const ask = window.lcChatbotPendingAsk;
+    if (!ask?.text || !sessionId) return;
+    window.lcChatbotPendingAsk = null;
+    runAsk(ask);
+  }
+
+  /**
+   * Open with a prompt from the host, in a fresh conversation. intent 'personalize' first
+   * runs the Personalize Responses questions (scripted, so they come back instantly), then
+   * sends the prompt with the memory they produce. Any other intent sends it right away.
+   */
+  async function runAsk({ text, intent }) {
+    if (isCurrentSessionSending || anonLoginRequired) return;
+    if (messages.length) handleNewChat();
+    if (!isOpen) openPanel();
+    await tick();
+    track('assistant_click', { feature_name: 'host_ask', text, intent: intent || 'send' });
+    if (intent === 'personalize') {
+      addLocalMessage('user', text);
+      addLocalMessage('assistant', get(_)('assistant.ask.personalizeIntro'));
+      onboarding = { step: 0, answers: {}, questionMessageId: null, pendingAsk: text };
+      askOnboardingQuestion(0, 'assistant.ask.firstQuestion');
+      return;
+    }
+    handleSend({ text });
   }
 
   function openMemoryEditor() {
@@ -1158,9 +1203,12 @@
     track('assistant_click', { feature_name: 'memory_editor_clear' });
   }
 
-  async function handleSend() {
-    const text = inputText.trim();
-    if (onboarding) {
+  // With text, sends that instead of the input box (a host ask); echo: false skips the
+  // user bubble when it is already on screen.
+  async function handleSend({ text: askedText = null, echo = true } = {}) {
+    const fromInput = askedText === null;
+    const text = (fromInput ? inputText : askedText).trim();
+    if (onboarding && fromInput) {
       // While the questions run, whatever the user types is their answer.
       if (!text) return;
       inputText = '';
@@ -1176,8 +1224,10 @@
     resetScroll();
     track('assistant_message_sent', { length: text.length });
     // Clear input and draft
-    inputText = '';
-    setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    if (fromInput) {
+      inputText = '';
+      setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    }
 
     // Create user message
     const locationRef = await parseSefariaRef(window.location.href);
@@ -1192,9 +1242,11 @@
       locationRef
     };
 
-    messages = [...messages, userMessage];
-    saveMessagesToStorage();
-    scrollToBottom();
+    if (echo) {
+      messages = [...messages, userMessage];
+      saveMessagesToStorage();
+      scrollToBottom();
+    }
 
     setSessionSending(sendingSessionId, true);
     isSending = Object.keys(sendingSessionIds).length > 0;
@@ -2318,7 +2370,7 @@
         ></textarea>
         <button
           class="send-btn"
-          onclick={handleSend}
+          onclick={() => handleSend()}
           disabled={!inputText.trim() || isCurrentSessionSending || limitReached || anonLoginRequired}
           aria-label={$_('assistant.input.send.tooltip')}
         >
@@ -2532,6 +2584,19 @@
   .lc-chatbot-container.mode-docked .resize-se,
   .lc-chatbot-container.mode-docked .resize-sw {
     display: none;
+  }
+
+  /* Phones: the open panel spans the bottom of the screen instead of a 300px corner
+     window (its size is otherwise set inline from the resizable width/height). */
+  @media (max-width: 600px) {
+    .lc-chatbot-container.mode-floating.is-open {
+      inset-inline: 8px;
+      bottom: 8px;
+    }
+    .lc-chatbot-container.mode-floating .lc-chatbot-panel {
+      width: 100% !important;
+      height: 75vh !important;
+    }
   }
 
   /* Trigger Button */

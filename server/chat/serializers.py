@@ -37,7 +37,7 @@ class ChatRequestSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
-    # The signed-in user's personal memory ("Personalize Responses"), kept by the widget
+    # The visitor's personal memory ("Personalize Responses"), kept by the widget
     memory = serializers.CharField(max_length=1000, required=False, allow_blank=True)
     isLoadTest = serializers.BooleanField(required=False, default=False)
 
