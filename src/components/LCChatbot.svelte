@@ -234,6 +234,13 @@
   let triggerHidden = $state(false);
   let pendingNavigation = null;
 
+  // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
+  const SHEET_CLOSE_DISTANCE = 120;
+  const SHEET_CLOSE_VELOCITY = 0.5; // px/ms
+  let sheetOffset = $state(0);
+  let sheetSettling = $state(false);
+  let sheetDrag = null;
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -519,6 +526,38 @@
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
     popSheetEntry();
+  }
+
+  function startSheetDrag(e) {
+    if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
+    sheetSettling = false;
+  }
+
+  function moveSheetDrag(e) {
+    if (!sheetDrag) return;
+    const dt = e.timeStamp - sheetDrag.lastT;
+    if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
+    sheetDrag.lastY = e.clientY;
+    sheetDrag.lastT = e.timeStamp;
+    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
+  }
+
+  function endSheetDrag(e) {
+    if (!sheetDrag) return;
+    // A flick counts only if the finger was still moving when it lifted
+    const moving = e.timeStamp - sheetDrag.lastT < 100;
+    const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
+    const shouldClose = sheetOffset > SHEET_CLOSE_DISTANCE || flicked;
+    sheetDrag = null;
+    sheetSettling = true;
+    sheetOffset = shouldClose ? window.innerHeight : 0;
+    setTimeout(() => {
+      if (shouldClose) closePanel();
+      sheetOffset = 0;
+      sheetSettling = false;
+    }, 200);
   }
 
   // Back pressed, or the UI closed the sheet and its pop has landed.
@@ -1736,7 +1775,8 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style={isFullscreen ? '' : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
+      class:sheet-settling={sheetSettling}
+      style={isFullscreen ? (sheetOffset ? `transform: translateY(${sheetOffset}px);` : '') : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1760,7 +1800,16 @@
 
       <!-- Header -->
       <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
-      <header class="lc-chatbot-header" role="banner">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <header
+        class="lc-chatbot-header"
+        role="banner"
+        onpointerdown={startSheetDrag}
+        onpointermove={moveSheetDrag}
+        onpointerup={endSheetDrag}
+        onpointercancel={endSheetDrag}
+      >
+        {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
           <h2>
             <span class="header-sparkle" aria-hidden="true">✦</span>
@@ -2433,8 +2482,28 @@
     display: none;
   }
 
+  /* The header is the sheet's drag handle; the grabber bar sits above the title */
   .mode-fullscreen .lc-chatbot-header {
-    padding: calc(10px + env(safe-area-inset-top)) 12px 10px 16px;
+    position: relative;
+    padding: calc(20px + env(safe-area-inset-top)) 12px 8px 16px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .sheet-grabber {
+    position: absolute;
+    inset-block-start: calc(8px + env(safe-area-inset-top));
+    left: 50%; /* physical, so translateX centres it in RTL too */
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--lc-border-strong, #cbd5e1);
+    transform: translateX(-50%);
+  }
+
+  .mode-fullscreen .lc-chatbot-panel.sheet-settling {
+    transition: transform 0.2s ease;
   }
 
   .mode-fullscreen .header-actions {

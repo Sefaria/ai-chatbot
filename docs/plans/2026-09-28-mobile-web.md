@@ -17,6 +17,7 @@ Logged-in phone users get the assistant. Before this, Sefaria hid it below its M
 - **Touch:** tooltips only for mouse pointers (a tap's emulated `mouseenter` left them stuck), and history-row menus are always visible under `hover: none`.
 - **Readability and touch targets:** the type scale steps up one size on phones (body 16px, small 14px, titles 18px; reply line-height 1.55). Every button is at least 44×44px (header, send, feedback, history rows and menus). Icons grow with them: 24px for header, send and history actions, 22px for menu items and feedback, 20px in history-row menus. Inline links get 6px of block padding, which enlarges the tap area without moving the text. All text fields are 16px so iOS doesn't zoom on focus.
 - **Closed button on touch screens opens in one tap.** Its label slide-out is limited to hover-capable pointers; on touch it would play on tap, and iOS can spend the first tap on the hover state.
+- **Drag down to close.** A grabber bar tops the header, and the whole header (not its buttons) drags the sheet. Release past 120px, or flick down faster than 0.5px/ms, and it slides away and closes; otherwise it springs back. The close button remains the accessible way to close.
 - **Host entry point:** a `chatbot:open` document event, used by Sefaria's mobile menu.
 
 ## Follow-ups
