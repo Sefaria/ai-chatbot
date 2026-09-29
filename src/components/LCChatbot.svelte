@@ -2731,6 +2731,19 @@
     opacity: 1;
   }
 
+  /* Touch screens: a tap opens the assistant straight away. Without hover, the label
+     would slide out first, and iOS can spend the first tap on that hover state. */
+  @media (hover: none) {
+    .lc-chatbot-trigger:is(:hover, :focus, :active) {
+      gap: 0;
+    }
+
+    .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
+      max-width: 0;
+      opacity: 0;
+    }
+  }
+
   /* Chat Panel */
   .lc-chatbot-panel {
     display: flex;
