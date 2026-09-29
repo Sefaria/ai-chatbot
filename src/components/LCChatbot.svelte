@@ -2637,6 +2637,11 @@
     line-height: 18px;
   }
 
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it */
+  .mode-fullscreen .message.user:is(:hover, :focus-within) .message-location-tag {
+    transform: translateY(22px);
+  }
+
   .mode-fullscreen .retry-btn {
     min-height: 44px;
     padding: 0 8px;
