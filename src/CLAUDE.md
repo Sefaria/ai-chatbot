@@ -74,7 +74,8 @@ Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-
 
 - Never opens on load, whatever `default-open` or saved state says. The closed button recedes while the page scrolls forward.
 - Owns one history entry (`lib/sheetHistory.js`), so Back closes it. Its popstate listener is registered at bundle load so it runs before the host's; Sefaria loads the bundle in `<head>`. In-page links close the sheet and navigate after the pop.
-- Locks page scroll and follows `visualViewport`, so the input stays above the keyboard. Input is 16px (smaller makes iOS zoom).
+- Locks page scroll and follows `visualViewport`, so the input stays above the keyboard. Every text field is 16px (smaller makes iOS zoom).
+- One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px; inline links get block padding for a taller tap area.
 - No dock mode. History covers the chat; picking a chat returns to it.
 
 ## i18n

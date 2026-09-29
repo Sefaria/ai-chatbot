@@ -2396,7 +2396,11 @@
   }
 
   /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
+  /* Phones read at arm's length: one step up the type scale, 44px touch targets */
   .lc-chatbot-container.mode-fullscreen {
+    --lc-font-size-sm: 14px;
+    --lc-font-size: 16px;
+    --lc-font-size-lg: 18px;
     bottom: calc(16px + env(safe-area-inset-bottom));
     inset-inline-end: 16px;
     transition: transform 0.2s ease, opacity 0.2s ease;
@@ -2434,17 +2438,18 @@
   }
 
   .mode-fullscreen .header-actions {
-    gap: 4px;
+    gap: 0;
   }
 
   .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
 
   .mode-fullscreen .menu-item {
-    padding: 14px 16px;
-    font-size: 15px;
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: var(--lc-font-size);
   }
 
   .mode-fullscreen .lc-chatbot-body {
@@ -2470,9 +2475,148 @@
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
-  /* Below 16px, iOS zooms the page when the field takes focus */
-  .mode-fullscreen .lc-chatbot-input textarea {
+  /* Below 16px, iOS zooms the page when a field takes focus */
+  .mode-fullscreen .lc-chatbot-input textarea,
+  .mode-fullscreen .history-search input,
+  .mode-fullscreen .history-rename-form input,
+  .mode-fullscreen .feedback-modal-input,
+  .mode-fullscreen .settings-field input {
     font-size: 16px;
+  }
+
+  .mode-fullscreen .lc-chatbot-input textarea {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .send-btn {
+    width: 44px;
+    height: 44px;
+    flex: none;
+  }
+
+  /* Reply text: the panel sets no size of its own, so it would follow the host page */
+  .mode-fullscreen .message-content {
+    font-size: var(--lc-font-size);
+    line-height: 1.55;
+  }
+
+  .mode-fullscreen .message-content :global(:is(.response-title, .response-generic, .response-section, .response-list, .response-link)) {
+    line-height: 1.5;
+  }
+
+  .mode-fullscreen .message.assistant .message-content :global(li) {
+    margin-bottom: 10px;
+  }
+
+  /* Inline links: block padding widens the tap area without moving the text */
+  .mode-fullscreen .message-content :global(a),
+  .mode-fullscreen .link-like,
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
+    padding-block: 6px;
+    text-underline-offset: 3px;
+    -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
+  }
+
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :global(.progress-trail-toggle) {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .mode-fullscreen :global(.lc-accordion-header) {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen :global(.lc-location-tag) {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .mode-fullscreen :is(.message-timestamp, .message-status, .retry-btn) {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .mode-fullscreen .retry-btn {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .mode-fullscreen .feedback-buttons {
+    gap: 0;
+    margin-inline-start: 0;
+  }
+
+  .mode-fullscreen .feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .mode-fullscreen .feedback-modal-btn {
+    min-height: 44px;
+  }
+
+  /* Chat history */
+  .mode-fullscreen .history-icon-btn {
+    width: 44px;
+    height: 44px;
+    padding: 13px;
+  }
+
+  .mode-fullscreen .history-row {
+    height: auto;
+    min-height: 64px;
+    padding-block: 10px;
+    padding-inline: 16px 48px;
+  }
+
+  .mode-fullscreen .history-row-title {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-row-date {
+    font-size: 13px;
+  }
+
+  .mode-fullscreen .history-row-menu {
+    inset-block-start: 10px;
+    inset-inline-end: 2px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mode-fullscreen .history-row-dropdown button {
+    height: 48px;
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 15px !important;
+  }
+
+  .mode-fullscreen .history-row-dropdown button span {
+    font-size: 15px;
+  }
+
+  .mode-fullscreen :is(.history-empty p, .history-loading.inline) {
+    font-size: 14px;
+    line-height: 20px;
   }
 
   .mode-fullscreen .feedback-modal-overlay {
