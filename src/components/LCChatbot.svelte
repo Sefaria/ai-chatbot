@@ -15,6 +15,7 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
+  import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
@@ -224,6 +225,27 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Phones (portrait, or landscape where the panel can't fit) get a full-screen sheet
+  // instead of the floating/docked panel.
+  const FULLSCREEN_QUERY = '(max-width: 600px), (max-height: 500px)';
+  let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
+  let layout = $derived(isFullscreen ? 'fullscreen' : mode);
+  let viewportBox = $state(null);
+  let triggerHidden = $state(false);
+  let pendingNavigation = null;
+
+  // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
+  const SHEET_CLOSE_DISTANCE = 120;
+  const SHEET_CLOSE_VELOCITY = 0.5; // px/ms
+  let sheetOffset = $state(0);
+  let sheetSettling = $state(false);
+  let sheetDrag = null;
+  // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
+  let sheetStyle = $derived(
+    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
+  );
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -234,7 +256,8 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    // A full-screen sheet never opens by itself: it would hide the page the user came for.
+    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -490,6 +513,11 @@
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
+    if (isFullscreen) {
+      pushSheetEntry(onSheetPopped);
+      return; // no autofocus: the keyboard would cover the conversation
+    }
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
@@ -502,7 +530,125 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
+    popSheetEntry();
   }
+
+  function startSheetDrag(e) {
+    if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
+    sheetSettling = false;
+  }
+
+  function moveSheetDrag(e) {
+    if (!sheetDrag) return;
+    const dt = e.timeStamp - sheetDrag.lastT;
+    if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
+    sheetDrag.lastY = e.clientY;
+    sheetDrag.lastT = e.timeStamp;
+    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
+  }
+
+  function endSheetDrag(e) {
+    if (!sheetDrag) return;
+    // A flick counts only if the finger was still moving when it lifted
+    const moving = e.timeStamp - sheetDrag.lastT < 100;
+    const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
+    const shouldClose = sheetOffset > SHEET_CLOSE_DISTANCE || flicked;
+    sheetDrag = null;
+    sheetSettling = true;
+    sheetOffset = shouldClose ? window.innerHeight : 0;
+    setTimeout(() => {
+      if (shouldClose) closePanel();
+      sheetOffset = 0;
+      sheetSettling = false;
+    }, 200);
+  }
+
+  // Back pressed, or the UI closed the sheet and its pop has landed.
+  function onSheetPopped() {
+    if (isOpen) closePanel();
+    if (pendingNavigation) {
+      const detail = pendingNavigation;
+      pendingNavigation = null;
+      navigateHost(detail);
+    }
+  }
+
+  // In-page navigation through the host's 'sefaria:bootstrap-url' listener. On phones the
+  // sheet closes to reveal the page, and the host navigates only once the sheet's history
+  // entry is popped, or it would push the new URL on top of it.
+  function navigateHost(detail) {
+    if (hasSheetEntry()) {
+      pendingNavigation = detail;
+      closePanel();
+      return;
+    }
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail }));
+    if (isFullscreen && isOpen) closePanel();
+  }
+
+  $effect(() => {
+    const query = window.matchMedia(FULLSCREEN_QUERY);
+    const sync = () => { isFullscreen = query.matches; };
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
+
+  // While the sheet is open, lock the page behind it and track the visual viewport, so
+  // the input stays above the on-screen keyboard.
+  $effect(() => {
+    if (!isFullscreen || !isOpen) return;
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    const vv = window.visualViewport;
+    const sync = () => { viewportBox = { top: vv.offsetTop, height: vv.height }; };
+    if (vv) {
+      sync();
+      vv.addEventListener('resize', sync);
+      vv.addEventListener('scroll', sync);
+    }
+    return () => {
+      root.style.overflow = overflow;
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      viewportBox = null;
+    };
+  });
+
+  // On phones the closed button recedes while the page scrolls forward and returns on any
+  // scroll back, so it doesn't sit on the text being read. Capture catches every scroller.
+  $effect(() => {
+    triggerHidden = false;
+    if (!isFullscreen || isOpen) return;
+    let scroller = null;
+    let lastTop = 0;
+    function onScroll(e) {
+      const el = e.target === document ? document.scrollingElement : e.target;
+      if (!(el instanceof Element)) return;
+      if (el !== scroller) {
+        scroller = el;
+        lastTop = el.scrollTop;
+        return;
+      }
+      if (Math.abs(el.scrollTop - lastTop) < 12) return;
+      triggerHidden = el.scrollTop > lastTop && el.scrollTop > 100;
+      lastTop = el.scrollTop;
+    }
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+  });
+
+  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu.
+  $effect(() => {
+    function onOpenRequest(e) {
+      if (!isOpen) openPanel();
+      trackAssistantClick(e.detail?.source || 'host_open');
+    }
+    document.addEventListener('chatbot:open', onOpenRequest);
+    return () => document.removeEventListener('chatbot:open', onOpenRequest);
+  });
 
   function toggleMode() {
     const newMode = mode === 'floating' ? 'docked' : 'floating';
@@ -699,7 +845,7 @@
     editingConversationTitle = '';
   }
 
-  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px (48px on phones)
 
   function toggleHistoryRowMenu(conversation, event) {
     event?.stopPropagation();
@@ -717,7 +863,7 @@
     const spaceBelow = panel && trigger
       ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
       : Infinity;
-    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    historyMenuFlipUp = spaceBelow < (isFullscreen ? 96 : HISTORY_ROW_MENU_HEIGHT) + 8;
   }
 
   async function commitRenameConversation(conversation) {
@@ -794,6 +940,8 @@
 
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
+    // Phones show the history list and the chat one at a time.
+    if (isFullscreen) showHistoryPanel = false;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
@@ -1369,12 +1517,7 @@
 
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
 
-    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-      detail: {
-        url: path,
-        replaceHistory: true
-      }
-    }));
+    navigateHost({ url: path, replaceHistory: true });
   }
 
   function toggleMenu() {
@@ -1435,6 +1578,7 @@
 
   function handleRestartConvo() {
     closeMenu();
+    if (isFullscreen) showHistoryPanel = false;
     isRestarted = true;
     handleNewChat();
   }
@@ -1576,7 +1720,7 @@
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
       if (isSefariaHostname(hostname)) {
-        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+        navigateHost({ url });
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
@@ -1590,9 +1734,7 @@
 
     if (onSefaria) {
       // In-page navigation via ReaderApp's existing event listener
-      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-        detail: { url: `/topics/${topicSlug}` }
-      }));
+      navigateHost({ url: `/topics/${topicSlug}` });
     } else {
       // Off-site: open topic page in new tab
       window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
@@ -1619,10 +1761,13 @@
 
 <div
   class="lc-chatbot-container"
-  class:mode-floating={mode === 'floating'}
-  class:mode-docked={mode === 'docked'}
+  class:mode-floating={layout === 'floating'}
+  class:mode-docked={layout === 'docked'}
+  class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
+  class:trigger-hidden={triggerHidden}
   class:interface-hebrew={interfaceLang === 'he'}
+  class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1635,7 +1780,9 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      class:sheet-settling={sheetSettling}
+      class:sheet-lifted={sheetOffset > 0 || sheetSettling}
+      style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1659,7 +1806,16 @@
 
       <!-- Header -->
       <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
-      <header class="lc-chatbot-header" role="banner">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <header
+        class="lc-chatbot-header"
+        role="banner"
+        onpointerdown={startSheetDrag}
+        onpointermove={moveSheetDrag}
+        onpointerup={endSheetDrag}
+        onpointercancel={endSheetDrag}
+      >
+        {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
           <h2>
             <span class="header-sparkle" aria-hidden="true">✦</span>
@@ -1676,6 +1832,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if !isFullscreen}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1688,6 +1845,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1707,10 +1865,12 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if !isFullscreen}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2071,6 +2231,7 @@
           maxlength={effectiveMaxInputChars}
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
+          enterkeyhint="send"
           rows="1"
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
@@ -2289,6 +2450,411 @@
     display: none;
   }
 
+  /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
+  /* Phones read at arm's length: one step up the type scale, 44px touch targets */
+  .lc-chatbot-container.mode-fullscreen {
+    --lc-font-size-sm: 14px;
+    --lc-font-size: 16px;
+    --lc-font-size-lg: 18px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    inset-inline-end: 16px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.trigger-hidden {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The open container is a full-screen backdrop in the panel's colour. Only the panel
+     follows the visual viewport (inline top/height), and the viewport reports a closing
+     keyboard only after it has gone, so without the backdrop the page flashes through
+     where the keyboard was. While the sheet is dragged, the backdrop clears to show the page. */
+  .lc-chatbot-container.mode-fullscreen.is-open {
+    top: 0;
+    bottom: 0;
+    inset-inline: 0;
+    background: var(--lc-body-bg);
+    transition: none;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.is-open.sheet-moving {
+    background: transparent;
+  }
+
+  .mode-fullscreen .lc-chatbot-panel {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .mode-fullscreen .resize-handle {
+    display: none;
+  }
+
+  /* The header is the sheet's drag handle; the grabber bar sits above the title */
+  .mode-fullscreen .lc-chatbot-header {
+    position: relative;
+    padding: calc(20px + env(safe-area-inset-top)) 12px 8px 16px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .sheet-grabber {
+    position: absolute;
+    inset-block-start: calc(8px + env(safe-area-inset-top));
+    left: 50%; /* physical, so translateX centres it in RTL too */
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--lc-border-strong, #cbd5e1);
+    transform: translateX(-50%);
+  }
+
+  .mode-fullscreen .lc-chatbot-panel.sheet-settling {
+    transition: transform 0.2s ease;
+  }
+
+  /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
+  .mode-fullscreen .lc-chatbot-panel.sheet-lifted {
+    border-radius: var(--lc-radius) var(--lc-radius) 0 0;
+    box-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
+  }
+
+  .mode-fullscreen .header-actions {
+    gap: 0;
+  }
+
+  .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mode-fullscreen .menu-item {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: var(--lc-font-size);
+  }
+
+  .mode-fullscreen .lc-chatbot-body {
+    position: relative;
+  }
+
+  /* History covers the chat rather than squeezing it; the chat keeps its scroll position */
+  .mode-fullscreen .chat-history-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: auto;
+    min-width: 0;
+    border: 0;
+  }
+
+  .mode-fullscreen .lc-chatbot-messages,
+  .mode-fullscreen .history-list {
+    overscroll-behavior: contain;
+  }
+
+  .mode-fullscreen .lc-chatbot-input {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* Below 16px, iOS zooms the page when a field takes focus */
+  .mode-fullscreen .lc-chatbot-input textarea,
+  .mode-fullscreen .history-search input,
+  .mode-fullscreen .history-rename-form input,
+  .mode-fullscreen .feedback-modal-input,
+  .mode-fullscreen .settings-field input {
+    font-size: 16px;
+  }
+
+  .mode-fullscreen .lc-chatbot-input textarea {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .send-btn {
+    width: 44px;
+    height: 44px;
+    flex: none;
+  }
+
+  /* Reply text: the panel sets no size of its own, so it would follow the host page */
+  .mode-fullscreen .message-content {
+    font-size: var(--lc-font-size);
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message-content :global(:is(.response-title, .response-generic, .response-section, .response-list, .response-link)) {
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message.assistant .message-content :global(li) {
+    margin-bottom: 8px;
+  }
+
+  /* Inline links: block padding widens the tap area without moving the text */
+  .mode-fullscreen .message-content :global(a),
+  .mode-fullscreen .link-like,
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
+    padding-block: 6px;
+    -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
+  }
+
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  /* Rotating loading text ("Searching the library", "Synthesizing response") and its glyph */
+  .mode-fullscreen :is(.lc-thinking-glyph, .lc-thinking-label) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :global(.progress-trail-toggle) {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .mode-fullscreen :global(.lc-accordion-header) {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen :global(.lc-location-tag) {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .mode-fullscreen :is(.message-timestamp, .message-status, .retry-btn) {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it */
+  .mode-fullscreen .message.user:is(:hover, :focus-within) .message-location-tag {
+    transform: translateY(22px);
+  }
+
+  .mode-fullscreen .retry-btn {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .mode-fullscreen .feedback-buttons {
+    gap: 0;
+    margin-inline-start: 0;
+  }
+
+  .mode-fullscreen .feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .mode-fullscreen .feedback-modal-btn {
+    min-height: 44px;
+  }
+
+  /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
+  .mode-fullscreen .delete-modal {
+    width: 320px;
+    padding: 24px 20px 20px;
+    border-radius: 12px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-title {
+    font-size: 18px;
+    line-height: 24px;
+    margin-bottom: 8px;
+  }
+
+  .mode-fullscreen .delete-modal-subtext {
+    font-size: 15px;
+    line-height: 22px;
+    margin-bottom: 24px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-actions {
+    gap: 12px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-btn {
+    flex: 1 1 0;
+    height: 48px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
+  /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
+  .mode-fullscreen .history-toolbar {
+    height: 60px;
+    min-height: 60px;
+    padding-block: 8px;
+    padding-inline: 6px 12px;
+  }
+
+  .mode-fullscreen .history-toolbar-group {
+    gap: 8px;
+  }
+
+  /* Search field: 48px tall, with a full 44px search/clear button at its end */
+  .mode-fullscreen .history-search {
+    height: 48px;
+    margin: 0 12px 12px;
+    padding: 0 1px 0 16px;
+    gap: 4px;
+  }
+
+  .mode-fullscreen .history-search input {
+    height: 100%;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-search-submit {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .mode-fullscreen .history-search-submit img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .history-icon-btn {
+    width: 44px;
+    height: 44px;
+    padding: 13px;
+  }
+
+  .mode-fullscreen .history-row {
+    height: auto;
+    min-height: 64px;
+    padding-block: 10px;
+    padding-inline: 16px 48px;
+  }
+
+  .mode-fullscreen .history-row-title {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-row-date {
+    font-size: 13px;
+  }
+
+  .mode-fullscreen .history-row-menu {
+    inset-block-start: 10px;
+    inset-inline-end: 2px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger img {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Icons: CSS size wins over the width/height attributes */
+  .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
+  .mode-fullscreen .send-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .menu-item :is(img, svg) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .feedback-btn :global(svg) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .history-row-dropdown img,
+  .mode-fullscreen .history-rename-form img {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Open clear of the 44px trigger, wide enough for the 15px labels */
+  .mode-fullscreen .history-row-dropdown {
+    inset-block-start: 44px;
+    width: 160px;
+  }
+
+  .mode-fullscreen .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 44px;
+  }
+
+  .mode-fullscreen .history-row-dropdown button {
+    height: 48px;
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 15px !important;
+  }
+
+  .mode-fullscreen .history-row-dropdown button span {
+    font-size: 15px;
+  }
+
+  /* Empty states (no chats, no search results), loading and error text */
+  .mode-fullscreen .history-empty {
+    gap: 10px;
+    padding-top: 80px;
+  }
+
+  .mode-fullscreen .history-empty-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .mode-fullscreen .history-empty-icon img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .history-empty strong {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-empty p {
+    max-width: 260px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :is(.history-loading, .history-error) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-loading.inline {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .mode-fullscreen .feedback-modal-overlay {
+    inset: 0;
+    border-radius: 0;
+  }
+
   /* Trigger Button */
   .lc-chatbot-trigger {
     display: flex;
@@ -2337,6 +2903,19 @@
   .lc-chatbot-trigger:active .trigger-label {
     max-width: 12em;
     opacity: 1;
+  }
+
+  /* Touch screens: a tap opens the assistant straight away. Without hover, the label
+     would slide out first, and iOS can spend the first tap on that hover state. */
+  @media (hover: none) {
+    .lc-chatbot-trigger:is(:hover, :focus, :active) {
+      gap: 0;
+    }
+
+    .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
+      max-width: 0;
+      opacity: 0;
+    }
   }
 
   /* Chat Panel */
@@ -2665,6 +3244,12 @@
     z-index: 3;
   }
 
+  /* Each row's menu is its own stacking context, so the open one must outrank the
+     rows below it or their kebabs paint over its dropdown */
+  .history-row-menu:has(.history-row-dropdown) {
+    z-index: 4;
+  }
+
   .history-row-menu-trigger {
     width: 18px;
     height: 18px;
@@ -2676,6 +3261,17 @@
   .history-row-menu:focus-within .history-row-menu-trigger,
   .history-row-menu-trigger[aria-expanded="true"] {
     opacity: 1;
+  }
+
+  /* No hover on touch screens: keep rename/delete reachable */
+  @media (hover: none) {
+    .history-row {
+      padding-inline-end: 26px;
+    }
+
+    .history-row-menu-trigger {
+      opacity: 1;
+    }
   }
 
   .history-row-dropdown {
@@ -3086,10 +3682,16 @@
     cursor: pointer;
   }
 
+  /* height:0 + overflow:visible lets the timestamp paint below this box
+     without the box itself contributing to the flex column's height — so
+     the reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below). */
   .message-meta {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
+    height: 0;
+    overflow: visible;
     margin-top: 4px;
     padding: 0 4px;
   }
@@ -3112,14 +3714,25 @@
     opacity: 1;
   }
 
+  /* Bubble and pin sit flush by default (no reserved timestamp gap). On
+     hover the pin transforms down to make room for the timestamp fading in
+     above it — a transform doesn't affect layout, so nothing below this
+     message (the next one in the list) ever shifts. */
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
     margin-top: 4px;
+    transform: translateY(0);
+    transition: transform 0.15s ease;
     /* Figma: max width = chat bubble width (560px), but never exceed the
        available message column so long refs truncate instead of overflowing. */
     max-width: min(560px, 100%);
     align-self: flex-end;
+  }
+
+  .message.user:hover .message-location-tag,
+  .message.user:focus-within .message-location-tag {
+    transform: translateY(18px);
   }
 
   .message-status {
@@ -3742,7 +4355,10 @@
 
   /* css for classes that come directly from server (via @html) —
      must use :global() so Svelte doesn't strip them */
+  /* Headings sit close to the text they introduce. Without margins set, browser
+     defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
+    margin-block: 16px 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--brand-sefaria-blue);
@@ -3762,11 +4378,22 @@
   }
 
   .message-content :global(.response-section) {
+    margin-block: 14px 4px;
     color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
+  }
+
+  .message-content :global(.response-title + .response-section) {
+    margin-top: 8px;
+  }
+
+  /* The text under a heading drops its own top margin, which would otherwise win
+     over the heading's smaller bottom margin when the two collapse */
+  .message-content :global(:is(.response-title, .response-section) + :is(p, ul, ol)) {
+    margin-top: 0;
   }
 
   .message-content :global(.response-list) {
