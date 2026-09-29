@@ -15,7 +15,7 @@ Logged-in phone users get the assistant. Before this, Sefaria hid it below its M
 - **Closed button recedes on forward scroll** (any scroller, via a capture listener), so it doesn't cover the text being read.
 - **Keyboard:** the sheet follows `visualViewport`, because Chrome Android's default `resizes-visual` and iOS both leave `position: fixed` under the keyboard.
 - **Touch:** tooltips only for mouse pointers (a tap's emulated `mouseenter` left them stuck), and history-row menus are always visible under `hover: none`.
-- **Readability and touch targets:** the type scale steps up one size on phones (body 16px, small 14px, titles 18px; reply line-height 1.55). Every button is at least 44×44px (header, send, feedback, history rows and menus). Inline links get 6px of block padding, which enlarges the tap area without moving the text. All text fields are 16px so iOS doesn't zoom on focus.
+- **Readability and touch targets:** the type scale steps up one size on phones (body 16px, small 14px, titles 18px; reply line-height 1.55). Every button is at least 44×44px (header, send, feedback, history rows and menus). Icons grow with them: 24px for header, send and history actions, 22px for menu items and feedback, 20px in history-row menus. Inline links get 6px of block padding, which enlarges the tap area without moving the text. All text fields are 16px so iOS doesn't zoom on focus.
 - **Host entry point:** a `chatbot:open` document event, used by Sefaria's mobile menu.
 
 ## Follow-ups

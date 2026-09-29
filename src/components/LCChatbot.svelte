@@ -801,7 +801,7 @@
     editingConversationTitle = '';
   }
 
-  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px (48px on phones)
 
   function toggleHistoryRowMenu(conversation, event) {
     event?.stopPropagation();
@@ -819,7 +819,7 @@
     const spaceBelow = panel && trigger
       ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
       : Infinity;
-    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    historyMenuFlipUp = spaceBelow < (isFullscreen ? 96 : HISTORY_ROW_MENU_HEIGHT) + 8;
   }
 
   async function commitRenameConversation(conversation) {
@@ -2599,8 +2599,31 @@
   }
 
   .mode-fullscreen .history-row-menu-trigger img {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Icons: CSS size wins over the width/height attributes */
+  .mode-fullscreen :is(.header-actions, .history-icon-btn, .history-search-submit) img,
+  .mode-fullscreen .send-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .menu-item :is(img, svg) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .feedback-btn :global(svg) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .history-row-dropdown img,
+  .mode-fullscreen .history-rename-form img {
+    width: 20px;
+    height: 20px;
   }
 
   .mode-fullscreen .history-row-dropdown button {
