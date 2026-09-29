@@ -2573,15 +2573,15 @@
   /* Reply text: the panel sets no size of its own, so it would follow the host page */
   .mode-fullscreen .message-content {
     font-size: var(--lc-font-size);
-    line-height: 1.55;
+    line-height: 1.4;
   }
 
   .mode-fullscreen .message-content :global(:is(.response-title, .response-generic, .response-section, .response-list, .response-link)) {
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   .mode-fullscreen .message.assistant .message-content :global(li) {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
   /* Inline links: block padding widens the tap area without moving the text */
