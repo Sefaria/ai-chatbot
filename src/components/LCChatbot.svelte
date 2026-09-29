@@ -4355,7 +4355,10 @@
 
   /* css for classes that come directly from server (via @html) —
      must use :global() so Svelte doesn't strip them */
+  /* Headings sit close to the text they introduce. Without margins set, browser
+     defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
+    margin-block: 16px 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--brand-sefaria-blue);
@@ -4375,11 +4378,22 @@
   }
 
   .message-content :global(.response-section) {
+    margin-block: 14px 4px;
     color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
+  }
+
+  .message-content :global(.response-title + .response-section) {
+    margin-top: 8px;
+  }
+
+  /* The text under a heading drops its own top margin, which would otherwise win
+     over the heading's smaller bottom margin when the two collapse */
+  .message-content :global(:is(.response-title, .response-section) + :is(p, ul, ol)) {
+    margin-top: 0;
   }
 
   .message-content :global(.response-list) {
