@@ -240,6 +240,11 @@
   let sheetOffset = $state(0);
   let sheetSettling = $state(false);
   let sheetDrag = null;
+  // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
+  let sheetStyle = $derived(
+    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
+  );
 
   // Initialize on mount
   $effect(() => {
@@ -1762,7 +1767,7 @@
   class:is-open={isOpen}
   class:trigger-hidden={triggerHidden}
   class:interface-hebrew={interfaceLang === 'he'}
-  style={viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : ''}
+  class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1777,7 +1782,7 @@
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
       class:sheet-lifted={sheetOffset > 0 || sheetSettling}
-      style={isFullscreen ? (sheetOffset ? `transform: translateY(${sheetOffset}px);` : '') : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
+      style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -2462,17 +2467,26 @@
     pointer-events: none;
   }
 
-  /* top/height follow the visual viewport (inline style) while the keyboard is up */
+  /* The open container is a full-screen backdrop in the panel's colour. Only the panel
+     follows the visual viewport (inline top/height), and the viewport reports a closing
+     keyboard only after it has gone, so without the backdrop the page flashes through
+     where the keyboard was. While the sheet is dragged, the backdrop clears to show the page. */
   .lc-chatbot-container.mode-fullscreen.is-open {
     top: 0;
-    bottom: auto;
+    bottom: 0;
     inset-inline: 0;
-    height: 100vh;
-    height: 100dvh;
+    background: var(--lc-body-bg);
     transition: none;
   }
 
+  .lc-chatbot-container.mode-fullscreen.is-open.sheet-moving {
+    background: transparent;
+  }
+
   .mode-fullscreen .lc-chatbot-panel {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
     width: 100%;
     height: 100%;
     border-radius: 0;
