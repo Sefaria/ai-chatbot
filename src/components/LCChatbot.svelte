@@ -2794,7 +2794,39 @@
     font-size: 15px;
   }
 
-  .mode-fullscreen :is(.history-empty p, .history-loading.inline) {
+  /* Empty states (no chats, no search results), loading and error text */
+  .mode-fullscreen .history-empty {
+    gap: 10px;
+    padding-top: 80px;
+  }
+
+  .mode-fullscreen .history-empty-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .mode-fullscreen .history-empty-icon img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .history-empty strong {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-empty p {
+    max-width: 260px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :is(.history-loading, .history-error) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-loading.inline {
     font-size: 14px;
     line-height: 20px;
   }
