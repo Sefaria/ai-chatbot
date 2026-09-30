@@ -42,5 +42,7 @@ export const STORAGE_KEYS = {
   MESSAGES: 'messages',
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
-  HAS_USED: 'has_used'
+  HAS_USED: 'has_used',
+  // Signed-in user's "Personalize Responses" answers, sent with every message
+  MEMORY: 'memory'
 };
