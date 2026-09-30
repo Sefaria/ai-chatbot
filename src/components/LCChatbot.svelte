@@ -2795,8 +2795,8 @@
   }
 
   .mode-fullscreen .history-search-submit img {
-    width: 22px;
-    height: 22px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   .mode-fullscreen .history-icon-btn {
@@ -2832,8 +2832,8 @@
   }
 
   .mode-fullscreen .history-row-menu-trigger img {
-    width: 22px;
-    height: 22px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   /* Icons: CSS size wins over the width/height attributes */
@@ -2844,19 +2844,19 @@
   }
 
   .mode-fullscreen .menu-item :is(img, svg) {
-    width: 22px;
-    height: 22px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   .mode-fullscreen .feedback-btn :global(svg) {
-    width: 22px;
-    height: 22px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   .mode-fullscreen .history-row-dropdown img,
   .mode-fullscreen .history-rename-form img {
-    width: var(--global-dimension-250);
-    height: var(--global-dimension-250);
+    width: 18px;
+    height: 18px;
   }
 
   /* Open clear of the 44px trigger, wide enough for the 15px labels */
