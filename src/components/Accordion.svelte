@@ -32,7 +32,7 @@
 <style>
   .lc-accordion { width: 100%; }
   .lc-accordion-header {
-    display: flex; align-items: center; gap: 4px;
+    display: flex; align-items: center; gap: var(--spacing-xsmall);
     background: none; border: 0; padding: 0; cursor: pointer;
     font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px;
     color: var(--lc-text-secondary);
