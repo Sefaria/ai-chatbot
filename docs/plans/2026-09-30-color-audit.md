@@ -267,3 +267,4 @@ negative margins. Typography (font-size / line-height) not touched yet.
 - Input bar left padding 18→16px (`--spacing-large` all round). Docked top offset stays 60px (matches Sefaria header). 44/80/−8px kept by decision.
 - ⋮ menu items: padding 8px 12px (`--spacing-small` / `--spacing-medium`), tighter than the original 10px 14px.
 - Mobile icons snapped to the 12/18/24 icon set: 22px (history search, row ⋮, ⋮ menu items, thumbs) → 24px; 20px (Rename/Delete dropdown, rename checkmark) → 18px.
+- Icon size tokens from Figma Numbers/Icon: `--icon-small/medium/large` → `--global-dimension-150/225/300` (12/18/24px); added `--global-dimension-225` (18px). Mobile icon CSS sizes now use them. Icon/icon-xsmall is 0 in Figma — not mirrored.

@@ -2329,6 +2329,7 @@
     --global-dimension-100: 8px;
     --global-dimension-150: 12px;
     --global-dimension-200: 16px;
+    --global-dimension-225: 18px;
     --global-dimension-250: 20px;
     --global-dimension-300: 24px;
     --global-dimension-350: 32px;
@@ -2338,6 +2339,10 @@
     --global-dimension-800: 64px;
     --global-dimension-1200: 96px;
     --global-dimension-1600: 128px;
+    /* Icon sizes (Figma Numbers: Icon/*, alias Global/dimension) */
+    --icon-small: var(--global-dimension-150);
+    --icon-medium: var(--global-dimension-225);
+    --icon-large: var(--global-dimension-300);
     /* Global/border-width */
     --global-border-width-0: 0px;
     --global-border-width-100: 1px;
@@ -2795,8 +2800,8 @@
   }
 
   .mode-fullscreen .history-search-submit img {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   .mode-fullscreen .history-icon-btn {
@@ -2832,31 +2837,31 @@
   }
 
   .mode-fullscreen .history-row-menu-trigger img {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   /* Icons: CSS size wins over the width/height attributes */
   .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
   .mode-fullscreen .send-btn svg {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   .mode-fullscreen .menu-item :is(img, svg) {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   .mode-fullscreen .feedback-btn :global(svg) {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   .mode-fullscreen .history-row-dropdown img,
   .mode-fullscreen .history-rename-form img {
-    width: 18px;
-    height: 18px;
+    width: var(--icon-medium);
+    height: var(--icon-medium);
   }
 
   /* Open clear of the 44px trigger, wide enough for the 15px labels */
@@ -2893,8 +2898,8 @@
   }
 
   .mode-fullscreen .history-empty-icon img {
-    width: var(--global-dimension-300);
-    height: var(--global-dimension-300);
+    width: var(--icon-large);
+    height: var(--icon-large);
   }
 
   .mode-fullscreen .history-empty strong {
