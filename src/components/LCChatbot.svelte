@@ -76,6 +76,14 @@
   let onboarding = $state(null); // { step, answers, questionMessageId } while the questions run
   let isNotesStep = $derived(onboarding?.step === ONBOARDING_STEPS.length - 1);
 
+  // The host's "suggest things to learn" ask: two quick questions with checkboxes. Ticking fills
+  // the input with a sentence the visitor can send or edit. Nothing here goes to personal memory.
+  const INTERVIEW_QUESTIONS = [
+    { field: 'background', options: ['new', 'some', 'regular', 'hebrew', 'english'] },
+    { field: 'goals', options: ['parsha', 'holiday', 'habit', 'topic', 'class', 'meaning'] }
+  ];
+  let interview = $state(null); // { messageId, ask, picks: { background: [], goals: [] } }
+
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
@@ -1148,13 +1156,49 @@
     track('assistant_click', { feature_name: 'personalize_completed' });
   }
 
-  // Sent with the host's "suggest things to learn" ask. Two questions in one message, so a
-  // logged-out visitor still has an answer left for the suggestions.
-  const INTERVIEW_INSTRUCTION =
-    '(Before suggesting anything, interview me briefly: in one short, friendly message, ask me ' +
-    'two questions, about my background with Jewish texts and Hebrew, and about what I hope to ' +
-    'get out of learning (a topic, a holiday, a habit, a class). Offer a few example answers for ' +
-    'each. Once I reply, suggest three specific places on Sefaria to start, with links.)';
+  // Sent to the model with the interview answers, so it suggests rather than asks more.
+  const SUGGEST_INSTRUCTION =
+    '(Using what I told you about myself, suggest three specific places on Sefaria for me to ' +
+    'start, each with a link and a sentence on why it fits me. Keep it short.)';
+
+  function startInterview(ask) {
+    const t = get(_);
+    addLocalMessage('user', ask);
+    const question = addLocalMessage('assistant', t('assistant.interview.intro'));
+    interview = { messageId: question.messageId, ask, picks: { background: [], goals: [] } };
+    track('assistant_element_shown', { feature_name: 'interview' });
+  }
+
+  function joinWithAnd(items) {
+    const and = get(_)('assistant.interview.and');
+    return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ${and} ${items[items.length - 1]}`;
+  }
+
+  // "I'm new to Jewish texts and I'd rather read in English. I'd like to follow the weekly
+  // Torah portion and build a short daily habit."
+  function composeInterviewPrompt(picks) {
+    const t = get(_);
+    const phrases = field => picks[field].map(value => t(`assistant.interview.${field}.${value}.phrase`));
+    const sentences = [];
+    const about = phrases('background');
+    if (about.length) sentences.push(`${joinWithAnd(about)}.`);
+    const goals = phrases('goals');
+    if (goals.length) sentences.push(t('assistant.interview.goalsSentence').replace('{goals}', joinWithAnd(goals)));
+    return sentences.join(' ');
+  }
+
+  function toggleInterviewPick(field, value) {
+    const current = interview.picks[field];
+    // Keep the order the options are listed in, whatever order they're ticked in
+    const order = INTERVIEW_QUESTIONS.find(q => q.field === field).options;
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : order.filter(v => v === value || current.includes(v));
+    const picks = { ...interview.picks, [field]: next };
+    interview = { ...interview, picks };
+    inputText = composeInterviewPrompt(picks);
+    track('assistant_click', { feature_name: 'interview_pick', text: `${field}:${value}` });
+  }
 
   function consumePendingAsk() {
     const ask = window.lcChatbotPendingAsk;
@@ -1165,8 +1209,8 @@
 
   /**
    * Open with a prompt from the host, in a fresh conversation. intent 'interview' shows the
-   * prompt as asked but tells the model to interview the visitor briefly before suggesting.
-   * Nothing from the interview is saved to personal memory. Any other intent sends it as is.
+   * prompt and two quick questions first (no model call); the visitor's answer is then sent
+   * with the prompt. Any other intent sends it as is.
    */
   async function runAsk({ text, intent }) {
     if (isCurrentSessionSending || anonLoginRequired) return;
@@ -1174,7 +1218,11 @@
     if (!isOpen) openPanel();
     await tick();
     track('assistant_click', { feature_name: 'host_ask', text, intent: intent || 'send' });
-    handleSend({ text, modelText: intent === 'interview' ? `${text}\n\n${INTERVIEW_INSTRUCTION}` : null });
+    if (intent === 'interview') {
+      startInterview(text);
+      return;
+    }
+    handleSend({ text });
   }
 
   function openMemoryEditor() {
@@ -1200,7 +1248,8 @@
 
   // With text, sends that instead of the input box (a host ask); modelText, when set, is what
   // the model receives in place of the text shown in the user's bubble.
-  async function handleSend({ text: askedText = null, modelText = null } = {}) {
+  async function handleSend({ text: askedText = null, modelText: askedModelText = null } = {}) {
+    let modelText = askedModelText;
     const fromInput = askedText === null;
     const text = (fromInput ? inputText : askedText).trim();
     if (onboarding && fromInput) {
@@ -1214,6 +1263,12 @@
     const isConfigured = (userId || anonId) && apiBaseUrl;
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached && !anonLoginRequired;
     if (!isConfigured || !isReadyToSend) return;
+    if (interview && fromInput) {
+      // The interview's answer: the model also needs the question that started it.
+      modelText = `${interview.ask}\n\n${text}\n\n${SUGGEST_INSTRUCTION}`;
+      track('assistant_click', { feature_name: 'interview_sent' });
+      interview = null;
+    }
     const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
     resetScroll();
@@ -2256,6 +2311,23 @@
         {#each messages as item (item.messageId)}
           {#if item.role === 'assistant' && item.local}
             {@render assistantBubble(item.content, false, item)}
+            {#if interview?.messageId === item.messageId}
+              <div class="interview-questions">
+                {#each INTERVIEW_QUESTIONS as question (question.field)}
+                  <fieldset class="interview-question">
+                    <legend>{$_(`assistant.interview.${question.field}.question`)}</legend>
+                    <div class="interview-options">
+                      {#each question.options as value (value)}
+                        <label class="interview-option">
+                          <input type="checkbox" checked={interview.picks[question.field].includes(value)} onchange={() => toggleInterviewPick(question.field, value)} />
+                          <span>{$_(`assistant.interview.${question.field}.${value}`)}</span>
+                        </label>
+                      {/each}
+                    </div>
+                  </fieldset>
+                {/each}
+              </div>
+            {/if}
             {#if item.options && onboarding?.questionMessageId === item.messageId}
               <div class="onboarding-options" role="group" aria-label={item.content}>
                 {#each item.options as option (option.value)}
@@ -3729,6 +3801,58 @@
 
   .onboarding-option:hover {
     background: var(--lc-topics-bg);
+  }
+
+  .interview-questions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: calc(-1 * var(--global-dimension-100, 8px));
+  }
+
+  .interview-question {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .interview-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+
+  .interview-question legend {
+    padding: 0 0 6px;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    color: var(--lc-text);
+  }
+
+  .interview-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 8px;
+    border: 1px solid var(--lc-border);
+    border-radius: 999px;
+    background: var(--lc-bg);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text);
+    cursor: pointer;
+  }
+
+  .interview-option:has(input:checked) {
+    border-color: var(--lc-primary);
+    background: var(--lc-topics-bg);
+  }
+
+  .interview-option input {
+    margin: 0;
+    accent-color: var(--lc-primary);
   }
 
   .memory-textarea {
