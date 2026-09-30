@@ -46,8 +46,9 @@
   let streamingMarkdown = $state('');
   let streamEl = $state(null);
 
-  // Streaming UX: release the answer word by word, fading each word in.
-  const STREAM_WORD_INTERVAL_MS = 35;
+  // Streaming UX: release the answer word by word, fading each word in. The
+  // view doesn't auto-scroll, so the reader stays at the top of the response.
+  const STREAM_LEAD_MS = 800;
   const WORD_FADE_MS = 400;
   let wordRevealTimes = [];
 
@@ -509,11 +510,8 @@
     updateSessionActivity(sessionId);
     const pacer = createStreamPacer({
       unit: 'word',
-      intervalMs: STREAM_WORD_INTERVAL_MS,
-      onReveal: (text) => {
-        streamingMarkdown = text;
-        scrollToBottom();
-      }
+      leadMs: STREAM_LEAD_MS,
+      onReveal: (text) => { streamingMarkdown = text; }
     });
 
     try {
