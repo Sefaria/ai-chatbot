@@ -2340,6 +2340,8 @@
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
     --functional-icon-icon-primary: #666666;
+    --semantic-icon-default: #121212;
+    --semantic-icon-muted: #6f6f6f;
 
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
@@ -2377,7 +2379,7 @@
     --lc-on-primary: var(--core-base-white);
     --lc-icon-primary: var(--functional-icon-icon-primary);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs
-       to Icon/Muted (#6f6f6f) and Icon/Default (#121212) */
+       to --semantic-icon-muted (#6f6f6f) and --semantic-icon-default (#121212) */
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
     --lc-topics-bg: var(--core-blue-tbr-100);
