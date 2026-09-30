@@ -52,7 +52,7 @@
     max-width: 100%;
     box-sizing: border-box;
     padding: 4px 8px;
-    border: 1px solid var(--lc-border-strong);
+    border: 1px solid var(--lc-border-focus);
     border-radius: 16px;
     color: var(--lc-text-secondary);
     text-decoration: none;

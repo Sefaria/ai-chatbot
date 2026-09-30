@@ -2395,7 +2395,7 @@
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
-    --lc-border-strong: var(--semantic-border-focus);
+    --lc-border-focus: var(--semantic-border-focus);
     --lc-bg-hover: var(--semantic-surface-hover);
     --lc-icon-primary: var(--semantic-icon-muted);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs to
@@ -2539,7 +2539,7 @@
     width: 36px;
     height: 5px;
     border-radius: 3px;
-    background: var(--lc-border-strong, #cbd5e1);
+    background: var(--lc-border-focus, #cbd5e1);
     transform: translateX(-50%);
   }
 
@@ -4225,7 +4225,7 @@
   }
 
   .delete-modal .feedback-modal-btn.skip {
-    border: 1px solid var(--lc-border-strong);
+    border: 1px solid var(--lc-border-focus);
     color: var(--lc-text-secondary);
     background: var(--lc-bg);
   }
