@@ -52,10 +52,22 @@
   } = $props();
 
   // No user-id means a logged-out visitor: they chat under an anonymous id until the
-  // server's free responses run out, then get a login prompt in the canvas.
+  // server's free responses run out, then get a login banner on top of the input.
   let isAnonymous = $derived(!userId);
   let anonId = $state('');
   let anonLoginRequired = $state(false);
+  let anonLoginLinkRef = $state(null);
+  // Free responses left, from the server's last answer. With one left, a heads-up banner
+  // shows on top of the input; at zero it becomes the login banner.
+  let anonRemaining = $state(null);
+  let showAnonWarning = $derived(isAnonymous && !anonLoginRequired && anonRemaining === 1);
+  // Banner sentences hold a {link} slot for the "log in" link, so translations can
+  // put the link anywhere in the sentence.
+  const LINK_SLOT = '\u0000';
+  let anonBannerParts = $derived(
+    $_(anonLoginRequired ? 'assistant.anon.loginRequired' : 'assistant.anon.freeWarning', { values: { link: LINK_SLOT } })
+      .split(LINK_SLOT)
+  );
 
   // "Personalize Responses": the signed-in user's memory is a short text about them that
   // goes with every message, where the server adds it to the prompt. It lives in this
@@ -265,6 +277,7 @@
     if (!userId) {
       anonId = getOrCreateAnonId();
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
+      anonRemaining = getStorage(STORAGE_KEYS.ANON_REMAINING, null);
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
     } else {
@@ -1051,9 +1064,13 @@
     }
   }
 
-  function requireLogin() {
+  // Called right after the visitor sends, so the input they were using is now disabled:
+  // hand focus to the login link. A limit restored from storage on load doesn't grab focus.
+  async function requireLogin() {
     anonLoginRequired = true;
     setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
+    await tick();
+    anonLoginLinkRef?.focus({ preventScroll: true });
   }
 
   // Built at click time: the host navigates client-side, so the page can change under us.
@@ -1312,6 +1329,10 @@
       // Update turn count from server response
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
+      }
+      if (isAnonymous && typeof response.anonResponsesRemaining === 'number') {
+        anonRemaining = response.anonResponsesRemaining;
+        setStorage(STORAGE_KEYS.ANON_REMAINING, anonRemaining);
       }
       if (isAnonymous && response.anonResponsesRemaining === 0) {
         requireLogin();
@@ -1856,6 +1877,18 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {:else}
+          <!-- Shown but locked for logged-out visitors. aria-disabled (not disabled) so the
+               tooltip still shows on hover and the button stays focusable. -->
+          <HeaderButton
+            className="history-btn is-locked"
+            title={$_('assistant.header.history.loginTooltip')}
+            onClick={(e) => e.stopPropagation()}
+            aria-disabled="true"
+            data-feature-name="chat_history_locked"
+          >
+            <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
+          </HeaderButton>
           {/if}
           <HeaderButton
             className="panel-btn"
@@ -2146,6 +2179,7 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
+        class:has-anon-banner={anonLoginRequired || showAnonWarning}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -2283,17 +2317,6 @@
             </div>
           </div>
         {/if}
-
-        {#if anonLoginRequired}
-          <div class="message assistant limit-message" data-element-shown-name="anon_login_prompt">
-            <div class="message-content">
-              <p>{$_('assistant.anon.loginRequired')}</p>
-              <p>
-                <a class="link-like" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>
-              </p>
-            </div>
-          </div>
-        {/if}
       </div>
 
       {#if showPersonalizeTab}
@@ -2304,6 +2327,14 @@
         </div>
       {/if}
 
+      {#if anonLoginRequired || showAnonWarning}
+        <div class="anon-limit-banner-anchor">
+          <div class="anon-limit-banner" role="status" data-element-shown-name={anonLoginRequired ? 'anon_login_prompt' : 'anon_quota_warning'}>
+            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name={anonLoginRequired ? 'anon_login_link' : 'anon_quota_warning_login_link'}>{$_(anonLoginRequired ? 'assistant.anon.login' : 'assistant.anon.loginCapitalized')}</a>{anonBannerParts[1] ?? ''}</p>
+          </div>
+        </div>
+      {/if}
+
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
         <textarea
@@ -2311,7 +2342,7 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={inputMaxChars}
-          placeholder={limitReached || anonLoginRequired ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
+          placeholder={limitReached ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
           disabled={isCurrentSessionSending || limitReached || anonLoginRequired}
@@ -3618,6 +3649,64 @@
   }
 
   /* Personalize Responses: a tab rising out of the canvas's bottom edge */
+  /* Floats over the bottom of the message list and rests on the input footer's top
+     border (which stays visible), like a tab; the canvas shows on either side of it. */
+  .anon-limit-banner-anchor {
+    position: relative;
+    height: 0;
+  }
+
+  .anon-limit-banner {
+    position: absolute;
+    bottom: 0;
+    /* Start lines up with the textarea; the end clears the message list's scrollbar */
+    inset-inline: 18px 28px;
+    z-index: 1;
+    padding: 8px 12px;
+    background: var(--lc-bg-tertiary);
+    border: 1px solid var(--lc-border);
+    border-bottom: none;
+    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
+    animation: lc-anon-banner-in 200ms ease-out;
+  }
+
+  .anon-limit-banner-text {
+    margin: 0;
+    color: var(--lc-text-secondary);
+  }
+
+  .anon-limit-banner-link {
+    color: var(--lc-primary);
+    font-weight: 600;
+    text-decoration: underline;
+    /* Clear the descender of the "g" in "log in" */
+    text-underline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  .anon-limit-banner-link:hover {
+    color: var(--lc-primary-hover);
+  }
+
+  .anon-limit-banner-link:focus-visible {
+    outline: 2px solid var(--lc-primary);
+    outline-offset: 2px;
+  }
+
+  @keyframes lc-anon-banner-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anon-limit-banner {
+      animation: none;
+    }
+  }
+
   .personalize-tab-anchor {
     position: relative;
     height: 0;
@@ -3842,6 +3931,11 @@
   }
 
   /* Clearing animation for message list */
+  /* Room under the last message so the floating login banner doesn't cover it */
+  .lc-chatbot-messages.has-anon-banner {
+    padding-bottom: calc(var(--spacing-spacing-medium, 12px) + 64px);
+  }
+
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;

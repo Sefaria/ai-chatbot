@@ -46,6 +46,7 @@ export const STORAGE_KEYS = {
   // Logged-out visitors: stable anonymous id, and whether its free responses are used up
   ANON_ID: 'anon_id',
   ANON_LOGIN_REQUIRED: 'anon_login_required',
+  ANON_REMAINING: 'anon_remaining',
   // 'user' | 'anon' — the identity the stored session belongs to
   IDENTITY: 'identity',
   // Signed-in user's "Personalize Responses" answers, sent with every message

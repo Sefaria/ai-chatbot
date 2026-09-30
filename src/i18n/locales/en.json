@@ -68,8 +68,8 @@
     "assistant.source.readWhileWaiting": "Found a source — read while you wait",
     "assistant.source.readOnSefaria": "Read on Sefaria",
     "assistant.limit.reached": "The conversation has reached its limit.",
-    "assistant.anon.loginRequired": "I’ve enjoyed learning with you! To continue, please log in to your free Sefaria account.",
-    "assistant.anon.login": "Log in to continue",
+    "assistant.anon.loginRequired": "To keep asking, {link} to your free Sefaria account.",
+    "assistant.anon.login": "log in",
     "assistant.personalize.tab": "Personalize Responses",
     "assistant.personalize.experience.question": "Let’s personalize my responses. Have you learned Jewish texts before?",
     "assistant.personalize.experience.never": "Never",
@@ -151,6 +151,7 @@
     "assistant.stop.tooltip": "Stop",
     "assistant.stop.aria": "Stop",
     "assistant.header.history.tooltip": "Chat history",
+    "assistant.header.history.loginTooltip": "Log in to save your chats",
     "assistant.header.history.aria": "Chat history",
     "assistant.history.header.new.tooltip": "New chat",
     "assistant.history.header.new.aria": "New chat",
@@ -178,5 +179,7 @@
     "assistant.history.delete_modal.cancel": "Cancel",
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
-    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here."
+    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
+    "assistant.anon.freeWarning": "1 question left. {link} to your free Sefaria account for unlimited chats.",
+    "assistant.anon.loginCapitalized": "Log in"
 }
