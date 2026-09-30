@@ -268,3 +268,4 @@ negative margins. Typography (font-size / line-height) not touched yet.
 - ⋮ menu items: padding 8px 12px (`--spacing-small` / `--spacing-medium`), tighter than the original 10px 14px.
 - Mobile icons snapped to the 12/18/24 icon set: 22px (history search, row ⋮, ⋮ menu items, thumbs) → 24px; 20px (Rename/Delete dropdown, rename checkmark) → 18px.
 - Icon size tokens from Figma Numbers/Icon: `--icon-small/medium/large` → `--global-dimension-150/225/300` (12/18/24px); added `--global-dimension-225` (18px). Mobile icon CSS sizes now use them. Icon/icon-xsmall is 0 in Figma — not mirrored.
+- Desktop icon sizes snapped to the 12/18/24 set: 16, 17, 20px → 18px (settings gear, Help, Disable in settings, feedback icon, thumbs, Send arrow); 14px → 12px (rename checkmark, Rename/Delete icons, source book icon); progress-trail icon/spinner → `--icon-small`.
