@@ -1,6 +1,11 @@
 /**
  * Paces streamed markdown so it appears in whole units (word, sentence,
  * paragraph) at a steady rhythm instead of in uneven network bursts.
+ *
+ * It holds back a short lead before showing anything, then displays at the
+ * rate text is arriving: slower when the reserve runs low (a stall is probably
+ * underway), faster when it grows (a burst just landed). Short stalls become a
+ * slowdown instead of a freeze followed by a rush.
  */
 
 const BOUNDARIES = {
@@ -13,8 +18,10 @@ const BOUNDARIES = {
   paragraph: /\n\s*\n/g
 };
 
-// When units pile up, release several per tick so we never fall far behind.
-const CATCH_UP_DIVISOR = 4;
+const TICK_MS = 30;
+// Display speed, as a multiple of the arrival rate.
+const MIN_SPEED = 0.25;
+const MAX_SPEED = 3;
 
 // True while a link or bold span is still open, so we never show raw
 // markdown like "[Deuteronomy" or "**bol" mid-stream.
@@ -27,15 +34,18 @@ function hasOpenMarkup(text) {
 /**
  * @param {Object} opts
  * @param {'word'|'sentence'|'paragraph'} opts.unit
- * @param {number} opts.intervalMs - Time between releases
+ * @param {number} opts.leadMs - Reserve to build before showing anything; 0 shows units as soon as they complete
  * @param {function(string): void} opts.onReveal - Called with all text released so far
  */
-export function createStreamPacer({ unit, intervalMs, onReveal }) {
+export function createStreamPacer({ unit, leadMs, onReveal }) {
   let buffer = '';
   let shown = 0;
   let finished = false;
   let timer = null;
   let resolveDrained = null;
+  let firstPushAt = 0;
+  let lastTickAt = 0;
+  let budget = 0;
 
   function pendingEnds() {
     const re = new RegExp(BOUNDARIES[unit]);
@@ -50,24 +60,52 @@ export function createStreamPacer({ unit, intervalMs, onReveal }) {
     return ends;
   }
 
+  /** Chars per ms to display at, given how many chars are waiting to be shown. */
+  function speed(backlogChars, lead = leadMs) {
+    const rate = buffer.length / Math.max(1, performance.now() - firstPushAt);
+    if (!lead || !rate) return Infinity;
+    if (finished) return rate * MAX_SPEED;
+    const reserveMs = backlogChars / rate;
+    return rate * Math.min(MAX_SPEED, Math.max(MIN_SPEED, reserveMs / lead));
+  }
+
   function stop() {
     clearInterval(timer);
     timer = null;
   }
 
   function step() {
+    const now = performance.now();
+    const elapsed = now - lastTickAt;
+    lastTickAt = now;
+    if (!finished && now - firstPushAt < leadMs) return;
     const ends = pendingEnds();
-    if (ends.length) {
-      shown = ends[Math.ceil(ends.length / CATCH_UP_DIVISOR) - 1];
+    if (!ends.length) {
+      if (finished) {
+        stop();
+        resolveDrained?.();
+      }
+      return;
+    }
+    const backlog = buffer.length - shown;
+    budget = Math.min(budget + speed(backlog) * elapsed, backlog);
+    let next = shown;
+    for (const end of ends) {
+      if (end - shown > budget) break;
+      next = end;
+    }
+    if (next > shown) {
+      budget -= next - shown;
+      shown = next;
       onReveal(buffer.slice(0, shown));
-    } else if (finished) {
-      stop();
-      resolveDrained?.();
     }
   }
 
   function start() {
-    timer ??= setInterval(step, intervalMs);
+    if (timer) return;
+    firstPushAt ||= performance.now();
+    lastTickAt = performance.now();
+    timer = setInterval(step, TICK_MS);
   }
 
   return {
@@ -84,6 +122,7 @@ export function createStreamPacer({ unit, intervalMs, onReveal }) {
     cancel() {
       stop();
       resolveDrained?.();
-    }
+    },
+    speed
   };
 }
