@@ -4,11 +4,14 @@
 //
 //   node dev/mock-stream-server.mjs            # port 8001 (vite proxies /api here)
 //   MOCK_TOKENS_PER_SEC=30 node dev/mock-stream-server.mjs
+//   MOCK_STALL_CHANCE=0 node dev/mock-stream-server.mjs   # no stalls
 
 import http from 'node:http';
 
 const PORT = Number(process.env.PORT || 8001);
 const TOKENS_PER_SEC = Number(process.env.MOCK_TOKENS_PER_SEC || 60);
+// Chance per event of a 0.5–2s stall like our backend's (a few per answer).
+const STALL_CHANCE = Number(process.env.MOCK_STALL_CHANCE ?? 0.025);
 
 const ANSWER = `## The Shema
 
@@ -71,10 +74,17 @@ async function streamChat(req, res) {
   // Tokens arrive in uneven bursts, like a real network stream.
   const tokens = tokenize(ANSWER);
   for (let i = 0; i < tokens.length && !res.destroyed; ) {
-    const burst = 1 + Math.floor(Math.random() * 4);
+    let burst = 1 + Math.floor(Math.random() * 4);
+    let waitMs = (burst * 1000) / TOKENS_PER_SEC;
+    if (Math.random() < STALL_CHANCE) {
+      // Our server stalls while the model keeps generating, so the backlog
+      // lands all at once when it recovers.
+      waitMs = 500 + Math.random() * 1500;
+      burst = Math.round((waitMs / 1000) * TOKENS_PER_SEC);
+    }
+    await sleep(waitMs);
     send('partial', { type: 'message_delta', text: tokens.slice(i, i + burst).join('') });
     i += burst;
-    await sleep((burst * 1000) / TOKENS_PER_SEC);
   }
 
   send('message', {
