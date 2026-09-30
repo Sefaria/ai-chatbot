@@ -57,17 +57,10 @@
   let anonId = $state('');
   let anonLoginRequired = $state(false);
   let anonLoginLinkRef = $state(null);
-  // Free responses left, from the server's last answer. With one left, a heads-up banner
-  // shows on top of the input; at zero it becomes the login banner.
-  let anonRemaining = $state(null);
-  let showAnonWarning = $derived(isAnonymous && !anonLoginRequired && anonRemaining === 1);
-  // Banner sentences hold a {link} slot for the "log in" link, so translations can
+  // The banner sentence holds a {link} slot for the "log in" link, so translations can
   // put the link anywhere in the sentence.
   const LINK_SLOT = '\u0000';
-  let anonBannerParts = $derived(
-    $_(anonLoginRequired ? 'assistant.anon.loginRequired' : 'assistant.anon.freeWarning', { values: { link: LINK_SLOT } })
-      .split(LINK_SLOT)
-  );
+  let anonBannerParts = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } }).split(LINK_SLOT));
 
   // "Personalize Responses": the signed-in user's memory is a short text about them that
   // goes with every message, where the server adds it to the prompt. It lives in this
@@ -277,7 +270,6 @@
     if (!userId) {
       anonId = getOrCreateAnonId();
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
-      anonRemaining = getStorage(STORAGE_KEYS.ANON_REMAINING, null);
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
     } else {
@@ -1330,10 +1322,6 @@
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
       }
-      if (isAnonymous && typeof response.anonResponsesRemaining === 'number') {
-        anonRemaining = response.anonResponsesRemaining;
-        setStorage(STORAGE_KEYS.ANON_REMAINING, anonRemaining);
-      }
       if (isAnonymous && response.anonResponsesRemaining === 0) {
         requireLogin();
       }
@@ -2179,7 +2167,7 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
-        class:has-anon-banner={anonLoginRequired || showAnonWarning}
+        class:has-anon-banner={anonLoginRequired}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -2327,10 +2315,10 @@
         </div>
       {/if}
 
-      {#if anonLoginRequired || showAnonWarning}
+      {#if anonLoginRequired}
         <div class="anon-limit-banner-anchor">
-          <div class="anon-limit-banner" role="status" data-element-shown-name={anonLoginRequired ? 'anon_login_prompt' : 'anon_quota_warning'}>
-            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name={anonLoginRequired ? 'anon_login_link' : 'anon_quota_warning_login_link'}>{$_(anonLoginRequired ? 'assistant.anon.login' : 'assistant.anon.loginCapitalized')}</a>{anonBannerParts[1] ?? ''}</p>
+          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
+            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
           </div>
         </div>
       {/if}

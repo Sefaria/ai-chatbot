@@ -136,7 +136,5 @@
     "assistant.history.list.empty.header": "אין כאן שיחות",
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
     "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא החינמי שלכם.",
-    "assistant.anon.login": "התחברו",
-    "assistant.anon.freeWarning": "נשארה לכם שאלה אחת. {link} לחשבון ספריא החינמי שלכם לשיחות ללא הגבלה.",
-    "assistant.anon.loginCapitalized": "התחברו"
+    "assistant.anon.login": "התחברו"
 }

@@ -179,7 +179,5 @@
     "assistant.history.delete_modal.cancel": "Cancel",
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
-    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
-    "assistant.anon.freeWarning": "1 question left. {link} to your free Sefaria account for unlimited chats.",
-    "assistant.anon.loginCapitalized": "Log in"
+    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here."
 }
