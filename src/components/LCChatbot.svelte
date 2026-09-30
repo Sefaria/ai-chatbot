@@ -3217,7 +3217,8 @@
     padding-inline-end: 26px;
   }
 
-  .history-row:hover:not(:disabled) {
+  /* Hovering the row's ⋮ (a sibling of the row) keeps the row's hover fill */
+  .history-row-wrap:hover .history-row:not(:disabled) {
     background: var(--semantic-surface-hover-accent);
   }
 
@@ -3227,7 +3228,7 @@
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
-  .history-row.active:hover:not(:disabled) {
+  .history-row-wrap:hover .history-row.active:not(:disabled) {
     background: var(--semantic-surface-selected-accent);
   }
 
