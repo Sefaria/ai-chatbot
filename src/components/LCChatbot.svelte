@@ -4350,6 +4350,7 @@
   .feedback-modal-btn {
     flex: 1;
     padding: 10px 16px;
+    border: none;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -4369,7 +4370,6 @@
 
   .feedback-modal-btn.submit.danger {
     background: var(--lc-danger);
-    border: none;
   }
 
   .feedback-modal-btn.submit.danger:hover:not(:disabled) {
@@ -4385,7 +4385,6 @@
   .feedback-modal-btn.skip {
     background: transparent;
     color: var(--lc-text);
-    border: none;
   }
 
   .feedback-thanks {
