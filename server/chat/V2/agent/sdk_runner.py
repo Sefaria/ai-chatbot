@@ -79,10 +79,15 @@ class ClaudeSDKRunner:
                     delta = self.extract_text_delta_from_stream_event(message)
                     if delta and pending_first_text_delta_elapsed_s is None:
                         pending_first_text_delta_elapsed_s = time.time() - start_time
-                    if delta and on_text_delta:
-                        on_text_delta(delta)
+                    # Notify before forwarding the delta (not after) so a caller
+                    # using on_first_final_text_delta to gate on_text_delta
+                    # forwarding (e.g. only streaming final-answer content to
+                    # the client, not pre-tool-use narration) sees the flag
+                    # flip before this delta arrives, not one delta late.
                     if delta and saw_tool_use_message:
                         notify_first_final_text_delta()
+                    if delta and on_text_delta:
+                        on_text_delta(delta)
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)

@@ -11,7 +11,7 @@ from typing import Any, Protocol
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
 
-    type: str  # 'status', 'tool_start', 'tool_end', 'complete', 'appetizer'
+    type: str  # 'status', 'tool_start', 'tool_end', 'complete', 'appetizer', 'content_delta'
     text: str | None = None
     tool_name: str | None = None
     tool_input: dict | None = None
