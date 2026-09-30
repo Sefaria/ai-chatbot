@@ -2355,6 +2355,7 @@
     --semantic-surface-subtle: #fafafa;
     --semantic-surface-hover: #eeeeee;
     /* Semantic/Border */
+    --semantic-border-default: #ededec;
     --semantic-border-focus: #cccccc;
     /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
@@ -2365,7 +2366,6 @@
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
     --core-neutral-gray-800: #333333;
-    --core-navy-200: #e4eaf3;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
@@ -2377,7 +2377,7 @@
     --lc-text: var(--semantic-text-primary);
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: var(--semantic-text-muted);
-    --lc-border: var(--core-navy-200); /* trial: no semantic border at this value yet */
+    --lc-border: var(--semantic-border-default);
     --lc-user-bg: var(--semantic-module-primary);
     --lc-user-text: var(--semantic-text-inverse);
     --lc-disabled-button: var(--semantic-action-primary-disabled);

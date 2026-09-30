@@ -236,3 +236,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - `--lc-body-bg` → Surface/Subtle (`#fafafa`; was `#F9FAFB`). `--lc-shadow` stays raw by decision.
 - `--lc-bg-tertiary` (`#f1f5f9`, no Figma match) removed; its uses (⋮ menu item hover, row dropdown hover, Settings Reset bg, unused `.settings-btn`) now use `--lc-bg-hover` → Surface/Hover (`#eeeeee`).
 - Border trial: `--lc-border` → `--core-navy-200` (`#e4eaf3`; was `#e2e8f0`). Core, not semantic — temporary until a matching border token exists.
+- `--lc-border` → Border/Default (`#ededec`) instead of the Navy/200 trial; `--core-navy-200` removed.
