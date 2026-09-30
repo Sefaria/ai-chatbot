@@ -2,7 +2,7 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, getOrCreateAnonId } from '../lib/session.js';
   import {
     sendMessageStream,
     loadHistory,
@@ -47,8 +47,20 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    'login-url': loginUrl = '/login'
   } = $props();
+
+  // No user-id means a logged-out visitor: they chat under an anonymous id until the
+  // server's free responses run out, then get a login banner on top of the input.
+  let isAnonymous = $derived(!userId);
+  let anonId = $state('');
+  let anonLoginRequired = $state(false);
+  let anonLoginLinkRef = $state(null);
+  // The banner sentence holds a {link} slot for the "log in" link, so translations can
+  // put the link anywhere in the sentence.
+  const LINK_SLOT = '\u0000';
+  let anonBannerParts = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } }).split(LINK_SLOT));
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -226,8 +238,17 @@
 
   // Initialize on mount
   $effect(() => {
+    // A stored session belongs to whoever started it; logging in or out starts a new one.
+    const identity = userId ? 'user' : 'anon';
+    const identityChanged = getStorage(STORAGE_KEYS.IDENTITY, identity) !== identity;
+    setStorage(STORAGE_KEYS.IDENTITY, identity);
+    if (!userId) {
+      anonId = getOrCreateAnonId();
+      anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
+    }
+
     // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession();
+    const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
@@ -1001,10 +1022,28 @@
     }
   }
 
+  // Called right after the visitor sends, so the input they were using is now disabled:
+  // hand focus to the login link. A limit restored from storage on load doesn't grab focus.
+  async function requireLogin() {
+    anonLoginRequired = true;
+    setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
+    await tick();
+    anonLoginLinkRef?.focus({ preventScroll: true });
+  }
+
+  // Built at click time: the host navigates client-side, so the page can change under us.
+  // A real page load, so the message list's in-page link routing must not see this click.
+  function goToLogin(e) {
+    e.stopPropagation();
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    const separator = loginUrl.includes('?') ? '&' : '?';
+    e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
+  }
+
   async function handleSend() {
     const text = inputText.trim();
-    const isConfigured = userId && apiBaseUrl;
-    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
+    const isConfigured = (userId || anonId) && apiBaseUrl;
+    const isReadyToSend = text && !isCurrentSessionSending && !limitReached && !anonLoginRequired;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
@@ -1085,7 +1124,8 @@
         }
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
-        timestamp: userMessage.timestamp
+        timestamp: userMessage.timestamp,
+        anonId
       }, interfaceLang);
 
       const cachedPayload = conversationCache[sendingSessionId];
@@ -1146,6 +1186,9 @@
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
       }
+      if (isAnonymous && response.anonResponsesRemaining === 0) {
+        requireLogin();
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -1162,6 +1205,15 @@
       });
 
     } catch (e) {
+      if (e.code === 'login_required') {
+        // Not an error to retry: drop the prompt back into the draft so it survives the login.
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        inputText = text;
+        setStorage(STORAGE_KEYS.DRAFT, { text });
+        requireLogin();
+        return;
+      }
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
@@ -1667,6 +1719,7 @@
           </h2>
         </div>
         <div class="header-actions">
+          {#if !isAnonymous}
           <HeaderButton
             className="history-btn"
             title={$_('assistant.header.history.tooltip')}
@@ -1676,6 +1729,19 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {:else}
+          <!-- Shown but locked for logged-out visitors. aria-disabled (not disabled) so the
+               tooltip still shows on hover and the button stays focusable. -->
+          <HeaderButton
+            className="history-btn is-locked"
+            title={$_('assistant.header.history.loginTooltip')}
+            onClick={(e) => e.stopPropagation()}
+            aria-disabled="true"
+            data-feature-name="chat_history_locked"
+          >
+            <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
+          </HeaderButton>
+          {/if}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1719,10 +1785,12 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                {#if !isAnonymous}
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.optout')}
                 </a>
+                {/if}
               </div>
             {/if}
           </div>
@@ -1934,6 +2002,7 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
+        class:has-anon-banner={anonLoginRequired}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -2062,6 +2131,14 @@
         {/if}
       </div>
 
+      {#if anonLoginRequired}
+        <div class="anon-limit-banner-anchor">
+          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
+            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
+          </div>
+        </div>
+      {/if}
+
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
         <textarea
@@ -2072,12 +2149,12 @@
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          disabled={isCurrentSessionSending || limitReached}
+          disabled={isCurrentSessionSending || limitReached || anonLoginRequired}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+          disabled={!inputText.trim() || isCurrentSessionSending || limitReached || anonLoginRequired}
           aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3372,6 +3449,64 @@
     transform: scale(0.95);
   }
 
+  /* Floats over the bottom of the message list and rests on the input footer's top
+     border (which stays visible), like a tab; the canvas shows on either side of it. */
+  .anon-limit-banner-anchor {
+    position: relative;
+    height: 0;
+  }
+
+  .anon-limit-banner {
+    position: absolute;
+    bottom: 0;
+    /* Start lines up with the textarea; the end clears the message list's scrollbar */
+    inset-inline: 18px 28px;
+    z-index: 1;
+    padding: 8px 12px;
+    background: var(--lc-bg-tertiary);
+    border: 1px solid var(--lc-border);
+    border-bottom: none;
+    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
+    animation: lc-anon-banner-in 200ms ease-out;
+  }
+
+  .anon-limit-banner-text {
+    margin: 0;
+    color: var(--lc-text-secondary);
+  }
+
+  .anon-limit-banner-link {
+    color: var(--lc-primary);
+    font-weight: 600;
+    text-decoration: underline;
+    /* Clear the descender of the "g" in "log in" */
+    text-underline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  .anon-limit-banner-link:hover {
+    color: var(--lc-primary-hover);
+  }
+
+  .anon-limit-banner-link:focus-visible {
+    outline: 2px solid var(--lc-primary);
+    outline-offset: 2px;
+  }
+
+  @keyframes lc-anon-banner-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anon-limit-banner {
+      animation: none;
+    }
+  }
+
   /* Settings Panel */
   .settings-panel {
     display: flex;
@@ -3508,6 +3643,11 @@
   }
 
   /* Clearing animation for message list */
+  /* Room under the last message so the floating login banner doesn't cover it */
+  .lc-chatbot-messages.has-anon-banner {
+    padding-bottom: calc(var(--spacing-spacing-medium, 12px) + 64px);
+  }
+
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;
