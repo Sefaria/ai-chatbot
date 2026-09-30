@@ -229,3 +229,4 @@ Added `--semantic-surface-page`, `--semantic-surface-subtle`, `--semantic-surfac
 `--lc-bg-secondary` → Surface/Subtle, `--lc-user-bg` → Module/Primary, `--lc-bg-hover` → Surface/Hover (values unchanged).
 Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--lc-bg-hover` instead of an undefined var with a `#eee` fallback.
 - `--lc-danger` → Feedback/Error/Text (Core/Validation/Red/700 `#c03522`, value unchanged). `--lc-danger-hover` still raw (`#A02C1C`, Red/800) pending a Figma token.
+- `--lc-border-strong` → new `--semantic-border-focus` (`#cccccc`, value unchanged). Delete-modal Cancel border now uses `--lc-border-strong` instead of `--core-neutral-gray-300` with a `#ccc` fallback; `--core-neutral-gray-300` removed.

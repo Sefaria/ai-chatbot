@@ -2353,6 +2353,8 @@
     --semantic-surface-page: #ffffff;
     --semantic-surface-subtle: #fafafa;
     --semantic-surface-hover: #eeeeee;
+    /* Semantic/Border */
+    --semantic-border-focus: #cccccc;
     /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
@@ -2360,7 +2362,6 @@
     /* Core */
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
-    --core-neutral-gray-300: #CCCCCC;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
@@ -2389,7 +2390,7 @@
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
-    --lc-border-strong: var(--core-neutral-gray-300);
+    --lc-border-strong: var(--semantic-border-focus);
     --lc-bg-hover: var(--semantic-surface-hover);
     --lc-icon-primary: var(--semantic-icon-muted);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs to
@@ -4219,7 +4220,7 @@
   }
 
   .delete-modal .feedback-modal-btn.skip {
-    border: 1px solid var(--core-neutral-gray-300, #ccc);
+    border: 1px solid var(--lc-border-strong);
     color: var(--lc-text-secondary);
     background: var(--core-base-white, #fff);
   }
