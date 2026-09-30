@@ -246,3 +246,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Border/Strong changed in Figma to Core/Navy/700 → `--semantic-border-strong` updated to `#18345D`.
 - Renamed `--lc-border-strong` → `--lc-border-focus` (still → Border/Focus `#cccccc`) so the alias name matches its Figma token. Tooltips stay on Surface/Inverse by decision.
 - Docked panel shadow → new `--shadow-large` (Figma effect style Shadows/shadow-large: 0 16 32 #0D032029, 0 1 2 #00000014; same values).
+- Added `--shadow-small` / `--shadow-medium` (Figma Shadows/shadow-small, shadow-medium). History row dropdown → shadow-medium (was `0 8px 18px rgba(13,3,32,.14)`); tooltip → shadow-small via `tooltip.js` token read (was `0 2px 8px rgba(0,0,0,.25)`). Both visibly lighter.

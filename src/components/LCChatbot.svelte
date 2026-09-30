@@ -2367,7 +2367,9 @@
     --semantic-feedback-error-border: #c03522;
     --semantic-feedback-error-background: #f9ebe9;
     --semantic-feedback-error-hover: #a02c1c;
-    /* Figma effect style: Shadows/shadow-large */
+    /* Figma effect styles: Shadows/* */
+    --shadow-small: 0 8px 16px 0 rgba(31, 31, 31, 0.05), 0 1px 2px 0 rgba(31, 31, 31, 0.04), 0 0 10px -1px rgba(83, 83, 83, 0.04);
+    --shadow-medium: 0 10px 20px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.08);
     --shadow-large: 0 16px 32px 0 rgba(13, 3, 32, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.08);
     /* Core */
     --core-base-white: #FFFFFF;
@@ -3318,7 +3320,7 @@
     background: var(--lc-bg);
     border: 1px solid var(--lc-border);
     border-radius: 6px;
-    box-shadow: 0 8px 18px rgba(13, 3, 32, 0.14);
+    box-shadow: var(--shadow-medium);
     overflow: hidden;
     z-index: 20;
     font-family: var(--lc-font);
