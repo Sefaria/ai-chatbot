@@ -263,3 +263,4 @@ browser computed-style snapshot): padding/margin/gap/insets → `--spacing-*`; w
 Left raw (off the scale — need a design call or a Figma token): sizes 44px (touch targets ×17), 22/26/18/36px (icons and buttons),
 panel widths (220/260/320/560px…); spacing 10px (×20), 6px (×9), 14px, 3px, 5px, 26px; radius 6px (×5), 3px, pills (999px);
 negative margins. Typography (font-size / line-height) not touched yet.
+- Snapped off-scale spacing to the nearest token (45 declarations: padding, gaps, margins, insets): 10→12, 14→12, 13→12, 6→4, 5→4, 3→4, 1→2, 7→8, 15→16, 26→24px. Sizes and radii unchanged. Visible.

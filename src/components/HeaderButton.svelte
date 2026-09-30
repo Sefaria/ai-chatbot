@@ -35,7 +35,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--spacing-xsmall);
     width: 26px;
     height: 26px;
     padding: var(--spacing-xsmall);

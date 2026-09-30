@@ -2499,8 +2499,8 @@
     max-height: 100%;
     border-radius: var(--global-dimension-150);
     box-shadow: var(--shadow-large);
-    margin-inline-start: 10px;
-    margin-inline-end: 10px;
+    margin-inline-start: var(--spacing-medium);
+    margin-inline-end: var(--spacing-medium);
     margin-bottom: 0;
   }
 
@@ -2665,7 +2665,7 @@
   .mode-fullscreen .message-content :global(a),
   .mode-fullscreen .link-like,
   .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
-    padding-block: 6px;
+    padding-block: var(--spacing-xsmall);
     -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
   }
 
@@ -2768,7 +2768,7 @@
     height: 60px;
     min-height: 60px;
     padding-block: var(--spacing-small);
-    padding-inline: 6px var(--spacing-medium);
+    padding-inline: var(--spacing-xsmall) var(--spacing-medium);
   }
 
   .mode-fullscreen .history-toolbar-group {
@@ -2779,7 +2779,7 @@
   .mode-fullscreen .history-search {
     height: var(--global-dimension-600);
     margin: 0 var(--spacing-medium) var(--spacing-medium);
-    padding: 0 1px 0 var(--spacing-large);
+    padding: 0 var(--spacing-2xsmall) 0 var(--spacing-large);
     gap: var(--spacing-xsmall);
   }
 
@@ -2802,13 +2802,13 @@
   .mode-fullscreen .history-icon-btn {
     width: 44px;
     height: 44px;
-    padding: 13px;
+    padding: var(--spacing-medium);
   }
 
   .mode-fullscreen .history-row {
     height: auto;
     min-height: var(--global-dimension-800);
-    padding-block: 10px;
+    padding-block: var(--spacing-medium);
     padding-inline: var(--spacing-large) var(--spacing-5xlarge);
   }
 
@@ -2822,7 +2822,7 @@
   }
 
   .mode-fullscreen .history-row-menu {
-    inset-block-start: 10px;
+    inset-block-start: var(--spacing-medium);
     inset-inline-end: var(--spacing-2xsmall);
   }
 
@@ -2883,7 +2883,7 @@
 
   /* Empty states (no chats, no search results), loading and error text */
   .mode-fullscreen .history-empty {
-    gap: 10px;
+    gap: var(--spacing-medium);
     padding-top: 80px;
   }
 
@@ -3058,7 +3058,7 @@
     height: var(--global-dimension-400);
     min-height: var(--global-dimension-400);
     padding-block: var(--spacing-small);
-    padding-inline: 10px var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
   }
 
   .history-toolbar-group {
@@ -3109,7 +3109,7 @@
   .history-icon-btn {
     width: var(--global-dimension-300);
     height: var(--global-dimension-300);
-    padding: 3px;
+    padding: var(--spacing-xsmall);
     border-radius: 6px;
   }
 
@@ -3137,7 +3137,7 @@
     width: calc(100% - var(--global-dimension-300));
     height: 35px;
     margin: var(--spacing-xsmall) var(--spacing-medium) var(--spacing-medium);
-    padding: 10px var(--spacing-small) 10px var(--spacing-medium);
+    padding: var(--spacing-medium) var(--spacing-small) var(--spacing-medium) var(--spacing-medium);
     border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--global-dimension-100);
     background: var(--lc-bg);
@@ -3233,11 +3233,11 @@
     min-height: 53px;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: var(--spacing-2xsmall);
     align-items: stretch;
     justify-content: flex-start;
     padding-block: var(--spacing-xsmall);
-    padding-inline: var(--spacing-medium) 6px;
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
     border: none;
     border-radius: 0;
     background: transparent;
@@ -3252,7 +3252,7 @@
      so titles can use the full row width the rest of the time. */
   .history-row-wrap:hover .history-row,
   .history-row-wrap:has(.history-row-menu-trigger[aria-expanded="true"]) .history-row {
-    padding-inline-end: 26px;
+    padding-inline-end: var(--spacing-2xlarge);
   }
 
   /* Hovering the row's ⋮ (a sibling of the row) keeps the row's hover fill */
@@ -3286,7 +3286,7 @@
     font-weight: 600;
     line-height: 18px;
     color: var(--lc-text-secondary);
-    padding: 3px var(--spacing-xsmall);
+    padding: var(--spacing-xsmall) var(--spacing-xsmall);
   }
 
   .history-row.active .history-row-title {
@@ -3314,8 +3314,8 @@
 
   .history-row-menu {
     position: absolute;
-    inset-block-start: 10px;
-    inset-inline-end: 7px;
+    inset-block-start: var(--spacing-medium);
+    inset-inline-end: var(--spacing-small);
     display: flex;
     align-items: center;
     z-index: 3;
@@ -3343,7 +3343,7 @@
   /* No hover on touch screens: keep rename/delete reachable */
   @media (hover: none) {
     .history-row {
-      padding-inline-end: 26px;
+      padding-inline-end: var(--spacing-2xlarge);
     }
 
     .history-row-menu-trigger {
@@ -3406,7 +3406,7 @@
 
   .history-rename-form input {
     height: 30px;
-    padding: 5px var(--spacing-small);
+    padding: var(--spacing-xsmall) var(--spacing-small);
     font-size: 14px;
     line-height: 18px;
     font-weight: 600;
@@ -3468,7 +3468,7 @@
   .history-loading.inline {
     font-size: 12px;
     line-height: 18px;
-    padding: 10px var(--spacing-small);
+    padding: var(--spacing-medium) var(--spacing-small);
   }
 
   .history-error {
@@ -3522,7 +3522,7 @@
   .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-medium);
     min-width: 0;
     flex-shrink: 1;
   }
@@ -3571,7 +3571,7 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-small);
-    margin-inline-start: 15px;
+    margin-inline-start: var(--spacing-large);
     flex-shrink: 0;
   }
 
@@ -3605,9 +3605,9 @@
   .menu-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-medium);
     width: 100%;
-    padding: 10px 14px;
+    padding: var(--spacing-medium) var(--spacing-medium);
     background: transparent;
     border: none;
     color: var(--lc-text);
@@ -3718,10 +3718,10 @@
   }
 
   .message.assistant .message-content :global(li) {
-    margin-bottom: 5px;
+    margin-bottom: var(--spacing-xsmall);
   }
   .interface-hebrew .message.assistant .message-content :global(li) {
-    margin-bottom: 10px;
+    margin-bottom: var(--spacing-medium);
   }
 
   .message-content {
@@ -3846,7 +3846,7 @@
   .feedback-btn {
     border: none;
     background: transparent;
-    padding: var(--spacing-2xsmall) 6px;
+    padding: var(--spacing-2xsmall) var(--spacing-xsmall);
     cursor: pointer;
     color: var(--lc-icon-primary);
   }
@@ -4009,7 +4009,7 @@
     flex: 1;
     min-height: var(--global-dimension-400);
     max-height: 120px;
-    padding: 10px 14px;
+    padding: var(--spacing-medium) var(--spacing-medium);
     border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
@@ -4069,7 +4069,7 @@
   .settings-panel {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--spacing-medium);
     padding: var(--spacing-large) var(--spacing-xlarge) var(--spacing-xlarge);
     overflow: auto;
     flex: 1;
@@ -4094,7 +4094,7 @@
     color: var(--semantic-text-link);
     font-weight: 600;
     cursor: pointer;
-    padding: 6px 0;
+    padding: var(--spacing-xsmall) 0;
   }
 
   .settings-loading {
@@ -4114,7 +4114,7 @@
 
   .settings-field {
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-xsmall);
     font-size: var(--lc-font-size-sm);
     color: var(--lc-text-secondary);
   }
@@ -4122,7 +4122,7 @@
   .settings-field input {
     border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
-    padding: var(--spacing-small) 10px;
+    padding: var(--spacing-small) var(--spacing-medium);
     font-size: 13px;
     font-family: var(--lc-font);
     color: var(--lc-text);
@@ -4158,7 +4158,7 @@
 
   .settings-actions {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-medium);
     align-items: center;
   }
 
@@ -4335,7 +4335,7 @@
   .feedback-modal-select,
   .feedback-modal-input {
     width: 100%;
-    padding: 10px var(--spacing-medium);
+    padding: var(--spacing-medium) var(--spacing-medium);
     border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
@@ -4377,13 +4377,13 @@
   .feedback-modal-actions {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--spacing-medium);
     margin-top: var(--spacing-large);
   }
 
   .feedback-modal-btn {
     flex: 1;
-    padding: 10px var(--spacing-large);
+    padding: var(--spacing-medium) var(--spacing-large);
     border: none;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
@@ -4438,7 +4438,7 @@
   /* Headings sit close to the text they introduce. Without margins set, browser
      defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
-    margin-block: var(--spacing-large) 6px;
+    margin-block: var(--spacing-large) var(--spacing-xsmall);
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--semantic-module-primary);
@@ -4458,7 +4458,7 @@
   }
 
   .message-content :global(.response-section) {
-    margin-block: 14px var(--spacing-xsmall);
+    margin-block: var(--spacing-medium) var(--spacing-xsmall);
     color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
@@ -4533,12 +4533,12 @@
     padding: var(--spacing-xsmall) var(--spacing-medium);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--spacing-xsmall);
   }
   :global(.progress-trail-entry) {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-xsmall);
     font-size: 12px;
     line-height: 1.4;
     color: var(--lc-text-muted);
