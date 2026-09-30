@@ -39,6 +39,6 @@
   }
   .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--lc-icon-primary); }
   .lc-accordion-chevron.expanded { transform: rotate(180deg); }
-  .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: var(--spacing-small); }
   :global(.interface-hebrew) .lc-accordion-header { flex-direction: row-reverse; }
 </style>

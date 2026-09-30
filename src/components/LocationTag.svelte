@@ -47,13 +47,13 @@
   .lc-location-tag {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     width: fit-content;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 4px 8px;
-    border: 1px solid var(--lc-border-focus);
-    border-radius: 16px;
+    padding: var(--spacing-xsmall) var(--spacing-small);
+    border: var(--border-width-thin) solid var(--lc-border-focus);
+    border-radius: var(--global-dimension-200);
     color: var(--lc-text-secondary);
     text-decoration: none;
     font-family: var(--lc-font);

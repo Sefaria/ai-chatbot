@@ -16,8 +16,8 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: 8px;
-    border: 1px solid var(--lc-border);
+    border-radius: var(--global-dimension-100);
+    border: var(--border-width-thin) solid var(--lc-border);
     background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
     cursor: pointer;
@@ -38,7 +38,7 @@
     gap: 6px;
     width: 26px;
     height: 26px;
-    padding: 4px;
+    padding: var(--spacing-xsmall);
     border: 0px;
     background: transparent;
     color: var(--lc-text-secondary);
@@ -67,7 +67,7 @@
     justify-content: center;
     width: 26px;
     height: 26px;
-    padding: 4px;
+    padding: var(--spacing-xsmall);
     background: transparent;
     border: none;
     border-radius: 6px;

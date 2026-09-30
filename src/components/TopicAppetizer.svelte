@@ -85,9 +85,9 @@
   .topic-appetizer {
     display: flex;
     align-items: flex-start;
-    padding: var(--global-dimension-100) var(--global-dimension-150);
+    padding: var(--spacing-small) var(--spacing-medium);
     border-radius: var(--global-dimension-0);
-    border-inline-start: 2px solid var(--lc-primary);
+    border-inline-start: var(--border-width-thick) solid var(--lc-primary);
     background: var(--semantic-module-accent);
     width: 100%;
     box-sizing: border-box;

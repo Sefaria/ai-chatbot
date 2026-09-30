@@ -2321,16 +2321,49 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    /* Figma design tokens (canonical) */
+    /* Figma Foundations: Global/dimension — the only place raw sizes live.
+       Spacing, radius and sizing all derive from this scale. */
     --global-dimension-0: 0px;
+    --global-dimension-25: 2px;
+    --global-dimension-50: 4px;
     --global-dimension-100: 8px;
     --global-dimension-150: 12px;
     --global-dimension-200: 16px;
     --global-dimension-250: 20px;
     --global-dimension-300: 24px;
-    --space-1: 4px;
-    --spacing-spacing-large: 16px;
-    --spacing-spacing-medium: 12px;
+    --global-dimension-350: 32px;
+    --global-dimension-400: 40px;
+    --global-dimension-600: 48px;
+    --global-dimension-700: 56px;
+    --global-dimension-800: 64px;
+    --global-dimension-1200: 96px;
+    --global-dimension-1600: 128px;
+    /* Global/border-width */
+    --global-border-width-0: 0px;
+    --global-border-width-100: 1px;
+    --global-border-width-150: 1.5px;
+    --global-border-width-200: 2px;
+    --global-border-width-400: 4px;
+    /* Spacing (aliases Global/dimension) */
+    --spacing-null: var(--global-dimension-0);
+    --spacing-2xsmall: var(--global-dimension-25);
+    --spacing-xsmall: var(--global-dimension-50);
+    --spacing-small: var(--global-dimension-100);
+    --spacing-medium: var(--global-dimension-150);
+    --spacing-large: var(--global-dimension-200);
+    --spacing-xlarge: var(--global-dimension-250);
+    --spacing-2xlarge: var(--global-dimension-300);
+    --spacing-3xlarge: var(--global-dimension-350);
+    --spacing-4xlarge: var(--global-dimension-400);
+    --spacing-5xlarge: var(--global-dimension-600);
+    --spacing-6xlarge: var(--global-dimension-800);
+    --spacing-7xlarge: var(--global-dimension-1200);
+    --space-1: var(--spacing-xsmall); /* legacy Figma name */
+    /* Border width (aliases Global/border-width) */
+    --border-width-null: var(--global-border-width-0);
+    --border-width-thin: var(--global-border-width-100);
+    --border-width-medium: var(--global-border-width-150);
+    --border-width-thick: var(--global-border-width-200);
     /* Figma Foundations: Semantic/Text */
     --semantic-text-primary: #121212;
     --semantic-text-secondary: #575757;
@@ -2391,8 +2424,8 @@
     --lc-submit-white: var(--semantic-text-inverse);
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --lc-radius: 16px;
-    --lc-radius-sm: 8px;
+    --lc-radius: var(--global-dimension-200);
+    --lc-radius-sm: var(--global-dimension-100);
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --lc-font-size-sm: 12px;
     --lc-font-size: 14px;
@@ -2431,8 +2464,8 @@
 
   .lc-chatbot-container {
     position: fixed;
-    bottom: 24px;
-    inset-inline-end: 24px;
+    bottom: var(--spacing-2xlarge);
+    inset-inline-end: var(--spacing-2xlarge);
     z-index: 9999;
     direction: ltr;
   }
@@ -2452,7 +2485,7 @@
     height: calc(100% - var(--lc-docked-top-offset));
     max-height: calc(100% - var(--lc-docked-top-offset));
     min-height: 0;
-    padding-bottom: 24px;
+    padding-bottom: var(--spacing-2xlarge);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2464,7 +2497,7 @@
     min-height: 0;
     height: auto;
     max-height: 100%;
-    border-radius: 12px;
+    border-radius: var(--global-dimension-150);
     box-shadow: var(--shadow-large);
     margin-inline-start: 10px;
     margin-inline-end: 10px;
@@ -2486,8 +2519,8 @@
     --lc-font-size-sm: 14px;
     --lc-font-size: 16px;
     --lc-font-size-lg: 18px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    inset-inline-end: 16px;
+    bottom: calc(var(--spacing-large) + env(safe-area-inset-bottom));
+    inset-inline-end: var(--spacing-large);
     transition: transform 0.2s ease, opacity 0.2s ease;
   }
 
@@ -2530,7 +2563,7 @@
   /* The header is the sheet's drag handle; the grabber bar sits above the title */
   .mode-fullscreen .lc-chatbot-header {
     position: relative;
-    padding: calc(20px + env(safe-area-inset-top)) 12px 8px 16px;
+    padding: calc(var(--spacing-xlarge) + env(safe-area-inset-top)) var(--spacing-medium) var(--spacing-small) var(--spacing-large);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -2538,7 +2571,7 @@
 
   .sheet-grabber {
     position: absolute;
-    inset-block-start: calc(8px + env(safe-area-inset-top));
+    inset-block-start: calc(var(--spacing-small) + env(safe-area-inset-top));
     left: 50%; /* physical, so translateX centres it in RTL too */
     width: 36px;
     height: 5px;
@@ -2567,8 +2600,8 @@
   }
 
   .mode-fullscreen .menu-item {
-    min-height: 48px;
-    padding: 12px 16px;
+    min-height: var(--global-dimension-600);
+    padding: var(--spacing-medium) var(--spacing-large);
     font-size: var(--lc-font-size);
   }
 
@@ -2592,7 +2625,7 @@
   }
 
   .mode-fullscreen .lc-chatbot-input {
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--spacing-large) + env(safe-area-inset-bottom));
   }
 
   /* Below 16px, iOS zooms the page when a field takes focus */
@@ -2625,7 +2658,7 @@
   }
 
   .mode-fullscreen .message.assistant .message-content :global(li) {
-    margin-bottom: 8px;
+    margin-bottom: var(--spacing-small);
   }
 
   /* Inline links: block padding widens the tap area without moving the text */
@@ -2658,7 +2691,7 @@
 
   .mode-fullscreen :global(.lc-location-tag) {
     min-height: 36px;
-    padding: 8px 12px;
+    padding: var(--spacing-small) var(--spacing-medium);
     font-size: 14px;
   }
 
@@ -2674,7 +2707,7 @@
 
   .mode-fullscreen .retry-btn {
     min-height: 44px;
-    padding: 0 8px;
+    padding: 0 var(--spacing-small);
   }
 
   /* The 44px tap targets already leave room below the icons */
@@ -2703,51 +2736,51 @@
   /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
   .mode-fullscreen .delete-modal {
     width: 320px;
-    padding: 24px 20px 20px;
-    border-radius: 12px;
+    padding: var(--spacing-2xlarge) var(--spacing-xlarge) var(--spacing-xlarge);
+    border-radius: var(--global-dimension-150);
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-title {
     font-size: 18px;
     line-height: 24px;
-    margin-bottom: 8px;
+    margin-bottom: var(--spacing-small);
   }
 
   .mode-fullscreen .delete-modal-subtext {
     font-size: 15px;
     line-height: 22px;
-    margin-bottom: 24px;
+    margin-bottom: var(--spacing-2xlarge);
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-actions {
-    gap: 12px;
+    gap: var(--spacing-medium);
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-btn {
     flex: 1 1 0;
-    height: 48px;
+    height: var(--global-dimension-600);
     font-size: 16px;
-    border-radius: 8px;
+    border-radius: var(--global-dimension-100);
   }
 
   /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
   .mode-fullscreen .history-toolbar {
     height: 60px;
     min-height: 60px;
-    padding-block: 8px;
-    padding-inline: 6px 12px;
+    padding-block: var(--spacing-small);
+    padding-inline: 6px var(--spacing-medium);
   }
 
   .mode-fullscreen .history-toolbar-group {
-    gap: 8px;
+    gap: var(--spacing-small);
   }
 
   /* Search field: 48px tall, with a full 44px search/clear button at its end */
   .mode-fullscreen .history-search {
-    height: 48px;
-    margin: 0 12px 12px;
-    padding: 0 1px 0 16px;
-    gap: 4px;
+    height: var(--global-dimension-600);
+    margin: 0 var(--spacing-medium) var(--spacing-medium);
+    padding: 0 1px 0 var(--spacing-large);
+    gap: var(--spacing-xsmall);
   }
 
   .mode-fullscreen .history-search input {
@@ -2774,9 +2807,9 @@
 
   .mode-fullscreen .history-row {
     height: auto;
-    min-height: 64px;
+    min-height: var(--global-dimension-800);
     padding-block: 10px;
-    padding-inline: 16px 48px;
+    padding-inline: var(--spacing-large) var(--spacing-5xlarge);
   }
 
   .mode-fullscreen .history-row-title {
@@ -2790,7 +2823,7 @@
 
   .mode-fullscreen .history-row-menu {
     inset-block-start: 10px;
-    inset-inline-end: 2px;
+    inset-inline-end: var(--spacing-2xsmall);
   }
 
   .mode-fullscreen .history-row-menu-trigger {
@@ -2806,8 +2839,8 @@
   /* Icons: CSS size wins over the width/height attributes */
   .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
   .mode-fullscreen .send-btn svg {
-    width: 24px;
-    height: 24px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   .mode-fullscreen .menu-item :is(img, svg) {
@@ -2822,8 +2855,8 @@
 
   .mode-fullscreen .history-row-dropdown img,
   .mode-fullscreen .history-rename-form img {
-    width: 20px;
-    height: 20px;
+    width: var(--global-dimension-250);
+    height: var(--global-dimension-250);
   }
 
   /* Open clear of the 44px trigger, wide enough for the 15px labels */
@@ -2838,9 +2871,9 @@
   }
 
   .mode-fullscreen .history-row-dropdown button {
-    height: 48px;
-    min-height: 48px;
-    padding: 0 16px;
+    height: var(--global-dimension-600);
+    min-height: var(--global-dimension-600);
+    padding: 0 var(--spacing-large);
     font-size: 15px !important;
   }
 
@@ -2855,13 +2888,13 @@
   }
 
   .mode-fullscreen .history-empty-icon {
-    width: 48px;
-    height: 48px;
+    width: var(--global-dimension-600);
+    height: var(--global-dimension-600);
   }
 
   .mode-fullscreen .history-empty-icon img {
-    width: 24px;
-    height: 24px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
   }
 
   .mode-fullscreen .history-empty strong {
@@ -2895,7 +2928,7 @@
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 12px 20px;
+    padding: var(--spacing-medium) var(--spacing-xlarge);
     background: var(--lc-primary);
     color: var(--semantic-text-inverse);
     border: none;
@@ -2911,7 +2944,7 @@
   .lc-chatbot-trigger:hover,
   .lc-chatbot-trigger:focus,
   .lc-chatbot-trigger:active {
-    gap: 8px;
+    gap: var(--spacing-small);
   }
 
 
@@ -3002,7 +3035,7 @@
     flex-direction: column;
     min-height: 0;
     background: var(--lc-bg-secondary);
-    border-inline-end: 1px solid var(--lc-border);
+    border-inline-end: var(--border-width-thin) solid var(--lc-border);
     order: 0;
   }
 
@@ -3014,24 +3047,24 @@
        direction:rtl and would resolve to the physical right instead). */
     border-inline-start: 0;
     border-inline-end: 0;
-    border-left: 1px solid var(--lc-border);
+    border-left: var(--border-width-thin) solid var(--lc-border);
   }
 
   .history-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
-    height: 40px;
-    min-height: 40px;
-    padding-block: 8px;
-    padding-inline: 10px 4px;
+    gap: var(--spacing-xsmall);
+    height: var(--global-dimension-400);
+    min-height: var(--global-dimension-400);
+    padding-block: var(--spacing-small);
+    padding-inline: 10px var(--spacing-xsmall);
   }
 
   .history-toolbar-group {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-medium);
   }
 
   .history-icon-btn,
@@ -3074,8 +3107,8 @@
   }
 
   .history-icon-btn {
-    width: 24px;
-    height: 24px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
     padding: 3px;
     border-radius: 6px;
   }
@@ -3101,12 +3134,12 @@
     position: relative;
     display: flex;
     align-items: center;
-    width: calc(100% - 24px);
+    width: calc(100% - var(--global-dimension-300));
     height: 35px;
-    margin: 4px 12px 12px;
-    padding: 10px 8px 10px 12px;
-    border: 1px solid var(--lc-border);
-    border-radius: 8px;
+    margin: var(--spacing-xsmall) var(--spacing-medium) var(--spacing-medium);
+    padding: 10px var(--spacing-small) 10px var(--spacing-medium);
+    border: var(--border-width-thin) solid var(--lc-border);
+    border-radius: var(--global-dimension-100);
     background: var(--lc-bg);
     overflow: hidden;
   }
@@ -3115,7 +3148,7 @@
   .history-rename-form input {
     min-width: 0;
     width: 100%;
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: 6px;
     color: var(--lc-text);
     background: var(--lc-bg);
@@ -3161,7 +3194,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border-top: 1px solid var(--lc-border);
+    border-top: var(--border-width-thin) solid var(--lc-border);
   }
 
   .history-list {
@@ -3203,8 +3236,8 @@
     gap: 1px;
     align-items: stretch;
     justify-content: flex-start;
-    padding-block: 4px;
-    padding-inline: 12px 6px;
+    padding-block: var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) 6px;
     border: none;
     border-radius: 0;
     background: transparent;
@@ -3253,7 +3286,7 @@
     font-weight: 600;
     line-height: 18px;
     color: var(--lc-text-secondary);
-    padding: 3px 4px;
+    padding: 3px var(--spacing-xsmall);
   }
 
   .history-row.active .history-row-title {
@@ -3272,7 +3305,7 @@
     font-size: 12px;
     line-height: 20px;
     white-space: nowrap;
-    padding-inline-start: 4px;
+    padding-inline-start: var(--spacing-xsmall);
   }
 
   .history-row.active .history-row-date {
@@ -3320,11 +3353,11 @@
 
   .history-row-dropdown {
     position: absolute;
-    inset-block-start: 24px;
+    inset-block-start: var(--spacing-2xlarge);
     inset-inline-end: 0;
     width: 110px;
     background: var(--lc-bg);
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: 6px;
     box-shadow: var(--shadow-medium);
     overflow: hidden;
@@ -3335,7 +3368,7 @@
   /* Opens upward instead of downward when there isn't room below within the panel */
   .history-row-dropdown.flip-up {
     inset-block-start: auto;
-    inset-block-end: 24px;
+    inset-block-end: var(--spacing-2xlarge);
   }
 
   .history-row-dropdown button {
@@ -3343,8 +3376,8 @@
     height: 39px;
     min-height: 39px;
     justify-content: flex-start;
-    gap: 8px;
-    padding: 0 12px;
+    gap: var(--spacing-small);
+    padding: 0 var(--spacing-medium);
     border-radius: 0;
     font-family: var(--lc-font);
     font-size: 12px !important;
@@ -3365,15 +3398,15 @@
   .history-rename-form {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     align-items: center;
     min-height: 50px;
-    padding: 8px;
+    padding: var(--spacing-small);
   }
 
   .history-rename-form input {
     height: 30px;
-    padding: 5px 8px;
+    padding: 5px var(--spacing-small);
     font-size: 14px;
     line-height: 18px;
     font-weight: 600;
@@ -3390,7 +3423,7 @@
     color: var(--lc-text-muted);
     font-size: 14px;
     line-height: 20px;
-    padding: 32px 16px;
+    padding: var(--spacing-3xlarge) var(--spacing-large);
     text-align: center;
   }
 
@@ -3398,8 +3431,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding-top: 64px;
+    gap: var(--spacing-small);
+    padding-top: var(--spacing-6xlarge);
   }
 
   .history-empty-icon {
@@ -3435,12 +3468,12 @@
   .history-loading.inline {
     font-size: 12px;
     line-height: 18px;
-    padding: 10px 8px;
+    padding: 10px var(--spacing-small);
   }
 
   .history-error {
     color: var(--semantic-feedback-error-text);
-    border-bottom: 1px solid var(--lc-border);
+    border-bottom: var(--border-width-thin) solid var(--lc-border);
   }
 
   /* Resize Handles */
@@ -3450,14 +3483,14 @@
     z-index: 10;
   }
 
-  .resize-n, .resize-s { height: 8px; left: 8px; right: 8px; cursor: ns-resize; }
-  .resize-e, .resize-w { width: 12px; top: 8px; bottom: 8px; cursor: ew-resize; }
+  .resize-n, .resize-s { height: var(--global-dimension-100); left: var(--spacing-small); right: var(--spacing-small); cursor: ns-resize; }
+  .resize-e, .resize-w { width: var(--global-dimension-150); top: var(--spacing-small); bottom: var(--spacing-small); cursor: ew-resize; }
   .resize-n { top: 0; }
   .resize-s { bottom: 0; }
   .resize-e { right: 0; }
   .resize-w { left: 0; }
 
-  .resize-ne, .resize-nw, .resize-se, .resize-sw { width: 16px; height: 16px; }
+  .resize-ne, .resize-nw, .resize-se, .resize-sw { width: var(--global-dimension-200); height: var(--global-dimension-200); }
   .resize-ne { top: 0; right: 0; cursor: nesw-resize; }
   .resize-nw { top: 0; left: 0; cursor: nwse-resize; }
   .resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
@@ -3481,9 +3514,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: var(--spacing-large) var(--spacing-xlarge);
     background: var(--lc-bg-secondary);
-    border-bottom: 1px solid var(--lc-border);
+    border-bottom: var(--border-width-thin) solid var(--lc-border);
   }
 
   .header-left {
@@ -3497,7 +3530,7 @@
   .lc-chatbot-header h2 {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     min-width: 0;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
@@ -3537,7 +3570,7 @@
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-small);
     margin-inline-start: 15px;
     flex-shrink: 0;
   }
@@ -3549,12 +3582,12 @@
   .menu-dropdown {
     position: absolute;
     top: 100%;
-    margin-top: 4px;
+    margin-top: var(--spacing-xsmall);
     width: max-content;
     min-width: 200px;
     max-width: 280px;
     background: var(--lc-bg);
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     box-shadow: var(--lc-shadow);
     z-index: 100;
@@ -3610,10 +3643,10 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-medium) var(--spacing-2xlarge);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large);
     scroll-behavior: smooth;
   }
 
@@ -3664,7 +3697,7 @@
   .lc-response-package {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--spacing-small);
   }
 
   /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
@@ -3681,7 +3714,7 @@
 
   .message.assistant .message-content :global(ul),
   .message.assistant .message-content :global(ol) {
-    padding-inline-start: 20px;
+    padding-inline-start: var(--spacing-xlarge);
   }
 
   .message.assistant .message-content :global(li) {
@@ -3696,19 +3729,19 @@
   }
 
   .message.user .message-content {
-    padding: 12px 16px;
+    padding: var(--spacing-medium) var(--spacing-large);
     font-size: var(--lc-font-size);
     word-wrap: break-word;
     color: var(--lc-user-text);
     /* Blue bubble lives on the bubble only — not the whole column — so the
        location tag below renders as a gray pill on the white chat background. */
     background-color: var(--lc-user-bg);
-    border-radius: 0 16px 16px 16px;
-    border-bottom-right-radius: 4px;
+    border-radius: 0 var(--global-dimension-200) var(--global-dimension-200) var(--global-dimension-200);
+    border-bottom-right-radius: var(--global-dimension-50);
   }
 
   .message.failed .message-content {
-    border: 1px solid var(--semantic-feedback-error-border);
+    border: var(--border-width-thin) solid var(--semantic-feedback-error-border);
     background: var(--semantic-feedback-error-background);
   }
 
@@ -3729,9 +3762,9 @@
   .message-meta {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    margin-top: 4px;
-    padding: 0 4px;
+    gap: var(--spacing-small);
+    margin-top: var(--spacing-xsmall);
+    padding: 0 var(--spacing-xsmall);
   }
 
   /* height:0 + overflow:visible lets the user's hover timestamp paint below
@@ -3767,7 +3800,7 @@
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
-    margin-top: 4px;
+    margin-top: var(--spacing-xsmall);
     transform: translateY(0);
     transition: transform 0.15s ease;
     /* Figma: max width = chat bubble width (560px), but never exceed the
@@ -3806,14 +3839,14 @@
 
   .feedback-buttons {
     display: inline-flex;
-    gap: 4px;
-    margin-left: 4px;
+    gap: var(--spacing-xsmall);
+    margin-left: var(--spacing-xsmall);
   }
 
   .feedback-btn {
     border: none;
     background: transparent;
-    padding: 2px 6px;
+    padding: var(--spacing-2xsmall) 6px;
     cursor: pointer;
     color: var(--lc-icon-primary);
   }
@@ -3836,8 +3869,8 @@
   .lc-thinking-step {
     display: flex;
     align-items: center;
-    gap: var(--global-dimension-100, 8px);
-    min-height: 20px;
+    gap: var(--spacing-small);
+    min-height: var(--global-dimension-250);
     direction: ltr;
     min-width: 0;
     width: 100%;
@@ -3864,7 +3897,7 @@
   .lc-thinking-label {
     font-family: var(--lc-font);
     font-size: 12px;
-    line-height: var(--global-dimension-250, 20px);
+    line-height: var(--global-dimension-250);
   }
   .lc-thinking-glyph {
     color: var(--lc-text-secondary);
@@ -3935,7 +3968,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large);
   }
 
   /* Loading Indicator */
@@ -3943,16 +3976,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 12px;
+    gap: var(--spacing-small);
+    padding: var(--spacing-medium);
     color: var(--lc-text-muted);
     font-size: 13px;
   }
 
   .loading-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--lc-border);
+    width: var(--global-dimension-200);
+    height: var(--global-dimension-200);
+    border: var(--border-width-thick) solid var(--lc-border);
     border-top-color: var(--semantic-module-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -3966,18 +3999,18 @@
   .lc-chatbot-input {
     display: flex;
     align-items: flex-end;
-    gap: 8px;
-    padding: 16px 16px 16px 18px;
+    gap: var(--spacing-small);
+    padding: var(--spacing-large) var(--spacing-large) var(--spacing-large) 18px;
     background: transparent;
-    border-top: 1px solid var(--lc-border);
+    border-top: var(--border-width-thin) solid var(--lc-border);
   }
 
   .lc-chatbot-input textarea {
     flex: 1;
-    min-height: 40px;
+    min-height: var(--global-dimension-400);
     max-height: 120px;
     padding: 10px 14px;
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -4005,8 +4038,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: var(--global-dimension-400);
+    height: var(--global-dimension-400);
     background: var(--lc-primary);
     color: var(--semantic-icon-inverse);
     border: none;
@@ -4037,7 +4070,7 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding: 16px 20px 20px;
+    padding: var(--spacing-large) var(--spacing-xlarge) var(--spacing-xlarge);
     overflow: auto;
     flex: 1;
     background: transparent;
@@ -4076,7 +4109,7 @@
 
   .settings-fields {
     display: grid;
-    gap: 12px;
+    gap: var(--spacing-medium);
   }
 
   .settings-field {
@@ -4087,9 +4120,9 @@
   }
 
   .settings-field input {
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
-    padding: 8px 10px;
+    padding: var(--spacing-small) 10px;
     font-size: 13px;
     font-family: var(--lc-font);
     color: var(--lc-text);
@@ -4103,14 +4136,14 @@
   .settings-toggle {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-small);
     font-size: var(--lc-font-size-sm);
     color: var(--lc-text-secondary);
   }
 
   .settings-toggle input {
-    width: 16px;
-    height: 16px;
+    width: var(--global-dimension-200);
+    height: var(--global-dimension-200);
     accent-color: var(--lc-primary);
   }
 
@@ -4131,9 +4164,9 @@
 
   .settings-save,
   .settings-reset {
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
-    padding: 8px 12px;
+    padding: var(--spacing-small) var(--spacing-medium);
     font-size: var(--lc-font-size-sm);
     font-weight: 600;
     font-family: var(--lc-font);
@@ -4176,14 +4209,14 @@
   /* Feedback Modal */
   .feedback-modal-overlay {
     position: absolute;
-    inset: 8px;
+    inset: var(--spacing-small);
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10001;
     animation: fadeIn 0.15s ease;
-    border-radius: calc(var(--lc-radius) - 4px);
+    border-radius: calc(var(--lc-radius) - var(--global-dimension-50));
   }
 
   /* Delete confirmation dims the whole widget (see .lc-chatbot-dimmable) rather
@@ -4202,17 +4235,17 @@
   .feedback-modal {
     background: var(--lc-bg);
     border-radius: var(--lc-radius);
-    padding: 24px;
+    padding: var(--spacing-2xlarge);
     width: 320px;
-    max-width: calc(100% - 32px);
+    max-width: calc(100% - var(--global-dimension-350));
     box-shadow: var(--lc-shadow);
     animation: slideUp 0.2s ease;
   }
 
   .delete-modal {
     width: 260px;
-    padding: 16px;
-    border-radius: 8px;
+    padding: var(--spacing-large);
+    border-radius: var(--global-dimension-100);
   }
 
   .delete-modal .feedback-modal-title {
@@ -4220,25 +4253,25 @@
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
-    margin-bottom: 4px;
+    margin-bottom: var(--spacing-xsmall);
   }
 
   .delete-modal-subtext {
     color: var(--lc-text-secondary);
     font-size: 12px;
     line-height: 16px;
-    margin: 0 0 16px;
+    margin: 0 0 var(--spacing-large);
   }
 
   .delete-modal .feedback-modal-actions {
     flex-direction: row-reverse;
     justify-content: center;
-    gap: 20px;
+    gap: var(--spacing-xlarge);
     margin-top: 0;
   }
 
   .delete-modal .feedback-modal-btn.skip {
-    border: 1px solid var(--lc-border-focus);
+    border: var(--border-width-thin) solid var(--lc-border-focus);
     color: var(--lc-text-secondary);
     background: var(--lc-bg);
   }
@@ -4251,9 +4284,9 @@
     flex: 0 0 auto;
     min-width: 65px;
     height: 34px;
-    padding: 0 12px;
+    padding: 0 var(--spacing-medium);
     font-size: 12px;
-    border-radius: 4px;
+    border-radius: var(--global-dimension-50);
   }
 
   @keyframes slideUp {
@@ -4271,14 +4304,14 @@
     font-size: var(--lc-font-size);
     font-weight: 600;
     color: var(--lc-text);
-    margin: 0 0 8px 0;
+    margin: 0 0 var(--spacing-small) 0;
   }
 
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
     color: var(--lc-text-secondary);
-    margin: 0 0 16px 0;
+    margin: 0 0 var(--spacing-large) 0;
   }
 
   .interface-hebrew .feedback-modal-subtitle {
@@ -4291,7 +4324,7 @@
     flex-direction: column;
     height: 67px;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: var(--spacing-medium);
   }
 
   .feedback-modal-select-label {
@@ -4302,8 +4335,8 @@
   .feedback-modal-select,
   .feedback-modal-input {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--lc-border);
+    padding: 10px var(--spacing-medium);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -4345,12 +4378,12 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-top: 16px;
+    margin-top: var(--spacing-large);
   }
 
   .feedback-modal-btn {
     flex: 1;
-    padding: 10px 16px;
+    padding: 10px var(--spacing-large);
     border: none;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
@@ -4389,7 +4422,7 @@
   }
 
   .feedback-thanks {
-    margin-top: 4px;
+    margin-top: var(--spacing-xsmall);
     font-size: var(--lc-font-size-sm);
     color: var(--semantic-text-link);
   }
@@ -4405,7 +4438,7 @@
   /* Headings sit close to the text they introduce. Without margins set, browser
      defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
-    margin-block: 16px 6px;
+    margin-block: var(--spacing-large) 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--semantic-module-primary);
@@ -4425,7 +4458,7 @@
   }
 
   .message-content :global(.response-section) {
-    margin-block: 14px 4px;
+    margin-block: 14px var(--spacing-xsmall);
     color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
@@ -4434,7 +4467,7 @@
   }
 
   .message-content :global(.response-title + .response-section) {
-    margin-top: 8px;
+    margin-top: var(--spacing-small);
   }
 
   /* The text under a heading drops its own top margin, which would otherwise win
@@ -4482,13 +4515,13 @@
   :global(.progress-trail-toggle) {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     background: none;
     border: none;
     cursor: pointer;
     color: #888;
     font-size: 11px;
-    padding: 4px 12px;
+    padding: var(--spacing-xsmall) var(--spacing-medium);
     font-family: inherit;
   }
   :global(.progress-trail-toggle:hover) {
@@ -4497,7 +4530,7 @@
   :global(.progress-trail-list) {
     list-style: none;
     margin: 0;
-    padding: 4px 12px;
+    padding: var(--spacing-xsmall) var(--spacing-medium);
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -4527,7 +4560,7 @@
   :global(.progress-trail-spinner) {
     width: 10px;
     height: 10px;
-    border: 1.5px solid #ccc;
+    border: var(--border-width-medium) solid #ccc;
     border-top-color: #888;
     border-radius: 50%;
     animation: trail-spin 0.8s linear infinite;
@@ -4554,7 +4587,7 @@
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
-    margin-inline-end: 2px;
+    margin-inline-end: var(--spacing-2xsmall);
     color: var(--semantic-text-link);
     opacity: 0.6;
   }

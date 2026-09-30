@@ -248,3 +248,18 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Docked panel shadow → new `--shadow-large` (Figma effect style Shadows/shadow-large: 0 16 32 #0D032029, 0 1 2 #00000014; same values).
 - Added `--shadow-small` / `--shadow-medium` (Figma Shadows/shadow-small, shadow-medium). History row dropdown → shadow-medium (was `0 8px 18px rgba(13,3,32,.14)`); tooltip → shadow-small via `tooltip.js` token read (was `0 2px 8px rgba(0,0,0,.25)`). Both visibly lighter.
 - Chat input placeholder → Text/Disabled (`#999`) to match the feedback modal textarea and "select an issue" placeholders. Known: all three fail WCAG AA 1.4.3 (~2.8:1); kept by design decision 2026-09-30 pending a Text/Placeholder token.
+
+## 7. Dimensions and spacing (from the Sefaria Product Design system)
+
+`:host` now defines the Figma Global scale once — `--global-dimension-{0,25,50,100,150,200,250,300,350,400,600,700,800,1200,1600}`
+and `--global-border-width-{0,100,150,200,400}` — and everything else derives from it:
+`--spacing-{null,2xsmall,xsmall,small,medium,large,xlarge,2xlarge…7xlarge}` and `--border-width-{null,thin,medium,thick}` alias the
+globals; `--lc-radius` / `--lc-radius-sm` → `--global-dimension-200` / `-100`. Replaced `--spacing-spacing-large/medium`.
+
+~200 hard-coded values swapped with no computed-value change (verified by expanding tokens back to px and diffing, plus a
+browser computed-style snapshot): padding/margin/gap/insets → `--spacing-*`; width/height/min/max and radii → `--global-dimension-*`;
+1 / 1.5 / 2px borders → `--border-width-*`; tooltip padding and radius read the tokens.
+
+Left raw (off the scale — need a design call or a Figma token): sizes 44px (touch targets ×17), 22/26/18/36px (icons and buttons),
+panel widths (220/260/320/560px…); spacing 10px (×20), 6px (×9), 14px, 3px, 5px, 26px; radius 6px (×5), 3px, pills (999px);
+negative margins. Typography (font-size / line-height) not touched yet.
