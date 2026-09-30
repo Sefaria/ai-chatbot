@@ -3941,7 +3941,7 @@
     width: 16px;
     height: 16px;
     border: 2px solid var(--lc-border);
-    border-top-color: var(--brand-sefaria-blue);
+    border-top-color: var(--semantic-module-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
