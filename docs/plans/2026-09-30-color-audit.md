@@ -230,3 +230,6 @@ Added `--semantic-surface-page`, `--semantic-surface-subtle`, `--semantic-surfac
 Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--lc-bg-hover` instead of an undefined var with a `#eee` fallback.
 - `--lc-danger` → Feedback/Error/Text (Core/Validation/Red/700 `#c03522`, value unchanged). `--lc-danger-hover` still raw (`#A02C1C`, Red/800) pending a Figma token.
 - `--lc-border-strong` → new `--semantic-border-focus` (`#cccccc`, value unchanged). Delete-modal Cancel border now uses `--lc-border-strong` instead of `--core-neutral-gray-300` with a `#ccc` fallback; `--core-neutral-gray-300` removed.
+- New Figma tokens (added by Penina, not yet published — names/values assumed from current code, confirm after publish):
+  `--semantic-action-primary-disabled` `#e6e6e6` ← `--lc-disabled-button`; `--semantic-feedback-error-hover` `#a02c1c` ← `--lc-danger-hover`.
+- Tooltip trial: `--lc-tooltip-bg` → `--core-neutral-gray-800` (`#333333`; was `#3a3a3a`). Core, not semantic — temporary until a tooltip surface token exists. `tooltip.js` fallback updated to match.

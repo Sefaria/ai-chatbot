@@ -2348,6 +2348,7 @@
     --semantic-action-primary: #18345D;
     --semantic-action-primary-hover: #132b4c;
     --semantic-action-primary-pressed: #0b1a2d;
+    --semantic-action-primary-disabled: #e6e6e6;
     --semantic-module-primary: #18345D;
     /* Semantic/Surface */
     --semantic-surface-page: #ffffff;
@@ -2359,9 +2360,11 @@
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
     --semantic-feedback-error-background: #f9ebe9;
+    --semantic-feedback-error-hover: #a02c1c;
     /* Core */
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
+    --core-neutral-gray-800: #333333;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
@@ -2377,7 +2380,7 @@
     --lc-border: #e2e8f0;
     --lc-user-bg: var(--semantic-module-primary);
     --lc-user-text: var(--semantic-text-inverse);
-    --lc-disabled-button: #e6e6e6;
+    --lc-disabled-button: var(--semantic-action-primary-disabled);
     --lc-disabled-text: var(--semantic-text-disabled);
     --lc-submit-white: var(--semantic-text-inverse);
 
@@ -2398,10 +2401,10 @@
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
     --lc-icon-disabled-filter: brightness(0) invert(60%);
-    --lc-tooltip-bg: #3a3a3a;
+    --lc-tooltip-bg: var(--core-neutral-gray-800); /* trial: no semantic tooltip surface yet */
     --lc-tooltip-text: var(--semantic-text-inverse);
     --lc-danger: var(--semantic-feedback-error-text);
-    --lc-danger-hover: #A02C1C;
+    --lc-danger-hover: var(--semantic-feedback-error-hover);
 
     display: block;
     font-family: var(--lc-font);

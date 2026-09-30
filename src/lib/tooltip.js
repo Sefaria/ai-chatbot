@@ -71,7 +71,7 @@ export function showTooltip(anchor, text) {
     left: '0',
     maxWidth: `${MAX_WIDTH}px`,
     width: 'max-content',
-    background: token(anchor, '--lc-tooltip-bg', '#3a3a3a'),
+    background: token(anchor, '--lc-tooltip-bg', '#333333'),
     color: token(anchor, '--lc-tooltip-text', '#fff'),
     font: `12px/1.4 ${token(anchor, '--lc-font', 'Roboto, sans-serif')}`,
     textAlign: 'start',
