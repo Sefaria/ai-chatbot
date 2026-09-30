@@ -265,3 +265,4 @@ panel widths (220/260/320/560px…); spacing 10px (×20), 6px (×9), 14px, 3px, 
 negative margins. Typography (font-size / line-height) not touched yet.
 - Snapped off-scale spacing to the nearest token (45 declarations: padding, gaps, margins, insets): 10→12, 14→12, 13→12, 6→4, 5→4, 3→4, 1→2, 7→8, 15→16, 26→24px. Sizes and radii unchanged. Visible.
 - Input bar left padding 18→16px (`--spacing-large` all round). Docked top offset stays 60px (matches Sefaria header). 44/80/−8px kept by decision.
+- ⋮ menu items: padding 8px 12px (`--spacing-small` / `--spacing-medium`), tighter than the original 10px 14px.

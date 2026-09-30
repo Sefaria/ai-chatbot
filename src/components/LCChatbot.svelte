@@ -3607,7 +3607,7 @@
     align-items: center;
     gap: var(--spacing-medium);
     width: 100%;
-    padding: var(--spacing-medium) var(--spacing-medium);
+    padding: var(--spacing-small) var(--spacing-medium);
     background: transparent;
     border: none;
     color: var(--lc-text);
