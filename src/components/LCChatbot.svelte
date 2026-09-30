@@ -2333,6 +2333,14 @@
     --spacing-spacing-medium: 12px;
     --semantic-action-primary: #18345D;
     --semantic-text-link: #18345D;
+    --semantic-text-link-hovered: #132b4c;
+    --semantic-text-primary: #121212;
+    --semantic-text-inverse: #ffffff;
+    --semantic-action-primary-hover: #132b4c;
+    --semantic-action-primary-pressed: #0b1a2d;
+    --semantic-feedback-error-text: #c03522;
+    --semantic-feedback-error-border: #c03522;
+    --semantic-feedback-error-background: #f9ebe9;
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
@@ -2346,24 +2354,22 @@
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
     --brand-sefaria-blue: #18345D;
-    --lc-primary-hover: #465D7D;
+    --lc-primary-hover: var(--semantic-action-primary-hover);
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
-    --lc-text: #1e293b;
+    --lc-text: var(--semantic-text-primary);
     --lc-text-secondary: var(--semantic-text-secondary);
-    --lc-text-muted: #999999;
+    --lc-text-muted: var(--semantic-text-muted);
     --lc-border: #e2e8f0;
     --lc-user-bg: var(--brand-sefaria-blue);
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
-    --lc-error: #ef4444;
-    --lc-sefaria-blue: var(--sefaria-blue);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-text: #999;
-    --lc-submit-white: #FBFDFE;
+    --lc-submit-white: var(--semantic-text-inverse);
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --lc-radius: 16px;
@@ -2888,7 +2894,7 @@
 
 
   .lc-chatbot-trigger:active {
-    background: #0B1A2D;
+    background: var(--semantic-action-primary-pressed);
   }
 
   .trigger-label {
@@ -3239,7 +3245,7 @@
   }
 
   .history-row-date {
-    color: #999;
+    color: var(--semantic-text-muted);
     font-size: 12px;
     line-height: 20px;
     white-space: nowrap;
@@ -3679,8 +3685,8 @@
   }
 
   .message.failed .message-content {
-    border: 1px solid var(--lc-error);
-    background: #fef2f2;
+    border: 1px solid var(--semantic-feedback-error-border);
+    background: var(--semantic-feedback-error-background);
   }
 
   .message.limit-message .message-content {
@@ -3692,7 +3698,7 @@
     padding: 0;
     font: inherit;
     font-weight: bold;
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
     text-decoration: underline;
     cursor: pointer;
   }
@@ -3761,7 +3767,7 @@
 
   .retry-btn {
     font-size: 11px;
-    color: var(--lc-error);
+    color: var(--semantic-feedback-error-text);
     background: none;
     border: none;
     cursor: pointer;
@@ -3770,7 +3776,7 @@
   }
 
   .retry-btn:hover {
-    color: #dc2626;
+    color: var(--lc-danger-hover);
   }
 
   .feedback-buttons {
@@ -4039,7 +4045,7 @@
 
   .settings-error {
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-error);
+    color: var(--semantic-feedback-error-text);
   }
 
   .settings-fields {
@@ -4238,14 +4244,14 @@
   .feedback-modal-title {
     font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-primary);
     margin: 0 0 8px 0;
   }
 
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-secondary);
     margin: 0 0 16px 0;
   }
 
@@ -4328,7 +4334,7 @@
   }
 
   .feedback-modal-btn.submit {
-    background: var(--lc-sefaria-blue);
+    background: var(--semantic-action-primary);
     color: var(--lc-submit-white);
   }
 
@@ -4353,18 +4359,18 @@
 
   .feedback-modal-btn.skip {
     background: transparent;
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-primary);
     border: none;
   }
 
   .feedback-thanks {
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
   }
 
   .message.assistant .message-content,
   .message.assistant .message-content :global(a) {
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
     font-size: var(--lc-font-size);
   }
 
@@ -4476,13 +4482,13 @@
     gap: 6px;
     font-size: 12px;
     line-height: 1.4;
-    color: #777;
+    color: var(--semantic-text-muted);
   }
   :global(.progress-trail-entry--error) {
-    color: #c62828;
+    color: var(--semantic-feedback-error-text);
   }
   :global(.progress-trail-entry--complete) {
-    color: #666;
+    color: var(--semantic-text-muted);
   }
   :global(.progress-trail-icon) {
     flex-shrink: 0;
@@ -4509,21 +4515,21 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: #18345D;
+    color: var(--semantic-text-link);
     font-weight: 600;
     text-decoration: underline;
-    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-decoration-color: color-mix(in srgb, var(--semantic-text-link) 30%, transparent);
     text-underline-offset: 2px;
   }
   :global(.trail-ref-link:hover) {
-    color: #465D7D;
-    text-decoration-color: rgba(70, 93, 125, 0.6);
+    color: var(--semantic-text-link-hovered);
+    text-decoration-color: color-mix(in srgb, var(--semantic-text-link-hovered) 60%, transparent);
   }
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
     margin-inline-end: 2px;
-    color: #18345D;
+    color: var(--semantic-text-link);
     opacity: 0.6;
   }
 
