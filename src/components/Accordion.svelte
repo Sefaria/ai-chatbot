@@ -37,7 +37,7 @@
     font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px;
     color: var(--lc-text-secondary);
   }
-  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; }
+  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--semantic-icon-muted); }
   .lc-accordion-chevron.expanded { transform: rotate(180deg); }
   .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
   :global(.interface-hebrew) .lc-accordion-header { flex-direction: row-reverse; }

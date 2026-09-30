@@ -2339,9 +2339,9 @@
     --core-base-white: #FFFFFF;
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
-    --functional-icon-icon-primary: #666666;
     --semantic-icon-default: #121212;
     --semantic-icon-muted: #6f6f6f;
+    --semantic-icon-disabled: #999999;
 
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
@@ -2377,11 +2377,12 @@
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
-    --lc-icon-primary: var(--functional-icon-icon-primary);
-    /* <img> icons can't take `color`, so these filters recolor the black SVGs
-       to --semantic-icon-muted (#6f6f6f) and --semantic-icon-default (#121212) */
+    --lc-icon-primary: var(--semantic-icon-muted);
+    /* <img> icons can't take `color`, so these filters recolor the black SVGs to
+       --semantic-icon-muted (#6f6f6f), --semantic-icon-default (#121212) and --semantic-icon-disabled (#999999) */
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
+    --lc-icon-disabled-filter: brightness(0) invert(60%);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
@@ -3059,8 +3060,13 @@
   }
 
   .history-icon-btn:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .history-icon-btn:disabled img,
+  .history-search-submit:disabled img,
+  .menu-item:disabled img {
+    filter: var(--lc-icon-disabled-filter);
   }
 
   .history-search {
@@ -3118,7 +3124,6 @@
   }
 
   .history-search-submit:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
   }
 
@@ -3558,13 +3563,13 @@
   }
 
   .menu-item:disabled {
-    opacity: 0.5;
+    color: var(--lc-disabled-text);
     cursor: not-allowed;
   }
 
   .menu-item svg {
     flex-shrink: 0;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-icon-muted);
   }
 
   /* Message List */
@@ -3779,12 +3784,12 @@
     background: transparent;
     padding: 2px 6px;
     cursor: pointer;
-    color: var(--lc-disabled-text);
+    color: var(--semantic-icon-muted);
   }
 
   .feedback-btn:hover,
   .feedback-btn.active {
-    color: #666;
+    color: var(--semantic-icon-default);
   }
 
   /* Live thinking message shown while the backend prepares the final response. */
@@ -3984,6 +3989,7 @@
 
   .send-btn:disabled {
     background: var(--lc-disabled-button);
+    color: var(--semantic-icon-disabled);
     cursor: not-allowed;
   }
 
