@@ -32,6 +32,7 @@
     "assistant.input.send.tooltip": "Send",
     "assistant.input.aria": "Prompt input",
     "assistant.loading.thinking": "Thinking",
+    "assistant.loading.writing": "Writing…",
     "assistant.loading.delayed": "This is taking a little longer than expected.",
     "assistant.feedback.prompt": "Was this helpful?",
     "assistant.feedback.positive": "Helpful",
