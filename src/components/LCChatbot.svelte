@@ -2361,7 +2361,7 @@
     /* Semantic/Border */
     --semantic-border-default: #ededec;
     --semantic-border-focus: #cccccc;
-    --semantic-border-strong: #4f6f9a;
+    --semantic-border-strong: #18345D;
     /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
