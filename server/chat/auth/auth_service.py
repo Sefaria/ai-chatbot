@@ -2,9 +2,7 @@
 Authentication service for user token authentication.
 """
 
-import hashlib
 import logging
-import re
 
 from django.conf import settings
 
@@ -16,9 +14,6 @@ from ..user_token_service import (
 from .actor import Actor
 
 logger = logging.getLogger("chat")
-
-ANON_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,100}$")
-ANON_USER_ID_PREFIX = "anon:"
 
 
 class AuthenticationError(Exception):
@@ -50,21 +45,17 @@ class UserTokenExpired(AuthenticationError):
         super().__init__("User token expired", "user_token_expired")
 
 
-def authenticate_request(
-    request, body_data: dict | None = None, *, allow_anonymous: bool = False
-) -> Actor:
+def authenticate_request(request, body_data: dict | None = None) -> Actor:
     """
     Authenticate a request and return an Actor.
 
     Authentication is attempted in order:
     1. X-Api-Key header (for Anthropic-compatible endpoints)
     2. userId field in body_data (for streaming endpoint)
-    3. anonId field in body_data, when allow_anonymous (logged-out visitors)
 
     Args:
         request: Django request object
         body_data: Optional dict containing userId field for user token auth
-        allow_anonymous: Accept a client-generated anonId when no userId is sent
 
     Returns:
         Actor with user_id set
@@ -83,16 +74,7 @@ def authenticate_request(
     if body_data and body_data.get("userId"):
         return _authenticate_user_token(body_data["userId"])
 
-    anon_id = (body_data or {}).get("anonId") or ""
-    if allow_anonymous and ANON_ID_PATTERN.match(anon_id):
-        return Actor(user_id=anonymous_user_id(anon_id), is_anonymous=True)
-
     raise AuthenticationRequired()
-
-
-def anonymous_user_id(anon_id: str) -> str:
-    """Persisted id for a logged-out visitor; hashed like signed-in ids."""
-    return ANON_USER_ID_PREFIX + hashlib.sha256(anon_id.encode()).hexdigest()
 
 
 def _authenticate_user_token(encrypted_token: str) -> Actor:

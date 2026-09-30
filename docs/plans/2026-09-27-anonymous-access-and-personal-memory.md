@@ -4,6 +4,13 @@ Status: in review. [ai-chatbot#222](https://github.com/Sefaria/ai-chatbot/pull/2
 [Sefaria-Project#3762](https://github.com/Sefaria/Sefaria-Project/pull/3762) (both branch
 `claude/gracious-noether-3tuqmy`; the cauldron's image segment is `claudegracious-noether-3tuqmy`)
 
+> **Split (2026-09-30):** this work is now two branches. `la-personalize` (this branch) is
+> Personalize Responses only, for signed-in users. `la-anon-polish`
+> ([ai-chatbot#230](https://github.com/Sefaria/ai-chatbot/pull/230)) is anonymous access only.
+> Without anonymous mode the widget can't see a logout, so the stored memory is no longer
+> cleared on logout: it stays with the browser. Sections below describe the original
+> combined branch.
+
 ## Goals
 
 1. **Every visitor gets a working Library Assistant.** Logged-out visitors get

@@ -79,7 +79,6 @@ pytest                                    # Run tests
 | `APPETIZER_MODEL` | No | Model for the topic appetizer (default: same as `AGENT_MODEL`) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
-| `CHATBOT_ANON_FREE_RESPONSES` | No | Answers a logged-out visitor (`anonId`) gets before `login_required` (default: 2; 0 disables) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
 
 ## Load Testing

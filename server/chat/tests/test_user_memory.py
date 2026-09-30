@@ -64,13 +64,6 @@ def test_empty_memory_means_no_section(agent, memory):
 
 
 @pytest.mark.django_db
-def test_anonymous_memory_is_ignored(agent):
-    stream({"anonId": "8f14e45f-ceea-467a-9575-7a0a2f1c3e11"}, memory=MEMORY)
-
-    assert agent.send_message.call_args.kwargs["context"].user_memory_text is None
-
-
-@pytest.mark.django_db
 def test_memory_over_1000_chars_rejected(agent):
     response = stream({"userId": create_test_token("hashed-user", SECRET)}, memory="x" * 1001)
 

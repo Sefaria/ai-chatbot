@@ -85,10 +85,10 @@ class TestChatRequestSerializer:
     @pytest.mark.parametrize(
         "field,invalid_value,error_field",
         [
+            ("userId", "", "userId"),
             ("text", "x" * 10001, "text"),
             ("timestamp", "not-a-timestamp", "timestamp"),
             ("userId", "u" * 513, "userId"),
-            ("anonId", "a" * 101, "anonId"),
         ],
     )
     def test_field_validation_errors(self, valid_request_data, field, invalid_value, error_field):
