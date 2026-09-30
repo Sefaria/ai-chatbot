@@ -4000,7 +4000,7 @@
     display: flex;
     align-items: flex-end;
     gap: var(--spacing-small);
-    padding: var(--spacing-large) var(--spacing-large) var(--spacing-large) 18px;
+    padding: var(--spacing-large);
     background: transparent;
     border-top: var(--border-width-thin) solid var(--lc-border);
   }
