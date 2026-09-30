@@ -2677,6 +2677,11 @@
     padding: 0 8px;
   }
 
+  /* The 44px tap targets already leave room below the icons */
+  .mode-fullscreen .feedback-thanks {
+    margin-top: 0;
+  }
+
   .mode-fullscreen .feedback-buttons {
     gap: 0;
     margin-inline-start: 0;
@@ -4384,6 +4389,7 @@
   }
 
   .feedback-thanks {
+    margin-top: 4px;
     font-size: var(--lc-font-size-sm);
     color: var(--semantic-text-link);
   }
