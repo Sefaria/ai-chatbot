@@ -245,3 +245,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Empty-state icon circle → `--lc-bg-hover` (Surface/Hover `#eeeeee`; was undefined var with `#ededec` fallback). Delete-modal Cancel background → `--lc-bg` (Surface/Page; was `--core-base-white` with `#fff` fallback).
 - Border/Strong changed in Figma to Core/Navy/700 → `--semantic-border-strong` updated to `#18345D`.
 - Renamed `--lc-border-strong` → `--lc-border-focus` (still → Border/Focus `#cccccc`) so the alias name matches its Figma token. Tooltips stay on Surface/Inverse by decision.
+- Docked panel shadow → new `--shadow-large` (Figma effect style Shadows/shadow-large: 0 16 32 #0D032029, 0 1 2 #00000014; same values).

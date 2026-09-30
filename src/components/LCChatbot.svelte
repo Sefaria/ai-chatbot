@@ -2367,6 +2367,8 @@
     --semantic-feedback-error-border: #c03522;
     --semantic-feedback-error-background: #f9ebe9;
     --semantic-feedback-error-hover: #a02c1c;
+    /* Figma effect style: Shadows/shadow-large */
+    --shadow-large: 0 16px 32px 0 rgba(13, 3, 32, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.08);
     /* Core */
     --core-base-white: #FFFFFF;
 
@@ -2461,7 +2463,7 @@
     height: auto;
     max-height: 100%;
     border-radius: 12px;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
+    box-shadow: var(--shadow-large);
     margin-inline-start: 10px;
     margin-inline-end: 10px;
     margin-bottom: 0;
