@@ -2361,6 +2361,7 @@
     /* Semantic/Border */
     --semantic-border-default: #ededec;
     --semantic-border-focus: #cccccc;
+    --semantic-border-strong: #4f6f9a;
     /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
@@ -2371,7 +2372,6 @@
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
-    --brand-sefaria-blue: #18345D;
     --lc-primary-hover: var(--semantic-action-primary-hover);
     --lc-bg: var(--semantic-surface-page);
     --lc-body-bg: var(--semantic-surface-subtle);
@@ -3133,7 +3133,7 @@
 
   .history-search input:focus,
   .history-rename-form input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .history-search-submit {
@@ -3976,7 +3976,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -4313,7 +4313,7 @@
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -4321,7 +4321,7 @@
   }
 
   .feedback-modal-input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .feedback-modal-input::placeholder {
