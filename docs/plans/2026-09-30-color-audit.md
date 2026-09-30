@@ -235,3 +235,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Tooltip trial: `--lc-tooltip-bg` → `--core-neutral-gray-800` (`#333333`; was `#3a3a3a`). Core, not semantic — temporary until a tooltip surface token exists. `tooltip.js` fallback updated to match.
 - `--lc-body-bg` → Surface/Subtle (`#fafafa`; was `#F9FAFB`). `--lc-shadow` stays raw by decision.
 - `--lc-bg-tertiary` (`#f1f5f9`, no Figma match) removed; its uses (⋮ menu item hover, row dropdown hover, Settings Reset bg, unused `.settings-btn`) now use `--lc-bg-hover` → Surface/Hover (`#eeeeee`).
+- Border trial: `--lc-border` → `--core-navy-200` (`#e4eaf3`; was `#e2e8f0`). Core, not semantic — temporary until a matching border token exists.
