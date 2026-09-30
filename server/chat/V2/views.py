@@ -424,7 +424,6 @@ def chat_stream_v2(request):
 
     msg_context = MessageContext(
         summary_text=summary_text,
-        user_memory_text=None if actor.is_anonymous else (data.get("memory") or None),
         page_url=page_url or None,
         session_id=data["sessionId"],
         # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
