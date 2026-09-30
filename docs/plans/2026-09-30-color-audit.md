@@ -242,3 +242,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - History row hover → new Surface/Hover accent (`#f0f7ff`, Core/Blue/100); selected (and selected hover) → new Surface/Selected accent (`#ddeeff`, Core/Blue/200). Both added and published in Figma by Penina. The Core "blue TBR" ramp is now "Core/Blue".
 - Loading spinner accent → Module/Primary (was `--brand-sefaria-blue`, same value).
 - Input focus borders (rename input, chat textarea, feedback select + textarea) → Border/Strong (`#4f6f9a`, Core/Navy/600; was `#18345D`). `--brand-sefaria-blue` removed.
+- Empty-state icon circle → `--lc-bg-hover` (Surface/Hover `#eeeeee`; was undefined var with `#ededec` fallback). Delete-modal Cancel background → `--lc-bg` (Surface/Page; was `--core-base-white` with `#fff` fallback).

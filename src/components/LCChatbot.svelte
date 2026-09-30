@@ -3399,7 +3399,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--core-neutral-gray-200, #ededec);
+    background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
   }
 
@@ -4227,7 +4227,7 @@
   .delete-modal .feedback-modal-btn.skip {
     border: 1px solid var(--lc-border-strong);
     color: var(--lc-text-secondary);
-    background: var(--core-base-white, #fff);
+    background: var(--lc-bg);
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
