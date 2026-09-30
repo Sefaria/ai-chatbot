@@ -2356,6 +2356,8 @@
     --semantic-surface-subtle: #fafafa;
     --semantic-surface-hover: #eeeeee;
     --semantic-surface-inverse: #0f223b;
+    --semantic-surface-hover-accent: #f0f7ff;
+    --semantic-surface-selected-accent: #ddeeff;
     /* Semantic/Border */
     --semantic-border-default: #ededec;
     --semantic-border-focus: #cccccc;
@@ -3212,17 +3214,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: #f0f7ff;
+    background: var(--semantic-surface-hover-accent);
   }
 
   .history-row.active {
-    background: #ddeeff;
+    background: var(--semantic-surface-selected-accent);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: #ddeeff;
+    background: var(--semantic-surface-selected-accent);
   }
 
   .history-row:disabled {
