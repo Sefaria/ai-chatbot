@@ -2354,6 +2354,7 @@
     --semantic-surface-page: #ffffff;
     --semantic-surface-subtle: #fafafa;
     --semantic-surface-hover: #eeeeee;
+    --semantic-surface-inverse: #0f223b;
     /* Semantic/Border */
     --semantic-border-default: #ededec;
     --semantic-border-focus: #cccccc;
@@ -2365,7 +2366,6 @@
     /* Core */
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
-    --core-neutral-gray-800: #333333;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
@@ -2401,7 +2401,7 @@
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
     --lc-icon-disabled-filter: brightness(0) invert(60%);
-    --lc-tooltip-bg: var(--core-neutral-gray-800); /* trial: no semantic tooltip surface yet */
+    --lc-tooltip-bg: var(--semantic-surface-inverse);
     --lc-tooltip-text: var(--semantic-text-inverse);
     --lc-danger: var(--semantic-feedback-error-text);
     --lc-danger-hover: var(--semantic-feedback-error-hover);
