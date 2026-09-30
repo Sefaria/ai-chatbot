@@ -18,7 +18,7 @@
     height: 28px;
     border-radius: 8px;
     border: 1px solid var(--lc-border);
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;

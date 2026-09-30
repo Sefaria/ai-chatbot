@@ -2373,7 +2373,6 @@
     --lc-bg: var(--semantic-surface-page);
     --lc-body-bg: var(--semantic-surface-subtle);
     --lc-bg-secondary: var(--semantic-surface-subtle);
-    --lc-bg-tertiary: #f1f5f9;
     --lc-text: var(--semantic-text-primary);
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: var(--semantic-text-muted);
@@ -3072,7 +3071,7 @@
   /* The search bar's icon (search glyph or its clear/X state) never gets a
      hover treatment in either state — see .history-search-submit below. */
   .history-row-dropdown button:hover {
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
     color: var(--lc-text);
   }
 
@@ -3576,7 +3575,7 @@
   }
 
   .menu-item:hover:not(:disabled) {
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
   }
 
   .menu-item:disabled {
@@ -4137,7 +4136,7 @@
   }
 
   .settings-reset {
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
   }
 
