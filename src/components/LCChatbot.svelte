@@ -2359,15 +2359,23 @@
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
 
-    /* Component tokens — aliased to Figma tokens where applicable */
+    /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
+    --lc-primary: var(--semantic-action-primary);
     --brand-sefaria-blue: #18345D;
+    --lc-primary-hover: var(--semantic-action-primary-hover);
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
+    --lc-text: var(--semantic-text-primary);
+    --lc-text-secondary: var(--semantic-text-secondary);
+    --lc-text-muted: var(--semantic-text-muted);
     --lc-border: #e2e8f0;
     --lc-user-bg: var(--brand-sefaria-blue);
+    --lc-user-text: var(--semantic-text-inverse);
     --lc-disabled-button: #e6e6e6;
+    --lc-disabled-text: var(--semantic-text-disabled);
+    --lc-submit-white: var(--semantic-text-inverse);
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --lc-radius: 16px;
@@ -2380,12 +2388,14 @@
     --lc-docked-top-offset: 60px;
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
+    --lc-icon-primary: var(--semantic-icon-muted);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs to
        --semantic-icon-muted (#6f6f6f), --semantic-icon-default (#121212) and --semantic-icon-disabled (#999999) */
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
     --lc-icon-disabled-filter: brightness(0) invert(60%);
     --lc-tooltip-bg: #3a3a3a;
+    --lc-tooltip-text: var(--semantic-text-inverse);
     --lc-danger: #C03522;
     --lc-danger-hover: #A02C1C;
 
@@ -2868,7 +2878,7 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--semantic-action-primary);
+    background: var(--lc-primary);
     color: var(--semantic-text-inverse);
     border: none;
     border-radius: 9999px;
@@ -2893,7 +2903,7 @@
 
   .trigger-label {
     font-weight: 400;
-    color: var(--semantic-text-inverse);
+    color: var(--lc-user-text);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size-sm);
     line-height: 18px; 
@@ -3016,7 +3026,7 @@
     justify-content: center;
     border: none;
     background: transparent;
-    color: var(--semantic-icon-muted);
+    color: var(--lc-icon-primary);
     cursor: pointer;
     border-radius: 6px;
     transition: background 0.15s ease, color 0.15s ease;
@@ -3056,7 +3066,7 @@
      hover treatment in either state — see .history-search-submit below. */
   .history-row-dropdown button:hover {
     background: var(--lc-bg-tertiary);
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
   }
 
   .history-icon-btn:disabled {
@@ -3089,7 +3099,7 @@
     width: 100%;
     border: 1px solid var(--lc-border);
     border-radius: 6px;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     background: var(--lc-bg);
     font: inherit;
     font-size: 12px;
@@ -3180,7 +3190,7 @@
     border: none;
     border-radius: 0;
     background: transparent;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     cursor: pointer;
     font-family: var(--lc-font);
     text-align: start;
@@ -3223,12 +3233,12 @@
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     padding: 3px 4px;
   }
 
   .history-row.active .history-row-title {
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
   }
 
   /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
@@ -3239,7 +3249,7 @@
   }
 
   .history-row-date {
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
     font-size: 12px;
     line-height: 20px;
     white-space: nowrap;
@@ -3247,7 +3257,7 @@
   }
 
   .history-row.active .history-row-date {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .history-row-menu {
@@ -3269,7 +3279,7 @@
     width: 18px;
     height: 18px;
     opacity: 0;
-    color: var(--semantic-icon-muted);
+    color: var(--lc-icon-primary);
   }
 
   .history-row-wrap:hover .history-row-menu-trigger,
@@ -3321,7 +3331,7 @@
     font-size: 12px !important;
     font-weight: 400;
     line-height: 21px;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
   }
 
   .history-row-dropdown button span {
@@ -3358,7 +3368,7 @@
   .history-empty,
   .history-loading,
   .history-error {
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
     font-size: 14px;
     line-height: 20px;
     padding: 32px 16px;
@@ -3381,7 +3391,7 @@
     justify-content: center;
     border-radius: 999px;
     background: var(--core-neutral-gray-200, #ededec);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .history-empty-icon img {
@@ -3389,7 +3399,7 @@
   }
 
   .history-empty strong {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
@@ -3398,7 +3408,7 @@
   .history-empty p {
     max-width: 170px;
     margin: 0 auto;
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
     font-size: 12px;
     line-height: 16px;
   }
@@ -3548,7 +3558,7 @@
     padding: 10px 14px;
     background: transparent;
     border: none;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     font-size: 13px;
     font-family: var(--lc-font);
     text-decoration: none;
@@ -3563,13 +3573,13 @@
   }
 
   .menu-item:disabled {
-    color: var(--semantic-text-disabled);
+    color: var(--lc-disabled-text);
     cursor: not-allowed;
   }
 
   .menu-item svg {
     flex-shrink: 0;
-    color: var(--semantic-icon-muted);
+    color: var(--lc-icon-primary);
   }
 
   /* Message List */
@@ -3647,7 +3657,7 @@
 
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .message.assistant .message-content :global(ul),
@@ -3670,7 +3680,7 @@
     padding: 12px 16px;
     font-size: var(--lc-font-size);
     word-wrap: break-word;
-    color: var(--semantic-text-inverse);
+    color: var(--lc-user-text);
     /* Blue bubble lives on the bubble only — not the whole column — so the
        location tag below renders as a gray pill on the white chat background. */
     background-color: var(--lc-user-bg);
@@ -3684,7 +3694,7 @@
   }
 
   .message.limit-message .message-content {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
   .message.limit-message .message-content .link-like {
     background: none;
@@ -3718,7 +3728,7 @@
   .message-timestamp {
     font-size: 11px;
     line-height: 14px;
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
     white-space: nowrap;
     opacity: 0;
     transition: opacity 0.15s ease;
@@ -3752,7 +3762,7 @@
 
   .message-status {
     font-size: 11px;
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
   }
 
   .message-status.sending {
@@ -3784,7 +3794,7 @@
     background: transparent;
     padding: 2px 6px;
     cursor: pointer;
-    color: var(--semantic-icon-muted);
+    color: var(--lc-icon-primary);
   }
 
   .feedback-btn:hover,
@@ -3836,7 +3846,7 @@
     line-height: var(--global-dimension-250, 20px);
   }
   .lc-thinking-glyph {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
@@ -3860,7 +3870,7 @@
     min-width: 0;
   }
   .lc-thinking-label-base {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -3914,7 +3924,7 @@
     justify-content: center;
     gap: 8px;
     padding: 12px;
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
     font-size: 13px;
   }
 
@@ -3961,7 +3971,7 @@
   }
 
   .lc-chatbot-input textarea::placeholder {
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
   }
 
   .lc-chatbot-input textarea:disabled {
@@ -3975,7 +3985,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--semantic-action-primary);
+    background: var(--lc-primary);
     color: var(--semantic-icon-inverse);
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -3984,7 +3994,7 @@
   }
 
   .send-btn:hover:not(:disabled) {
-    background: var(--semantic-action-primary-hover);
+    background: var(--lc-primary-hover);
   }
 
   .send-btn:disabled {
@@ -4020,7 +4030,7 @@
   .settings-title {
     font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
   }
 
   .settings-back {
@@ -4034,7 +4044,7 @@
 
   .settings-loading {
     font-size: var(--lc-font-size-sm);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .settings-error {
@@ -4051,7 +4061,7 @@
     display: grid;
     gap: 6px;
     font-size: var(--lc-font-size-sm);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .settings-field input {
@@ -4060,7 +4070,7 @@
     padding: 8px 10px;
     font-size: 13px;
     font-family: var(--lc-font);
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     background: var(--lc-bg-secondary);
   }
 
@@ -4073,13 +4083,13 @@
     align-items: center;
     gap: 8px;
     font-size: var(--lc-font-size-sm);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .settings-toggle input {
     width: 16px;
     height: 16px;
-    accent-color: var(--semantic-action-primary);
+    accent-color: var(--lc-primary);
   }
 
   .settings-toggle input:disabled {
@@ -4088,7 +4098,7 @@
 
   .settings-note {
     font-size: var(--lc-font-size-sm);
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
   }
 
   .settings-actions {
@@ -4110,23 +4120,23 @@
   }
 
   .settings-save {
-    background: var(--semantic-action-primary);
+    background: var(--lc-primary);
     color: var(--semantic-text-inverse);
     border-color: transparent;
   }
 
   .settings-save:hover:not(:disabled) {
-    background: var(--semantic-action-primary-hover);
+    background: var(--lc-primary-hover);
   }
 
   .settings-reset {
     background: var(--lc-bg-tertiary);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
 
   .settings-reset:hover:not(:disabled) {
     background: var(--lc-bg-secondary);
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
   }
 
   .settings-save:disabled,
@@ -4184,7 +4194,7 @@
   }
 
   .delete-modal .feedback-modal-title {
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
@@ -4192,7 +4202,7 @@
   }
 
   .delete-modal-subtext {
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     font-size: 12px;
     line-height: 16px;
     margin: 0 0 16px;
@@ -4207,7 +4217,7 @@
 
   .delete-modal .feedback-modal-btn.skip {
     border: 1px solid var(--core-neutral-gray-300, #ccc);
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     background: var(--core-base-white, #fff);
   }
 
@@ -4238,14 +4248,14 @@
   .feedback-modal-title {
     font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     margin: 0 0 8px 0;
   }
 
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     margin: 0 0 16px 0;
   }
 
@@ -4298,7 +4308,7 @@
   }
 
   .feedback-modal-select.is-placeholder {
-    color: var(--semantic-text-disabled);
+    color: var(--lc-disabled-text);
   }
 
   .feedback-modal-input:focus {
@@ -4306,7 +4316,7 @@
   }
 
   .feedback-modal-input::placeholder {
-    color: var(--semantic-text-disabled);
+    color: var(--lc-disabled-text);
   }
 
   .feedback-modal-actions {
@@ -4328,12 +4338,12 @@
   }
 
   .feedback-modal-btn.submit {
-    background: var(--semantic-action-primary);
-    color: var(--semantic-text-inverse);
+    background: var(--lc-primary);
+    color: var(--lc-submit-white);
   }
 
   .feedback-modal-btn.submit:hover:not(:disabled) {
-    background: var(--semantic-action-primary-hover);
+    background: var(--lc-primary-hover);
   }
 
   .feedback-modal-btn.submit.danger {
@@ -4347,13 +4357,13 @@
 
   .feedback-modal-btn.submit:disabled {
     background: var(--lc-disabled-button);
-    color: var(--semantic-text-disabled);
+    color: var(--lc-disabled-text);
     cursor: not-allowed;
   }
 
   .feedback-modal-btn.skip {
     background: transparent;
-    color: var(--semantic-text-primary);
+    color: var(--lc-text);
     border: none;
   }
 
@@ -4476,13 +4486,13 @@
     gap: 6px;
     font-size: 12px;
     line-height: 1.4;
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
   }
   :global(.progress-trail-entry--error) {
     color: var(--semantic-feedback-error-text);
   }
   :global(.progress-trail-entry--complete) {
-    color: var(--semantic-text-muted);
+    color: var(--lc-text-muted);
   }
   :global(.progress-trail-icon) {
     flex-shrink: 0;

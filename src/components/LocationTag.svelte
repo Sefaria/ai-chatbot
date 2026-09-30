@@ -54,7 +54,7 @@
     padding: 4px 8px;
     border: 1px solid var(--lc-border-strong);
     border-radius: 16px;
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
     text-decoration: none;
     font-family: var(--lc-font);
     font-size: 12px;
@@ -67,7 +67,7 @@
   }
   .lc-location-pin {
     flex: none;
-    color: var(--semantic-icon-muted);
+    color: var(--lc-icon-primary);
   }
   .lc-location-ref {
     flex: 1;

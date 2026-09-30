@@ -35,9 +35,9 @@
     display: flex; align-items: center; gap: 4px;
     background: none; border: 0; padding: 0; cursor: pointer;
     font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px;
-    color: var(--semantic-text-secondary);
+    color: var(--lc-text-secondary);
   }
-  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--semantic-icon-muted); }
+  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--lc-icon-primary); }
   .lc-accordion-chevron.expanded { transform: rotate(180deg); }
   .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
   :global(.interface-hebrew) .lc-accordion-header { flex-direction: row-reverse; }
