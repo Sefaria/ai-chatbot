@@ -228,3 +228,4 @@ Semantic/Action/Danger token. `tooltip.js` keeps `'#fff'` / `'#3a3a3a'` as JS fa
 Added `--semantic-surface-page`, `--semantic-surface-subtle`, `--semantic-surface-hover`. `--lc-bg` → Surface/Page,
 `--lc-bg-secondary` → Surface/Subtle, `--lc-user-bg` → Module/Primary, `--lc-bg-hover` → Surface/Hover (values unchanged).
 Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--lc-bg-hover` instead of an undefined var with a `#eee` fallback.
+- `--lc-danger` → Feedback/Error/Text (Core/Validation/Red/700 `#c03522`, value unchanged). `--lc-danger-hover` still raw (`#A02C1C`, Red/800) pending a Figma token.

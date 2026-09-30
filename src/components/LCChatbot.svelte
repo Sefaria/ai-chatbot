@@ -2399,7 +2399,7 @@
     --lc-icon-disabled-filter: brightness(0) invert(60%);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--semantic-text-inverse);
-    --lc-danger: #C03522;
+    --lc-danger: var(--semantic-feedback-error-text);
     --lc-danger-hover: #A02C1C;
 
     display: block;
