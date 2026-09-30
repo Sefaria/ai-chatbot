@@ -6,6 +6,7 @@
   import { sendMessageStream, loadHistory, fetchPromptDefaults, sendFeedback } from '../lib/api.js';
   import { tick } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
+  import { createStreamPacer } from '../lib/streamPacer.js';
   import HeaderButton from './HeaderButton.svelte';
   import { setLocale, _ } from '../i18n/index.js';
 
@@ -43,6 +44,51 @@
   let currentProgress = $state(null);
   let toolHistory = $state([]);
   let streamingMarkdown = $state('');
+  let streamEl = $state(null);
+
+  // Streaming UX: release the answer word by word, fading each word in.
+  const STREAM_WORD_INTERVAL_MS = 35;
+  const WORD_FADE_MS = 400;
+  let wordRevealTimes = [];
+
+  $effect(() => {
+    if (!streamEl) return;
+    streamEl.innerHTML = renderMarkdown(streamingMarkdown);
+    fadeInNewWords(streamEl);
+  });
+
+  // The streamed HTML is re-rendered on every update, so each word keeps the
+  // time it first appeared and resumes its fade from there (negative delay).
+  function fadeInNewWords(root) {
+    const now = performance.now();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let wordIndex = 0;
+    for (const node of textNodes) {
+      const frag = document.createDocumentFragment();
+      let hasFadingWord = false;
+      for (const part of node.data.split(/(\s+)/)) {
+        if (!part.trim()) {
+          frag.append(part);
+          continue;
+        }
+        const age = now - (wordRevealTimes[wordIndex] ??= now);
+        wordIndex++;
+        if (age >= WORD_FADE_MS) {
+          frag.append(part);
+          continue;
+        }
+        const span = document.createElement('span');
+        span.className = 'lc-word-fade';
+        span.style.animationDelay = `-${Math.round(age)}ms`;
+        span.textContent = part;
+        frag.append(span);
+        hasFadingWord = true;
+      }
+      if (hasFadingWord) node.replaceWith(frag);
+    }
+  }
 
   // Settings state
   let showSettings = $state(false);
@@ -459,7 +505,16 @@
     currentProgress = null;
     toolHistory = [];
     streamingMarkdown = '';
+    wordRevealTimes = [];
     updateSessionActivity(sessionId);
+    const pacer = createStreamPacer({
+      unit: 'word',
+      intervalMs: STREAM_WORD_INTERVAL_MS,
+      onReveal: (text) => {
+        streamingMarkdown = text;
+        scrollToBottom();
+      }
+    });
 
     try {
       const response = await sendMessageStream(apiBaseUrl, userId, sessionId, text, {
@@ -490,9 +545,7 @@
           }
         },
         onPartial: (delta) => {
-          if (!delta) return;
-          streamingMarkdown += delta;
-          scrollToBottom();
+          if (delta) pacer.push(delta);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -508,6 +561,12 @@
           ? { ...m, status: 'sent' }
           : m
       );
+
+      // Let the paced text and the last word's fade finish before swapping in
+      // the final message.
+      await pacer.finish();
+      const didStream = !!streamingMarkdown;
+      await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
 
       // Add assistant response
       streamingMarkdown = '';
@@ -527,7 +586,8 @@
 
       messages = [...messages, assistantMessage];
       saveMessagesToStorage();
-      scrollToResponseStart();
+      // A streamed answer is already in view; jumping to its start would be jarring.
+      if (!didStream) scrollToResponseStart();
 
       // Update turn count from server response
       if (response.session) {
@@ -565,6 +625,7 @@
         error: e.message
       });
     } finally {
+      pacer.cancel();
       isSending = false;
       currentProgress = null;
       toolHistory = [];
@@ -1005,8 +1066,12 @@
         {#if isSending}
           <div class="message assistant" class:streaming={!!streamingMarkdown}>
             {#if streamingMarkdown}
-              <div class="message-content">
-                {@html renderMarkdown(streamingMarkdown)}
+              <div class="message-content" bind:this={streamEl}></div>
+              <div class="lc-thinking-step lc-writing-indicator">
+                <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                <span class="lc-thinking-label-wrap">
+                  <span class="lc-thinking-label lc-thinking-label-base">{$_('assistant.loading.writing')}</span>
+                </span>
               </div>
             {:else}
               <div class="thinking-content">
@@ -1590,6 +1655,105 @@
   75%  { content: '...'; }
   100% { content: ''; }
 }
+
+  /* Streaming: each new word fades in */
+  .message-content :global(.lc-word-fade) {
+    animation: lc-word-fade 400ms ease-out both;
+  }
+  @keyframes lc-word-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* "✦ Writing…" indicator under the streaming text (ported from main's thinking indicator) */
+  .lc-writing-indicator {
+    margin-top: var(--global-dimension-100, 8px);
+  }
+  .lc-thinking-step {
+    display: flex;
+    align-items: center;
+    gap: var(--global-dimension-100, 8px);
+    min-height: 20px;
+    direction: ltr;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .interface-hebrew .lc-thinking-step {
+    justify-content: flex-end;
+  }
+  .interface-hebrew .lc-thinking-glyph {
+    order: 2;
+  }
+  .interface-hebrew .lc-thinking-label-wrap {
+    direction: rtl;
+    order: 1;
+    text-align: right;
+  }
+  .lc-thinking-glyph,
+  .lc-thinking-label {
+    font-family: var(--lc-font);
+    font-size: 12px;
+    line-height: var(--global-dimension-250, 20px);
+  }
+  .lc-thinking-glyph {
+    flex-shrink: 0;
+    color: var(--semantic-text-secondary, #575757);
+  }
+  .lc-thinking-label-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .lc-thinking-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .lc-thinking-label-base {
+    color: var(--semantic-text-secondary, #575757);
+    background-image: linear-gradient(
+      100deg,
+      currentColor 38%,
+      rgba(255,255,255,0.75) 47%,
+      rgba(255,255,255,1) 50%,
+      rgba(255,255,255,0.75) 53%,
+      currentColor 62%
+    );
+    background-color: currentColor;
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
+  }
+  .interface-hebrew .lc-thinking-label-base {
+    animation-name: lc-thinking-shimmer-rtl;
+  }
+  @keyframes lc-thinking-shimmer-ltr {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+  }
+  @keyframes lc-thinking-shimmer-rtl {
+    from { background-position: 0% 0; }
+    to { background-position: 100% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .message-content :global(.lc-word-fade) {
+      animation: none;
+    }
+    .lc-thinking-label-base {
+      animation: none;
+      background-image: none;
+      -webkit-text-fill-color: currentColor;
+    }
+  }
 
   /* Loading Indicator */
   .loading-indicator {
