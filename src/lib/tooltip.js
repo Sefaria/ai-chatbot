@@ -71,17 +71,17 @@ export function showTooltip(anchor, text) {
     left: '0',
     maxWidth: `${MAX_WIDTH}px`,
     width: 'max-content',
-    background: token(anchor, '--lc-tooltip-bg', '#3a3a3a'),
+    background: token(anchor, '--lc-tooltip-bg', '#0f223b'),
     color: token(anchor, '--lc-tooltip-text', '#fff'),
     font: `12px/1.4 ${token(anchor, '--lc-font', 'Roboto, sans-serif')}`,
     textAlign: 'start',
-    padding: '8px 12px',
-    borderRadius: '12px',
+    padding: `${token(anchor, '--spacing-small', '8px')} ${token(anchor, '--spacing-medium', '12px')}`,
+    borderRadius: token(anchor, '--global-dimension-150', '12px'),
     whiteSpace: 'normal',
     wordBreak: 'break-word',
     pointerEvents: 'none',
     zIndex: '2147483647',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+    boxShadow: token(anchor, '--shadow-small', '0 8px 16px rgba(31,31,31,0.05), 0 1px 2px rgba(31,31,31,0.04), 0 0 10px -1px rgba(83,83,83,0.04)'),
   });
 
   const caret = document.createElement('div');
@@ -126,8 +126,13 @@ export function tooltip(node, text = '') {
     }
   }
 
-  node.addEventListener('mouseenter', show);
-  node.addEventListener('mouseleave', hide);
+  // Mouse only: a tap's emulated mouseenter would leave the bubble stuck on touch screens.
+  function onPointerEnter(e) {
+    if (e.pointerType === 'mouse') show();
+  }
+
+  node.addEventListener('pointerenter', onPointerEnter);
+  node.addEventListener('pointerleave', hide);
 
   return {
     update(next) {
@@ -138,8 +143,8 @@ export function tooltip(node, text = '') {
     },
     destroy() {
       hide();
-      node.removeEventListener('mouseenter', show);
-      node.removeEventListener('mouseleave', hide);
+      node.removeEventListener('pointerenter', onPointerEnter);
+      node.removeEventListener('pointerleave', hide);
     },
   };
 }

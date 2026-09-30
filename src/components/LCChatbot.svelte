@@ -15,6 +15,7 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
+  import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
@@ -171,9 +172,9 @@
   const FEEDBACK_UP = 'up';
   const FEEDBACK_DOWN = 'down';
 
-  const FEEDBACK_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
-  const THUMBUP = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3457 6.439e-05C8.82494 0.00605952 9.29664 0.120247 9.72559 0.334049C10.1546 0.547943 10.53 0.856213 10.8232 1.23542C11.1165 1.61466 11.3208 2.05545 11.4199 2.52448C11.5187 2.9925 11.5096 3.47698 11.3955 3.94147L10.8975 6.00006H14.207C14.5695 6.00006 14.9277 6.08404 15.252 6.24616C15.576 6.4082 15.8577 6.64384 16.0752 6.93366C16.2926 7.22359 16.44 7.5605 16.5049 7.91706C16.5697 8.27354 16.5506 8.64049 16.4492 8.98835L14.7012 14.9883C14.5597 15.4733 14.2654 15.9001 13.8613 16.2032C13.4571 16.5063 12.9652 16.67 12.46 16.67H2.33496C1.71568 16.67 1.12149 16.4243 0.683594 15.9864C0.245697 15.5485 0 14.9543 0 14.335V8.33503C0 7.71574 0.245696 7.12156 0.683594 6.68366C1.12149 6.24576 1.71568 6.00006 2.33496 6.00006H4.4043C4.52801 6 4.64974 5.96566 4.75488 5.90045C4.86 5.83526 4.94496 5.74169 5 5.63092L7.58789 0.461002L7.64844 0.359439C7.80498 0.133378 8.0657 -0.00340299 8.3457 6.439e-05ZM6.49414 6.37604C6.30081 6.76418 6.0033 7.09086 5.63477 7.3194C5.56531 7.36247 5.49306 7.40024 5.41992 7.43561V15.0001H12.46C12.6038 15.0001 12.7443 14.9536 12.8594 14.8673C12.9743 14.781 13.0583 14.6595 13.0986 14.5215L14.8457 8.52155C14.8746 8.42244 14.8798 8.31746 14.8613 8.21589C14.8428 8.1144 14.8012 8.01813 14.7393 7.93561C14.6774 7.8532 14.5971 7.7864 14.5049 7.7403C14.4125 7.69413 14.3103 7.66999 14.207 7.66999H9.83496C9.57899 7.66999 9.33703 7.55274 9.17871 7.35163C9.0204 7.15029 8.96303 6.88665 9.02344 6.63776L9.77344 3.54792L9.77441 3.54499C9.82901 3.32384 9.83314 3.09306 9.78613 2.87018C9.73906 2.64723 9.6423 2.43718 9.50293 2.2569C9.36353 2.07661 9.18442 1.93085 8.98047 1.82917C8.92425 1.80114 8.86657 1.77666 8.80762 1.75592L6.49414 6.37604ZM1.66992 14.335C1.66992 14.5114 1.73955 14.681 1.86426 14.8057C1.98897 14.9304 2.15859 15.0001 2.33496 15.0001H3.75V7.66999H2.33496C2.15859 7.66999 1.98897 7.73961 1.86426 7.86432C1.73955 7.98903 1.66992 8.15866 1.66992 8.33503V14.335Z" fill="currentColor"/></svg>'
-  const THUMBDOWN = '<svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8716 2.33496C14.8716 2.15859 14.802 1.98897 14.6773 1.86426C14.5526 1.73968 14.3829 1.66992 14.2066 1.66992H12.7916V9H14.2066C14.3829 9 14.5526 8.93024 14.6773 8.80566C14.802 8.68095 14.8716 8.51133 14.8716 8.33496V2.33496ZM4.0816 1.66992C3.93795 1.67001 3.79812 1.71658 3.68316 1.80273C3.56816 1.88899 3.48424 2.01046 3.44391 2.14844L1.69586 8.14844C1.66695 8.24755 1.66177 8.35253 1.68023 8.4541C1.69872 8.55561 1.7404 8.65183 1.8023 8.73438C1.86414 8.81678 1.94456 8.88355 2.03668 8.92969C2.12902 8.97586 2.23129 9 2.33453 9H6.7066C6.96268 9 7.20551 9.11708 7.36383 9.31836C7.52214 9.51969 7.57853 9.78333 7.51812 10.0322L6.76812 13.1221V13.125C6.71352 13.3462 6.70938 13.5769 6.7564 13.7998C6.80348 14.0228 6.90021 14.2328 7.03961 14.4131C7.17892 14.5932 7.35734 14.7392 7.56109 14.8408C7.61711 14.8687 7.67521 14.8924 7.73394 14.9131L10.0474 10.2939C10.2407 9.90584 10.5384 9.57915 10.9068 9.35059C10.9763 9.30751 11.0485 9.26877 11.1216 9.2334V1.66992H4.0816ZM16.5416 8.33496C16.5416 8.95424 16.2959 9.54843 15.858 9.98633C15.4201 10.4241 14.8258 10.6699 14.2066 10.6699H12.1373C12.0137 10.67 11.8927 10.7045 11.7877 10.7695C11.6825 10.8347 11.5976 10.9283 11.5425 11.0391L8.95367 16.209C8.81047 16.4948 8.51653 16.6738 8.19683 16.6699C7.71735 16.664 7.24512 16.5499 6.81598 16.3359C6.3869 16.122 6.01161 15.8139 5.71832 15.4346C5.42511 15.0554 5.22171 14.6145 5.12262 14.1455C5.02356 13.6763 5.03111 13.1902 5.14605 12.7246L5.64508 10.6699H2.33453C1.97218 10.6699 1.61471 10.5858 1.29058 10.4238C0.966416 10.2617 0.683849 10.0263 0.466366 9.73633C0.248938 9.44642 0.102533 9.10945 0.0376551 8.75293C-0.0271694 8.39639 -0.00809404 8.02954 0.0933192 7.68164L1.84039 1.68164L1.90094 1.50195C2.05771 1.09146 2.32764 0.731974 2.68121 0.466797C3.08524 0.163841 3.57661 9.28572e-05 4.0816 0H14.2066C14.8258 0 15.4201 0.245831 15.858 0.683594C16.2959 1.12149 16.5416 1.71568 16.5416 2.33496V8.33496Z" fill="currentColor"/></svg>'
+  const FEEDBACK_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+  const THUMBUP = '<svg width="18" height="18" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3457 6.439e-05C8.82494 0.00605952 9.29664 0.120247 9.72559 0.334049C10.1546 0.547943 10.53 0.856213 10.8232 1.23542C11.1165 1.61466 11.3208 2.05545 11.4199 2.52448C11.5187 2.9925 11.5096 3.47698 11.3955 3.94147L10.8975 6.00006H14.207C14.5695 6.00006 14.9277 6.08404 15.252 6.24616C15.576 6.4082 15.8577 6.64384 16.0752 6.93366C16.2926 7.22359 16.44 7.5605 16.5049 7.91706C16.5697 8.27354 16.5506 8.64049 16.4492 8.98835L14.7012 14.9883C14.5597 15.4733 14.2654 15.9001 13.8613 16.2032C13.4571 16.5063 12.9652 16.67 12.46 16.67H2.33496C1.71568 16.67 1.12149 16.4243 0.683594 15.9864C0.245697 15.5485 0 14.9543 0 14.335V8.33503C0 7.71574 0.245696 7.12156 0.683594 6.68366C1.12149 6.24576 1.71568 6.00006 2.33496 6.00006H4.4043C4.52801 6 4.64974 5.96566 4.75488 5.90045C4.86 5.83526 4.94496 5.74169 5 5.63092L7.58789 0.461002L7.64844 0.359439C7.80498 0.133378 8.0657 -0.00340299 8.3457 6.439e-05ZM6.49414 6.37604C6.30081 6.76418 6.0033 7.09086 5.63477 7.3194C5.56531 7.36247 5.49306 7.40024 5.41992 7.43561V15.0001H12.46C12.6038 15.0001 12.7443 14.9536 12.8594 14.8673C12.9743 14.781 13.0583 14.6595 13.0986 14.5215L14.8457 8.52155C14.8746 8.42244 14.8798 8.31746 14.8613 8.21589C14.8428 8.1144 14.8012 8.01813 14.7393 7.93561C14.6774 7.8532 14.5971 7.7864 14.5049 7.7403C14.4125 7.69413 14.3103 7.66999 14.207 7.66999H9.83496C9.57899 7.66999 9.33703 7.55274 9.17871 7.35163C9.0204 7.15029 8.96303 6.88665 9.02344 6.63776L9.77344 3.54792L9.77441 3.54499C9.82901 3.32384 9.83314 3.09306 9.78613 2.87018C9.73906 2.64723 9.6423 2.43718 9.50293 2.2569C9.36353 2.07661 9.18442 1.93085 8.98047 1.82917C8.92425 1.80114 8.86657 1.77666 8.80762 1.75592L6.49414 6.37604ZM1.66992 14.335C1.66992 14.5114 1.73955 14.681 1.86426 14.8057C1.98897 14.9304 2.15859 15.0001 2.33496 15.0001H3.75V7.66999H2.33496C2.15859 7.66999 1.98897 7.73961 1.86426 7.86432C1.73955 7.98903 1.66992 8.15866 1.66992 8.33503V14.335Z" fill="currentColor"/></svg>'
+  const THUMBDOWN = '<svg width="18" height="18" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8716 2.33496C14.8716 2.15859 14.802 1.98897 14.6773 1.86426C14.5526 1.73968 14.3829 1.66992 14.2066 1.66992H12.7916V9H14.2066C14.3829 9 14.5526 8.93024 14.6773 8.80566C14.802 8.68095 14.8716 8.51133 14.8716 8.33496V2.33496ZM4.0816 1.66992C3.93795 1.67001 3.79812 1.71658 3.68316 1.80273C3.56816 1.88899 3.48424 2.01046 3.44391 2.14844L1.69586 8.14844C1.66695 8.24755 1.66177 8.35253 1.68023 8.4541C1.69872 8.55561 1.7404 8.65183 1.8023 8.73438C1.86414 8.81678 1.94456 8.88355 2.03668 8.92969C2.12902 8.97586 2.23129 9 2.33453 9H6.7066C6.96268 9 7.20551 9.11708 7.36383 9.31836C7.52214 9.51969 7.57853 9.78333 7.51812 10.0322L6.76812 13.1221V13.125C6.71352 13.3462 6.70938 13.5769 6.7564 13.7998C6.80348 14.0228 6.90021 14.2328 7.03961 14.4131C7.17892 14.5932 7.35734 14.7392 7.56109 14.8408C7.61711 14.8687 7.67521 14.8924 7.73394 14.9131L10.0474 10.2939C10.2407 9.90584 10.5384 9.57915 10.9068 9.35059C10.9763 9.30751 11.0485 9.26877 11.1216 9.2334V1.66992H4.0816ZM16.5416 8.33496C16.5416 8.95424 16.2959 9.54843 15.858 9.98633C15.4201 10.4241 14.8258 10.6699 14.2066 10.6699H12.1373C12.0137 10.67 11.8927 10.7045 11.7877 10.7695C11.6825 10.8347 11.5976 10.9283 11.5425 11.0391L8.95367 16.209C8.81047 16.4948 8.51653 16.6738 8.19683 16.6699C7.71735 16.664 7.24512 16.5499 6.81598 16.3359C6.3869 16.122 6.01161 15.8139 5.71832 15.4346C5.42511 15.0554 5.22171 14.6145 5.12262 14.1455C5.02356 13.6763 5.03111 13.1902 5.14605 12.7246L5.64508 10.6699H2.33453C1.97218 10.6699 1.61471 10.5858 1.29058 10.4238C0.966416 10.2617 0.683849 10.0263 0.466366 9.73633C0.248938 9.44642 0.102533 9.10945 0.0376551 8.75293C-0.0271694 8.39639 -0.00809404 8.02954 0.0933192 7.68164L1.84039 1.68164L1.90094 1.50195C2.05771 1.09146 2.32764 0.731974 2.68121 0.466797C3.08524 0.163841 3.57661 9.28572e-05 4.0816 0H14.2066C14.8258 0 15.4201 0.245831 15.858 0.683594C16.2959 1.12149 16.5416 1.71568 16.5416 2.33496V8.33496Z" fill="currentColor"/></svg>'
 
   $effect(() => {
     setLocale(interfaceLang);
@@ -224,6 +225,27 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Phones (portrait, or landscape where the panel can't fit) get a full-screen sheet
+  // instead of the floating/docked panel.
+  const FULLSCREEN_QUERY = '(max-width: 600px), (max-height: 500px)';
+  let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
+  let layout = $derived(isFullscreen ? 'fullscreen' : mode);
+  let viewportBox = $state(null);
+  let triggerHidden = $state(false);
+  let pendingNavigation = null;
+
+  // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
+  const SHEET_CLOSE_DISTANCE = 120;
+  const SHEET_CLOSE_VELOCITY = 0.5; // px/ms
+  let sheetOffset = $state(0);
+  let sheetSettling = $state(false);
+  let sheetDrag = null;
+  // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
+  let sheetStyle = $derived(
+    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
+  );
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -234,7 +256,8 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    // A full-screen sheet never opens by itself: it would hide the page the user came for.
+    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -490,6 +513,11 @@
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
+    if (isFullscreen) {
+      pushSheetEntry(onSheetPopped);
+      return; // no autofocus: the keyboard would cover the conversation
+    }
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
@@ -502,7 +530,125 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
+    popSheetEntry();
   }
+
+  function startSheetDrag(e) {
+    if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
+    sheetSettling = false;
+  }
+
+  function moveSheetDrag(e) {
+    if (!sheetDrag) return;
+    const dt = e.timeStamp - sheetDrag.lastT;
+    if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
+    sheetDrag.lastY = e.clientY;
+    sheetDrag.lastT = e.timeStamp;
+    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
+  }
+
+  function endSheetDrag(e) {
+    if (!sheetDrag) return;
+    // A flick counts only if the finger was still moving when it lifted
+    const moving = e.timeStamp - sheetDrag.lastT < 100;
+    const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
+    const shouldClose = sheetOffset > SHEET_CLOSE_DISTANCE || flicked;
+    sheetDrag = null;
+    sheetSettling = true;
+    sheetOffset = shouldClose ? window.innerHeight : 0;
+    setTimeout(() => {
+      if (shouldClose) closePanel();
+      sheetOffset = 0;
+      sheetSettling = false;
+    }, 200);
+  }
+
+  // Back pressed, or the UI closed the sheet and its pop has landed.
+  function onSheetPopped() {
+    if (isOpen) closePanel();
+    if (pendingNavigation) {
+      const detail = pendingNavigation;
+      pendingNavigation = null;
+      navigateHost(detail);
+    }
+  }
+
+  // In-page navigation through the host's 'sefaria:bootstrap-url' listener. On phones the
+  // sheet closes to reveal the page, and the host navigates only once the sheet's history
+  // entry is popped, or it would push the new URL on top of it.
+  function navigateHost(detail) {
+    if (hasSheetEntry()) {
+      pendingNavigation = detail;
+      closePanel();
+      return;
+    }
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail }));
+    if (isFullscreen && isOpen) closePanel();
+  }
+
+  $effect(() => {
+    const query = window.matchMedia(FULLSCREEN_QUERY);
+    const sync = () => { isFullscreen = query.matches; };
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
+
+  // While the sheet is open, lock the page behind it and track the visual viewport, so
+  // the input stays above the on-screen keyboard.
+  $effect(() => {
+    if (!isFullscreen || !isOpen) return;
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    const vv = window.visualViewport;
+    const sync = () => { viewportBox = { top: vv.offsetTop, height: vv.height }; };
+    if (vv) {
+      sync();
+      vv.addEventListener('resize', sync);
+      vv.addEventListener('scroll', sync);
+    }
+    return () => {
+      root.style.overflow = overflow;
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      viewportBox = null;
+    };
+  });
+
+  // On phones the closed button recedes while the page scrolls forward and returns on any
+  // scroll back, so it doesn't sit on the text being read. Capture catches every scroller.
+  $effect(() => {
+    triggerHidden = false;
+    if (!isFullscreen || isOpen) return;
+    let scroller = null;
+    let lastTop = 0;
+    function onScroll(e) {
+      const el = e.target === document ? document.scrollingElement : e.target;
+      if (!(el instanceof Element)) return;
+      if (el !== scroller) {
+        scroller = el;
+        lastTop = el.scrollTop;
+        return;
+      }
+      if (Math.abs(el.scrollTop - lastTop) < 12) return;
+      triggerHidden = el.scrollTop > lastTop && el.scrollTop > 100;
+      lastTop = el.scrollTop;
+    }
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+  });
+
+  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu.
+  $effect(() => {
+    function onOpenRequest(e) {
+      if (!isOpen) openPanel();
+      trackAssistantClick(e.detail?.source || 'host_open');
+    }
+    document.addEventListener('chatbot:open', onOpenRequest);
+    return () => document.removeEventListener('chatbot:open', onOpenRequest);
+  });
 
   function toggleMode() {
     const newMode = mode === 'floating' ? 'docked' : 'floating';
@@ -699,7 +845,7 @@
     editingConversationTitle = '';
   }
 
-  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px (48px on phones)
 
   function toggleHistoryRowMenu(conversation, event) {
     event?.stopPropagation();
@@ -717,7 +863,7 @@
     const spaceBelow = panel && trigger
       ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
       : Infinity;
-    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    historyMenuFlipUp = spaceBelow < (isFullscreen ? 96 : HISTORY_ROW_MENU_HEIGHT) + 8;
   }
 
   async function commitRenameConversation(conversation) {
@@ -794,6 +940,8 @@
 
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
+    // Phones show the history list and the chat one at a time.
+    if (isFullscreen) showHistoryPanel = false;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
@@ -1369,12 +1517,7 @@
 
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
 
-    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-      detail: {
-        url: path,
-        replaceHistory: true
-      }
-    }));
+    navigateHost({ url: path, replaceHistory: true });
   }
 
   function toggleMenu() {
@@ -1435,6 +1578,7 @@
 
   function handleRestartConvo() {
     closeMenu();
+    if (isFullscreen) showHistoryPanel = false;
     isRestarted = true;
     handleNewChat();
   }
@@ -1576,7 +1720,7 @@
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
       if (isSefariaHostname(hostname)) {
-        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+        navigateHost({ url });
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
@@ -1590,9 +1734,7 @@
 
     if (onSefaria) {
       // In-page navigation via ReaderApp's existing event listener
-      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-        detail: { url: `/topics/${topicSlug}` }
-      }));
+      navigateHost({ url: `/topics/${topicSlug}` });
     } else {
       // Off-site: open topic page in new tab
       window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
@@ -1619,10 +1761,13 @@
 
 <div
   class="lc-chatbot-container"
-  class:mode-floating={mode === 'floating'}
-  class:mode-docked={mode === 'docked'}
+  class:mode-floating={layout === 'floating'}
+  class:mode-docked={layout === 'docked'}
+  class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
+  class:trigger-hidden={triggerHidden}
   class:interface-hebrew={interfaceLang === 'he'}
+  class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1635,7 +1780,9 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      class:sheet-settling={sheetSettling}
+      class:sheet-lifted={sheetOffset > 0 || sheetSettling}
+      style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1659,7 +1806,16 @@
 
       <!-- Header -->
       <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
-      <header class="lc-chatbot-header" role="banner">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <header
+        class="lc-chatbot-header"
+        role="banner"
+        onpointerdown={startSheetDrag}
+        onpointermove={moveSheetDrag}
+        onpointerup={endSheetDrag}
+        onpointercancel={endSheetDrag}
+      >
+        {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
           <h2>
             <span class="header-sparkle" aria-hidden="true">✦</span>
@@ -1676,6 +1832,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if !isFullscreen}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1688,6 +1845,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1696,7 +1854,7 @@
               <div class="menu-dropdown" role="menu">
                 {#if isModerator}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
                       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
@@ -1707,20 +1865,22 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if !isFullscreen}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
                 </a>
 <a class="menu-item" aria-label={$_('assistant.menu.help.aria')} href={$_('assistant.menu.helpURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/info.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.help')}
                 </a>
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.optout')}
                 </a>
               </div>
@@ -1826,7 +1986,7 @@
                       use:focusEnd
                     />
                     <button type="submit" aria-label={$_('assistant.history.rename.done.aria')} data-feature-name="rename_saved">
-                      <img src="{staticIconsBaseUrl}/check.svg" alt="" width="14" height="14" />
+                      <img src="{staticIconsBaseUrl}/check.svg" alt="" width="12" height="12" />
                     </button>
                   </form>
                 {:else}
@@ -1855,11 +2015,11 @@
                     {#if activeHistoryMenuId === conversation.sessionId}
                       <div class="history-row-dropdown" class:flip-up={historyMenuFlipUp} role="menu">
                         <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
-                          <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="14" height="14" />
+                          <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="12" height="12" />
                           <span>{$_('assistant.history.menu.rename')}</span>
                         </button>
                         <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; deletingConversation = conversation; }}>
-                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="14" height="14" />
+                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="12" height="12" />
                           <span>{$_('assistant.history.menu.delete')}</span>
                         </button>
                       </div>
@@ -2071,6 +2231,7 @@
           maxlength={effectiveMaxInputChars}
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
+          enterkeyhint="send"
           rows="1"
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
@@ -2080,7 +2241,7 @@
           disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
@@ -2160,66 +2321,134 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    /* Figma design tokens (canonical) */
+    /* Figma Foundations: Global/dimension — the only place raw sizes live.
+       Spacing, radius and sizing all derive from this scale. */
     --global-dimension-0: 0px;
+    --global-dimension-25: 2px;
+    --global-dimension-50: 4px;
     --global-dimension-100: 8px;
     --global-dimension-150: 12px;
     --global-dimension-200: 16px;
+    --global-dimension-225: 18px;
     --global-dimension-250: 20px;
     --global-dimension-300: 24px;
-    --space-1: 4px;
-    --spacing-spacing-large: 16px;
-    --spacing-spacing-medium: 12px;
-    --semantic-action-primary: #18345D;
-    --semantic-text-link: #18345D;
+    --global-dimension-350: 32px;
+    --global-dimension-400: 40px;
+    --global-dimension-600: 48px;
+    --global-dimension-700: 56px;
+    --global-dimension-800: 64px;
+    --global-dimension-1200: 96px;
+    --global-dimension-1600: 128px;
+    /* Icon sizes (Figma Numbers: Icon/*, alias Global/dimension) */
+    --icon-small: var(--global-dimension-150);
+    --icon-medium: var(--global-dimension-225);
+    --icon-large: var(--global-dimension-300);
+    /* Global/border-width */
+    --global-border-width-0: 0px;
+    --global-border-width-100: 1px;
+    --global-border-width-150: 1.5px;
+    --global-border-width-200: 2px;
+    --global-border-width-400: 4px;
+    /* Spacing (aliases Global/dimension) */
+    --spacing-null: var(--global-dimension-0);
+    --spacing-2xsmall: var(--global-dimension-25);
+    --spacing-xsmall: var(--global-dimension-50);
+    --spacing-small: var(--global-dimension-100);
+    --spacing-medium: var(--global-dimension-150);
+    --spacing-large: var(--global-dimension-200);
+    --spacing-xlarge: var(--global-dimension-250);
+    --spacing-2xlarge: var(--global-dimension-300);
+    --spacing-3xlarge: var(--global-dimension-350);
+    --spacing-4xlarge: var(--global-dimension-400);
+    --spacing-5xlarge: var(--global-dimension-600);
+    --spacing-6xlarge: var(--global-dimension-800);
+    --spacing-7xlarge: var(--global-dimension-1200);
+    --space-1: var(--spacing-xsmall); /* legacy Figma name */
+    /* Border width (aliases Global/border-width) */
+    --border-width-null: var(--global-border-width-0);
+    --border-width-thin: var(--global-border-width-100);
+    --border-width-medium: var(--global-border-width-150);
+    --border-width-thick: var(--global-border-width-200);
+    /* Figma Foundations: Semantic/Text */
+    --semantic-text-primary: #121212;
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
-    --core-blue-tbr-100: #F0F7FF;
+    --semantic-text-disabled: #999999;
+    --semantic-text-inverse: #ffffff;
+    --semantic-text-link: #18345D;
+    --semantic-text-link-hovered: #132b4c;
+    /* Semantic/Icon */
+    --semantic-icon-default: #121212;
+    --semantic-icon-muted: #6f6f6f;
+    --semantic-icon-disabled: #999999;
+    --semantic-icon-inverse: #ffffff;
+    /* Semantic/Action, Semantic/Module */
+    --semantic-action-primary: #18345D;
+    --semantic-action-primary-hover: #132b4c;
+    --semantic-action-primary-pressed: #0b1a2d;
+    --semantic-action-primary-disabled: #e6e6e6;
+    --semantic-module-primary: #18345D;
+    --semantic-module-accent: #f0f7ff;
+    /* Semantic/Surface */
+    --semantic-surface-page: #ffffff;
+    --semantic-surface-subtle: #fafafa;
+    --semantic-surface-hover: #eeeeee;
+    --semantic-surface-inverse: #0f223b;
+    --semantic-surface-hover-accent: #f0f7ff;
+    --semantic-surface-selected-accent: #ddeeff;
+    /* Semantic/Border */
+    --semantic-border-default: #ededec;
+    --semantic-border-focus: #cccccc;
+    --semantic-border-strong: #18345D;
+    /* Semantic/Feedback/Error */
+    --semantic-feedback-error-text: #c03522;
+    --semantic-feedback-error-border: #c03522;
+    --semantic-feedback-error-background: #f9ebe9;
+    --semantic-feedback-error-hover: #a02c1c;
+    /* Figma effect styles: Shadows/* */
+    --shadow-small: 0 8px 16px 0 rgba(31, 31, 31, 0.05), 0 1px 2px 0 rgba(31, 31, 31, 0.04), 0 0 10px -1px rgba(83, 83, 83, 0.04);
+    --shadow-medium: 0 10px 20px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+    --shadow-large: 0 16px 32px 0 rgba(13, 3, 32, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+    /* Core */
     --core-base-white: #FFFFFF;
-    --core-neutral-gray-100: #EEEEEE;
-    --core-neutral-gray-300: #CCCCCC;
-    --functional-icon-icon-primary: #666666;
 
-    /* Component tokens — aliased to Figma tokens where applicable */
+    /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
-    --brand-sefaria-blue: #18345D;
-    --lc-primary-hover: #465D7D;
-    --lc-bg: #ffffff;
-    --lc-body-bg: #F9FAFB;
-    --lc-bg-secondary: #FAFAFA;
-    --lc-bg-tertiary: #f1f5f9;
-    --lc-text: #1e293b;
+    --lc-primary-hover: var(--semantic-action-primary-hover);
+    --lc-bg: var(--semantic-surface-page);
+    --lc-body-bg: var(--semantic-surface-subtle);
+    --lc-bg-secondary: var(--semantic-surface-subtle);
+    --lc-text: var(--semantic-text-primary);
     --lc-text-secondary: var(--semantic-text-secondary);
-    --lc-text-muted: #999999;
-    --lc-border: #e2e8f0;
-    --lc-user-bg: var(--brand-sefaria-blue);
-    --lc-user-text: #ffffff;
-    --lc-assistant-bg: #f1f5f9;
-    --lc-assistant-text: #1e293b;
-    --lc-error: #ef4444;
-    --lc-sefaria-blue: var(--sefaria-blue);
-    --lc-disabled-button: #e6e6e6;
-    --lc-disabled-text: #999;
-    --lc-submit-white: #FBFDFE;
+    --lc-text-muted: var(--semantic-text-muted);
+    --lc-border: var(--semantic-border-default);
+    --lc-user-bg: var(--semantic-module-primary);
+    --lc-user-text: var(--semantic-text-inverse);
+    --lc-disabled-button: var(--semantic-action-primary-disabled);
+    --lc-disabled-text: var(--semantic-text-disabled);
+    --lc-submit-white: var(--semantic-text-inverse);
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --lc-radius: 16px;
-    --lc-radius-sm: 8px;
+    --lc-radius: var(--global-dimension-200);
+    --lc-radius-sm: var(--global-dimension-100);
     --lc-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --lc-font-size-sm: 12px;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
-    --lc-border-strong: var(--core-neutral-gray-300);
-    --lc-bg-hover: var(--core-neutral-gray-100);
-    --lc-on-primary: var(--core-base-white);
-    --lc-icon-primary: var(--functional-icon-icon-primary);
-    --lc-topics-bg: var(--core-blue-tbr-100);
-    --lc-tooltip-bg: #3a3a3a;
-    --lc-tooltip-text: var(--core-base-white);
-    --lc-danger: #C03522;
-    --lc-danger-hover: #A02C1C;
+    --lc-border-focus: var(--semantic-border-focus);
+    --lc-bg-hover: var(--semantic-surface-hover);
+    --lc-icon-primary: var(--semantic-icon-muted);
+    /* <img> icons can't take `color`, so these filters recolor the black SVGs to
+       --semantic-icon-muted (#6f6f6f), --semantic-icon-default (#121212) and --semantic-icon-disabled (#999999) */
+    --lc-icon-muted-filter: brightness(0) invert(43.5%);
+    --lc-icon-default-filter: brightness(0) invert(7%);
+    --lc-icon-disabled-filter: brightness(0) invert(60%);
+    --lc-tooltip-bg: var(--semantic-surface-inverse);
+    --lc-tooltip-text: var(--semantic-text-inverse);
+    --lc-danger: var(--semantic-feedback-error-text);
+    --lc-danger-hover: var(--semantic-feedback-error-hover);
 
     display: block;
     font-family: var(--lc-font);
@@ -2240,8 +2469,8 @@
 
   .lc-chatbot-container {
     position: fixed;
-    bottom: 24px;
-    inset-inline-end: 24px;
+    bottom: var(--spacing-2xlarge);
+    inset-inline-end: var(--spacing-2xlarge);
     z-index: 9999;
     direction: ltr;
   }
@@ -2261,7 +2490,7 @@
     height: calc(100% - var(--lc-docked-top-offset));
     max-height: calc(100% - var(--lc-docked-top-offset));
     min-height: 0;
-    padding-bottom: 24px;
+    padding-bottom: var(--spacing-2xlarge);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2273,10 +2502,10 @@
     min-height: 0;
     height: auto;
     max-height: 100%;
-    border-radius: 12px;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
-    margin-inline-start: 10px;
-    margin-inline-end: 10px;
+    border-radius: var(--global-dimension-150);
+    box-shadow: var(--shadow-large);
+    margin-inline-start: var(--spacing-medium);
+    margin-inline-end: var(--spacing-medium);
     margin-bottom: 0;
   }
 
@@ -2289,14 +2518,424 @@
     display: none;
   }
 
+  /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
+  /* Phones read at arm's length: one step up the type scale, 44px touch targets */
+  .lc-chatbot-container.mode-fullscreen {
+    --lc-font-size-sm: 14px;
+    --lc-font-size: 16px;
+    --lc-font-size-lg: 18px;
+    bottom: calc(var(--spacing-large) + env(safe-area-inset-bottom));
+    inset-inline-end: var(--spacing-large);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.trigger-hidden {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The open container is a full-screen backdrop in the panel's colour. Only the panel
+     follows the visual viewport (inline top/height), and the viewport reports a closing
+     keyboard only after it has gone, so without the backdrop the page flashes through
+     where the keyboard was. While the sheet is dragged, the backdrop clears to show the page. */
+  .lc-chatbot-container.mode-fullscreen.is-open {
+    top: 0;
+    bottom: 0;
+    inset-inline: 0;
+    background: var(--lc-body-bg);
+    transition: none;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.is-open.sheet-moving {
+    background: transparent;
+  }
+
+  .mode-fullscreen .lc-chatbot-panel {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .mode-fullscreen .resize-handle {
+    display: none;
+  }
+
+  /* The header is the sheet's drag handle; the grabber bar sits above the title */
+  .mode-fullscreen .lc-chatbot-header {
+    position: relative;
+    padding: calc(var(--spacing-xlarge) + env(safe-area-inset-top)) var(--spacing-medium) var(--spacing-small) var(--spacing-large);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .sheet-grabber {
+    position: absolute;
+    inset-block-start: calc(var(--spacing-small) + env(safe-area-inset-top));
+    left: 50%; /* physical, so translateX centres it in RTL too */
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--lc-border-focus, #cbd5e1);
+    transform: translateX(-50%);
+  }
+
+  .mode-fullscreen .lc-chatbot-panel.sheet-settling {
+    transition: transform 0.2s ease;
+  }
+
+  /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
+  .mode-fullscreen .lc-chatbot-panel.sheet-lifted {
+    border-radius: var(--lc-radius) var(--lc-radius) 0 0;
+    box-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
+  }
+
+  .mode-fullscreen .header-actions {
+    gap: 0;
+  }
+
+  .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mode-fullscreen .menu-item {
+    min-height: var(--global-dimension-600);
+    padding: var(--spacing-medium) var(--spacing-large);
+    font-size: var(--lc-font-size);
+  }
+
+  .mode-fullscreen .lc-chatbot-body {
+    position: relative;
+  }
+
+  /* History covers the chat rather than squeezing it; the chat keeps its scroll position */
+  .mode-fullscreen .chat-history-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: auto;
+    min-width: 0;
+    border: 0;
+  }
+
+  .mode-fullscreen .lc-chatbot-messages,
+  .mode-fullscreen .history-list {
+    overscroll-behavior: contain;
+  }
+
+  .mode-fullscreen .lc-chatbot-input {
+    padding-bottom: calc(var(--spacing-large) + env(safe-area-inset-bottom));
+  }
+
+  /* Below 16px, iOS zooms the page when a field takes focus */
+  .mode-fullscreen .lc-chatbot-input textarea,
+  .mode-fullscreen .history-search input,
+  .mode-fullscreen .history-rename-form input,
+  .mode-fullscreen .feedback-modal-input,
+  .mode-fullscreen .settings-field input {
+    font-size: 16px;
+  }
+
+  .mode-fullscreen .lc-chatbot-input textarea {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .send-btn {
+    width: 44px;
+    height: 44px;
+    flex: none;
+  }
+
+  /* Reply text: the panel sets no size of its own, so it would follow the host page */
+  .mode-fullscreen .message-content {
+    font-size: var(--lc-font-size);
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message-content :global(:is(.response-title, .response-generic, .response-section, .response-list, .response-link)) {
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message.assistant .message-content :global(li) {
+    margin-bottom: var(--spacing-small);
+  }
+
+  /* Inline links: block padding widens the tap area without moving the text */
+  .mode-fullscreen .message-content :global(a),
+  .mode-fullscreen .link-like,
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
+    padding-block: var(--spacing-xsmall);
+    -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
+  }
+
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  /* Rotating loading text ("Searching the library", "Synthesizing response") and its glyph */
+  .mode-fullscreen :is(.lc-thinking-glyph, .lc-thinking-label) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :global(.progress-trail-toggle) {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .mode-fullscreen :global(.lc-accordion-header) {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen :global(.lc-location-tag) {
+    min-height: 36px;
+    padding: var(--spacing-small) var(--spacing-medium);
+    font-size: 14px;
+  }
+
+  .mode-fullscreen :is(.message-timestamp, .message-status, .retry-btn) {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it */
+  .mode-fullscreen .message.user:is(:hover, :focus-within) .message-location-tag {
+    transform: translateY(22px);
+  }
+
+  .mode-fullscreen .retry-btn {
+    min-height: 44px;
+    padding: 0 var(--spacing-small);
+  }
+
+  /* The 44px tap targets already leave room below the icons */
+  .mode-fullscreen .feedback-thanks {
+    margin-top: 0;
+  }
+
+  .mode-fullscreen .feedback-buttons {
+    gap: 0;
+    margin-inline-start: 0;
+  }
+
+  .mode-fullscreen .feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .mode-fullscreen .feedback-modal-btn {
+    min-height: 44px;
+  }
+
+  /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
+  .mode-fullscreen .delete-modal {
+    width: 320px;
+    padding: var(--spacing-2xlarge) var(--spacing-xlarge) var(--spacing-xlarge);
+    border-radius: var(--global-dimension-150);
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-title {
+    font-size: 18px;
+    line-height: 24px;
+    margin-bottom: var(--spacing-small);
+  }
+
+  .mode-fullscreen .delete-modal-subtext {
+    font-size: 15px;
+    line-height: 22px;
+    margin-bottom: var(--spacing-2xlarge);
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-actions {
+    gap: var(--spacing-medium);
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-btn {
+    flex: 1 1 0;
+    height: var(--global-dimension-600);
+    font-size: 16px;
+    border-radius: var(--global-dimension-100);
+  }
+
+  /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
+  .mode-fullscreen .history-toolbar {
+    height: 60px;
+    min-height: 60px;
+    padding-block: var(--spacing-small);
+    padding-inline: var(--spacing-xsmall) var(--spacing-medium);
+  }
+
+  .mode-fullscreen .history-toolbar-group {
+    gap: var(--spacing-small);
+  }
+
+  /* Search field: 48px tall, with a full 44px search/clear button at its end */
+  .mode-fullscreen .history-search {
+    height: var(--global-dimension-600);
+    margin: 0 var(--spacing-medium) var(--spacing-medium);
+    padding: 0 var(--spacing-2xsmall) 0 var(--spacing-large);
+    gap: var(--spacing-xsmall);
+  }
+
+  .mode-fullscreen .history-search input {
+    height: 100%;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-search-submit {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .mode-fullscreen .history-search-submit img {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  .mode-fullscreen .history-icon-btn {
+    width: 44px;
+    height: 44px;
+    padding: var(--spacing-medium);
+  }
+
+  .mode-fullscreen .history-row {
+    height: auto;
+    min-height: var(--global-dimension-800);
+    padding-block: var(--spacing-medium);
+    padding-inline: var(--spacing-large) var(--spacing-5xlarge);
+  }
+
+  .mode-fullscreen .history-row-title {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-row-date {
+    font-size: 13px;
+  }
+
+  .mode-fullscreen .history-row-menu {
+    inset-block-start: var(--spacing-medium);
+    inset-inline-end: var(--spacing-2xsmall);
+  }
+
+  .mode-fullscreen .history-row-menu-trigger {
+    width: 44px;
+    height: 44px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger img {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  /* Icons: CSS size wins over the width/height attributes */
+  .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
+  .mode-fullscreen .send-btn svg {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  .mode-fullscreen .menu-item :is(img, svg) {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  .mode-fullscreen .feedback-btn :global(svg) {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  .mode-fullscreen .history-row-dropdown img,
+  .mode-fullscreen .history-rename-form img {
+    width: var(--icon-medium);
+    height: var(--icon-medium);
+  }
+
+  /* Open clear of the 44px trigger, wide enough for the 15px labels */
+  .mode-fullscreen .history-row-dropdown {
+    inset-block-start: 44px;
+    width: 160px;
+  }
+
+  .mode-fullscreen .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 44px;
+  }
+
+  .mode-fullscreen .history-row-dropdown button {
+    height: var(--global-dimension-600);
+    min-height: var(--global-dimension-600);
+    padding: 0 var(--spacing-large);
+    font-size: 15px !important;
+  }
+
+  .mode-fullscreen .history-row-dropdown button span {
+    font-size: 15px;
+  }
+
+  /* Empty states (no chats, no search results), loading and error text */
+  .mode-fullscreen .history-empty {
+    gap: var(--spacing-medium);
+    padding-top: 80px;
+  }
+
+  .mode-fullscreen .history-empty-icon {
+    width: var(--global-dimension-600);
+    height: var(--global-dimension-600);
+  }
+
+  .mode-fullscreen .history-empty-icon img {
+    width: var(--icon-large);
+    height: var(--icon-large);
+  }
+
+  .mode-fullscreen .history-empty strong {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-empty p {
+    max-width: 260px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :is(.history-loading, .history-error) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-loading.inline {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .mode-fullscreen .feedback-modal-overlay {
+    inset: 0;
+    border-radius: 0;
+  }
+
   /* Trigger Button */
   .lc-chatbot-trigger {
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 12px 20px;
-    background: var(--brand-sefaria-blue);
-    color: white;
+    padding: var(--spacing-medium) var(--spacing-xlarge);
+    background: var(--lc-primary);
+    color: var(--semantic-text-inverse);
     border: none;
     border-radius: 9999px;
     cursor: pointer;
@@ -2310,12 +2949,12 @@
   .lc-chatbot-trigger:hover,
   .lc-chatbot-trigger:focus,
   .lc-chatbot-trigger:active {
-    gap: 8px;
+    gap: var(--spacing-small);
   }
 
 
   .lc-chatbot-trigger:active {
-    background: #0B1A2D;
+    background: var(--semantic-action-primary-pressed);
   }
 
   .trigger-label {
@@ -2337,6 +2976,19 @@
   .lc-chatbot-trigger:active .trigger-label {
     max-width: 12em;
     opacity: 1;
+  }
+
+  /* Touch screens: a tap opens the assistant straight away. Without hover, the label
+     would slide out first, and iOS can spend the first tap on that hover state. */
+  @media (hover: none) {
+    .lc-chatbot-trigger:is(:hover, :focus, :active) {
+      gap: 0;
+    }
+
+    .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
+      max-width: 0;
+      opacity: 0;
+    }
   }
 
   /* Chat Panel */
@@ -2388,7 +3040,7 @@
     flex-direction: column;
     min-height: 0;
     background: var(--lc-bg-secondary);
-    border-inline-end: 1px solid var(--lc-border);
+    border-inline-end: var(--border-width-thin) solid var(--lc-border);
     order: 0;
   }
 
@@ -2400,24 +3052,24 @@
        direction:rtl and would resolve to the physical right instead). */
     border-inline-start: 0;
     border-inline-end: 0;
-    border-left: 1px solid var(--lc-border);
+    border-left: var(--border-width-thin) solid var(--lc-border);
   }
 
   .history-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
-    height: 40px;
-    min-height: 40px;
-    padding-block: 8px;
-    padding-inline: 10px 4px;
+    gap: var(--spacing-xsmall);
+    height: var(--global-dimension-400);
+    min-height: var(--global-dimension-400);
+    padding-block: var(--spacing-small);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
   }
 
   .history-toolbar-group {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-medium);
   }
 
   .history-icon-btn,
@@ -2443,7 +3095,15 @@
   .history-search-submit img,
   .header-actions img,
   .menu-item img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-muted-filter);
+  }
+
+  /* Header and history icons darken from icon-muted to icon-default on hover/press — no background */
+  .header-actions :global(:is(.history-btn, .panel-btn, .menu-btn, .close-btn):is(:hover, :focus-visible, :active) img),
+  .history-icon-btn:is(:hover, :focus-visible, :active):not(:disabled) img,
+  .history-row-menu-trigger:is(:hover, :focus-visible, :active) img,
+  .history-rename-form button:is(:hover, :focus-visible, :active) img {
+    filter: var(--lc-icon-default-filter);
   }
 
   /* trash-2-danger.svg is pre-colored red; the shared gray filter above would flatten it back to gray */
@@ -2452,38 +3112,39 @@
   }
 
   .history-icon-btn {
-    width: 24px;
-    height: 24px;
-    padding: 3px;
+    width: var(--global-dimension-300);
+    height: var(--global-dimension-300);
+    padding: var(--spacing-xsmall);
     border-radius: 6px;
   }
 
-  /* Matches the LA's existing icon-hover convention (see HeaderButton.svelte's
-     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma.
-     The search bar's icon (search glyph or its clear/X state) never gets a
+  /* The search bar's icon (search glyph or its clear/X state) never gets a
      hover treatment in either state — see .history-search-submit below. */
-  .history-icon-btn:hover:not(:disabled),
-  .history-row-dropdown button:hover,
-  .history-rename-form button:hover {
-    background: var(--lc-bg-tertiary);
+  .history-row-dropdown button:hover {
+    background: var(--lc-bg-hover);
     color: var(--lc-text);
   }
 
   .history-icon-btn:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .history-icon-btn:disabled img,
+  .history-search-submit:disabled img,
+  .menu-item:disabled img {
+    filter: var(--lc-icon-disabled-filter);
   }
 
   .history-search {
     position: relative;
     display: flex;
     align-items: center;
-    width: calc(100% - 24px);
+    width: calc(100% - var(--global-dimension-300));
     height: 35px;
-    margin: 4px 12px 12px;
-    padding: 10px 8px 10px 12px;
-    border: 1px solid var(--lc-border);
-    border-radius: 8px;
+    margin: var(--spacing-xsmall) var(--spacing-medium) var(--spacing-medium);
+    padding: var(--spacing-medium) var(--spacing-small) var(--spacing-medium) var(--spacing-medium);
+    border: var(--border-width-thin) solid var(--lc-border);
+    border-radius: var(--global-dimension-100);
     background: var(--lc-bg);
     overflow: hidden;
   }
@@ -2492,7 +3153,7 @@
   .history-rename-form input {
     min-width: 0;
     width: 100%;
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: 6px;
     color: var(--lc-text);
     background: var(--lc-bg);
@@ -2519,7 +3180,7 @@
 
   .history-search input:focus,
   .history-rename-form input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .history-search-submit {
@@ -2529,7 +3190,6 @@
   }
 
   .history-search-submit:disabled {
-    opacity: 0.4;
     cursor: not-allowed;
   }
 
@@ -2539,7 +3199,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border-top: 1px solid var(--lc-border);
+    border-top: var(--border-width-thin) solid var(--lc-border);
   }
 
   .history-list {
@@ -2578,11 +3238,11 @@
     min-height: 53px;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: var(--spacing-2xsmall);
     align-items: stretch;
     justify-content: flex-start;
-    padding-block: 4px;
-    padding-inline: 12px 6px;
+    padding-block: var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
     border: none;
     border-radius: 0;
     background: transparent;
@@ -2597,21 +3257,22 @@
      so titles can use the full row width the rest of the time. */
   .history-row-wrap:hover .history-row,
   .history-row-wrap:has(.history-row-menu-trigger[aria-expanded="true"]) .history-row {
-    padding-inline-end: 26px;
+    padding-inline-end: var(--spacing-2xlarge);
   }
 
-  .history-row:hover:not(:disabled) {
-    background: #f0f7ff;
+  /* Hovering the row's ⋮ (a sibling of the row) keeps the row's hover fill */
+  .history-row-wrap:hover .history-row:not(:disabled) {
+    background: var(--semantic-surface-hover-accent);
   }
 
   .history-row.active {
-    background: #ddeeff;
+    background: var(--semantic-surface-selected-accent);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
-  .history-row.active:hover:not(:disabled) {
-    background: #ddeeff;
+  .history-row-wrap:hover .history-row.active:not(:disabled) {
+    background: var(--semantic-surface-selected-accent);
   }
 
   .history-row:disabled {
@@ -2630,11 +3291,11 @@
     font-weight: 600;
     line-height: 18px;
     color: var(--lc-text-secondary);
-    padding: 3px 4px;
+    padding: var(--spacing-xsmall) var(--spacing-xsmall);
   }
 
   .history-row.active .history-row-title {
-    color: #121212;
+    color: var(--lc-text);
   }
 
   /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
@@ -2645,11 +3306,11 @@
   }
 
   .history-row-date {
-    color: #999;
+    color: var(--lc-text-muted);
     font-size: 12px;
     line-height: 20px;
     white-space: nowrap;
-    padding-inline-start: 4px;
+    padding-inline-start: var(--spacing-xsmall);
   }
 
   .history-row.active .history-row-date {
@@ -2658,11 +3319,17 @@
 
   .history-row-menu {
     position: absolute;
-    inset-block-start: 10px;
-    inset-inline-end: 7px;
+    inset-block-start: var(--spacing-medium);
+    inset-inline-end: var(--spacing-small);
     display: flex;
     align-items: center;
     z-index: 3;
+  }
+
+  /* Each row's menu is its own stacking context, so the open one must outrank the
+     rows below it or their kebabs paint over its dropdown */
+  .history-row-menu:has(.history-row-dropdown) {
+    z-index: 4;
   }
 
   .history-row-menu-trigger {
@@ -2678,15 +3345,26 @@
     opacity: 1;
   }
 
+  /* No hover on touch screens: keep rename/delete reachable */
+  @media (hover: none) {
+    .history-row {
+      padding-inline-end: var(--spacing-2xlarge);
+    }
+
+    .history-row-menu-trigger {
+      opacity: 1;
+    }
+  }
+
   .history-row-dropdown {
     position: absolute;
-    inset-block-start: 24px;
+    inset-block-start: var(--spacing-2xlarge);
     inset-inline-end: 0;
     width: 110px;
     background: var(--lc-bg);
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: 6px;
-    box-shadow: 0 8px 18px rgba(13, 3, 32, 0.14);
+    box-shadow: var(--shadow-medium);
     overflow: hidden;
     z-index: 20;
     font-family: var(--lc-font);
@@ -2695,7 +3373,7 @@
   /* Opens upward instead of downward when there isn't room below within the panel */
   .history-row-dropdown.flip-up {
     inset-block-start: auto;
-    inset-block-end: 24px;
+    inset-block-end: var(--spacing-2xlarge);
   }
 
   .history-row-dropdown button {
@@ -2703,8 +3381,8 @@
     height: 39px;
     min-height: 39px;
     justify-content: flex-start;
-    gap: 8px;
-    padding: 0 12px;
+    gap: var(--spacing-small);
+    padding: 0 var(--spacing-medium);
     border-radius: 0;
     font-family: var(--lc-font);
     font-size: 12px !important;
@@ -2719,21 +3397,21 @@
   }
 
   .history-row-dropdown button.danger {
-    color: var(--lc-danger);
+    color: var(--semantic-feedback-error-text);
   }
 
   .history-rename-form {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     align-items: center;
     min-height: 50px;
-    padding: 8px;
+    padding: var(--spacing-small);
   }
 
   .history-rename-form input {
     height: 30px;
-    padding: 5px 8px;
+    padding: var(--spacing-xsmall) var(--spacing-small);
     font-size: 14px;
     line-height: 18px;
     font-weight: 600;
@@ -2750,7 +3428,7 @@
     color: var(--lc-text-muted);
     font-size: 14px;
     line-height: 20px;
-    padding: 32px 16px;
+    padding: var(--spacing-3xlarge) var(--spacing-large);
     text-align: center;
   }
 
@@ -2758,8 +3436,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding-top: 64px;
+    gap: var(--spacing-small);
+    padding-top: var(--spacing-6xlarge);
   }
 
   .history-empty-icon {
@@ -2769,12 +3447,12 @@
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--core-neutral-gray-200, #ededec);
+    background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
   }
 
   .history-empty-icon img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-muted-filter);
   }
 
   .history-empty strong {
@@ -2795,12 +3473,12 @@
   .history-loading.inline {
     font-size: 12px;
     line-height: 18px;
-    padding: 10px 8px;
+    padding: var(--spacing-medium) var(--spacing-small);
   }
 
   .history-error {
-    color: var(--lc-danger);
-    border-bottom: 1px solid var(--lc-border);
+    color: var(--semantic-feedback-error-text);
+    border-bottom: var(--border-width-thin) solid var(--lc-border);
   }
 
   /* Resize Handles */
@@ -2810,14 +3488,14 @@
     z-index: 10;
   }
 
-  .resize-n, .resize-s { height: 8px; left: 8px; right: 8px; cursor: ns-resize; }
-  .resize-e, .resize-w { width: 12px; top: 8px; bottom: 8px; cursor: ew-resize; }
+  .resize-n, .resize-s { height: var(--global-dimension-100); left: var(--spacing-small); right: var(--spacing-small); cursor: ns-resize; }
+  .resize-e, .resize-w { width: var(--global-dimension-150); top: var(--spacing-small); bottom: var(--spacing-small); cursor: ew-resize; }
   .resize-n { top: 0; }
   .resize-s { bottom: 0; }
   .resize-e { right: 0; }
   .resize-w { left: 0; }
 
-  .resize-ne, .resize-nw, .resize-se, .resize-sw { width: 16px; height: 16px; }
+  .resize-ne, .resize-nw, .resize-se, .resize-sw { width: var(--global-dimension-200); height: var(--global-dimension-200); }
   .resize-ne { top: 0; right: 0; cursor: nesw-resize; }
   .resize-nw { top: 0; left: 0; cursor: nwse-resize; }
   .resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
@@ -2841,15 +3519,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: var(--spacing-large) var(--spacing-xlarge);
     background: var(--lc-bg-secondary);
-    border-bottom: 1px solid var(--lc-border);
+    border-bottom: var(--border-width-thin) solid var(--lc-border);
   }
 
   .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-medium);
     min-width: 0;
     flex-shrink: 1;
   }
@@ -2857,13 +3535,13 @@
   .lc-chatbot-header h2 {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     min-width: 0;
     font-size: var(--lc-font-size-lg);
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
@@ -2891,14 +3569,14 @@
        and a font-dependent mismatch would otherwise throw off centering. */
     line-height: inherit;
     letter-spacing: 0.36px;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
   }
 
   .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-inline-start: 15px;
+    gap: var(--spacing-small);
+    margin-inline-start: var(--spacing-large);
     flex-shrink: 0;
   }
 
@@ -2909,12 +3587,12 @@
   .menu-dropdown {
     position: absolute;
     top: 100%;
-    margin-top: 4px;
+    margin-top: var(--spacing-xsmall);
     width: max-content;
     min-width: 200px;
     max-width: 280px;
     background: var(--lc-bg);
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     box-shadow: var(--lc-shadow);
     z-index: 100;
@@ -2932,9 +3610,9 @@
   .menu-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--spacing-medium);
     width: 100%;
-    padding: 10px 14px;
+    padding: var(--spacing-small) var(--spacing-medium);
     background: transparent;
     border: none;
     color: var(--lc-text);
@@ -2948,17 +3626,17 @@
   }
 
   .menu-item:hover:not(:disabled) {
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
   }
 
   .menu-item:disabled {
-    opacity: 0.5;
+    color: var(--lc-disabled-text);
     cursor: not-allowed;
   }
 
   .menu-item svg {
     flex-shrink: 0;
-    color: var(--lc-text-secondary);
+    color: var(--lc-icon-primary);
   }
 
   /* Message List */
@@ -2970,10 +3648,10 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-medium) var(--spacing-2xlarge);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large);
     scroll-behavior: smooth;
   }
 
@@ -3024,7 +3702,7 @@
   .lc-response-package {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--spacing-small);
   }
 
   /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
@@ -3036,19 +3714,19 @@
 
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
-    color: #575757;
+    color: var(--lc-text-secondary);
   }
 
   .message.assistant .message-content :global(ul),
   .message.assistant .message-content :global(ol) {
-    padding-inline-start: 20px;
+    padding-inline-start: var(--spacing-xlarge);
   }
 
   .message.assistant .message-content :global(li) {
-    margin-bottom: 5px;
+    margin-bottom: var(--spacing-xsmall);
   }
   .interface-hebrew .message.assistant .message-content :global(li) {
-    margin-bottom: 10px;
+    margin-bottom: var(--spacing-medium);
   }
 
   .message-content {
@@ -3056,20 +3734,20 @@
   }
 
   .message.user .message-content {
-    padding: 12px 16px;
+    padding: var(--spacing-medium) var(--spacing-large);
     font-size: var(--lc-font-size);
     word-wrap: break-word;
     color: var(--lc-user-text);
     /* Blue bubble lives on the bubble only — not the whole column — so the
        location tag below renders as a gray pill on the white chat background. */
     background-color: var(--lc-user-bg);
-    border-radius: 0 16px 16px 16px;
-    border-bottom-right-radius: 4px;
+    border-radius: 0 var(--global-dimension-200) var(--global-dimension-200) var(--global-dimension-200);
+    border-bottom-right-radius: var(--global-dimension-50);
   }
 
   .message.failed .message-content {
-    border: 1px solid var(--lc-error);
-    background: #fef2f2;
+    border: var(--border-width-thin) solid var(--semantic-feedback-error-border);
+    background: var(--semantic-feedback-error-background);
   }
 
   .message.limit-message .message-content {
@@ -3081,21 +3759,29 @@
     padding: 0;
     font: inherit;
     font-weight: bold;
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
     text-decoration: underline;
     cursor: pointer;
   }
 
   .message-meta {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-    padding: 0 4px;
+    align-items: flex-start;
+    gap: var(--spacing-small);
+    margin-top: var(--spacing-xsmall);
+    padding: 0 var(--spacing-xsmall);
   }
 
+  /* height:0 + overflow:visible lets the user's hover timestamp paint below
+     this box without the box contributing to the flex column's height — so
+     the reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below).
+     User messages only: the assistant meta holds feedback buttons and the
+     "thanks" note, which must take real space or the next message overlaps them. */
   .message.user .message-meta {
     justify-content: flex-end;
+    height: 0;
+    overflow: visible;
   }
 
   .message-timestamp {
@@ -3112,14 +3798,25 @@
     opacity: 1;
   }
 
+  /* Bubble and pin sit flush by default (no reserved timestamp gap). On
+     hover the pin transforms down to make room for the timestamp fading in
+     above it — a transform doesn't affect layout, so nothing below this
+     message (the next one in the list) ever shifts. */
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
-    margin-top: 4px;
+    margin-top: var(--spacing-xsmall);
+    transform: translateY(0);
+    transition: transform 0.15s ease;
     /* Figma: max width = chat bubble width (560px), but never exceed the
        available message column so long refs truncate instead of overflowing. */
     max-width: min(560px, 100%);
     align-self: flex-end;
+  }
+
+  .message.user:hover .message-location-tag,
+  .message.user:focus-within .message-location-tag {
+    transform: translateY(18px);
   }
 
   .message-status {
@@ -3128,12 +3825,12 @@
   }
 
   .message-status.sending {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
   }
 
   .retry-btn {
     font-size: 11px;
-    color: var(--lc-error);
+    color: var(--semantic-feedback-error-text);
     background: none;
     border: none;
     cursor: pointer;
@@ -3142,26 +3839,26 @@
   }
 
   .retry-btn:hover {
-    color: #dc2626;
+    color: var(--lc-danger-hover);
   }
 
   .feedback-buttons {
     display: inline-flex;
-    gap: 4px;
-    margin-left: 4px;
+    gap: var(--spacing-xsmall);
+    margin-left: var(--spacing-xsmall);
   }
 
   .feedback-btn {
     border: none;
     background: transparent;
-    padding: 2px 6px;
+    padding: var(--spacing-2xsmall) var(--spacing-xsmall);
     cursor: pointer;
-    color: var(--lc-disabled-text);
+    color: var(--lc-icon-primary);
   }
 
   .feedback-btn:hover,
   .feedback-btn.active {
-    color: #666;
+    color: var(--semantic-icon-default);
   }
 
   /* Live thinking message shown while the backend prepares the final response. */
@@ -3177,8 +3874,8 @@
   .lc-thinking-step {
     display: flex;
     align-items: center;
-    gap: var(--global-dimension-100, 8px);
-    min-height: 20px;
+    gap: var(--spacing-small);
+    min-height: var(--global-dimension-250);
     direction: ltr;
     min-width: 0;
     width: 100%;
@@ -3205,10 +3902,10 @@
   .lc-thinking-label {
     font-family: var(--lc-font);
     font-size: 12px;
-    line-height: var(--global-dimension-250, 20px);
+    line-height: var(--global-dimension-250);
   }
   .lc-thinking-glyph {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--lc-text-secondary);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
@@ -3232,7 +3929,7 @@
     min-width: 0;
   }
   .lc-thinking-label-base {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--lc-text-secondary);
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -3276,7 +3973,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large);
   }
 
   /* Loading Indicator */
@@ -3284,17 +3981,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 12px;
+    gap: var(--spacing-small);
+    padding: var(--spacing-medium);
     color: var(--lc-text-muted);
     font-size: 13px;
   }
 
   .loading-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--lc-border);
-    border-top-color: var(--brand-sefaria-blue);
+    width: var(--global-dimension-200);
+    height: var(--global-dimension-200);
+    border: var(--border-width-thick) solid var(--lc-border);
+    border-top-color: var(--semantic-module-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -3307,18 +4004,18 @@
   .lc-chatbot-input {
     display: flex;
     align-items: flex-end;
-    gap: 8px;
-    padding: 16px 16px 16px 18px;
+    gap: var(--spacing-small);
+    padding: var(--spacing-large);
     background: transparent;
-    border-top: 1px solid var(--lc-border);
+    border-top: var(--border-width-thin) solid var(--lc-border);
   }
 
   .lc-chatbot-input textarea {
     flex: 1;
-    min-height: 40px;
+    min-height: var(--global-dimension-400);
     max-height: 120px;
-    padding: 10px 14px;
-    border: 1px solid var(--lc-border);
+    padding: var(--spacing-medium) var(--spacing-medium);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -3329,11 +4026,12 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
+  /* Text/Disabled (#999, ~2.8:1 on white) fails WCAG AA 1.4.3 — kept by design decision for now */
   .lc-chatbot-input textarea::placeholder {
-    color: var(--lc-text-muted);
+    color: var(--lc-disabled-text);
   }
 
   .lc-chatbot-input textarea:disabled {
@@ -3345,10 +4043,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
-    background: var(--brand-sefaria-blue);
-    color: white;
+    width: var(--global-dimension-400);
+    height: var(--global-dimension-400);
+    background: var(--lc-primary);
+    color: var(--semantic-icon-inverse);
     border: none;
     border-radius: var(--lc-radius-sm);
     cursor: pointer;
@@ -3376,8 +4074,8 @@
   .settings-panel {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px 20px 20px;
+    gap: var(--spacing-medium);
+    padding: var(--spacing-large) var(--spacing-xlarge) var(--spacing-xlarge);
     overflow: auto;
     flex: 1;
     background: transparent;
@@ -3398,10 +4096,10 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-text-link);
     font-weight: 600;
     cursor: pointer;
-    padding: 6px 0;
+    padding: var(--spacing-xsmall) 0;
   }
 
   .settings-loading {
@@ -3411,25 +4109,25 @@
 
   .settings-error {
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-error);
+    color: var(--semantic-feedback-error-text);
   }
 
   .settings-fields {
     display: grid;
-    gap: 12px;
+    gap: var(--spacing-medium);
   }
 
   .settings-field {
     display: grid;
-    gap: 6px;
+    gap: var(--spacing-xsmall);
     font-size: var(--lc-font-size-sm);
     color: var(--lc-text-secondary);
   }
 
   .settings-field input {
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
-    padding: 8px 10px;
+    padding: var(--spacing-small) var(--spacing-medium);
     font-size: 13px;
     font-family: var(--lc-font);
     color: var(--lc-text);
@@ -3443,14 +4141,14 @@
   .settings-toggle {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-small);
     font-size: var(--lc-font-size-sm);
     color: var(--lc-text-secondary);
   }
 
   .settings-toggle input {
-    width: 16px;
-    height: 16px;
+    width: var(--global-dimension-200);
+    height: var(--global-dimension-200);
     accent-color: var(--lc-primary);
   }
 
@@ -3465,15 +4163,15 @@
 
   .settings-actions {
     display: flex;
-    gap: 10px;
+    gap: var(--spacing-medium);
     align-items: center;
   }
 
   .settings-save,
   .settings-reset {
-    border: 1px solid var(--lc-border);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
-    padding: 8px 12px;
+    padding: var(--spacing-small) var(--spacing-medium);
     font-size: var(--lc-font-size-sm);
     font-weight: 600;
     font-family: var(--lc-font);
@@ -3482,8 +4180,8 @@
   }
 
   .settings-save {
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--lc-primary);
+    color: var(--semantic-text-inverse);
     border-color: transparent;
   }
 
@@ -3492,7 +4190,7 @@
   }
 
   .settings-reset {
-    background: var(--lc-bg-tertiary);
+    background: var(--lc-bg-hover);
     color: var(--lc-text-secondary);
   }
 
@@ -3516,14 +4214,14 @@
   /* Feedback Modal */
   .feedback-modal-overlay {
     position: absolute;
-    inset: 8px;
+    inset: var(--spacing-small);
     background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10001;
     animation: fadeIn 0.15s ease;
-    border-radius: calc(var(--lc-radius) - 4px);
+    border-radius: calc(var(--lc-radius) - var(--global-dimension-50));
   }
 
   /* Delete confirmation dims the whole widget (see .lc-chatbot-dimmable) rather
@@ -3542,58 +4240,58 @@
   .feedback-modal {
     background: var(--lc-bg);
     border-radius: var(--lc-radius);
-    padding: 24px;
+    padding: var(--spacing-2xlarge);
     width: 320px;
-    max-width: calc(100% - 32px);
+    max-width: calc(100% - var(--global-dimension-350));
     box-shadow: var(--lc-shadow);
     animation: slideUp 0.2s ease;
   }
 
   .delete-modal {
     width: 260px;
-    padding: 16px;
-    border-radius: 8px;
+    padding: var(--spacing-large);
+    border-radius: var(--global-dimension-100);
   }
 
   .delete-modal .feedback-modal-title {
-    color: #121212;
+    color: var(--lc-text);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
-    margin-bottom: 4px;
+    margin-bottom: var(--spacing-xsmall);
   }
 
   .delete-modal-subtext {
     color: var(--lc-text-secondary);
     font-size: 12px;
     line-height: 16px;
-    margin: 0 0 16px;
+    margin: 0 0 var(--spacing-large);
   }
 
   .delete-modal .feedback-modal-actions {
     flex-direction: row-reverse;
     justify-content: center;
-    gap: 20px;
+    gap: var(--spacing-xlarge);
     margin-top: 0;
   }
 
   .delete-modal .feedback-modal-btn.skip {
-    border: 1px solid var(--core-neutral-gray-300, #ccc);
+    border: var(--border-width-thin) solid var(--lc-border-focus);
     color: var(--lc-text-secondary);
-    background: var(--core-base-white, #fff);
+    background: var(--lc-bg);
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
-    background: var(--semantic-surface-hover, #eee);
+    background: var(--lc-bg-hover);
   }
 
   .delete-modal .feedback-modal-btn {
     flex: 0 0 auto;
     min-width: 65px;
     height: 34px;
-    padding: 0 12px;
+    padding: 0 var(--spacing-medium);
     font-size: 12px;
-    border-radius: 4px;
+    border-radius: var(--global-dimension-50);
   }
 
   @keyframes slideUp {
@@ -3610,15 +4308,15 @@
   .feedback-modal-title {
     font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--lc-sefaria-blue);
-    margin: 0 0 8px 0;
+    color: var(--lc-text);
+    margin: 0 0 var(--spacing-small) 0;
   }
 
   .feedback-modal-subtitle {
     font-size: var(--lc-font-size);
     font-weight: 400;
-    color: var(--lc-sefaria-blue);
-    margin: 0 0 16px 0;
+    color: var(--lc-text-secondary);
+    margin: 0 0 var(--spacing-large) 0;
   }
 
   .interface-hebrew .feedback-modal-subtitle {
@@ -3631,7 +4329,7 @@
     flex-direction: column;
     height: 67px;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: var(--spacing-medium);
   }
 
   .feedback-modal-select-label {
@@ -3642,8 +4340,8 @@
   .feedback-modal-select,
   .feedback-modal-input {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--lc-border);
+    padding: var(--spacing-medium) var(--spacing-medium);
+    border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -3666,7 +4364,7 @@
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -3674,7 +4372,7 @@
   }
 
   .feedback-modal-input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--semantic-border-strong);
   }
 
   .feedback-modal-input::placeholder {
@@ -3684,13 +4382,14 @@
   .feedback-modal-actions {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 16px;
+    gap: var(--spacing-medium);
+    margin-top: var(--spacing-large);
   }
 
   .feedback-modal-btn {
     flex: 1;
-    padding: 10px 16px;
+    padding: var(--spacing-medium) var(--spacing-large);
+    border: none;
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -3700,7 +4399,7 @@
   }
 
   .feedback-modal-btn.submit {
-    background: var(--lc-sefaria-blue);
+    background: var(--lc-primary);
     color: var(--lc-submit-white);
   }
 
@@ -3710,7 +4409,6 @@
 
   .feedback-modal-btn.submit.danger {
     background: var(--lc-danger);
-    border: none;
   }
 
   .feedback-modal-btn.submit.danger:hover:not(:disabled) {
@@ -3725,27 +4423,30 @@
 
   .feedback-modal-btn.skip {
     background: transparent;
-    color: var(--lc-sefaria-blue);
-    border: none;
+    color: var(--lc-text);
   }
 
   .feedback-thanks {
+    margin-top: var(--spacing-xsmall);
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
   }
 
   .message.assistant .message-content,
   .message.assistant .message-content :global(a) {
-    color: var(--lc-sefaria-blue);
+    color: var(--semantic-text-link);
     font-size: var(--lc-font-size);
   }
 
   /* css for classes that come directly from server (via @html) —
      must use :global() so Svelte doesn't strip them */
+  /* Headings sit close to the text they introduce. Without margins set, browser
+     defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
+    margin-block: var(--spacing-large) var(--spacing-xsmall);
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-style: normal;
     line-height: normal;
   }
@@ -3754,7 +4455,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -3762,15 +4463,26 @@
   }
 
   .message-content :global(.response-section) {
-    color: var(--brand-sefaria-blue);
+    margin-block: var(--spacing-medium) var(--spacing-xsmall);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
     line-height: normal;
   }
 
+  .message-content :global(.response-title + .response-section) {
+    margin-top: var(--spacing-small);
+  }
+
+  /* The text under a heading drops its own top margin, which would otherwise win
+     over the heading's smaller bottom margin when the two collapse */
+  .message-content :global(:is(.response-title, .response-section) + :is(p, ul, ol)) {
+    margin-top: 0;
+  }
+
   .message-content :global(.response-list) {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -3785,7 +4497,7 @@
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-text-link);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -3808,13 +4520,13 @@
   :global(.progress-trail-toggle) {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     background: none;
     border: none;
     cursor: pointer;
     color: #888;
     font-size: 11px;
-    padding: 4px 12px;
+    padding: var(--spacing-xsmall) var(--spacing-medium);
     font-family: inherit;
   }
   :global(.progress-trail-toggle:hover) {
@@ -3823,37 +4535,37 @@
   :global(.progress-trail-list) {
     list-style: none;
     margin: 0;
-    padding: 4px 12px;
+    padding: var(--spacing-xsmall) var(--spacing-medium);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--spacing-xsmall);
   }
   :global(.progress-trail-entry) {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--spacing-xsmall);
     font-size: 12px;
     line-height: 1.4;
-    color: #777;
+    color: var(--lc-text-muted);
   }
   :global(.progress-trail-entry--error) {
-    color: #c62828;
+    color: var(--semantic-feedback-error-text);
   }
   :global(.progress-trail-entry--complete) {
-    color: #666;
+    color: var(--lc-text-muted);
   }
   :global(.progress-trail-icon) {
     flex-shrink: 0;
-    width: 14px;
-    height: 14px;
+    width: var(--icon-small);
+    height: var(--icon-small);
     display: flex;
     align-items: center;
     justify-content: center;
   }
   :global(.progress-trail-spinner) {
-    width: 10px;
-    height: 10px;
-    border: 1.5px solid #ccc;
+    width: var(--icon-small);
+    height: var(--icon-small);
+    border: var(--border-width-medium) solid #ccc;
     border-top-color: #888;
     border-radius: 50%;
     animation: trail-spin 0.8s linear infinite;
@@ -3867,21 +4579,21 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: #18345D;
+    color: var(--semantic-text-link);
     font-weight: 600;
     text-decoration: underline;
-    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-decoration-color: color-mix(in srgb, var(--semantic-text-link) 30%, transparent);
     text-underline-offset: 2px;
   }
   :global(.trail-ref-link:hover) {
-    color: #465D7D;
-    text-decoration-color: rgba(70, 93, 125, 0.6);
+    color: var(--semantic-text-link-hovered);
+    text-decoration-color: color-mix(in srgb, var(--semantic-text-link-hovered) 60%, transparent);
   }
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
-    margin-inline-end: 2px;
-    color: #18345D;
+    margin-inline-end: var(--spacing-2xsmall);
+    color: var(--semantic-text-link);
     opacity: 0.6;
   }
 
