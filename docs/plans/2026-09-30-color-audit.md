@@ -222,3 +222,9 @@ collection at the top of `:host`.
 Still raw values (next passes or Figma gaps): surface/border/shadow aliases (`--lc-bg*`, `--lc-body-bg`, `--lc-border*`, `--lc-user-bg`,
 `--lc-disabled-button`, `--lc-shadow`, `--lc-tooltip-bg`), and `--lc-danger` / `--lc-danger-hover` pending a Figma
 Semantic/Action/Danger token. `tooltip.js` keeps `'#fff'` / `'#3a3a3a'` as JS fallbacks.
+
+### 6c. Surface aliases pointed at semantic tokens
+
+Added `--semantic-surface-page`, `--semantic-surface-subtle`, `--semantic-surface-hover`. `--lc-bg` → Surface/Page,
+`--lc-bg-secondary` → Surface/Subtle, `--lc-user-bg` → Module/Primary, `--lc-bg-hover` → Surface/Hover (values unchanged).
+Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--lc-bg-hover` instead of an undefined var with a `#eee` fallback.

@@ -2349,6 +2349,10 @@
     --semantic-action-primary-hover: #132b4c;
     --semantic-action-primary-pressed: #0b1a2d;
     --semantic-module-primary: #18345D;
+    /* Semantic/Surface */
+    --semantic-surface-page: #ffffff;
+    --semantic-surface-subtle: #fafafa;
+    --semantic-surface-hover: #eeeeee;
     /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
@@ -2356,22 +2360,21 @@
     /* Core */
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
-    --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
     --lc-primary: var(--semantic-action-primary);
     --brand-sefaria-blue: #18345D;
     --lc-primary-hover: var(--semantic-action-primary-hover);
-    --lc-bg: #ffffff;
+    --lc-bg: var(--semantic-surface-page);
     --lc-body-bg: #F9FAFB;
-    --lc-bg-secondary: #FAFAFA;
+    --lc-bg-secondary: var(--semantic-surface-subtle);
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: var(--semantic-text-primary);
     --lc-text-secondary: var(--semantic-text-secondary);
     --lc-text-muted: var(--semantic-text-muted);
     --lc-border: #e2e8f0;
-    --lc-user-bg: var(--brand-sefaria-blue);
+    --lc-user-bg: var(--semantic-module-primary);
     --lc-user-text: var(--semantic-text-inverse);
     --lc-disabled-button: #e6e6e6;
     --lc-disabled-text: var(--semantic-text-disabled);
@@ -2387,7 +2390,7 @@
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
     --lc-border-strong: var(--core-neutral-gray-300);
-    --lc-bg-hover: var(--core-neutral-gray-100);
+    --lc-bg-hover: var(--semantic-surface-hover);
     --lc-icon-primary: var(--semantic-icon-muted);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs to
        --semantic-icon-muted (#6f6f6f), --semantic-icon-default (#121212) and --semantic-icon-disabled (#999999) */
@@ -4222,7 +4225,7 @@
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
-    background: var(--semantic-surface-hover, #eee);
+    background: var(--lc-bg-hover);
   }
 
   .delete-modal .feedback-modal-btn {
