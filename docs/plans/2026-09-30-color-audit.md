@@ -247,3 +247,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Renamed `--lc-border-strong` → `--lc-border-focus` (still → Border/Focus `#cccccc`) so the alias name matches its Figma token. Tooltips stay on Surface/Inverse by decision.
 - Docked panel shadow → new `--shadow-large` (Figma effect style Shadows/shadow-large: 0 16 32 #0D032029, 0 1 2 #00000014; same values).
 - Added `--shadow-small` / `--shadow-medium` (Figma Shadows/shadow-small, shadow-medium). History row dropdown → shadow-medium (was `0 8px 18px rgba(13,3,32,.14)`); tooltip → shadow-small via `tooltip.js` token read (was `0 2px 8px rgba(0,0,0,.25)`). Both visibly lighter.
+- Chat input placeholder → Text/Disabled (`#999`) to match the feedback modal textarea and "select an issue" placeholders. Known: all three fail WCAG AA 1.4.3 (~2.8:1); kept by design decision 2026-09-30 pending a Text/Placeholder token.

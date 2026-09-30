@@ -3991,8 +3991,9 @@
     border-color: var(--semantic-border-strong);
   }
 
+  /* Text/Disabled (#999, ~2.8:1 on white) fails WCAG AA 1.4.3 — kept by design decision for now */
   .lc-chatbot-input textarea::placeholder {
-    color: var(--lc-text-muted);
+    color: var(--lc-disabled-text);
   }
 
   .lc-chatbot-input textarea:disabled {
