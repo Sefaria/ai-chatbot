@@ -3721,22 +3721,24 @@
     cursor: pointer;
   }
 
-  /* height:0 + overflow:visible lets the timestamp paint below this box
-     without the box itself contributing to the flex column's height — so
-     the reserved timestamp space doesn't leave a permanent gap between the
-     bubble and whatever comes next (see .message-location-tag below). */
   .message-meta {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    height: 0;
-    overflow: visible;
     margin-top: 4px;
     padding: 0 4px;
   }
 
+  /* height:0 + overflow:visible lets the user's hover timestamp paint below
+     this box without the box contributing to the flex column's height — so
+     the reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below).
+     User messages only: the assistant meta holds feedback buttons and the
+     "thanks" note, which must take real space or the next message overlaps them. */
   .message.user .message-meta {
     justify-content: flex-end;
+    height: 0;
+    overflow: visible;
   }
 
   .message-timestamp {
