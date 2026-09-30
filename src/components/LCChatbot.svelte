@@ -2376,6 +2376,9 @@
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
     --lc-icon-primary: var(--functional-icon-icon-primary);
+    /* <img> icons can't take `color`, so these filters recolor the black SVGs */
+    --lc-icon-muted-filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    --lc-icon-default-filter: brightness(0) invert(20%);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
@@ -3022,7 +3025,15 @@
   .history-search-submit img,
   .header-actions img,
   .menu-item img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-muted-filter);
+  }
+
+  /* Header and history icons darken from icon-muted to icon-default on hover/press — no background */
+  .header-actions :global(:is(.history-btn, .panel-btn, .menu-btn, .close-btn):is(:hover, :focus-visible, :active) img),
+  .history-icon-btn:is(:hover, :focus-visible, :active):not(:disabled) img,
+  .history-row-menu-trigger:is(:hover, :focus-visible, :active) img,
+  .history-rename-form button:is(:hover, :focus-visible, :active) img {
+    filter: var(--lc-icon-default-filter);
   }
 
   /* trash-2-danger.svg is pre-colored red; the shared gray filter above would flatten it back to gray */
@@ -3037,13 +3048,9 @@
     border-radius: 6px;
   }
 
-  /* Matches the LA's existing icon-hover convention (see HeaderButton.svelte's
-     .menu-btn/.panel-btn/.history-btn), not the hover styling shown in Figma.
-     The search bar's icon (search glyph or its clear/X state) never gets a
+  /* The search bar's icon (search glyph or its clear/X state) never gets a
      hover treatment in either state — see .history-search-submit below. */
-  .history-icon-btn:hover:not(:disabled),
-  .history-row-dropdown button:hover,
-  .history-rename-form button:hover {
+  .history-row-dropdown button:hover {
     background: var(--lc-bg-tertiary);
     color: var(--lc-text);
   }
@@ -3370,7 +3377,7 @@
   }
 
   .history-empty-icon img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-muted-filter);
   }
 
   .history-empty strong {

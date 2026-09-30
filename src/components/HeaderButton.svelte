@@ -58,9 +58,7 @@
   .menu-btn:active,
   .panel-btn:active,
   .history-btn:active {
-    background: var(--lc-bg-tertiary);
     color: var(--lc-text);
-    border-color: var(--lc-border);
   }
 
   .close-btn {
@@ -78,8 +76,9 @@
     transition: all 0.15s ease;
   }
 
-  .close-btn:hover {
-    background: var(--lc-bg-tertiary);
+  .close-btn:hover,
+  .close-btn:focus-visible,
+  .close-btn:active {
     color: var(--lc-text);
   }
 </style>
