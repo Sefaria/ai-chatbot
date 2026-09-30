@@ -2371,7 +2371,7 @@
     --brand-sefaria-blue: #18345D;
     --lc-primary-hover: var(--semantic-action-primary-hover);
     --lc-bg: var(--semantic-surface-page);
-    --lc-body-bg: #F9FAFB;
+    --lc-body-bg: var(--semantic-surface-subtle);
     --lc-bg-secondary: var(--semantic-surface-subtle);
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: var(--semantic-text-primary);
