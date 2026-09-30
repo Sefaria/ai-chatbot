@@ -88,7 +88,7 @@
     padding: var(--global-dimension-100) var(--global-dimension-150);
     border-radius: var(--global-dimension-0);
     border-inline-start: 2px solid var(--lc-primary);
-    background: var(--core-blue-tbr-100);
+    background: var(--semantic-module-accent);
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;

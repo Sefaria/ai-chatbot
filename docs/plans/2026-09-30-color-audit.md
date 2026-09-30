@@ -238,3 +238,4 @@ Removed now-unused `--core-neutral-gray-100`; delete-modal Cancel hover uses `--
 - Border trial: `--lc-border` → `--core-navy-200` (`#e4eaf3`; was `#e2e8f0`). Core, not semantic — temporary until a matching border token exists.
 - `--lc-border` → Border/Default (`#ededec`) instead of the Navy/200 trial; `--core-navy-200` removed.
 - Tooltip trial 2: `--lc-tooltip-bg` → Surface/Inverse (`#0f223b`, navy) instead of Gray/800; `--core-neutral-gray-800` removed; `tooltip.js` fallback updated to match.
+- Topic suggestions background → new `--semantic-module-accent` (`#f0f7ff`; Penina changed Module/Accent in Figma to Core/blue/100 — verify after publish). `--core-blue-tbr-100` removed.

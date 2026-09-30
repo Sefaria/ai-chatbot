@@ -2350,6 +2350,7 @@
     --semantic-action-primary-pressed: #0b1a2d;
     --semantic-action-primary-disabled: #e6e6e6;
     --semantic-module-primary: #18345D;
+    --semantic-module-accent: #f0f7ff;
     /* Semantic/Surface */
     --semantic-surface-page: #ffffff;
     --semantic-surface-subtle: #fafafa;
@@ -2364,7 +2365,6 @@
     --semantic-feedback-error-background: #f9ebe9;
     --semantic-feedback-error-hover: #a02c1c;
     /* Core */
-    --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
 
     /* Public theming names (host pages may override). Color aliases must point at a --semantic-* token, never a value. */
