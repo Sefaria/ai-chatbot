@@ -202,7 +202,7 @@
     gap: 8px;
     font-size: 12px;
     line-height: 20px;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     min-height: 20px;
     /* Each row fills the container; required for truncation to work */
     width: 100%;
@@ -263,7 +263,7 @@
 
   :global(.trail-ref-icon) {
     flex-shrink: 0;
-    color: var(--lc-primary);
+    color: var(--semantic-action-primary);
   }
 
   /* F2: text body for plain-text (non-ref, non-failed) steps.
@@ -287,7 +287,7 @@
   .progress-trail-entry.failed :global(a),
   .progress-trail-entry.failed :global(.trail-ref-link),
   .progress-trail-entry.failed :global(.trail-ref-icon) {
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     text-decoration: none;
     cursor: default;
     pointer-events: none;

@@ -19,14 +19,14 @@
     border-radius: 8px;
     border: 1px solid var(--lc-border);
     background: var(--lc-bg-tertiary);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
   .settings-btn:hover {
     background: var(--lc-bg-secondary);
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .menu-btn,
@@ -41,7 +41,7 @@
     padding: 4px;
     border: 0px;
     background: transparent;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     cursor: pointer;
     font-size: var(--lc-font-size-sm);
     font-weight: 600;
@@ -58,7 +58,7 @@
   .menu-btn:active,
   .panel-btn:active,
   .history-btn:active {
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .close-btn {
@@ -72,13 +72,13 @@
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     transition: all 0.15s ease;
   }
 
   .close-btn:hover,
   .close-btn:focus-visible,
   .close-btn:active {
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 </style>

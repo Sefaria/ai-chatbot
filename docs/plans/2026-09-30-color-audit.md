@@ -205,3 +205,17 @@ New `:host` tokens: `--semantic-text-primary`, `--semantic-text-inverse`, `--sem
 - Launcher pressed → Action/Primary pressed
 - `--lc-error` removed: failed-message border → Error/Border; Retry and Settings error → Error/Text; failed bg → Error/Background; failed trail step → Error/Text
 - Retry hover (no Figma token) → existing `--lc-danger-hover` (Red/800)
+
+### 6b. Components use semantic tokens directly (no `--lc-*` color aliases for text/action/feedback)
+
+Removed aliases: `--lc-primary`, `--lc-primary-hover`, `--lc-text`, `--lc-text-secondary`, `--lc-text-muted`, `--lc-user-text`,
+`--lc-disabled-text`, `--lc-submit-white`, `--lc-icon-primary`, `--lc-tooltip-text`, `--lc-on-primary`, plus unused
+`--lc-assistant-bg`, `--lc-assistant-text`, `--lc-topics-bg`. Added `--semantic-text-disabled`, `--semantic-icon-inverse`,
+`--semantic-module-primary`. Semantic tokens in `:host` are grouped by Figma collection.
+
+- Launcher, Send, Settings Save backgrounds → Action/Primary; header title, sparkle, response headings, "sending" status → Module/Primary; response links, Settings back → Text/Link
+- Delete option and history error text → Feedback/Error/Text
+- Hard-coded `white`, `#121212`, `#575757` → Text/Inverse, Icon/Inverse, Text/Primary, Text/Secondary
+
+Still non-semantic, pending Figma tokens: `--lc-danger` / `--lc-danger-hover` (delete confirm button, Retry hover) — propose
+Semantic/Action/Danger (+ hover). `tooltip.js` keeps `'#fff'` / `'#3a3a3a'` as JS fallbacks.

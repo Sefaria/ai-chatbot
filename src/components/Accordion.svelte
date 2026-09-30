@@ -35,7 +35,7 @@
     display: flex; align-items: center; gap: 4px;
     background: none; border: 0; padding: 0; cursor: pointer;
     font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
   .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--semantic-icon-muted); }
   .lc-accordion-chevron.expanded { transform: rotate(180deg); }

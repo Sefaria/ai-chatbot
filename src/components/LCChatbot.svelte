@@ -2331,45 +2331,43 @@
     --space-1: 4px;
     --spacing-spacing-large: 16px;
     --spacing-spacing-medium: 12px;
-    --semantic-action-primary: #18345D;
+    /* Figma Foundations: Semantic/Text */
+    --semantic-text-primary: #121212;
+    --semantic-text-secondary: #575757;
+    --semantic-text-muted: #707070;
+    --semantic-text-disabled: #999999;
+    --semantic-text-inverse: #ffffff;
     --semantic-text-link: #18345D;
     --semantic-text-link-hovered: #132b4c;
-    --semantic-text-primary: #121212;
-    --semantic-text-inverse: #ffffff;
+    /* Semantic/Icon */
+    --semantic-icon-default: #121212;
+    --semantic-icon-muted: #6f6f6f;
+    --semantic-icon-disabled: #999999;
+    --semantic-icon-inverse: #ffffff;
+    /* Semantic/Action, Semantic/Module */
+    --semantic-action-primary: #18345D;
     --semantic-action-primary-hover: #132b4c;
     --semantic-action-primary-pressed: #0b1a2d;
+    --semantic-module-primary: #18345D;
+    /* Semantic/Feedback/Error */
     --semantic-feedback-error-text: #c03522;
     --semantic-feedback-error-border: #c03522;
     --semantic-feedback-error-background: #f9ebe9;
-    --semantic-text-secondary: #575757;
-    --semantic-text-muted: #707070;
+    /* Core */
     --core-blue-tbr-100: #F0F7FF;
     --core-base-white: #FFFFFF;
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
-    --semantic-icon-default: #121212;
-    --semantic-icon-muted: #6f6f6f;
-    --semantic-icon-disabled: #999999;
 
     /* Component tokens — aliased to Figma tokens where applicable */
-    --lc-primary: var(--semantic-action-primary);
     --brand-sefaria-blue: #18345D;
-    --lc-primary-hover: var(--semantic-action-primary-hover);
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
-    --lc-text: var(--semantic-text-primary);
-    --lc-text-secondary: var(--semantic-text-secondary);
-    --lc-text-muted: var(--semantic-text-muted);
     --lc-border: #e2e8f0;
     --lc-user-bg: var(--brand-sefaria-blue);
-    --lc-user-text: #ffffff;
-    --lc-assistant-bg: #f1f5f9;
-    --lc-assistant-text: #1e293b;
     --lc-disabled-button: #e6e6e6;
-    --lc-disabled-text: #999;
-    --lc-submit-white: var(--semantic-text-inverse);
 
     --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
     --lc-radius: 16px;
@@ -2382,16 +2380,12 @@
     --lc-docked-top-offset: 60px;
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
-    --lc-on-primary: var(--core-base-white);
-    --lc-icon-primary: var(--semantic-icon-muted);
     /* <img> icons can't take `color`, so these filters recolor the black SVGs to
        --semantic-icon-muted (#6f6f6f), --semantic-icon-default (#121212) and --semantic-icon-disabled (#999999) */
     --lc-icon-muted-filter: brightness(0) invert(43.5%);
     --lc-icon-default-filter: brightness(0) invert(7%);
     --lc-icon-disabled-filter: brightness(0) invert(60%);
-    --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
-    --lc-tooltip-text: var(--core-base-white);
     --lc-danger: #C03522;
     --lc-danger-hover: #A02C1C;
 
@@ -2874,8 +2868,8 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--semantic-action-primary);
+    color: var(--semantic-text-inverse);
     border: none;
     border-radius: 9999px;
     cursor: pointer;
@@ -2899,7 +2893,7 @@
 
   .trigger-label {
     font-weight: 400;
-    color: var(--lc-user-text);
+    color: var(--semantic-text-inverse);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size-sm);
     line-height: 18px; 
@@ -3022,7 +3016,7 @@
     justify-content: center;
     border: none;
     background: transparent;
-    color: var(--lc-icon-primary);
+    color: var(--semantic-icon-muted);
     cursor: pointer;
     border-radius: 6px;
     transition: background 0.15s ease, color 0.15s ease;
@@ -3062,7 +3056,7 @@
      hover treatment in either state — see .history-search-submit below. */
   .history-row-dropdown button:hover {
     background: var(--lc-bg-tertiary);
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .history-icon-btn:disabled {
@@ -3095,7 +3089,7 @@
     width: 100%;
     border: 1px solid var(--lc-border);
     border-radius: 6px;
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
     background: var(--lc-bg);
     font: inherit;
     font-size: 12px;
@@ -3186,7 +3180,7 @@
     border: none;
     border-radius: 0;
     background: transparent;
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
     cursor: pointer;
     font-family: var(--lc-font);
     text-align: start;
@@ -3229,12 +3223,12 @@
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     padding: 3px 4px;
   }
 
   .history-row.active .history-row-title {
-    color: #121212;
+    color: var(--semantic-text-primary);
   }
 
   /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
@@ -3253,7 +3247,7 @@
   }
 
   .history-row.active .history-row-date {
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .history-row-menu {
@@ -3275,7 +3269,7 @@
     width: 18px;
     height: 18px;
     opacity: 0;
-    color: var(--lc-icon-primary);
+    color: var(--semantic-icon-muted);
   }
 
   .history-row-wrap:hover .history-row-menu-trigger,
@@ -3327,7 +3321,7 @@
     font-size: 12px !important;
     font-weight: 400;
     line-height: 21px;
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .history-row-dropdown button span {
@@ -3336,7 +3330,7 @@
   }
 
   .history-row-dropdown button.danger {
-    color: var(--lc-danger);
+    color: var(--semantic-feedback-error-text);
   }
 
   .history-rename-form {
@@ -3364,7 +3358,7 @@
   .history-empty,
   .history-loading,
   .history-error {
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
     font-size: 14px;
     line-height: 20px;
     padding: 32px 16px;
@@ -3387,7 +3381,7 @@
     justify-content: center;
     border-radius: 999px;
     background: var(--core-neutral-gray-200, #ededec);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .history-empty-icon img {
@@ -3395,7 +3389,7 @@
   }
 
   .history-empty strong {
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
@@ -3404,7 +3398,7 @@
   .history-empty p {
     max-width: 170px;
     margin: 0 auto;
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
     font-size: 12px;
     line-height: 16px;
   }
@@ -3416,7 +3410,7 @@
   }
 
   .history-error {
-    color: var(--lc-danger);
+    color: var(--semantic-feedback-error-text);
     border-bottom: 1px solid var(--lc-border);
   }
 
@@ -3480,7 +3474,7 @@
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
@@ -3508,7 +3502,7 @@
        and a font-dependent mismatch would otherwise throw off centering. */
     line-height: inherit;
     letter-spacing: 0.36px;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
   }
 
   .header-actions {
@@ -3554,7 +3548,7 @@
     padding: 10px 14px;
     background: transparent;
     border: none;
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
     font-size: 13px;
     font-family: var(--lc-font);
     text-decoration: none;
@@ -3569,7 +3563,7 @@
   }
 
   .menu-item:disabled {
-    color: var(--lc-disabled-text);
+    color: var(--semantic-text-disabled);
     cursor: not-allowed;
   }
 
@@ -3653,7 +3647,7 @@
 
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
-    color: #575757;
+    color: var(--semantic-text-secondary);
   }
 
   .message.assistant .message-content :global(ul),
@@ -3676,7 +3670,7 @@
     padding: 12px 16px;
     font-size: var(--lc-font-size);
     word-wrap: break-word;
-    color: var(--lc-user-text);
+    color: var(--semantic-text-inverse);
     /* Blue bubble lives on the bubble only — not the whole column — so the
        location tag below renders as a gray pill on the white chat background. */
     background-color: var(--lc-user-bg);
@@ -3690,7 +3684,7 @@
   }
 
   .message.limit-message .message-content {
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
   .message.limit-message .message-content .link-like {
     background: none;
@@ -3724,7 +3718,7 @@
   .message-timestamp {
     font-size: 11px;
     line-height: 14px;
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
     white-space: nowrap;
     opacity: 0;
     transition: opacity 0.15s ease;
@@ -3758,11 +3752,11 @@
 
   .message-status {
     font-size: 11px;
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
   }
 
   .message-status.sending {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
   }
 
   .retry-btn {
@@ -3842,7 +3836,7 @@
     line-height: var(--global-dimension-250, 20px);
   }
   .lc-thinking-glyph {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--semantic-text-secondary);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
@@ -3866,7 +3860,7 @@
     min-width: 0;
   }
   .lc-thinking-label-base {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--semantic-text-secondary);
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -3920,7 +3914,7 @@
     justify-content: center;
     gap: 8px;
     padding: 12px;
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
     font-size: 13px;
   }
 
@@ -3967,7 +3961,7 @@
   }
 
   .lc-chatbot-input textarea::placeholder {
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
   }
 
   .lc-chatbot-input textarea:disabled {
@@ -3981,8 +3975,8 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--semantic-action-primary);
+    color: var(--semantic-icon-inverse);
     border: none;
     border-radius: var(--lc-radius-sm);
     cursor: pointer;
@@ -3990,7 +3984,7 @@
   }
 
   .send-btn:hover:not(:disabled) {
-    background: var(--lc-primary-hover);
+    background: var(--semantic-action-primary-hover);
   }
 
   .send-btn:disabled {
@@ -4026,13 +4020,13 @@
   .settings-title {
     font-size: var(--lc-font-size);
     font-weight: 600;
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-text-link);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -4040,7 +4034,7 @@
 
   .settings-loading {
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .settings-error {
@@ -4057,7 +4051,7 @@
     display: grid;
     gap: 6px;
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .settings-field input {
@@ -4066,7 +4060,7 @@
     padding: 8px 10px;
     font-size: 13px;
     font-family: var(--lc-font);
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
     background: var(--lc-bg-secondary);
   }
 
@@ -4079,13 +4073,13 @@
     align-items: center;
     gap: 8px;
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .settings-toggle input {
     width: 16px;
     height: 16px;
-    accent-color: var(--lc-primary);
+    accent-color: var(--semantic-action-primary);
   }
 
   .settings-toggle input:disabled {
@@ -4094,7 +4088,7 @@
 
   .settings-note {
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-muted);
+    color: var(--semantic-text-muted);
   }
 
   .settings-actions {
@@ -4116,23 +4110,23 @@
   }
 
   .settings-save {
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--semantic-action-primary);
+    color: var(--semantic-text-inverse);
     border-color: transparent;
   }
 
   .settings-save:hover:not(:disabled) {
-    background: var(--lc-primary-hover);
+    background: var(--semantic-action-primary-hover);
   }
 
   .settings-reset {
     background: var(--lc-bg-tertiary);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
   }
 
   .settings-reset:hover:not(:disabled) {
     background: var(--lc-bg-secondary);
-    color: var(--lc-text);
+    color: var(--semantic-text-primary);
   }
 
   .settings-save:disabled,
@@ -4190,7 +4184,7 @@
   }
 
   .delete-modal .feedback-modal-title {
-    color: #121212;
+    color: var(--semantic-text-primary);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
@@ -4198,7 +4192,7 @@
   }
 
   .delete-modal-subtext {
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     font-size: 12px;
     line-height: 16px;
     margin: 0 0 16px;
@@ -4213,7 +4207,7 @@
 
   .delete-modal .feedback-modal-btn.skip {
     border: 1px solid var(--core-neutral-gray-300, #ccc);
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-secondary);
     background: var(--core-base-white, #fff);
   }
 
@@ -4304,7 +4298,7 @@
   }
 
   .feedback-modal-select.is-placeholder {
-    color: var(--lc-disabled-text);
+    color: var(--semantic-text-disabled);
   }
 
   .feedback-modal-input:focus {
@@ -4312,7 +4306,7 @@
   }
 
   .feedback-modal-input::placeholder {
-    color: var(--lc-disabled-text);
+    color: var(--semantic-text-disabled);
   }
 
   .feedback-modal-actions {
@@ -4335,11 +4329,11 @@
 
   .feedback-modal-btn.submit {
     background: var(--semantic-action-primary);
-    color: var(--lc-submit-white);
+    color: var(--semantic-text-inverse);
   }
 
   .feedback-modal-btn.submit:hover:not(:disabled) {
-    background: var(--lc-primary-hover);
+    background: var(--semantic-action-primary-hover);
   }
 
   .feedback-modal-btn.submit.danger {
@@ -4353,7 +4347,7 @@
 
   .feedback-modal-btn.submit:disabled {
     background: var(--lc-disabled-button);
-    color: var(--lc-disabled-text);
+    color: var(--semantic-text-disabled);
     cursor: not-allowed;
   }
 
@@ -4382,7 +4376,7 @@
     margin-block: 16px 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-style: normal;
     line-height: normal;
   }
@@ -4391,7 +4385,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -4400,7 +4394,7 @@
 
   .message-content :global(.response-section) {
     margin-block: 14px 4px;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -4418,7 +4412,7 @@
   }
 
   .message-content :global(.response-list) {
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -4433,7 +4427,7 @@
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
-    color: var(--brand-sefaria-blue);
+    color: var(--semantic-text-link);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
