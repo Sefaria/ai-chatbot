@@ -3989,7 +3989,6 @@
 
   .send-btn:disabled {
     background: var(--lc-disabled-button);
-    color: var(--semantic-icon-disabled);
     cursor: not-allowed;
   }
 
