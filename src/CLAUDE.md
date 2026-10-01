@@ -56,11 +56,12 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `default-open` | boolean | No | Open on load |
 | `max-input-chars` | number | No | Max characters allowed in the textarea (default: 10000) |
 | `max-prompts` | number | No | Max prompts per conversation before blocking (default: 100) |
-| `mode` | `"floating"` \| `"panel"` | No | Display mode |
+| `mode` | `"floating"` \| `"docked"` \| `"panel"` | No | Display mode. `panel` renders inline, filling the host element (no trigger, resize or dock controls; always open) for embedding in a host-owned side panel |
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 | `persona` | `"newcomer"` \| `"learner"` \| `"educator"` \| `"scholar"` | No | Host persona (Library Next). Sent as `context.persona` on every chat request, selects the starter prompts in the empty state; unknown values are ignored. Observed at runtime. See `docs/library-next-embed.md` |
+| `initial-prompt` | string | No | Programmatic send: each new non-empty value opens the chat and sends it (the host clears the attribute afterwards so the same text can be sent again). Feature-detect with `'initial-prompt' in el` |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 

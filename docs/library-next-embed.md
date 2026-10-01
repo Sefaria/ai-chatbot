@@ -30,6 +30,16 @@ simulated. Branch: ai-chatbot `mf3`.
 | `mode` | `panel` \| `floating` | `panel` for the dock. |
 | `is-moderator` | `true` \| `false` | Host sets it from `request.user.is_staff`. |
 
+### Programmatic send and inline mode
+
+- `mode="panel"` renders the chat inline, filling the `<lc-chatbot>` element (the dock owns the
+  side panel, open/close and sizing). Older bundles (chat-dev) do not know this mode and fall
+  back to the floating corner widget.
+- `initial-prompt="<text>"`: each new non-empty value opens the chat and sends it; clear the
+  attribute afterwards (`removeAttribute`) so the same text can be sent again. Feature-detect
+  with `'initial-prompt' in el` (false on chat-dev bundles; the dock then drives the widget's
+  shadow-DOM textarea and send button as a compatibility fallback).
+
 ### Changing persona at runtime
 
 `persona` is an observed attribute. The dock should call
