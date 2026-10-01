@@ -144,3 +144,16 @@ def test_first_final_text_delta_callback_fires_before_the_final_delta_it_gates()
     )
 
     assert events == ["Let me check", "I will search", "final-started", "Final"]
+
+
+def test_message_uses_tools_detects_real_sdk_tool_use_block():
+    # The SDK's ToolUseBlock has no `type` field, unlike the dict fakes above.
+    # Missing it meant the runner never saw tool use, so final-answer streaming
+    # never started.
+    from claude_agent_sdk.types import TextBlock, ToolUseBlock
+
+    tool_message = FakeAssistantMessage(content=[ToolUseBlock(id="t1", name="search", input={})])
+    text_message = FakeAssistantMessage(content=[TextBlock(text="Final answer")])
+
+    assert ClaudeSDKRunner.message_uses_tools(tool_message)
+    assert not ClaudeSDKRunner.message_uses_tools(text_message)

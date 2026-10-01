@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent, ToolUseBlock
 
 
 @dataclass
@@ -194,6 +194,9 @@ class ClaudeSDKRunner:
         if not isinstance(content, list):
             return False
         for block in content:
+            # The SDK's ToolUseBlock has no `type` field, so match it by class.
+            if isinstance(block, ToolUseBlock):
+                return True
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 return True
             if getattr(block, "type", None) == "tool_use":
