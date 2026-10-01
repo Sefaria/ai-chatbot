@@ -216,6 +216,9 @@ class TurnOrchestrator:
             raise
 
         emit_synthesis_status_once()
+        # The streamed answer text is complete; link validation and saving
+        # still follow, but the client can stop showing "Writing…" now.
+        emitter.emit(AgentProgressUpdate(type="content_done"))
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
         output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE

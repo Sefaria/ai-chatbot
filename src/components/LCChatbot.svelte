@@ -90,6 +90,7 @@
   // the response.
   const WORD_FADE_MS = 400;
   let wordRevealTimes = [];
+  let streamTextDone = $state(false);
 
   $effect(() => {
     if (!streamEl) return;
@@ -1084,6 +1085,7 @@
     appetizerData = null;
     streamingMarkdown = '';
     wordRevealTimes = [];
+    streamTextDone = false;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1108,6 +1110,10 @@
       const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
           if (sessionId !== sendingSessionId) return;
+          if (progress?.type === 'content_done') {
+            streamTextDone = true;
+            return;
+          }
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
             // Dump the full served sentence (frame + topic titles) into `text` so
@@ -2107,14 +2113,16 @@
               {#if streamingMarkdown}
                 <div class="message-content lc-streaming-content" bind:this={streamEl}></div>
               {/if}
-              <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
-                <div class="lc-thinking-step">
-                  <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
-                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                    <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
-                  </span>
+              {#if !(streamingMarkdown && streamTextDone)}
+                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
+                  <div class="lc-thinking-step">
+                    <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                    </span>
+                  </div>
                 </div>
-              </div>
+              {/if}
             </div>
           </div>
         {/if}
