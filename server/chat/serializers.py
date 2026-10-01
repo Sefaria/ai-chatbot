@@ -5,6 +5,7 @@ Serializers for chat API.
 from rest_framework import serializers
 
 from .models import ChatMessage
+from .V2.persona import PERSONAS
 
 
 class MessageContextSerializer(serializers.Serializer):
@@ -16,6 +17,7 @@ class MessageContextSerializer(serializers.Serializer):
     origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
     isStaff = serializers.BooleanField(required=False, default=False)
     labs = serializers.BooleanField(required=False, default=False)
+    persona = serializers.ChoiceField(choices=PERSONAS, required=False, allow_blank=True)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
 
 
