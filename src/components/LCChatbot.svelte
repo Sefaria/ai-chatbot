@@ -14,6 +14,7 @@
     deleteConversation
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -82,6 +83,81 @@
   let resizeEdge = $state(null);
   
   let appetizerData = $state(null);
+  let streamingMarkdown = $state('');
+  let streamEl = $state(null);
+
+  // Streaming UX: the answer shows as the server sends it, and each new word
+  // fades in. The view doesn't auto-scroll, so the reader stays at the top of
+  // the response.
+  const WORD_FADE_MS = 400;
+  let wordRevealTimes = [];
+  let streamTextDone = $state(false);
+  // Thumbs show as soon as the streamed text ends, before the final message
+  // (and its traceId) arrives; a click is held under this id until then.
+  const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
+  let pendingFeedback = $state(null);
+  const TOPICS_APPEAR_MS = 250;
+  // Before the answer starts streaming, "Synthesizing response" stays up for
+  // at least this long; text that arrives sooner is held until then.
+  const SYNTHESIZING_MIN_MS = 2000;
+  let synthesizingShownAt = 0;
+  let finalThinkingPending = false;
+  let heldStreamText = '';
+  let streamRevealTimer = null;
+  let streamRevealed = false;
+
+  function revealHeldStream() {
+    streamRevealTimer = null;
+    streamRevealed = true;
+    // Switch straight to the static "Writing…" label, with no fade.
+    clearThinkingMessageTimers();
+    isThinkingMessageFading = false;
+    thinkingMessageKey = 'assistant.loading.writing';
+    streamingMarkdown = heldStreamText;
+  }
+
+  function topicsAppearMs() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TOPICS_APPEAR_MS;
+  }
+
+  $effect(() => {
+    if (!streamEl) return;
+    streamEl.innerHTML = renderMarkdown(streamingMarkdown);
+    fadeInNewWords(streamEl);
+  });
+
+  // The streamed HTML is re-rendered on every update, so each word keeps the
+  // time it first appeared and resumes its fade from there (negative delay).
+  function fadeInNewWords(root) {
+    const now = performance.now();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let wordIndex = 0;
+    for (const node of textNodes) {
+      const frag = document.createDocumentFragment();
+      let hasFadingWord = false;
+      for (const part of node.data.split(/(\s+)/)) {
+        if (!part.trim()) {
+          frag.append(part);
+          continue;
+        }
+        const age = now - (wordRevealTimes[wordIndex] ??= now);
+        wordIndex++;
+        if (age >= WORD_FADE_MS) {
+          frag.append(part);
+          continue;
+        }
+        const span = document.createElement('span');
+        span.className = 'lc-word-fade';
+        span.style.animationDelay = `-${Math.round(age)}ms`;
+        span.textContent = part;
+        frag.append(span);
+        hasFadingWord = true;
+      }
+      if (hasFadingWord) node.replaceWith(frag);
+    }
+  }
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
   let isThinkingMessageFading = $state(false);
@@ -441,6 +517,10 @@
     thinkingMessageFadeTimeout = setTimeout(() => {
       thinkingMessageKey = nextKey;
       thinkingMessageIndex = nextIndex;
+      if (nextKey === 'assistant.thinking.final') {
+        synthesizingShownAt = performance.now();
+        finalThinkingPending = false;
+      }
       isThinkingMessageFading = false;
       thinkingMessageFadeTimeout = null;
       if (scheduleAfterFade) {
@@ -477,6 +557,8 @@
   }
 
   function showFinalThinkingMessage() {
+    if (thinkingMessageKey === 'assistant.thinking.final' || finalThinkingPending) return;
+    finalThinkingPending = true;
     fadeToThinkingMessage('assistant.thinking.final');
   }
 
@@ -1035,6 +1117,16 @@
     isSending = Object.keys(sendingSessionIds).length > 0;
 
     appetizerData = null;
+    streamingMarkdown = '';
+    wordRevealTimes = [];
+    streamTextDone = false;
+    pendingFeedback = null;
+    synthesizingShownAt = 0;
+    finalThinkingPending = false;
+    heldStreamText = '';
+    streamRevealed = false;
+    clearTimeout(streamRevealTimer);
+    streamRevealTimer = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1059,6 +1151,10 @@
       const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
           if (sessionId !== sendingSessionId) return;
+          if (progress?.type === 'content_done') {
+            streamTextDone = true;
+            return;
+          }
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
             // Dump the full served sentence (frame + topic titles) into `text` so
@@ -1073,12 +1169,26 @@
             scrollToLoadingElement();
             return;
           }
-          if (progress?.type === 'status') {
+          // Once the answer is streaming, leave the scroll position alone.
+          if (progress?.type === 'status' && !streamingMarkdown) {
             if (/synthesi/i.test(progress.text || '')) {
               showFinalThinkingMessage();
             }
             scrollToLoadingElement();
           }
+        },
+        onPartial: (delta) => {
+          if (!delta) return;
+          if (streamRevealed) {
+            streamingMarkdown += delta;
+            return;
+          }
+          // Always pass through "Synthesizing response" for a moment first.
+          heldStreamText += delta;
+          if (streamRevealTimer) return;
+          showFinalThinkingMessage();
+          const shownAt = synthesizingShownAt || performance.now() + getThinkingMessageFadeMs();
+          streamRevealTimer = setTimeout(revealHeldStream, Math.max(0, shownAt + SYNTHESIZING_MIN_MS - performance.now()));
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1098,6 +1208,10 @@
           : m
       );
 
+      // Let the last word's fade finish before swapping in the final message.
+      const didStream = !!streamingMarkdown;
+      if (didStream) await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
+
       // Add assistant response
       const assistantMessage = {
         messageId: response.messageId,
@@ -1108,17 +1222,23 @@
         timestamp: response.timestamp,
         status: 'sent',
         traceId: response.traceId || null,
-        feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: appetizerData ? {...appetizerData} : null
+        appetizerData: appetizerData ? {...appetizerData} : null,
+        // Already on screen as streamed text, so don't animate it in again.
+        noEntryAnimation: didStream,
+        feedback: pendingFeedback
       };
+      if (feedbackModalMessageId === PENDING_FEEDBACK_ID) {
+        feedbackModalMessageId = assistantMessage.messageId;
+      }
 
       const completedMessages = [...sentMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
         messages = completedMessages;
         saveMessagesToStorage();
-        scrollToResponseStart();
+        // A streamed answer is already in view; jumping to its start would be jarring.
+        if (!didStream) scrollToResponseStart();
       } else {
         setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, completedMessages);
       }
@@ -1196,6 +1316,9 @@
     } finally {
       setSessionSending(sendingSessionId, false);
       isSending = Object.keys(sendingSessionIds).length > 0;
+      clearTimeout(streamRevealTimer);
+      streamRevealTimer = null;
+      streamingMarkdown = '';
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
         appetizerData = null;
@@ -1211,8 +1334,9 @@
   }
 
   async function handleFeedback(messageId, score) {
+    const isPending = messageId === PENDING_FEEDBACK_ID;
     const target = messages.find(m => m.messageId === messageId);
-    if (!target?.traceId || !apiBaseUrl) return;
+    if (!isPending && (!target?.traceId || !apiBaseUrl)) return;
 
     // Show the feedback modal for both likes and dislikes
     feedbackModalMessageId = messageId;
@@ -1222,6 +1346,10 @@
     showFeedbackModal = true;
 
     // Update UI immediately to show selection
+    if (isPending) {
+      pendingFeedback = feedbackType;
+      return;
+    }
     messages = messages.map(m =>
       m.messageId === messageId ? { ...m, feedback: feedbackType } : m
     );
@@ -1943,6 +2071,32 @@
         aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
+        {#snippet feedbackButtons(messageId, feedback)}
+          <div class="feedback">
+            <div class="feedback-buttons">
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_UP}
+                onclick={() => handleFeedback(messageId, 1)}
+                aria-label={$_('assistant.feedback.positive')}
+              >
+                {@html THUMBUP}
+              </button>
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_DOWN}
+                onclick={() => handleFeedback(messageId, 0)}
+                aria-label={$_('assistant.feedback.negative')}
+              >
+                {@html THUMBDOWN}
+              </button>
+            </div>
+            {#if feedback}
+              <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
+            {/if}
+          </div>
+        {/snippet}
+
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
           <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED} class:no-entry-animation={feedbackProps?.noEntryAnimation}>
             <div class="message-content">
@@ -1955,29 +2109,7 @@
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
-                <div class="feedback">
-                  <div class="feedback-buttons">
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_UP}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('assistant.feedback.positive')}
-                    >
-                      {@html THUMBUP}
-                    </button>
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_DOWN}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('assistant.feedback.negative')}
-                    >
-                      {@html THUMBDOWN}
-                    </button>
-                  </div>
-                  {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
-                  {/if}
-                </div>
+                {@render feedbackButtons(feedbackProps.messageId, feedbackProps.feedback)}
               {/if}
             </div>
           </div>
@@ -2034,16 +2166,30 @@
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
-                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
-              {/if}
-              <div class="lc-thinking-block">
-                <div class="lc-thinking-step">
-                  <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
-                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                    <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
-                  </span>
+                <div in:fade={{ duration: topicsAppearMs() }}>
+                  <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
                 </div>
-              </div>
+              {/if}
+              {#if streamingMarkdown}
+                <div class="lc-streaming-answer">
+                  <div class="message-content lc-streaming-content" class:is-writing={!streamTextDone} bind:this={streamEl}></div>
+                  {#if streamTextDone}
+                    <div class="message-meta">
+                      {@render feedbackButtons(PENDING_FEEDBACK_ID, pendingFeedback)}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+              {#if !(streamingMarkdown && streamTextDone)}
+                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
+                  <div class="lc-thinking-step">
+                    <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                    </span>
+                  </div>
+                </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -3261,7 +3407,31 @@
     from { background-position: 0% 0; }
     to { background-position: 100% 0; }
   }
+  /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
+  .lc-streaming-content.is-writing :global(> :last-child) {
+    margin-bottom: 0;
+  }
+  .lc-thinking-block.is-writing {
+    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+  }
+  .lc-thinking-block.is-writing .lc-thinking-label-base {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  /* Streaming: each new word fades in */
+  .lc-streaming-content :global(.lc-word-fade) {
+    animation: lc-word-fade 400ms ease-out both;
+  }
+  @keyframes lc-word-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
   @media (prefers-reduced-motion: reduce) {
+    .lc-streaming-content :global(.lc-word-fade) {
+      animation: none;
+    }
     .lc-thinking-label-wrap {
       transition: none;
     }
