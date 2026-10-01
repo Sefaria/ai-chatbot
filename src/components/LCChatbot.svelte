@@ -1132,7 +1132,12 @@
         },
         onPartial: (delta) => {
           if (!delta) return;
-          if (!streamingMarkdown) fadeToThinkingMessage('assistant.loading.writing');
+          if (!streamingMarkdown) {
+            // Switch straight to the static "Writing…" label, with no fade.
+            clearThinkingMessageTimers();
+            isThinkingMessageFading = false;
+            thinkingMessageKey = 'assistant.loading.writing';
+          }
           streamingMarkdown += delta;
         },
         onError: (error) => {
@@ -2102,7 +2107,7 @@
               {#if streamingMarkdown}
                 <div class="message-content lc-streaming-content" bind:this={streamEl}></div>
               {/if}
-              <div class="lc-thinking-block">
+              <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
                 <div class="lc-thinking-step">
                   <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                   <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
@@ -3327,6 +3332,19 @@
     from { background-position: 0% 0; }
     to { background-position: 100% 0; }
   }
+  /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
+  .lc-streaming-content :global(> :last-child) {
+    margin-bottom: 0;
+  }
+  .lc-thinking-block.is-writing {
+    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+  }
+  .lc-thinking-block.is-writing .lc-thinking-label-base {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
   /* Streaming: each new word fades in */
   .lc-streaming-content :global(.lc-word-fade) {
     animation: lc-word-fade 400ms ease-out both;
