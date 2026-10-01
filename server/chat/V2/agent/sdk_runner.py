@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import collections
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -66,19 +64,9 @@ class ClaudeSDKRunner:
             first_final_text_delta_notified = True
             on_first_final_text_delta()
 
-        # POC diagnostics: which message types arrive, to debug missing streaming.
-        message_counts: collections.Counter[str] = collections.Counter()
-        first_stream_event: str | None = None
-
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
             async for message in client.receive_response():
-                message_counts[type(message).__name__] += 1
-                if isinstance(message, self.stream_event_cls):
-                    event = getattr(message, "event", None)
-                    message_counts[f"event:{type(event).__name__}:{getattr(event, 'get', lambda _k: None)('type')}"] += 1
-                    if first_stream_event is None:
-                        first_stream_event = repr(message)[:300]
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
                 if isinstance(message, self.result_message_cls):
@@ -119,13 +107,6 @@ class ClaudeSDKRunner:
                         pending_first_text_delta_elapsed_s = None
 
             trace_id = getattr(client, "trace_id", None) or getattr(client, "last_trace_id", None)
-
-        print(
-            f"STREAM DIAG include_partial={getattr(options, 'include_partial_messages', 'n/a')} "
-            f"counts={dict(message_counts)} first_stream_event={first_stream_event}",
-            file=sys.stderr,
-            flush=True,
-        )
 
         return SDKRunResult(
             final_text=final_text,
