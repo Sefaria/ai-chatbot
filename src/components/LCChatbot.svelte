@@ -47,8 +47,16 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    persona: personaProp = ''
   } = $props();
+
+  // Host persona (Library Next). Svelte re-runs this when the attribute changes at runtime,
+  // so starter prompts and the request context follow it. Unknown values are ignored.
+  const PERSONAS = ['newcomer', 'learner', 'educator', 'scholar'];
+  let persona = $derived(PERSONAS.includes(String(personaProp || '').trim().toLowerCase())
+    ? String(personaProp).trim().toLowerCase()
+    : '');
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -1086,7 +1094,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang);
+      }, interfaceLang, persona);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
