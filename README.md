@@ -52,6 +52,9 @@ Visit `http://localhost:5173` for the local widget.
 | `api-base-url` | string | Yes | Base URL for the chat API |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
+| `persona` | `"newcomer"` \| `"learner"` \| `"educator"` \| `"scholar"` | No | Persona-aware prompting and starter prompts (see `docs/library-next-embed.md`) |
+
+See `src/CLAUDE.md` for the full attribute reference.
 
 Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
 

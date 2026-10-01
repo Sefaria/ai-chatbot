@@ -60,6 +60,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `persona` | `"newcomer"` \| `"learner"` \| `"educator"` \| `"scholar"` | No | Host persona (Library Next). Sent as `context.persona` on every chat request, selects the starter prompts in the empty state; unknown values are ignored. Observed at runtime. See `docs/library-next-embed.md` |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
