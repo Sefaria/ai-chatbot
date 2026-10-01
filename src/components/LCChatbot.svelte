@@ -14,6 +14,7 @@
     deleteConversation
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
+  import { fade, slide } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -91,6 +92,15 @@
   const WORD_FADE_MS = 400;
   let wordRevealTimes = [];
   let streamTextDone = $state(false);
+  // Thumbs show as soon as the streamed text ends, before the final message
+  // (and its traceId) arrives; a click is held under this id until then.
+  const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
+  let pendingFeedback = $state(null);
+  const TOPICS_APPEAR_MS = 300;
+
+  function topicsAppearMs() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TOPICS_APPEAR_MS;
+  }
 
   $effect(() => {
     if (!streamEl) return;
@@ -1086,6 +1096,7 @@
     streamingMarkdown = '';
     wordRevealTimes = [];
     streamTextDone = false;
+    pendingFeedback = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1178,13 +1189,16 @@
         timestamp: response.timestamp,
         status: 'sent',
         traceId: response.traceId || null,
-        feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
         appetizerData: appetizerData ? {...appetizerData} : null,
         // Already on screen as streamed text, so don't animate it in again.
-        noEntryAnimation: didStream
+        noEntryAnimation: didStream,
+        feedback: pendingFeedback
       };
+      if (feedbackModalMessageId === PENDING_FEEDBACK_ID) {
+        feedbackModalMessageId = assistantMessage.messageId;
+      }
 
       const completedMessages = [...sentMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
@@ -1285,8 +1299,9 @@
   }
 
   async function handleFeedback(messageId, score) {
+    const isPending = messageId === PENDING_FEEDBACK_ID;
     const target = messages.find(m => m.messageId === messageId);
-    if (!target?.traceId || !apiBaseUrl) return;
+    if (!isPending && (!target?.traceId || !apiBaseUrl)) return;
 
     // Show the feedback modal for both likes and dislikes
     feedbackModalMessageId = messageId;
@@ -1296,6 +1311,10 @@
     showFeedbackModal = true;
 
     // Update UI immediately to show selection
+    if (isPending) {
+      pendingFeedback = feedbackType;
+      return;
+    }
     messages = messages.map(m =>
       m.messageId === messageId ? { ...m, feedback: feedbackType } : m
     );
@@ -2017,6 +2036,32 @@
         aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
+        {#snippet feedbackButtons(messageId, feedback)}
+          <div class="feedback">
+            <div class="feedback-buttons">
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_UP}
+                onclick={() => handleFeedback(messageId, 1)}
+                aria-label={$_('assistant.feedback.positive')}
+              >
+                {@html THUMBUP}
+              </button>
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_DOWN}
+                onclick={() => handleFeedback(messageId, 0)}
+                aria-label={$_('assistant.feedback.negative')}
+              >
+                {@html THUMBDOWN}
+              </button>
+            </div>
+            {#if feedback}
+              <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
+            {/if}
+          </div>
+        {/snippet}
+
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
           <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED} class:no-entry-animation={feedbackProps?.noEntryAnimation}>
             <div class="message-content">
@@ -2029,29 +2074,7 @@
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
-                <div class="feedback">
-                  <div class="feedback-buttons">
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_UP}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('assistant.feedback.positive')}
-                    >
-                      {@html THUMBUP}
-                    </button>
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_DOWN}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('assistant.feedback.negative')}
-                    >
-                      {@html THUMBDOWN}
-                    </button>
-                  </div>
-                  {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
-                  {/if}
-                </div>
+                {@render feedbackButtons(feedbackProps.messageId, feedbackProps.feedback)}
               {/if}
             </div>
           </div>
@@ -2108,10 +2131,21 @@
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
-                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                <div in:slide={{ duration: topicsAppearMs() }}>
+                  <div in:fade={{ duration: topicsAppearMs() }}>
+                    <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                  </div>
+                </div>
               {/if}
               {#if streamingMarkdown}
-                <div class="message-content lc-streaming-content" bind:this={streamEl}></div>
+                <div class="lc-streaming-answer">
+                  <div class="message-content lc-streaming-content" class:is-writing={!streamTextDone} bind:this={streamEl}></div>
+                  {#if streamTextDone}
+                    <div class="message-meta">
+                      {@render feedbackButtons(PENDING_FEEDBACK_ID, pendingFeedback)}
+                    </div>
+                  {/if}
+                </div>
               {/if}
               {#if !(streamingMarkdown && streamTextDone)}
                 <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
@@ -3341,7 +3375,7 @@
     to { background-position: 100% 0; }
   }
   /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
-  .lc-streaming-content :global(> :last-child) {
+  .lc-streaming-content.is-writing :global(> :last-child) {
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
