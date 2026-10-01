@@ -3,13 +3,14 @@
 // `partial` SSE events at a model-like pace.
 //
 //   node dev/mock-stream-server.mjs            # port 8001 (vite proxies /api here)
-//   MOCK_TOKENS_PER_SEC=30 node dev/mock-stream-server.mjs
+//   MOCK_TOKENS_PER_SEC=60 node dev/mock-stream-server.mjs   # faster
 //   MOCK_STALLS=0 node dev/mock-stream-server.mjs   # no stalls
 
 import http from 'node:http';
 
 const PORT = Number(process.env.PORT || 8001);
-const TOKENS_PER_SEC = Number(process.env.MOCK_TOKENS_PER_SEC || 60);
+// Slower than the raw model, to match the delivery rate seen on PRs 159/161.
+const TOKENS_PER_SEC = Number(process.env.MOCK_TOKENS_PER_SEC || 25);
 const STALLS = process.env.MOCK_STALLS !== '0';
 
 // Stalls like our backend's, randomized in both spacing and length: one every
