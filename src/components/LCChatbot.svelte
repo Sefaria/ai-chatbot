@@ -1616,6 +1616,14 @@
     }
   }
 
+  // Persona starter prompts shown in the empty state (3 per persona, from the locale files).
+  let starterPrompts = $derived(persona ? [1, 2, 3].map((n) => $_(`assistant.starter.${persona}.${n}`)) : []);
+
+  function sendStarterPrompt(text) {
+    inputText = text;
+    handleSend();
+  }
+
   function getEmptyStateMessage() {
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
@@ -2001,6 +2009,15 @@
         {#if messages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
             {@render assistantBubble(getEmptyStateMessage(), false, null)}
+            {#if starterPrompts.length}
+              <div class="starter-prompts" aria-label={$_('assistant.starter.aria')}>
+                {#each starterPrompts as prompt (prompt)}
+                  <button type="button" class="starter-prompt" data-feature-name="starter_prompt" onclick={() => sendStarterPrompt(prompt)} disabled={isCurrentSessionSending || limitReached}>
+                    {prompt}
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -3045,6 +3062,40 @@
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
+  }
+
+  .starter-prompts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 8px;
+    padding-inline-start: 4px;
+  }
+
+  .starter-prompt {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: 10px;
+    background: var(--lc-bg);
+    color: var(--lc-text);
+    font-family: var(--lc-font);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: start;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .starter-prompt:hover:not(:disabled) {
+    background: var(--lc-bg-tertiary);
+    border-color: var(--lc-primary);
+  }
+
+  .starter-prompt:disabled {
+    color: var(--lc-disabled-text);
+    cursor: default;
   }
 
   .message.assistant .message-content :global(ul),
