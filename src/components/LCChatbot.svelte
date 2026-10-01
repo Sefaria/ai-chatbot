@@ -14,7 +14,7 @@
     deleteConversation
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
-  import { fade, slide } from 'svelte/transition';
+  import { fade } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -96,7 +96,25 @@
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
   let pendingFeedback = $state(null);
-  const TOPICS_APPEAR_MS = 300;
+  const TOPICS_APPEAR_MS = 250;
+  // Before the answer starts streaming, "Synthesizing response" stays up for
+  // at least this long; text that arrives sooner is held until then.
+  const SYNTHESIZING_MIN_MS = 2000;
+  let synthesizingShownAt = 0;
+  let finalThinkingPending = false;
+  let heldStreamText = '';
+  let streamRevealTimer = null;
+  let streamRevealed = false;
+
+  function revealHeldStream() {
+    streamRevealTimer = null;
+    streamRevealed = true;
+    // Switch straight to the static "Writing…" label, with no fade.
+    clearThinkingMessageTimers();
+    isThinkingMessageFading = false;
+    thinkingMessageKey = 'assistant.loading.writing';
+    streamingMarkdown = heldStreamText;
+  }
 
   function topicsAppearMs() {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TOPICS_APPEAR_MS;
@@ -499,6 +517,10 @@
     thinkingMessageFadeTimeout = setTimeout(() => {
       thinkingMessageKey = nextKey;
       thinkingMessageIndex = nextIndex;
+      if (nextKey === 'assistant.thinking.final') {
+        synthesizingShownAt = performance.now();
+        finalThinkingPending = false;
+      }
       isThinkingMessageFading = false;
       thinkingMessageFadeTimeout = null;
       if (scheduleAfterFade) {
@@ -535,6 +557,8 @@
   }
 
   function showFinalThinkingMessage() {
+    if (thinkingMessageKey === 'assistant.thinking.final' || finalThinkingPending) return;
+    finalThinkingPending = true;
     fadeToThinkingMessage('assistant.thinking.final');
   }
 
@@ -1097,6 +1121,12 @@
     wordRevealTimes = [];
     streamTextDone = false;
     pendingFeedback = null;
+    synthesizingShownAt = 0;
+    finalThinkingPending = false;
+    heldStreamText = '';
+    streamRevealed = false;
+    clearTimeout(streamRevealTimer);
+    streamRevealTimer = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1149,13 +1179,16 @@
         },
         onPartial: (delta) => {
           if (!delta) return;
-          if (!streamingMarkdown) {
-            // Switch straight to the static "Writing…" label, with no fade.
-            clearThinkingMessageTimers();
-            isThinkingMessageFading = false;
-            thinkingMessageKey = 'assistant.loading.writing';
+          if (streamRevealed) {
+            streamingMarkdown += delta;
+            return;
           }
-          streamingMarkdown += delta;
+          // Always pass through "Synthesizing response" for a moment first.
+          heldStreamText += delta;
+          if (streamRevealTimer) return;
+          showFinalThinkingMessage();
+          const shownAt = synthesizingShownAt || performance.now() + getThinkingMessageFadeMs();
+          streamRevealTimer = setTimeout(revealHeldStream, Math.max(0, shownAt + SYNTHESIZING_MIN_MS - performance.now()));
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1283,6 +1316,8 @@
     } finally {
       setSessionSending(sendingSessionId, false);
       isSending = Object.keys(sendingSessionIds).length > 0;
+      clearTimeout(streamRevealTimer);
+      streamRevealTimer = null;
       streamingMarkdown = '';
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
@@ -2131,10 +2166,8 @@
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
-                <div in:slide={{ duration: topicsAppearMs() }}>
-                  <div in:fade={{ duration: topicsAppearMs() }}>
-                    <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
-                  </div>
+                <div in:fade={{ duration: topicsAppearMs() }}>
+                  <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
                 </div>
               {/if}
               {#if streamingMarkdown}
