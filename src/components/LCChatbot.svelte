@@ -82,6 +82,53 @@
   let resizeEdge = $state(null);
   
   let appetizerData = $state(null);
+  let streamingMarkdown = $state('');
+  let streamEl = $state(null);
+
+  // Streaming UX: the answer shows as the server sends it, and each new word
+  // fades in. The view doesn't auto-scroll, so the reader stays at the top of
+  // the response.
+  const WORD_FADE_MS = 400;
+  let wordRevealTimes = [];
+
+  $effect(() => {
+    if (!streamEl) return;
+    streamEl.innerHTML = renderMarkdown(streamingMarkdown);
+    fadeInNewWords(streamEl);
+  });
+
+  // The streamed HTML is re-rendered on every update, so each word keeps the
+  // time it first appeared and resumes its fade from there (negative delay).
+  function fadeInNewWords(root) {
+    const now = performance.now();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let wordIndex = 0;
+    for (const node of textNodes) {
+      const frag = document.createDocumentFragment();
+      let hasFadingWord = false;
+      for (const part of node.data.split(/(\s+)/)) {
+        if (!part.trim()) {
+          frag.append(part);
+          continue;
+        }
+        const age = now - (wordRevealTimes[wordIndex] ??= now);
+        wordIndex++;
+        if (age >= WORD_FADE_MS) {
+          frag.append(part);
+          continue;
+        }
+        const span = document.createElement('span');
+        span.className = 'lc-word-fade';
+        span.style.animationDelay = `-${Math.round(age)}ms`;
+        span.textContent = part;
+        frag.append(span);
+        hasFadingWord = true;
+      }
+      if (hasFadingWord) node.replaceWith(frag);
+    }
+  }
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
   let isThinkingMessageFading = $state(false);
@@ -1035,6 +1082,8 @@
     isSending = Object.keys(sendingSessionIds).length > 0;
 
     appetizerData = null;
+    streamingMarkdown = '';
+    wordRevealTimes = [];
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1073,12 +1122,18 @@
             scrollToLoadingElement();
             return;
           }
-          if (progress?.type === 'status') {
+          // Once the answer is streaming, leave the scroll position alone.
+          if (progress?.type === 'status' && !streamingMarkdown) {
             if (/synthesi/i.test(progress.text || '')) {
               showFinalThinkingMessage();
             }
             scrollToLoadingElement();
           }
+        },
+        onPartial: (delta) => {
+          if (!delta) return;
+          if (!streamingMarkdown) fadeToThinkingMessage('assistant.loading.writing');
+          streamingMarkdown += delta;
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1098,6 +1153,10 @@
           : m
       );
 
+      // Let the last word's fade finish before swapping in the final message.
+      const didStream = !!streamingMarkdown;
+      if (didStream) await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
+
       // Add assistant response
       const assistantMessage = {
         messageId: response.messageId,
@@ -1111,14 +1170,17 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: appetizerData ? {...appetizerData} : null
+        appetizerData: appetizerData ? {...appetizerData} : null,
+        // Already on screen as streamed text, so don't animate it in again.
+        noEntryAnimation: didStream
       };
 
       const completedMessages = [...sentMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
         messages = completedMessages;
         saveMessagesToStorage();
-        scrollToResponseStart();
+        // A streamed answer is already in view; jumping to its start would be jarring.
+        if (!didStream) scrollToResponseStart();
       } else {
         setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, completedMessages);
       }
@@ -1196,6 +1258,7 @@
     } finally {
       setSessionSending(sendingSessionId, false);
       isSending = Object.keys(sendingSessionIds).length > 0;
+      streamingMarkdown = '';
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
         appetizerData = null;
@@ -2035,6 +2098,9 @@
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
                 <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+              {/if}
+              {#if streamingMarkdown}
+                <div class="message-content lc-streaming-content" bind:this={streamEl}></div>
               {/if}
               <div class="lc-thinking-block">
                 <div class="lc-thinking-step">
@@ -3261,7 +3327,18 @@
     from { background-position: 0% 0; }
     to { background-position: 100% 0; }
   }
+  /* Streaming: each new word fades in */
+  .lc-streaming-content :global(.lc-word-fade) {
+    animation: lc-word-fade 400ms ease-out both;
+  }
+  @keyframes lc-word-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
   @media (prefers-reduced-motion: reduce) {
+    .lc-streaming-content :global(.lc-word-fade) {
+      animation: none;
+    }
     .lc-thinking-label-wrap {
       transition: none;
     }
