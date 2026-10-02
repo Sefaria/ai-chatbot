@@ -58,7 +58,6 @@ No reload or re-mount is needed.
        └─ src/lib/api.js                context.persona on POST /api/v2/chat/stream
             └─ server/chat/serializers.py        ChoiceField(PERSONAS); unknown value → 400 (widget never sends one)
                  ├─ server/chat/V2/persona.py     resolve_persona() → str | None
-                 ├─ ChatMessage.persona           persisted on the user message (migration 0013)
                  ├─ MessageContext.persona        carried through the agent layer
                  ├─ trace_logger.py               Braintrust span metadata.persona
                  └─ prompt_fragments.build_prompt core prompt → "Reader profile:" guidance → summary → page → turn
@@ -98,7 +97,8 @@ the prompt guidance and trace tagging are missing.
 
 ## What is simulated
 
-- Nothing on the chatbot side is faked: persona changes the prompt, is persisted and traced.
+- Nothing on the chatbot side is faked: persona changes the prompt and is tagged on the trace. It is
+  request-scoped (no DB column), so per-persona analysis uses Braintrust `metadata.persona`.
 - Starter prompts are static strings per persona and language (Weblate-managed), not
   generated from the page or the user's history.
 - Library Next's own "AI-generated discussion questions" are templates on the host side; the

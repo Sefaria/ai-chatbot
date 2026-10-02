@@ -402,7 +402,6 @@ def chat_stream_v2(request):
         page_url=page_url,
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
-        persona=persona or "",
     )
     if appetizer_metrics.get("appetizer_data"):
         user_message.appetizer_data = appetizer_metrics["appetizer_data"]

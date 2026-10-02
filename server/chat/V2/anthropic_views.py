@@ -248,7 +248,6 @@ def chat_anthropic_v2(request):
         turn_id=turn_id,
         content=user_message_text,
         flow=resolved_origin,
-        persona=persona or "",
     )
 
     is_staff = request.headers.get("X-Is-Staff", "").lower() == "true"

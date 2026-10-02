@@ -265,7 +265,6 @@ class ChatMessage(models.Model):
     page_url = models.URLField(max_length=2000, blank=True, default="")
     locale = models.CharField(max_length=10, blank=True, default="")
     client_version = models.CharField(max_length=20, blank=True, default="")
-    persona = models.CharField(max_length=20, blank=True, default="")
 
     # Flow context (denormalized for easy querying)
     flow = models.CharField(max_length=20, blank=True, default="")
