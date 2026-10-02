@@ -133,5 +133,18 @@
     "assistant.history.delete_modal.cancel": "ביטול",
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
-    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן."
+    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
+    "assistant.starter.aria": "שאלות מוצעות",
+    "assistant.starter.newcomer.1": "מה זה התלמוד, ובמה הוא שונה מהתורה?",
+    "assistant.starter.newcomer.2": "מאיפה כדאי להתחיל לקרוא אם אני חדש בטקסטים יהודיים?",
+    "assistant.starter.newcomer.3": "הסבר לי את פרשת השבוע בשפה פשוטה.",
+    "assistant.starter.learner.1": "בחן אותי על מה שקראתי עכשיו.",
+    "assistant.starter.learner.2": "סכם לי את הטיעון המרכזי בקטע הזה בשלוש נקודות.",
+    "assistant.starter.learner.3": "אילו פרשנויות כדאי לי לקרוא בהמשך על הטקסט הזה?",
+    "assistant.starter.educator.1": "תן לי שלוש שאלות לדיון להוראת הטקסט הזה.",
+    "assistant.starter.educator.2": "עזור לי לבנות שיעור של 45 דקות סביב פרשת השבוע.",
+    "assistant.starter.educator.3": "הצע מקורות על הכרת הטוב שמתאימים לכיתת חטיבת ביניים.",
+    "assistant.starter.scholar.1": "אילו כתבי יד ונוסחים קיימים לטקסט הזה, ובמה הם נבדלים?",
+    "assistant.starter.scholar.2": "השווה בין קריאת רש\"י לקריאת הרמב\"ם בקטע הזה.",
+    "assistant.starter.scholar.3": "עקוב אחר המקורות המוקדמים ביותר להלכה זו ואחר התפתחותה המאוחרת."
 }

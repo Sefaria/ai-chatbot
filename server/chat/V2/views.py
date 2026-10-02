@@ -53,6 +53,7 @@ from .agent import AgentProgressUpdate, ConversationMessage, MessageContext, get
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
+from .persona import resolve_persona
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
@@ -373,6 +374,7 @@ def chat_stream_v2(request):
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
     labs_enabled = context.get("labs", prompt_slugs.get("labs", False))
+    persona = resolve_persona(context.get("persona"))
 
     appetizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     appetizer_executor.submit(run_appetizer)
@@ -414,6 +416,7 @@ def chat_stream_v2(request):
         origin=resolve_origin(context.get("origin")),
         is_staff=context.get("isStaff", False),
         labs=labs_enabled,
+        persona=persona,
         user_id=actor.user_id,
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,

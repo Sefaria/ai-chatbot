@@ -32,6 +32,8 @@ class BraintrustTraceLogger:
             span_metadata["origin"] = context.origin
         if context.is_staff:
             span_metadata["is_staff"] = True
+        if context.persona:
+            span_metadata["persona"] = context.persona
         if context.user_id:
             span_metadata["user_id"] = context.user_id
         if context.turn_number is not None:

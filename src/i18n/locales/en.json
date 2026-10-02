@@ -133,5 +133,18 @@
     "assistant.history.delete_modal.cancel": "Cancel",
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
-    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here."
+    "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
+    "assistant.starter.aria": "Suggested questions",
+    "assistant.starter.newcomer.1": "What is the Talmud, and how is it different from the Torah?",
+    "assistant.starter.newcomer.2": "Where should I start reading if I'm new to Jewish texts?",
+    "assistant.starter.newcomer.3": "Explain this week's Torah portion in plain language.",
+    "assistant.starter.learner.1": "Quiz me on what I just read.",
+    "assistant.starter.learner.2": "Summarize the main argument of this passage in three points.",
+    "assistant.starter.learner.3": "Which commentaries should I read next on this text?",
+    "assistant.starter.educator.1": "Give me three discussion questions for teaching this text.",
+    "assistant.starter.educator.2": "Help me build a 45-minute lesson around this week's Torah portion.",
+    "assistant.starter.educator.3": "Suggest sources on gratitude that suit a middle-school class.",
+    "assistant.starter.scholar.1": "Which manuscripts and versions exist for this text, and how do they differ?",
+    "assistant.starter.scholar.2": "Compare how Rashi and Rambam read this passage.",
+    "assistant.starter.scholar.3": "Trace the earliest sources for this halakhah and its later development."
 }

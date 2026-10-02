@@ -176,6 +176,16 @@
           Clear Storage
         </button>
       </div>
+      <div class="control-row">
+        <label for="persona-select">Persona</label>
+        <select id="persona-select" onchange="const el = document.querySelector('lc-chatbot'); this.value ? el.setAttribute('persona', this.value) : el.removeAttribute('persona');">
+          <option value="">none</option>
+          <option value="newcomer">newcomer</option>
+          <option value="learner">learner</option>
+          <option value="educator">educator</option>
+          <option value="scholar">scholar</option>
+        </select>
+      </div>
     </div>
 
     <div class="api-note">
