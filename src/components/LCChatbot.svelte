@@ -677,26 +677,33 @@
     };
   });
 
-  // A question from the bar starts a new chat and sends it there, so the sheet doesn't open
-  // on (and scroll through) the previous conversation. An empty bar just opens the assistant.
-  async function sendFromBar(e) {
-    e?.preventDefault();
-    const question = inputText.trim();
-    trackAssistantClick(question ? 'bottom_bar_send' : 'bottom_bar_open');
-    document.activeElement?.blur?.();
+  // A question asked from outside the panel starts a new chat and sends it there, so the panel
+  // doesn't open on (and scroll through) the previous conversation. No question just opens it.
+  async function askInNewChat(question) {
+    question = question.trim();
     if (question && messages.length > 0) handleNewChat();
     inputText = question; // handleNewChat clears it
-    openPanel();
+    if (!isOpen) openPanel();
     if (!question) return;
     await tick();
     handleSend();
   }
 
-  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu.
+  function sendFromBar(e) {
+    e?.preventDefault();
+    const question = inputText.trim();
+    trackAssistantClick(question ? 'bottom_bar_send' : 'bottom_bar_open');
+    document.activeElement?.blur?.();
+    askInNewChat(question);
+  }
+
+  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu,
+  // and can pass a question to ask, e.g. from their search box.
   $effect(() => {
     function onOpenRequest(e) {
-      if (!isOpen) openPanel();
       trackAssistantClick(e.detail?.source || 'host_open');
+      if (e.detail?.question) askInNewChat(e.detail.question);
+      else if (!isOpen) openPanel();
     }
     document.addEventListener('chatbot:open', onOpenRequest);
     return () => document.removeEventListener('chatbot:open', onOpenRequest);
