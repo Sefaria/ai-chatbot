@@ -46,6 +46,9 @@ export const STORAGE_KEYS = {
   // Logged-out visitors: stable anonymous id, and whether its free responses are used up
   ANON_ID: 'anon_id',
   ANON_LOGIN_REQUIRED: 'anon_login_required',
+  // Set when a logged-out visitor goes to log in from the limit banner, so the assistant
+  // reopens on their conversation once they're back: { sessionId, at }
+  RESUME_AFTER_LOGIN: 'resume_after_login',
   // 'user' | 'anon' — the identity the stored session belongs to
   IDENTITY: 'identity',
   // Signed-in user's "Personalize Responses" answers, sent with every message

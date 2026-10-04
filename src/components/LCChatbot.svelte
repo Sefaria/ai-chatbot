@@ -304,8 +304,16 @@
     (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
   );
 
+  // How long after leaving for the login page the assistant still reopens on the return
+  const RESUME_AFTER_LOGIN_MS = 30 * 60 * 1000;
+
   // Initialize on mount
   $effect(() => {
+    // Back from logging in via the limit banner: reopen on the conversation the visitor left
+    const resume = userId ? getStorage(STORAGE_KEYS.RESUME_AFTER_LOGIN, null) : null;
+    if (resume) setStorage(STORAGE_KEYS.RESUME_AFTER_LOGIN, null);
+    const resumeAfterLogin = !!resume && Date.now() - resume.at < RESUME_AFTER_LOGIN_MS;
+
     // A stored session belongs to whoever started it; logging in or out starts a new one.
     const identity = userId ? 'user' : 'anon';
     const identityChanged = getStorage(STORAGE_KEYS.IDENTITY, identity) !== identity;
@@ -329,7 +337,8 @@
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
-    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
+    // (Returning from login opens it below, through openPanel.)
+    isOpen = !resumeAfterLogin && !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -363,6 +372,16 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = savedMessages;
+
+    if (resumeAfterLogin) {
+      // The server won't let a signed-in user continue the anonymous session, so the new
+      // session starts by showing the conversation they left (the assistant doesn't see it).
+      if (!messages.length && resume.sessionId) {
+        messages = getStorage(STORAGE_KEYS.MESSAGES + ':' + resume.sessionId, []);
+        saveMessagesToStorage();
+      }
+      untrack(() => openPanel());
+    }
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
@@ -1278,11 +1297,14 @@
 
   // Built at click time: the host navigates client-side, so the page can change under us.
   // A real page load, so the message list's in-page link routing must not see this click.
+  // The assistant stays closed on the login page and reopens here once they're back.
   function goToLogin(e) {
     e.stopPropagation();
     const here = window.location.pathname + window.location.search + window.location.hash;
     const separator = loginUrl.includes('?') ? '&' : '?';
     e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
+    setStorage(STORAGE_KEYS.RESUME_AFTER_LOGIN, { sessionId, at: Date.now() });
+    setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
   }
 
   function addLocalMessage(role, content, extra = {}) {
