@@ -133,5 +133,8 @@
     "assistant.history.delete_modal.cancel": "ביטול",
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
-    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן."
+    "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
+    "assistant.bar.placeholder": "על מה תרצו ללמוד?",
+    "assistant.bar.aria": "שאלו את עוזר הספרייה",
+    "assistant.pill.label": "מה אתם לומדים היום?"
 }
