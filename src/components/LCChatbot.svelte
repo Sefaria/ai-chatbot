@@ -2418,9 +2418,9 @@
   {/if}
 </div>
 
-<!-- POC only: switch between launcher versions on phones -->
-{#if isFullscreen && !isOpen}
-  <PocToolbox config={poc} onSave={savePoc} />
+<!-- POC only: switch between launcher versions (desktop keeps the circle, so no entry choice there) -->
+{#if !isOpen}
+  <PocToolbox config={poc} onSave={savePoc} showEntry={isFullscreen} />
 {/if}
 
 <style>

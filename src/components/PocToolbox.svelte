@@ -1,7 +1,7 @@
 <script>
   // POC only: a floating toolbox for switching between versions of the phone launcher.
   // Delete this component (and its use in LCChatbot) before anything ships.
-  let { config, onSave } = $props();
+  let { config, onSave, showEntry = true } = $props();
 
   const GROUPS = [
     { key: 'entry', label: 'Entry point', options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
@@ -27,7 +27,7 @@
   <div class="poc-backdrop" onclick={() => { open = false; }} aria-hidden="true"></div>
   <div class="poc-panel" role="dialog" aria-label="POC toolbox" dir="ltr">
     <h2>POC toolbox</h2>
-    {#each GROUPS as group}
+    {#each GROUPS.filter(g => showEntry || g.key !== 'entry') as group}
       <fieldset>
         <legend>{group.label}</legend>
         <div class="poc-segments">
