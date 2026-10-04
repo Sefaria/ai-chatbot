@@ -237,7 +237,7 @@
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', headerSlot: 'afterDonate', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
@@ -247,6 +247,10 @@
   let pocPreview = $state(null);
   let pocEditingText = $state(false);
   let pocView = $derived(pocPreview ?? poc);
+  // The host's POC header item (Sefaria, lam-opus-penina) follows the toolbox live
+  $effect(() => {
+    document.dispatchEvent(new CustomEvent('chatbot:poc-config', { detail: { ...pocView } }));
+  });
   let hasBar = $derived(isFullscreen && !isOpen && pocView.entry !== 'circle');
   let barActive = $derived(pocView.entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
@@ -2437,8 +2441,8 @@
     onSave={savePoc}
     onPreview={(next) => { pocPreview = next; }}
     onEditingText={(editing) => { pocEditingText = editing; }}
-    showEntry={isFullscreen}
-    defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder') }}
+    phone={isFullscreen}
+    defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title') }}
   />
 {/if}
 

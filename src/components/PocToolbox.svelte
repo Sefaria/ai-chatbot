@@ -1,18 +1,21 @@
 <script>
-  // POC only: a floating toolbox for switching between versions of the phone launcher.
+  // POC only: a floating toolbox for switching between versions of the launcher.
   // Delete this component (and its use in LCChatbot) before anything ships.
   // While open, every change previews live (onPreview); Save keeps it, Close drops it.
-  let { config, onSave, onPreview, onEditingText, showEntry = true, defaultTexts = {} } = $props();
+  // `phone` picks the phone groups (entry point) or the desktop ones (Sefaria's header item).
+  let { config, onSave, onPreview, onEditingText, phone = true, defaultTexts = {} } = $props();
 
-  // Editable launcher text for the entries that have some (empty keeps the default)
-  const TEXT_FIELDS = { pill: ['pillText', 'Pill text'], bar: ['barText', 'Bar placeholder'] };
-  let textField = $derived(TEXT_FIELDS[draft.entry]);
-
+  // Each group can come with a text field (empty keeps the default text)
+  const ENTRY_TEXT = { pill: ['pillText', 'Pill text'], bar: ['barText', 'Bar placeholder'] };
   const GROUPS = [
-    { key: 'entry', label: 'Entry point', options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
+    { key: 'entry', label: 'Entry point', on: 'phone', text: (d) => ENTRY_TEXT[d.entry],
+      options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
+    { key: 'headerSlot', label: 'Header item position', on: 'desktop', text: () => ['headerText', 'Header item text'],
+      options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate'], ['beforeSearch', 'Before search']] },
     { key: 'color', label: 'Button color', options: [['blue', 'Sefaria blue'], ['purple', 'Purple']] },
     { key: 'icon', label: 'Icon (circle & pill)', options: [['logo', 'Samekh'], ['star', 'Star ✦']] }
   ];
+  let groups = $derived(GROUPS.filter(g => !g.on || g.on === (phone ? 'phone' : 'desktop')));
 
   let open = $state(false);
   let draft = $state({});
@@ -43,7 +46,7 @@
   <div class="poc-backdrop" onclick={close} aria-hidden="true"></div>
   <div class="poc-panel" role="dialog" aria-label="POC toolbox" dir="ltr">
     <h2>POC toolbox</h2>
-    {#each GROUPS.filter(g => showEntry || g.key !== 'entry') as group}
+    {#each groups as group}
       <fieldset>
         <legend>{group.label}</legend>
         <div class="poc-segments">
@@ -55,7 +58,8 @@
           {/each}
         </div>
       </fieldset>
-      {#if group.key === 'entry' && textField}
+      {@const textField = group.text?.(draft)}
+      {#if textField}
         <label class="poc-text">
           <span>{textField[1]}</span>
           <input
