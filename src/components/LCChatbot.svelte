@@ -3001,15 +3001,17 @@
     opacity: 1;
   }
 
-  /* Launcher color: Sefaria blue, or purple when picked in the POC toolbox */
+  /* Accent color (launcher, send buttons, header star): Sefaria blue, or purple when picked in the POC toolbox */
   .lc-chatbot-container {
     --lc-entry-bg: var(--brand-sefaria-blue);
     --lc-entry-bg-pressed: #0B1A2D;
+    --lc-entry-bg-hover: var(--lc-primary-hover);
   }
 
   .lc-chatbot-container.entry-purple {
     --lc-entry-bg: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple; not in our tokens */
     --lc-entry-bg-pressed: #4E2544; /* --purple-900 in sefaria-design-foundations */
+    --lc-entry-bg-hover: #965386; /* --purple-600 */
   }
 
   .lc-chatbot-pill {
@@ -3735,7 +3737,7 @@
        and a font-dependent mismatch would otherwise throw off centering. */
     line-height: inherit;
     letter-spacing: 0.36px;
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-entry-bg);
   }
 
   .header-actions {
@@ -4208,7 +4210,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
-    background: var(--brand-sefaria-blue);
+    background: var(--lc-entry-bg);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -4217,7 +4219,7 @@
   }
 
   .send-btn:hover:not(:disabled) {
-    background: var(--lc-primary-hover);
+    background: var(--lc-entry-bg-hover);
   }
 
   .send-btn:disabled {
