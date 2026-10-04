@@ -124,7 +124,7 @@
         // Switch straight to the static "Writing…" label, with no fade.
         clearThinkingMessageTimers();
         isThinkingMessageFading = false;
-        thinkingMessageKey = 'assistant.loading.writing';
+        thinkingMessageKey = 'assistant.writing';
         playStreamQueue();
       }, revealAt - performance.now());
       return;
