@@ -3134,12 +3134,14 @@
     transition: opacity 0.15s ease;
   }
 
-  /* Hover is scoped to the prompt bubble itself (not the timestamp/retry
-     row or the pin below it), so hovering the pin doesn't also reveal the
-     timestamp. :focus-within stays on the whole message for keyboard users
-     tabbing into the retry button or the pin link. */
+  /* Hover is scoped to the prompt bubble itself, and :focus-within to the
+     retry/timestamp row specifically (not the whole message) — neither the
+     pin nor its link should be a trigger. Focusing the pin to click or tab
+     to it would otherwise also reveal the timestamp AND (below) shift the
+     pin itself out from under the cursor mid-click, turning one click into
+     two. */
   .message-content:hover ~ .message-meta-row .message-timestamp,
-  .message.user:focus-within .message-timestamp {
+  .message-meta:focus-within .message-timestamp {
     opacity: 1;
   }
 
@@ -3161,7 +3163,7 @@
   }
 
   .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
-  .message.user:focus-within .message-meta:not(:has(.retry-btn)) ~ .message-location-tag {
+  .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
     transform: translateY(18px);
   }
 
