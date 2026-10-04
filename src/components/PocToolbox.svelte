@@ -10,8 +10,11 @@
   const GROUPS = [
     { key: 'entry', label: 'Entry point', on: 'phone', text: (d) => ENTRY_TEXT[d.entry],
       options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
+    { key: 'headerStyle', label: 'Header item style', on: 'desktop',
+      options: [['text', 'Star + text'], ['pill', 'Pill']] },
+    // The pill sits at an end of a group, never between two header links
     { key: 'headerSlot', label: 'Header item position', on: 'desktop', text: () => ['headerText', 'Header item text'],
-      options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate'], ['beforeSearch', 'Before search']] },
+      options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate', (d) => d.headerStyle !== 'pill'], ['beforeSearch', 'Before search']] },
     { key: 'color', label: 'Button color', options: [['blue', 'Sefaria blue'], ['purple', 'Purple']] },
     { key: 'icon', label: 'Icon (circle & pill)', options: [['logo', 'Samekh'], ['star', 'Star ✦']] }
   ];
@@ -20,6 +23,9 @@
   let open = $state(false);
   let draft = $state({});
 
+  $effect(() => {
+    if (draft.headerStyle === 'pill' && draft.headerSlot === 'beforeDonate') draft.headerSlot = 'afterDonate';
+  });
   $effect(() => {
     if (open) onPreview({ ...draft });
   });
@@ -50,7 +56,7 @@
       <fieldset>
         <legend>{group.label}</legend>
         <div class="poc-segments">
-          {#each group.options as [value, label]}
+          {#each group.options.filter(([, , shown]) => !shown || shown(draft)) as [value, label]}
             <label class:selected={draft[group.key] === value}>
               <input type="radio" name={group.key} {value} bind:group={draft[group.key]} />
               {label}

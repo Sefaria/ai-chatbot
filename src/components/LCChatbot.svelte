@@ -274,7 +274,7 @@
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', headerSlot: 'afterDonate', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
