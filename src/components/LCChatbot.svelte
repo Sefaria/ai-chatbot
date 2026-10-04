@@ -304,11 +304,25 @@
   let sheetOffset = $state(0);
   let sheetSettling = $state(false);
   let sheetDrag = null;
+  // POC split sheet: it rests half-height ('partial') or full height ('full'), and its header
+  // drags it between those and closed. splitBox is the space it sits in: the screen, or the
+  // part above the keyboard while typing.
+  let sheetDetent = $state('partial');
+  let sheetDragHeight = $state(null);
+  let splitBox = $state(null); // { top, space }
+  let splitHeights = $derived(splitBox && {
+    partial: Math.min(Math.round(window.innerHeight * SPLIT_SHEET_RATIO), splitBox.space),
+    full: splitBox.space
+  });
   // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
-  let sheetStyle = $derived(
-    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
-    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
-  );
+  let sheetStyle = $derived.by(() => {
+    if (splitSheet && splitHeights) {
+      const height = Math.max(0, Math.min(sheetDragHeight ?? splitHeights[sheetDetent], splitHeights.full));
+      return `top: ${splitBox.top + splitBox.space - height}px; height: ${height}px;`;
+    }
+    return (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+      (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '');
+  });
 
   // How long after leaving for the login page the assistant still reopens on the return
   const RESUME_AFTER_LOGIN_MS = 30 * 60 * 1000;
@@ -606,6 +620,7 @@
 
   function openPanel() {
     isOpen = true;
+    sheetDetent = 'partial';
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
@@ -634,7 +649,8 @@
   function startSheetDrag(e) {
     if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
+    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0,
+                  startHeight: splitHeights?.[sheetDetent] };
     sheetSettling = false;
   }
 
@@ -644,11 +660,39 @@
     if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
     sheetDrag.lastY = e.clientY;
     sheetDrag.lastT = e.timeStamp;
-    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
+    if (splitSheet && splitHeights) sheetDragHeight = sheetDrag.startHeight - (e.clientY - sheetDrag.startY);
+    else sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
+  }
+
+  // Split sheet: settle on the nearest of closed, half and full height. A flick moves one
+  // step in its direction from where the drag started.
+  function endSplitSheetDrag(e) {
+    const moving = e.timeStamp - sheetDrag.lastT < 100;
+    const { velocity, startHeight } = sheetDrag;
+    const height = sheetDragHeight ?? startHeight;
+    const order = ['closed', 'partial', 'full'];
+    const heightOf = { closed: 0, ...splitHeights };
+    let target;
+    if (moving && Math.abs(velocity) > SHEET_CLOSE_VELOCITY && Math.abs(height - startHeight) > 20) {
+      const from = order.indexOf(sheetDetent);
+      target = order[Math.max(0, Math.min(order.length - 1, from + (velocity > 0 ? -1 : 1)))];
+    } else {
+      target = order.reduce((best, d) => Math.abs(heightOf[d] - height) < Math.abs(heightOf[best] - height) ? d : best);
+    }
+    sheetDrag = null;
+    sheetSettling = true;
+    sheetDragHeight = heightOf[target];
+    setTimeout(() => {
+      if (target === 'closed') closePanel();
+      else sheetDetent = target;
+      sheetDragHeight = null;
+      sheetSettling = false;
+    }, 200);
   }
 
   function endSheetDrag(e) {
     if (!sheetDrag) return;
+    if (splitSheet && splitHeights) return endSplitSheetDrag(e);
     // A flick counts only if the finger was still moving when it lifted
     const moving = e.timeStamp - sheetDrag.lastT < 100;
     const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
@@ -708,11 +752,7 @@
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (split) {
-        const space = typing ? vv.height : window.innerHeight;
-        const height = Math.min(Math.round(window.innerHeight * SPLIT_SHEET_RATIO), space);
-        viewportBox = { top: vv.offsetTop + space - height, height };
-      }
+      if (split) splitBox = { top: vv.offsetTop, space: typing ? vv.height : window.innerHeight };
       else if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
@@ -726,6 +766,7 @@
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
       viewportBox = null;
+      splitBox = null;
     };
   });
 
@@ -2970,6 +3011,10 @@
 
   .mode-fullscreen .lc-chatbot-panel.sheet-settling {
     transition: transform 0.2s ease;
+  }
+
+  .mode-fullscreen.sheet-split .lc-chatbot-panel.sheet-settling {
+    transition: top 0.2s ease, height 0.2s ease;
   }
 
   /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
