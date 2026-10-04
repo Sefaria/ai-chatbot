@@ -3001,7 +3001,7 @@
     opacity: 1;
   }
 
-  /* Accent color (launcher, send buttons, header star): Sefaria blue, or purple when picked in the POC toolbox */
+  /* Accent color (launcher, send buttons, header title): Sefaria blue, or purple when picked in the POC toolbox */
   .lc-chatbot-container {
     --lc-entry-bg: var(--brand-sefaria-blue);
     --lc-entry-bg-pressed: #0B1A2D;
@@ -3724,7 +3724,7 @@
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-entry-bg);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
