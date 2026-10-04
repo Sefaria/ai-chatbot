@@ -3136,7 +3136,6 @@
     overflow: hidden;
     opacity: 0;
     white-space: nowrap;
-    text-box: trim-both cap alphabetic; /* centre the capitals, not the line box, on the icon */
     transition: max-width 0.2s ease, opacity 0.2s ease;
   }
 
