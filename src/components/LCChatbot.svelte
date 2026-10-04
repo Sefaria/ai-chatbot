@@ -232,6 +232,8 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
+  // Phones: a reply landed while the sheet was closed. The closed button shows it until opened.
+  let responseReady = $state(false);
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -509,6 +511,7 @@
 
   function openPanel() {
     isOpen = true;
+    responseReady = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
@@ -1308,6 +1311,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
+      if (isFullscreen && !isOpen) responseReady = true;
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
@@ -1765,16 +1769,23 @@
   class:mode-docked={layout === 'docked'}
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
-  class:trigger-hidden={triggerHidden}
+  class:trigger-hidden={triggerHidden && !responseReady}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
   {#if !isOpen}
     <!-- Floating Button -->
-    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
+    <button
+      aria-label={$_(responseReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')}
+      class="lc-chatbot-trigger"
+      class:response-ready={responseReady}
+      onclick={openPanel}
+    >
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
+      <span class="trigger-label">{$_(responseReady ? 'assistant.header.responseReady' : 'assistant.header.triggerLabel')}</span>
+      {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
+    <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
   {:else}
     <!-- Chat Panel -->
     <div 
@@ -2916,6 +2927,67 @@
       max-width: 0;
       opacity: 0;
     }
+  }
+
+  /* Phones: a reply arrived while closed. The label slides out, a badge sits on the
+     button, and the button nudges once to draw the eye. */
+  .lc-chatbot-trigger.response-ready {
+    position: relative;
+    gap: 8px;
+    animation: trigger-nudge 0.6s ease 2;
+  }
+
+  .lc-chatbot-trigger.response-ready .trigger-label {
+    max-width: 12em;
+    opacity: 1;
+  }
+
+  .trigger-badge {
+    position: absolute;
+    top: -2px;
+    inset-inline-end: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--lc-danger);
+    box-shadow: 0 0 0 2px var(--lc-bg);
+  }
+
+  .trigger-badge::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--lc-danger);
+    animation: badge-ping 1.6s ease-out infinite;
+  }
+
+  @keyframes trigger-nudge {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-6px); }
+    70% { transform: translateY(0); }
+    85% { transform: translateY(-2px); }
+  }
+
+  @keyframes badge-ping {
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lc-chatbot-trigger.response-ready,
+    .trigger-badge::after {
+      animation: none;
+    }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   /* Chat Panel */
