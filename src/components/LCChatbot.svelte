@@ -111,6 +111,31 @@
   let streamTimer = null;
   let contentDoneReceived = false;
   let onStreamDrained = null;
+  // Everything played back so far; the screen shows it only up to the last
+  // complete word, and never a half-built link or bold.
+  let playedStreamText = '';
+
+  function hasOpenMarkup(text) {
+    if (text.lastIndexOf('[') > text.lastIndexOf(']')) return true;
+    if (text.lastIndexOf('](') > text.lastIndexOf(')')) return true;
+    return (text.split('**').length - 1) % 2 === 1;
+  }
+
+  function showCompleteWords() {
+    for (let end = playedStreamText.length; end > streamingMarkdown.length; end--) {
+      if (!/\s/.test(playedStreamText[end - 1])) continue;
+      const text = playedStreamText.slice(0, end);
+      // A bare list marker ("1. " or "- ") would render as an empty bullet.
+      if (!hasOpenMarkup(text) && !/(^|\n)\s*(\d+\.|[-*])\s*$/.test(text)) {
+        streamingMarkdown = text;
+        return;
+      }
+    }
+  }
+
+  function showAllPlayedText() {
+    if (playedStreamText.length > streamingMarkdown.length) streamingMarkdown = playedStreamText;
+  }
 
   function queueStreamDelta(text) {
     streamQueue.push({ text, at: performance.now() });
@@ -139,7 +164,10 @@
     while (streamQueue.length && streamQueue[0].at + streamDelayMs <= now) {
       released += streamQueue.shift().text;
     }
-    if (released) streamingMarkdown += released;
+    if (released) {
+      playedStreamText += released;
+      showCompleteWords();
+    }
     if (streamQueue.length) {
       streamTimer = setTimeout(playStreamQueue, streamQueue[0].at + streamDelayMs - now);
     } else {
@@ -150,6 +178,7 @@
 
   function finishStreamIfDone() {
     if (!contentDoneReceived || streamQueue.length || streamTimer) return;
+    showAllPlayedText();
     streamTextDone = true;
   }
 
@@ -1172,6 +1201,7 @@
     streamTimer = null;
     contentDoneReceived = false;
     onStreamDrained = null;
+    playedStreamText = '';
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1247,6 +1277,7 @@
       // Let the delayed playback and the last word's fade finish before
       // swapping in the final message.
       await streamDrained();
+      showAllPlayedText();
       const didStream = !!streamingMarkdown;
       if (didStream) await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
 
