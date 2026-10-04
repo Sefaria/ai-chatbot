@@ -12,6 +12,7 @@ import { generateMessageId } from './session.js';
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
  * @property {boolean} [labs] - Whether Labs tools are enabled for this request
+ * @property {string} [persona] - Host persona ('newcomer'|'learner'|'educator'|'scholar') for prompt guidance and trace tagging
  * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
@@ -64,7 +65,7 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildMessageContext(origin = '', isStaff = false, labs = false, interfaceLang = '') {
+function buildMessageContext(origin = '', isStaff = false, labs = false, interfaceLang = '', persona = '') {
   /** @type {MessageContext} */
   const context = {
     pageUrl: window.location.href,
@@ -79,6 +80,9 @@ function buildMessageContext(origin = '', isStaff = false, labs = false, interfa
   }
   if (labs) {
     context.labs = true;
+  }
+  if (persona) {
+    context.persona = persona;
   }
   return context;
 }
@@ -261,6 +265,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
+ * @param {string} [persona] - Host persona; sent as context.persona (empty string omits it)
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -274,12 +279,13 @@ export async function sendMessageStream(
   isStaff = false,
   labs = false,
   requestMetadata = null,
-  interfaceLang = ''
+  interfaceLang = '',
+  persona = ''
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
-  const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  const context = buildMessageContext(origin, isStaff, labs, interfaceLang, persona);
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }

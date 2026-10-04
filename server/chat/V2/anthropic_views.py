@@ -41,6 +41,7 @@ from ..serializers import AnthropicRequestSerializer
 from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent_service
 from .logging import get_turn_logging_service
 from .origin import DEFAULT_ORIGIN, resolve_origin
+from .persona import resolve_persona
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception
 from .services import create_or_get_session, load_session_summary, save_user_message
@@ -170,7 +171,8 @@ def chat_anthropic_v2(request):
             "max_tokens": 1024,
             "messages": [{"role": "user", "content": "What is Shabbat?"}],
             "metadata": {
-                "core_prompt_slug": "optional-prompt-slug"
+                "core_prompt_slug": "optional-prompt-slug",
+                "persona": "newcomer | learner | educator | scholar (optional)"
             }
         }
 
@@ -215,6 +217,7 @@ def chat_anthropic_v2(request):
     metadata = data.get("metadata") or {}
     core_prompt_slug = metadata.get("core_prompt_slug") or settings.CORE_PROMPT_SLUG
     model = data.get("model") or settings.AGENT_MODEL
+    persona = resolve_persona(metadata.get("persona"))
 
     # Note: streaming endpoint reads origin from request body context field (via serializer).
     caller_origin = (request.headers.get("X-Origin") or "")[:20]
@@ -255,6 +258,7 @@ def chat_anthropic_v2(request):
         origin=resolved_origin,
         is_staff=is_staff,
         labs=metadata.get("labs") is True,
+        persona=persona,
         user_id=actor.user_id,
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,

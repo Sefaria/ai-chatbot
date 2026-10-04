@@ -44,6 +44,48 @@ PAGE_CONTEXT_SECTION = (
     "If the context is relevant, use that information in your response."
 )
 
+# Persona guidance: the host (Library Next) tells us who the reader is. Each block
+# adjusts tone, depth and what to offer; the core prompt still governs everything else.
+PERSONA_SECTION = "Reader profile:\n{guidance}"
+
+PERSONA_GUIDANCE = {
+    "newcomer": (
+        "The reader is new to Jewish texts. Define every term, name and abbreviation on "
+        "first use (Mishnah, Rashi, halakhah, daf) and assume no Hebrew or Aramaic: lead "
+        "with the English translation, keep Hebrew brief and transliterated where it helps. "
+        "Keep answers short and concrete. Prefer one or two well-chosen sources over a "
+        "survey, and say why each source matters. Close by suggesting one accessible place "
+        "to continue, such as a specific chapter or topic page, rather than a long list."
+    ),
+    "learner": (
+        "The reader is actively studying and wants to retain what they learn. Connect your "
+        "answer to the text they are reading (use the page context when present). After "
+        "explaining, offer one or two short active-recall prompts: a question to answer, a "
+        "term to define, or a claim to check against the source. When asked to be quizzed, "
+        "ask one question at a time, wait for the answer, then correct gently and point to "
+        "the source. Be encouraging and specific about what they got right. Keep the tone of "
+        "a study partner, without padding."
+    ),
+    "educator": (
+        "The reader is a teacher preparing to teach this material. Alongside the answer, "
+        "offer two or three discussion questions that move from comprehension to "
+        "interpretation to personal meaning, and note the age or level each suits when it "
+        "matters. Format sources so they drop straight into a source sheet: the citation on "
+        "its own line, then the quoted text, then a one-sentence framing. Flag content that "
+        "needs age-appropriate framing (violence, sexuality, theodicy) and suggest how to "
+        "frame it. Offer to adapt for a different grade level or class length."
+    ),
+    "scholar": (
+        "The reader is engaged in academic or advanced study. Use an academic register and "
+        "precise terminology. Name the version or edition you quote, and when versions or "
+        "manuscripts differ meaningfully, note the variant readings and use the manuscript "
+        "tools to check. Distinguish the plain sense from later interpretation, date sources "
+        "and strata (Tannaitic, Amoraic, Geonic, Rishonim, Acharonim), and point to parallels "
+        "and cross-references. Do not simplify. Cite exact references and say plainly when "
+        "the evidence is thin or contested."
+    ),
+}
+
 # When extended thinking is disabled, the model may externalize its planning
 # as visible text (e.g. "Let me search for..."). This fragment prohibits it.
 NO_THINKING_NARRATION_INSTRUCTION = (
@@ -59,10 +101,11 @@ def build_prompt(
     core_prompt: str | None = None,
     summary_text: str | None = None,
     page_url: str | None = None,
+    persona: str | None = None,
 ) -> tuple[str, bool]:
     """Assemble a prompt from a user message, optional system instructions, and context.
 
-    Order: core_prompt → summary → page context → user_message.
+    Order: core_prompt → persona guidance → summary → page context → user_message.
     This follows Anthropic's long-context guidance: place long reference material
     (system instructions, context) first, and the query last — closest to where
     the model generates its response — to maximize instruction recall.
@@ -78,6 +121,8 @@ def build_prompt(
     parts: list[str] = []
     if core_prompt is not None:
         parts.append(core_prompt)
+    if persona in PERSONA_GUIDANCE:
+        parts.append(PERSONA_SECTION.format(guidance=PERSONA_GUIDANCE[persona]))
     summary_included = False
 
     if summary_text:

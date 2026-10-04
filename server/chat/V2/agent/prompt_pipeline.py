@@ -30,13 +30,14 @@ def build_turn_prompt(
     core_prompt: str,
     context: MessageContext,
 ) -> PromptBuildResult:
-    """Build full prompt text (core prompt + summary/context + conversation)."""
+    """Build full prompt text (core prompt + persona guidance + summary/context + conversation)."""
     conversation_text = format_conversation(messages)
     full_prompt, summary_included = build_prompt(
         conversation_text,
         core_prompt=core_prompt,
         summary_text=context.summary_text,
         page_url=context.page_url,
+        persona=context.persona,
     )
     return PromptBuildResult(
         conversation_text=conversation_text,

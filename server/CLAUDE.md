@@ -17,6 +17,8 @@ server/
 │       ├── views.py             # V2 streaming endpoints
 │       ├── anthropic_views.py   # Anthropic Messages API endpoint
 │       ├── utils.py             # Shared helpers (clients, config)
+│       ├── origin.py            # Origin resolution for trace tagging
+│       ├── persona.py           # Persona enum + resolution (newcomer/learner/educator/scholar); request-scoped, traced in Braintrust, not stored
 │       ├── agent/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
 │       │   ├── tracing_guard.py     # Thread-local Braintrust span suppression

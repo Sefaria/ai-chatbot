@@ -47,8 +47,17 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    persona: personaProp = '',
+    'initial-prompt': initialPrompt = ''
   } = $props();
+
+  // Host persona (Library Next). Svelte re-runs this when the attribute changes at runtime,
+  // so starter prompts and the request context follow it. Unknown values are ignored.
+  const PERSONAS = ['newcomer', 'learner', 'educator', 'scholar'];
+  let persona = $derived(PERSONAS.includes(String(personaProp || '').trim().toLowerCase())
+    ? String(personaProp).trim().toLowerCase()
+    : '');
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -234,11 +243,13 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
-    if (savedUI?.mode) {
-      mode = savedUI.mode;
+    if (modeProp === 'panel') {
+      // Inline panel (Library Next dock): the host owns open/close, so ignore saved UI state.
+      mode = 'panel';
+      isOpen = true;
     } else {
-      mode = modeProp;
+      isOpen = savedUI?.isOpen ?? defaultOpen;
+      mode = savedUI?.mode || modeProp;
     }
 
     // Restore size
@@ -1086,7 +1097,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang);
+      }, interfaceLang, persona);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
@@ -1608,6 +1619,28 @@
     }
   }
 
+  // Persona starter prompts shown in the empty state (3 per persona, from the locale files).
+  let starterPrompts = $derived(persona ? [1, 2, 3].map((n) => $_(`assistant.starter.${persona}.${n}`)) : []);
+
+  function sendStarterPrompt(text) {
+    inputText = text;
+    handleSend();
+  }
+
+  // `initial-prompt` attribute (Library Next dock): each new non-empty value opens the panel and
+  // sends it. If sending is blocked the text stays in the input for the user to send.
+  let lastInitialPrompt = '';
+  $effect(() => {
+    const text = String(initialPrompt || '').trim();
+    if (!text) { lastInitialPrompt = ''; return; }  // cleared by the host: allow the same prompt again
+    if (text === lastInitialPrompt) return;
+    lastInitialPrompt = text;
+    untrack(() => {
+      if (!isOpen) openPanel();
+      sendStarterPrompt(text);
+    });
+  });
+
   function getEmptyStateMessage() {
     if (isFirstTimeUser) return welcomeMessage;
     if (isRestarted) return restartMessage;
@@ -1621,6 +1654,7 @@
   class="lc-chatbot-container"
   class:mode-floating={mode === 'floating'}
   class:mode-docked={mode === 'docked'}
+  class:mode-panel={mode === 'panel'}
   class:is-open={isOpen}
   class:interface-hebrew={interfaceLang === 'he'}
 >
@@ -1635,7 +1669,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      style={mode === 'panel' ? '' : `width: ${visiblePanelWidth}px;${mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1676,6 +1710,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if mode !== 'panel'}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1688,6 +1723,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1707,10 +1743,12 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if mode !== 'panel'}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -1726,9 +1764,11 @@
               </div>
             {/if}
           </div>
+          {#if mode !== 'panel'}
           <HeaderButton className="close-btn" onClick={closePanel} title={$_('assistant.header.close.tooltip')}>
             <img src="{staticIconsBaseUrl}/minus.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {/if}
         </div>
       </header>
 
@@ -1993,6 +2033,15 @@
         {#if messages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
             {@render assistantBubble(getEmptyStateMessage(), false, null)}
+            {#if starterPrompts.length}
+              <div class="starter-prompts" aria-label={$_('assistant.starter.aria')}>
+                {#each starterPrompts as prompt (prompt)}
+                  <button type="button" class="starter-prompt" data-feature-name="starter_prompt" onclick={() => sendStarterPrompt(prompt)} disabled={isCurrentSessionSending || limitReached}>
+                    {prompt}
+                  </button>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -2288,6 +2337,37 @@
   .lc-chatbot-container.mode-docked .resize-nw,
   .lc-chatbot-container.mode-docked .resize-se,
   .lc-chatbot-container.mode-docked .resize-sw {
+    display: none;
+  }
+
+  /* Inline panel mode: fills the host element; the embedding page positions it */
+  :host(:has(.lc-chatbot-container.mode-panel)) {
+    display: block;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .lc-chatbot-container.mode-panel {
+    position: static;
+    inset: auto;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    z-index: auto;
+  }
+
+  .lc-chatbot-container.mode-panel .lc-chatbot-panel {
+    flex: 1 1 0;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .lc-chatbot-container.mode-panel .resize-handle {
     display: none;
   }
 
@@ -3039,6 +3119,40 @@
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
+  }
+
+  .starter-prompts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 8px;
+    padding-inline-start: 4px;
+  }
+
+  .starter-prompt {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: 10px;
+    background: var(--lc-bg);
+    color: var(--lc-text);
+    font-family: var(--lc-font);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: start;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .starter-prompt:hover:not(:disabled) {
+    background: var(--lc-bg-tertiary);
+    border-color: var(--lc-primary);
+  }
+
+  .starter-prompt:disabled {
+    color: var(--lc-disabled-text);
+    cursor: default;
   }
 
   .message.assistant .message-content :global(ul),

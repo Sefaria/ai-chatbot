@@ -40,6 +40,7 @@ class MessageContext:
     origin: str | None = None
     is_staff: bool = False
     labs: bool = False
+    persona: str | None = None  # newcomer | learner | educator | scholar; request-scoped, not persisted
     user_id: str | None = None
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
