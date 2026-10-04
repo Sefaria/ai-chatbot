@@ -99,7 +99,7 @@
   const TOPICS_APPEAR_MS = 250;
   // Before the answer starts streaming, "Synthesizing response" stays up for
   // at least this long; text that arrives sooner is held until then.
-  const SYNTHESIZING_MIN_MS = 2000;
+  const SYNTHESIZING_MIN_MS = 1000;
   let synthesizingShownAt = 0;
   let finalThinkingPending = false;
 
