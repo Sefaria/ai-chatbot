@@ -232,6 +232,10 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
+  // Phones: the closed launcher is a bar to type into (see sendFromBar)
+  let barFocused = $state(false);
+  let barKeyboardInset = $state(0);
+  let barActive = $derived(barFocused || inputText.trim() !== '');
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -617,28 +621,55 @@
     };
   });
 
-  // On phones the closed button recedes while the page scrolls forward and returns on any
-  // scroll back, so it doesn't sit on the text being read. Capture catches every scroller.
+  // On phones the closed bar steps aside while the page scrolls and returns once scrolling
+  // stops, so it doesn't sit on the text being read. It stays put while the reader is
+  // typing in it. Capture catches every scroller.
+  const BAR_SCROLL_IDLE_MS = 400;
   $effect(() => {
     triggerHidden = false;
-    if (!isFullscreen || isOpen) return;
-    let scroller = null;
-    let lastTop = 0;
-    function onScroll(e) {
-      const el = e.target === document ? document.scrollingElement : e.target;
-      if (!(el instanceof Element)) return;
-      if (el !== scroller) {
-        scroller = el;
-        lastTop = el.scrollTop;
-        return;
-      }
-      if (Math.abs(el.scrollTop - lastTop) < 12) return;
-      triggerHidden = el.scrollTop > lastTop && el.scrollTop > 100;
-      lastTop = el.scrollTop;
+    if (!isFullscreen || isOpen || barActive) return;
+    let idleTimer;
+    function onScroll() {
+      triggerHidden = true;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { triggerHidden = false; }, BAR_SCROLL_IDLE_MS);
     }
     document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+    return () => {
+      clearTimeout(idleTimer);
+      document.removeEventListener('scroll', onScroll, { capture: true });
+    };
   });
+
+  // While the bar has focus, lift it above the on-screen keyboard
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!isFullscreen || isOpen || !barFocused || !vv) return;
+    const sync = () => {
+      barKeyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      barKeyboardInset = 0;
+    };
+  });
+
+  // Sending from the bar opens the sheet and sends the question there. An empty bar, or
+  // one past the prompt limit, just opens the assistant.
+  async function sendFromBar(e) {
+    e?.preventDefault();
+    const hasQuestion = inputText.trim() !== '' && !limitReached;
+    trackAssistantClick(hasQuestion ? 'bottom_bar_send' : 'bottom_bar_open');
+    document.activeElement?.blur?.();
+    openPanel();
+    if (!hasQuestion) return;
+    await tick();
+    handleSend();
+  }
 
   // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu.
   $effect(() => {
@@ -1766,10 +1797,37 @@
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
   class:trigger-hidden={triggerHidden}
+  class:has-bar={isFullscreen && !isOpen}
+  style={isFullscreen && !isOpen && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
-  {#if !isOpen}
+  {#if !isOpen && isFullscreen}
+    <!-- Phones: a bar to type a question into -->
+    <form class="lc-chatbot-bar" onsubmit={sendFromBar}>
+      <input
+        type="text"
+        bind:value={inputText}
+        onfocus={() => { barFocused = true; }}
+        onblur={() => { barFocused = false; }}
+        maxlength={effectiveMaxInputChars}
+        placeholder={$_('assistant.bar.placeholder')}
+        aria-label={$_('assistant.bar.aria')}
+        enterkeyhint="send"
+        autocomplete="off"
+      />
+      <button
+        type="submit"
+        class="bar-send"
+        aria-label={inputText.trim() ? $_('assistant.input.send.tooltip') : $_('assistant.header.openAssistant')}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  {:else if !isOpen}
     <!-- Floating Button -->
     <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
       <img src="{staticIconsBaseUrl}/logo.svg"/>
@@ -2853,6 +2911,91 @@
   .mode-fullscreen .feedback-modal-overlay {
     inset: 0;
     border-radius: 0;
+  }
+
+  /* Phones: the closed launcher is a bar floating above the page, inset from both edges */
+  .lc-chatbot-container.has-bar {
+    inset-inline: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+
+  .lc-chatbot-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 560px;
+    margin-inline: auto;
+    padding-block: 4px;
+    padding-inline: 16px 4px;
+    background: var(--lc-bg);
+    border: 1px solid var(--core-neutral-gray-100);
+    border-radius: 9999px;
+    box-shadow: var(--lc-shadow);
+    pointer-events: auto;
+  }
+
+  .lc-chatbot-bar:focus-within {
+    outline: 2px solid var(--brand-sefaria-blue);
+    outline-offset: 2px;
+  }
+
+  .lc-chatbot-bar input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--lc-text);
+    font-family: var(--lc-font);
+    font-size: 16px; /* below 16px, iOS zooms the page on focus */
+    outline: none;
+    text-overflow: ellipsis;
+  }
+
+  .lc-chatbot-bar input::placeholder {
+    color: var(--semantic-text-muted);
+    opacity: 1;
+  }
+
+  .bar-send {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: var(--brand-sefaria-blue);
+    color: var(--core-base-white);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .bar-send:active {
+    background: #0B1A2D;
+  }
+
+  .bar-send:focus-visible {
+    outline: 2px solid var(--core-base-white);
+    outline-offset: -4px;
+  }
+
+  .interface-hebrew .bar-send svg {
+    transform: scaleX(-1);
+  }
+
+  /* Without motion, the bar fades out and back in place */
+  @media (prefers-reduced-motion: reduce) {
+    .lc-chatbot-container.mode-fullscreen {
+      transition: opacity 0.2s ease;
+    }
+
+    .lc-chatbot-container.mode-fullscreen.trigger-hidden {
+      transform: none;
+    }
   }
 
   /* Trigger Button */
