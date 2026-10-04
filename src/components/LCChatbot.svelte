@@ -243,8 +243,12 @@
     setStorage('poc_toolbox', next);
   }
   // The bar and the pill both float full width at the bottom of the phone
-  let hasBar = $derived(isFullscreen && !isOpen && poc.entry !== 'circle');
-  let barActive = $derived(poc.entry === 'bar' && (barFocused || inputText.trim() !== ''));
+  // While the toolbox is open, its unsaved choices preview live
+  let pocPreview = $state(null);
+  let pocEditingText = $state(false);
+  let pocView = $derived(pocPreview ?? poc);
+  let hasBar = $derived(isFullscreen && !isOpen && pocView.entry !== 'circle');
+  let barActive = $derived(pocView.entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -659,7 +663,7 @@
   // While the bar has focus, lift it above the on-screen keyboard
   $effect(() => {
     const vv = window.visualViewport;
-    if (!isFullscreen || isOpen || !barFocused || !vv) return;
+    if (!isFullscreen || isOpen || !(barFocused || pocEditingText) || !vv) return;
     const sync = () => {
       barKeyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     };
@@ -1820,13 +1824,14 @@
   class:is-open={isOpen}
   class:trigger-hidden={triggerHidden}
   class:has-bar={hasBar}
-  class:entry-purple={poc.color === 'purple'}
+  class:entry-purple={pocView.color === 'purple'}
+  class:poc-previewing={pocPreview}
   style={hasBar && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
   {#snippet entryIcon()}
-    {#if poc.icon === 'star'}
+    {#if pocView.icon === 'star'}
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg class="entry-star" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
@@ -1838,11 +1843,11 @@
       </svg>
     {/if}
   {/snippet}
-  {#if hasBar && poc.entry === 'pill'}
+  {#if hasBar && pocView.entry === 'pill'}
     <!-- Phones (POC): a full-width button that opens the assistant -->
     <button class="lc-chatbot-pill" onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
       {@render entryIcon()}
-      <span>{$_('assistant.pill.label')}</span>
+      <span>{pocView.pillText?.trim() || $_('assistant.pill.label')}</span>
     </button>
   {:else if hasBar}
     <!-- Phones: a bar to type a question into -->
@@ -1853,7 +1858,7 @@
         onfocus={() => { barFocused = true; }}
         onblur={() => { barFocused = false; }}
         maxlength={effectiveMaxInputChars}
-        placeholder={$_('assistant.bar.placeholder')}
+        placeholder={pocView.barText?.trim() || $_('assistant.bar.placeholder')}
         aria-label={$_('assistant.bar.aria')}
         enterkeyhint="send"
         autocomplete="off"
@@ -2420,7 +2425,14 @@
 
 <!-- POC only: switch between launcher versions (desktop keeps the circle, so no entry choice there) -->
 {#if !isOpen}
-  <PocToolbox config={poc} onSave={savePoc} showEntry={isFullscreen} />
+  <PocToolbox
+    config={poc}
+    onSave={savePoc}
+    onPreview={(next) => { pocPreview = next; }}
+    onEditingText={(editing) => { pocEditingText = editing; }}
+    showEntry={isFullscreen}
+    defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder') }}
+  />
 {/if}
 
 <style>
@@ -2999,6 +3011,11 @@
   .lc-chatbot-bar input::placeholder {
     color: var(--semantic-text-muted);
     opacity: 1;
+  }
+
+  /* POC: while the toolbox previews the launcher, the launcher is only to look at */
+  .poc-previewing * {
+    pointer-events: none !important;
   }
 
   /* Accent color (launcher, send buttons, header title): Sefaria blue, or purple when picked in the POC toolbox */

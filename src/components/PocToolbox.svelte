@@ -1,7 +1,12 @@
 <script>
   // POC only: a floating toolbox for switching between versions of the phone launcher.
   // Delete this component (and its use in LCChatbot) before anything ships.
-  let { config, onSave, showEntry = true } = $props();
+  // While open, every change previews live (onPreview); Save keeps it, Close drops it.
+  let { config, onSave, onPreview, onEditingText, showEntry = true, defaultTexts = {} } = $props();
+
+  // Editable launcher text for the entries that have some (empty keeps the default)
+  const TEXT_FIELDS = { pill: ['pillText', 'Pill text'], bar: ['barText', 'Bar placeholder'] };
+  let textField = $derived(TEXT_FIELDS[draft.entry]);
 
   const GROUPS = [
     { key: 'entry', label: 'Entry point', options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
@@ -12,19 +17,30 @@
   let open = $state(false);
   let draft = $state({});
 
+  $effect(() => {
+    if (open) onPreview({ ...draft });
+  });
+  $effect(() => () => onPreview(null));
+
   function openToolbox() {
     draft = { ...config };
     open = true;
   }
 
+  function close() {
+    open = false;
+    onEditingText(false);
+    onPreview(null);
+  }
+
   function save() {
     onSave({ ...draft });
-    open = false;
+    close();
   }
 </script>
 
 {#if open}
-  <div class="poc-backdrop" onclick={() => { open = false; }} aria-hidden="true"></div>
+  <div class="poc-backdrop" onclick={close} aria-hidden="true"></div>
   <div class="poc-panel" role="dialog" aria-label="POC toolbox" dir="ltr">
     <h2>POC toolbox</h2>
     {#each GROUPS.filter(g => showEntry || g.key !== 'entry') as group}
@@ -39,9 +55,21 @@
           {/each}
         </div>
       </fieldset>
+      {#if group.key === 'entry' && textField}
+        <label class="poc-text">
+          <span>{textField[1]}</span>
+          <input
+            type="text"
+            bind:value={draft[textField[0]]}
+            placeholder={defaultTexts[textField[0]]}
+            onfocus={() => onEditingText(true)}
+            onblur={() => onEditingText(false)}
+          />
+        </label>
+      {/if}
     {/each}
     <div class="poc-actions">
-      <button type="button" class="poc-close" onclick={() => { open = false; }}>Close</button>
+      <button type="button" class="poc-close" onclick={close}>Close</button>
       <button type="button" class="poc-save" onclick={save}>Save</button>
     </div>
   </div>
@@ -78,18 +106,19 @@
     cursor: pointer;
   }
 
+  /* Below the launcher (z-index 9999), so the previewed launcher isn't dimmed */
   .poc-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 10000;
+    z-index: 9998;
     background: rgba(0, 0, 0, 0.3);
   }
 
+  /* At the top, so the launcher at the bottom stays in view while previewing */
   .poc-panel {
     position: fixed;
     inset-inline: 16px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: calc(16px + env(safe-area-inset-top));
     z-index: 10001;
     max-width: 400px;
     margin-inline: auto;
@@ -154,6 +183,24 @@
     position: absolute;
     opacity: 0;
     pointer-events: none;
+  }
+
+  .poc-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: -8px 0 16px;
+    color: var(--semantic-text-muted);
+  }
+
+  .poc-text input {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--core-neutral-gray-100);
+    border-radius: 12px;
+    color: var(--lc-text);
+    font-family: inherit;
+    font-size: 16px; /* below 16px, iOS zooms the page on focus */
   }
 
   .poc-actions {
