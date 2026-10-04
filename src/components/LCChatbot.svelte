@@ -3097,8 +3097,11 @@
   .lc-chatbot-trigger {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0;
-    padding: 12px 20px;
+    min-width: 52px; /* with the label hidden, a circle */
+    height: 52px;
+    padding: 0 15px;
     background: var(--lc-entry-bg);
     color: white;
     border: none;
@@ -3153,6 +3156,18 @@
     .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
       max-width: 0;
       opacity: 0;
+    }
+  }
+
+  /* The star is drawn large to stand alone; it shrinks while the label slides out beside it */
+  .lc-chatbot-trigger .entry-star {
+    transition: width 0.2s ease, height 0.2s ease;
+  }
+
+  @media (hover: hover) {
+    .lc-chatbot-container:not(.mode-fullscreen) .lc-chatbot-trigger:is(:hover, :focus, :active) .entry-star {
+      width: 16px;
+      height: 16px;
     }
   }
 
