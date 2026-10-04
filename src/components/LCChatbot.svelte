@@ -274,7 +274,7 @@
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
@@ -2728,7 +2728,8 @@
   onPreview={(next) => { pocPreview = next; }}
   onEditingText={(editing) => { pocEditingText = editing; }}
   phone={isFullscreen}
-  defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title') }}
+  defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title'),
+                  bannerText: 'The Library Assistant can help you get started learning.' }}
 />
 
 <style>

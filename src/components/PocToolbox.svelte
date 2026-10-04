@@ -10,10 +10,14 @@
   const GROUPS = [
     { key: 'entry', label: 'Entry point', on: 'phone', text: (d) => ENTRY_TEXT[d.entry],
       options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
-    { key: 'headerStyle', label: 'Header item style', on: 'desktop',
+    { key: 'placement', label: 'Library Assistant placement', on: 'desktop',
+      text: (d) => d.placement === 'banner' && ['bannerText', 'Banner text'],
+      options: [['header', 'Header item'], ['banner', 'Banner above Browse']] },
+    { key: 'headerStyle', label: 'Header item style', on: 'desktop', when: (d) => d.placement !== 'banner',
       options: [['text', 'Star + text'], ['pill', 'Pill']] },
     // The pill sits at an end of a group, never between two header links
-    { key: 'headerSlot', label: 'Header item position', on: 'desktop', text: () => ['headerText', 'Header item text'],
+    { key: 'headerSlot', label: 'Header item position', on: 'desktop', when: (d) => d.placement !== 'banner',
+      text: () => ['headerText', 'Header item text'],
       options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate', (d) => d.headerStyle !== 'pill'], ['beforeSearch', 'Before search']] },
     { key: 'color', label: 'Button color', options: [['blue', 'Sefaria blue'], ['purple', 'Purple']] },
     { key: 'icon', label: 'Icon (circle & pill)', options: [['logo', 'Samekh'], ['star', 'Star ✦']] }
@@ -52,7 +56,7 @@
   <div class="poc-backdrop" onclick={close} aria-hidden="true"></div>
   <div class="poc-panel" role="dialog" aria-label="POC toolbox" dir="ltr">
     <h2>POC toolbox</h2>
-    {#each groups as group}
+    {#each groups.filter(g => !g.when || g.when(draft)) as group}
       <fieldset>
         <legend>{group.label}</legend>
         <div class="poc-segments">
