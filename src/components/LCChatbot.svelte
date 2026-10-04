@@ -600,14 +600,20 @@
   });
 
   // While the sheet is open, lock the page behind it and track the visual viewport, so
-  // the input stays above the on-screen keyboard.
+  // a focused field stays above the on-screen keyboard. Only a field in the sheet counts:
+  // opening from the bar leaves the bar's keyboard closing, and sizing the sheet to that
+  // would leave it stuck part-way up the screen.
   $effect(() => {
     if (!isFullscreen || !isOpen) return;
     const root = document.documentElement;
     const overflow = root.style.overflow;
     root.style.overflow = 'hidden';
     const vv = window.visualViewport;
-    const sync = () => { viewportBox = { top: vv.offsetTop, height: vv.height }; };
+    const sync = () => {
+      const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
+      if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
+      else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+    };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
