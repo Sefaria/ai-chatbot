@@ -102,18 +102,61 @@
   const SYNTHESIZING_MIN_MS = 2000;
   let synthesizingShownAt = 0;
   let finalThinkingPending = false;
-  let heldStreamText = '';
-  let streamRevealTimer = null;
-  let streamRevealed = false;
 
-  function revealHeldStream() {
-    streamRevealTimer = null;
-    streamRevealed = true;
-    // Switch straight to the static "Writing…" label, with no fade.
-    clearThinkingMessageTimers();
-    isThinkingMessageFading = false;
-    thinkingMessageKey = 'assistant.loading.writing';
-    streamingMarkdown = heldStreamText;
+  // Streamed text plays back on the server's own rhythm, shifted later by
+  // however long "Synthesizing response" had to stay up -- so the first
+  // paragraph doesn't land in one lump when the hold ends.
+  let streamQueue = [];
+  let streamDelayMs = null;
+  let streamTimer = null;
+  let contentDoneReceived = false;
+  let onStreamDrained = null;
+
+  function queueStreamDelta(text) {
+    streamQueue.push({ text, at: performance.now() });
+    if (streamDelayMs === null) {
+      if (streamTimer) return;
+      showFinalThinkingMessage();
+      const shownAt = synthesizingShownAt || performance.now() + getThinkingMessageFadeMs();
+      const revealAt = Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS);
+      streamTimer = setTimeout(() => {
+        streamDelayMs = revealAt - streamQueue[0].at;
+        // Switch straight to the static "Writing…" label, with no fade.
+        clearThinkingMessageTimers();
+        isThinkingMessageFading = false;
+        thinkingMessageKey = 'assistant.loading.writing';
+        playStreamQueue();
+      }, revealAt - performance.now());
+      return;
+    }
+    if (!streamTimer) playStreamQueue();
+  }
+
+  function playStreamQueue() {
+    streamTimer = null;
+    const now = performance.now();
+    let released = '';
+    while (streamQueue.length && streamQueue[0].at + streamDelayMs <= now) {
+      released += streamQueue.shift().text;
+    }
+    if (released) streamingMarkdown += released;
+    if (streamQueue.length) {
+      streamTimer = setTimeout(playStreamQueue, streamQueue[0].at + streamDelayMs - now);
+    } else {
+      onStreamDrained?.();
+      finishStreamIfDone();
+    }
+  }
+
+  function finishStreamIfDone() {
+    if (!contentDoneReceived || streamQueue.length || streamTimer) return;
+    streamTextDone = true;
+  }
+
+  // Resolves once every queued piece of text is on screen.
+  function streamDrained() {
+    if (!streamQueue.length && !streamTimer) return Promise.resolve();
+    return new Promise((resolve) => { onStreamDrained = resolve; });
   }
 
   function topicsAppearMs() {
@@ -1123,10 +1166,12 @@
     pendingFeedback = null;
     synthesizingShownAt = 0;
     finalThinkingPending = false;
-    heldStreamText = '';
-    streamRevealed = false;
-    clearTimeout(streamRevealTimer);
-    streamRevealTimer = null;
+    streamQueue = [];
+    streamDelayMs = null;
+    clearTimeout(streamTimer);
+    streamTimer = null;
+    contentDoneReceived = false;
+    onStreamDrained = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1152,7 +1197,8 @@
         onProgress: (progress) => {
           if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'content_done') {
-            streamTextDone = true;
+            contentDoneReceived = true;
+            finishStreamIfDone();
             return;
           }
           if (progress?.type === 'appetizer' && progress.appetizerData) {
@@ -1178,17 +1224,7 @@
           }
         },
         onPartial: (delta) => {
-          if (!delta) return;
-          if (streamRevealed) {
-            streamingMarkdown += delta;
-            return;
-          }
-          // Always pass through "Synthesizing response" for a moment first.
-          heldStreamText += delta;
-          if (streamRevealTimer) return;
-          showFinalThinkingMessage();
-          const shownAt = synthesizingShownAt || performance.now() + getThinkingMessageFadeMs();
-          streamRevealTimer = setTimeout(revealHeldStream, Math.max(0, shownAt + SYNTHESIZING_MIN_MS - performance.now()));
+          if (delta) queueStreamDelta(delta);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1208,7 +1244,9 @@
           : m
       );
 
-      // Let the last word's fade finish before swapping in the final message.
+      // Let the delayed playback and the last word's fade finish before
+      // swapping in the final message.
+      await streamDrained();
       const didStream = !!streamingMarkdown;
       if (didStream) await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
 
@@ -1316,8 +1354,8 @@
     } finally {
       setSessionSending(sendingSessionId, false);
       isSending = Object.keys(sendingSessionIds).length > 0;
-      clearTimeout(streamRevealTimer);
-      streamRevealTimer = null;
+      clearTimeout(streamTimer);
+      streamTimer = null;
       streamingMarkdown = '';
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
