@@ -68,6 +68,9 @@
   // goes with every message, where the server adds it to the prompt. It lives in this
   // browser's storage. The first time, scripted questions draft it (each picked answer
   // becomes a statement, the last answer is kept verbatim); after that it is edited as text.
+  // Off for the la-sandbox POC: no Personalize Responses tab or menu item, and a memory saved
+  // earlier in this browser isn't sent. Flip to bring it back.
+  const PERSONALIZE_ENABLED = false;
   const MEMORY_MAX_CHARS = 1000;
   const MEMORY_NOTES_MAX_CHARS = 250;
   const MEMORY_CHOICE_MAX_CHARS = 100;
@@ -187,7 +190,7 @@
     !onboarding ? effectiveMaxInputChars : isNotesStep ? MEMORY_NOTES_MAX_CHARS : MEMORY_CHOICE_MAX_CHARS
   );
   let showPersonalizeTab = $derived(
-    !isAnonymous && !memory && !onboarding && !limitReached && !isCurrentSessionSending
+    PERSONALIZE_ENABLED && !isAnonymous && !memory && !onboarding && !limitReached && !isCurrentSessionSending
   );
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
@@ -324,7 +327,7 @@
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
       if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
     } else {
-      const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
+      const savedMemory = PERSONALIZE_ENABLED ? getStorage(STORAGE_KEYS.MEMORY, null) : null;
       memory = typeof savedMemory === 'string' ? savedMemory : null;
     }
 
@@ -2219,7 +2222,7 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                {#if !isAnonymous}
+                {#if PERSONALIZE_ENABLED && !isAnonymous}
                 <button class="menu-item" onclick={() => (memory ? openMemoryEditor() : startOnboarding('personalize_menu'))} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
                   <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="16" height="16" />
                   {$_(memory ? 'assistant.menu.memory.update' : 'assistant.menu.personalize')}
