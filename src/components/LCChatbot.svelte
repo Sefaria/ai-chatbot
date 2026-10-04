@@ -2698,17 +2698,16 @@
   {/if}
 </div>
 
-<!-- POC only: switch between launcher versions (desktop keeps the circle, so no entry choice there) -->
-{#if !isOpen}
-  <PocToolbox
-    config={poc}
-    onSave={savePoc}
-    onPreview={(next) => { pocPreview = next; }}
-    onEditingText={(editing) => { pocEditingText = editing; }}
-    phone={isFullscreen}
-    defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title') }}
-  />
-{/if}
+<!-- POC only: switch between launcher versions (desktop keeps the circle, so no entry choice there).
+     Stays available while the assistant is open, so its colors can be compared in place. -->
+<PocToolbox
+  config={poc}
+  onSave={savePoc}
+  onPreview={(next) => { pocPreview = next; }}
+  onEditingText={(editing) => { pocEditingText = editing; }}
+  phone={isFullscreen}
+  defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title') }}
+/>
 
 <style>
   /* CSS Custom Properties for theming */
