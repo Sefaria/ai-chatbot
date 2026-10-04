@@ -139,5 +139,6 @@
     "assistant.bar.aria": "שאלו את עוזר הספרייה",
     "assistant.pill.label": "מה אתם לומדים היום?",
     "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא החינמי שלכם.",
-    "assistant.anon.login": "התחברו"
+    "assistant.anon.login": "התחברו",
+    "assistant.ask.label": "שאלו"
 }

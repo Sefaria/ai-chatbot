@@ -9,8 +9,10 @@
   const ENTRY_TEXT = { pill: ['pillText', 'Pill text'], bar: ['barText', 'Bar placeholder'] };
   const GROUPS = [
     { key: 'entry', label: 'Entry point', on: 'phone', text: (d) => ENTRY_TEXT[d.entry],
-      options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Pill button']] },
-    { key: 'placement', label: 'Library Assistant placement', on: 'desktop',
+      options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Wide pill'], ['ask', 'Ask pill']] },
+    { key: 'mobileOpen', label: 'LA open on mobile', on: 'phone',
+      options: [['full', 'Full screen'], ['split', 'Split screen']] },
+    { key: 'placement', label: 'Header item placement', on: 'desktop',
       text: (d) => d.placement === 'banner' && ['bannerText', 'Banner text'],
       options: [['header', 'Header item'], ['banner', 'Banner above Browse']] },
     { key: 'headerStyle', label: 'Header item style', on: 'desktop', when: (d) => d.placement !== 'banner',
@@ -54,8 +56,8 @@
 
 {#if open}
   <div class="poc-backdrop" onclick={close} aria-hidden="true"></div>
-  <div class="poc-panel" role="dialog" aria-label="POC toolbox" dir="ltr">
-    <h2>POC toolbox</h2>
+  <div class="poc-panel" role="dialog" aria-label="Sandbox controls" dir="ltr">
+    <h2>Sandbox controls</h2>
     {#each groups.filter(g => !g.when || g.when(draft)) as group}
       <fieldset>
         <legend>{group.label}</legend>
@@ -88,7 +90,7 @@
     </div>
   </div>
 {:else}
-  <button type="button" class="poc-fab" onclick={openToolbox} aria-label="Open POC toolbox">
+  <button type="button" class="poc-fab" onclick={openToolbox} aria-label="Open sandbox controls">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line>
       <line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line>

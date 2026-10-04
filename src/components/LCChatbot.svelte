@@ -277,7 +277,7 @@
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
@@ -291,7 +291,10 @@
   $effect(() => {
     document.dispatchEvent(new CustomEvent('chatbot:poc-config', { detail: { ...pocView } }));
   });
-  let hasBar = $derived(isFullscreen && !isOpen && pocView.entry !== 'circle');
+  // POC: on phones the assistant can open as a half-height sheet over the page instead
+  let splitSheet = $derived(isFullscreen && pocView.mobileOpen === 'split');
+  const SPLIT_SHEET_RATIO = 0.5;
+  let hasBar = $derived(isFullscreen && !isOpen && (pocView.entry === 'bar' || pocView.entry === 'pill'));
   let barActive = $derived(pocView.entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
 
@@ -694,15 +697,23 @@
   // a focused field stays above the on-screen keyboard. Only a field in the sheet counts:
   // opening from the bar leaves the bar's keyboard closing, and sizing the sheet to that
   // would leave it stuck part-way up the screen.
+  // A split sheet (POC) leaves the page above it scrollable, and sits on the keyboard's top
+  // edge while typing, keeping its height unless the space above the keyboard is smaller.
   $effect(() => {
     if (!isFullscreen || !isOpen) return;
+    const split = splitSheet;
     const root = document.documentElement;
     const overflow = root.style.overflow;
-    root.style.overflow = 'hidden';
+    if (!split) root.style.overflow = 'hidden';
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
+      if (split) {
+        const space = typing ? vv.height : window.innerHeight;
+        const height = Math.min(Math.round(window.innerHeight * SPLIT_SHEET_RATIO), space);
+        viewportBox = { top: vv.offsetTop + space - height, height };
+      }
+      else if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
     if (vv) {
@@ -2048,6 +2059,7 @@
   class:is-open={isOpen}
   class:trigger-hidden={triggerHidden}
   class:has-bar={hasBar}
+  class:sheet-split={splitSheet}
   class:entry-purple={pocView.color === 'purple'}
   class:poc-previewing={pocPreview}
   style={hasBar && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
@@ -2098,6 +2110,15 @@
         </svg>
       </button>
     </form>
+  {:else if !isOpen && isFullscreen && pocView.entry === 'ask'}
+    <!-- Phones (POC): the circle grown into a "✦ Ask" pill, in the same corner -->
+    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-ask"
+            onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
+      </svg>
+      <span>{$_('assistant.ask.label')}</span>
+    </button>
   {:else if !isOpen}
     <!-- Floating Button -->
     <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
@@ -2901,6 +2922,18 @@
     background: transparent;
   }
 
+  /* POC split sheet: the page stays visible and usable above a half-height sheet */
+  .lc-chatbot-container.mode-fullscreen.is-open.sheet-split {
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .mode-fullscreen.sheet-split .lc-chatbot-panel {
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.15);
+    pointer-events: auto;
+  }
+
   .mode-fullscreen .lc-chatbot-panel {
     position: absolute;
     top: 0;
@@ -3505,6 +3538,32 @@
   }
 
   /* Phones: the label never shows, so the button is a true circle */
+  .lc-chatbot-ask {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 56px;
+    padding-inline: 20px 24px;
+    background: var(--lc-entry-bg);
+    color: var(--core-base-white);
+    border: none;
+    border-radius: 9999px;
+    box-shadow: var(--lc-shadow);
+    font-family: var(--lc-font);
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .lc-chatbot-ask:active {
+    background: var(--lc-entry-bg-pressed);
+  }
+
+  .lc-chatbot-ask:focus-visible {
+    outline: 2px solid var(--core-base-white);
+    outline-offset: -5px;
+  }
+
   .mode-fullscreen .lc-chatbot-trigger {
     justify-content: center;
     width: 56px;
