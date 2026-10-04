@@ -187,7 +187,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     align-items: flex-start;
     align-self: stretch;
     width: 100%;
@@ -199,11 +199,11 @@
   .progress-trail-entry {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-small);
     font-size: 12px;
     line-height: 20px;
     color: var(--lc-text-secondary);
-    min-height: 20px;
+    min-height: var(--global-dimension-250);
     /* Each row fills the container; required for truncation to work */
     width: 100%;
     box-sizing: border-box;
@@ -215,7 +215,7 @@
   .progress-trail-text {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--spacing-xsmall);
     flex: 1;
     min-width: 0;
     /* Truncate the text row as a whole when it overflows.
