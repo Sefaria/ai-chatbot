@@ -2927,17 +2927,12 @@
     max-width: 560px;
     margin-inline: auto;
     padding-block: 4px;
-    padding-inline: 16px 4px;
+    padding-inline: 16px 8px;
     background: var(--lc-bg);
     border: 1px solid var(--core-neutral-gray-100);
     border-radius: 9999px;
     box-shadow: var(--lc-shadow);
     pointer-events: auto;
-  }
-
-  .lc-chatbot-bar:focus-within {
-    outline: 2px solid var(--brand-sefaria-blue);
-    outline-offset: 2px;
   }
 
   .lc-chatbot-bar input {
