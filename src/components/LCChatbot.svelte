@@ -2453,6 +2453,7 @@
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
+    --core-blue-tbr-200: #DDEEFF;
     --core-base-white: #FFFFFF;
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
@@ -3450,17 +3451,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: #f0f7ff;
+    background: var(--core-blue-tbr-100);
   }
 
   .history-row.active {
-    background: #ddeeff;
+    background: var(--core-blue-tbr-200);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: #ddeeff;
+    background: var(--core-blue-tbr-200);
   }
 
   .history-row:disabled {
@@ -4764,21 +4765,21 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: #18345D;
+    color: var(--semantic-text-link);
     font-weight: 600;
     text-decoration: underline;
-    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
     text-underline-offset: 2px;
   }
   :global(.trail-ref-link:hover) {
-    color: #465D7D;
-    text-decoration-color: rgba(70, 93, 125, 0.6);
+    color: var(--lc-primary-hover);
+    text-decoration-color: color-mix(in srgb, currentColor 60%, transparent);
   }
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
     margin-inline-end: 2px;
-    color: #18345D;
+    color: var(--semantic-text-link);
     opacity: 0.6;
   }
 
