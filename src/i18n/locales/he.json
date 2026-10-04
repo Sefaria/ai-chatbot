@@ -106,6 +106,7 @@
     "assistant.stop.tooltip": "עצור",
     "assistant.stop.aria": "עצור",
     "assistant.header.history.tooltip": "היסטוריית שיחות",
+    "assistant.header.history.loginTooltip": "התחברו כדי לשמור את השיחות שלכם",
     "assistant.header.history.aria": "היסטוריית שיחות",
     "assistant.history.header.new.tooltip": "שיחה חדשה",
     "assistant.history.header.new.aria": "שיחה חדשה",
@@ -136,5 +137,7 @@
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
     "assistant.bar.placeholder": "על מה תרצו ללמוד?",
     "assistant.bar.aria": "שאלו את עוזר הספרייה",
-    "assistant.pill.label": "מה אתם לומדים היום?"
+    "assistant.pill.label": "מה אתם לומדים היום?",
+    "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא החינמי שלכם.",
+    "assistant.anon.login": "התחברו"
 }
