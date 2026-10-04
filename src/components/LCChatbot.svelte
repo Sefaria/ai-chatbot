@@ -664,15 +664,17 @@
     };
   });
 
-  // Sending from the bar opens the sheet and sends the question there. An empty bar, or
-  // one past the prompt limit, just opens the assistant.
+  // A question from the bar starts a new chat and sends it there, so the sheet doesn't open
+  // on (and scroll through) the previous conversation. An empty bar just opens the assistant.
   async function sendFromBar(e) {
     e?.preventDefault();
-    const hasQuestion = inputText.trim() !== '' && !limitReached;
-    trackAssistantClick(hasQuestion ? 'bottom_bar_send' : 'bottom_bar_open');
+    const question = inputText.trim();
+    trackAssistantClick(question ? 'bottom_bar_send' : 'bottom_bar_open');
     document.activeElement?.blur?.();
+    if (question && messages.length > 0) handleNewChat();
+    inputText = question; // handleNewChat clears it
     openPanel();
-    if (!hasQuestion) return;
+    if (!question) return;
     await tick();
     handleSend();
   }
