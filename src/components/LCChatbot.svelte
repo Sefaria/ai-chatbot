@@ -3026,10 +3026,36 @@
     --lc-entry-bg-hover: var(--lc-primary-hover);
   }
 
+  /* POC purple theme: every Sefaria blue becomes --mussar-purple, and the other blues and
+     navies their step on the Core Brand/Purple scale (sefaria-design-foundations tokens).
+     Aliases resolved on :host are redefined here too, or they'd keep the blue. */
   .lc-chatbot-container.entry-purple {
-    --lc-entry-bg: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple; not in our tokens */
-    --lc-entry-bg-pressed: #4E2544; /* --purple-900 in sefaria-design-foundations */
-    --lc-entry-bg-hover: #965386; /* --purple-600 */
+    --purple-100: #F7EEF5;
+    --purple-200: #EEDBEA;
+    --purple-600: #965386;
+    --purple-700: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple */
+    --purple-900: #4E2544;
+    --purple-1100: #24101E;
+
+    --brand-sefaria-blue: var(--purple-700);
+    --semantic-action-primary: var(--purple-700);
+    --semantic-text-link: var(--purple-700);
+    --lc-primary: var(--purple-700);
+    --lc-user-bg: var(--purple-700);
+    --lc-sefaria-blue: var(--purple-700);
+    --lc-primary-hover: var(--purple-600);
+    --core-blue-tbr-100: var(--purple-100);
+    --core-blue-tbr-200: var(--purple-200);
+    --lc-topics-bg: var(--purple-100);
+    --lc-bg-tertiary: var(--purple-100);
+    --lc-assistant-bg: var(--purple-100);
+    --lc-border: var(--purple-200);
+    --lc-text: var(--purple-1100);
+    --lc-assistant-text: var(--purple-1100);
+
+    --lc-entry-bg: var(--purple-700);
+    --lc-entry-bg-pressed: var(--purple-900);
+    --lc-entry-bg-hover: var(--purple-600);
   }
 
   .lc-chatbot-pill {
