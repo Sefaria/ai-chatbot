@@ -1201,8 +1201,8 @@
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
-    // Create user message
-    const locationRef = await parseSefariaRef(window.location.href);
+    // Create user message. It shows straight away; the location pin under it waits on a
+    // ref lookup, so it's added when that returns.
     const userMessage = {
       messageId: generateMessageId(),
       sessionId: sendingSessionId,
@@ -1211,12 +1211,17 @@
       content: text,
       timestamp: new Date().toISOString(),
       status: 'sending',
-      locationRef
+      locationRef: null
     };
 
     messages = [...messages, userMessage];
     saveMessagesToStorage();
     scrollToBottom();
+    parseSefariaRef(window.location.href).then(locationRef => {
+      if (!locationRef || sessionId !== sendingSessionId) return;
+      messages = messages.map(m => m.messageId === userMessage.messageId ? { ...m, locationRef } : m);
+      saveMessagesToStorage();
+    });
 
     setSessionSending(sendingSessionId, true);
     isSending = Object.keys(sendingSessionIds).length > 0;
