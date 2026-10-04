@@ -3024,6 +3024,7 @@
     --lc-entry-bg: var(--brand-sefaria-blue);
     --lc-entry-bg-pressed: #0B1A2D;
     --lc-entry-bg-hover: var(--lc-primary-hover);
+    --lc-response-text: var(--brand-sefaria-blue);
   }
 
   /* POC purple theme: every Sefaria blue becomes --mussar-purple, and the other blues and
@@ -3035,7 +3036,6 @@
     --purple-600: #965386;
     --purple-700: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple */
     --purple-900: #4E2544;
-    --purple-1100: #24101E;
 
     --brand-sefaria-blue: var(--purple-700);
     --semantic-action-primary: var(--purple-700);
@@ -3050,8 +3050,9 @@
     --lc-bg-tertiary: var(--purple-100);
     --lc-assistant-bg: var(--purple-100);
     --lc-border: var(--purple-200);
-    --lc-text: var(--purple-1100);
-    --lc-assistant-text: var(--purple-1100);
+    --lc-text: #121212; /* text-primary (gray-1000): reading text stays neutral */
+    --lc-assistant-text: #121212;
+    --lc-response-text: #121212;
 
     --lc-entry-bg: var(--purple-700);
     --lc-entry-bg-pressed: var(--purple-900);
@@ -4658,7 +4659,7 @@
     margin-block: 16px 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-response-text);
     font-style: normal;
     line-height: normal;
   }
@@ -4667,7 +4668,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-response-text);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -4676,7 +4677,7 @@
 
   .message-content :global(.response-section) {
     margin-block: 14px 4px;
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-response-text);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -4694,7 +4695,7 @@
   }
 
   .message-content :global(.response-list) {
-    color: var(--brand-sefaria-blue);
+    color: var(--lc-response-text);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
