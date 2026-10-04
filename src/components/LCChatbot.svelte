@@ -2015,11 +2015,11 @@
                     {#if activeHistoryMenuId === conversation.sessionId}
                       <div class="history-row-dropdown" class:flip-up={historyMenuFlipUp} role="menu">
                         <button type="button" role="menuitem" aria-label={$_('assistant.history.rename.aria')} data-feature-name="rename_started" onclick={() => startRenameConversation(conversation)}>
-                          <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="12" height="12" />
+                          <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="18" height="18" />
                           <span>{$_('assistant.history.menu.rename')}</span>
                         </button>
                         <button type="button" role="menuitem" class="danger" aria-label={$_('assistant.history.delete.aria')} data-feature-name="delete_chat_started" onclick={() => { activeHistoryMenuId = null; deletingConversation = conversation; }}>
-                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="12" height="12" />
+                          <img src="{staticIconsBaseUrl}/trash-2-danger.svg" alt="" width="18" height="18" />
                           <span>{$_('assistant.history.menu.delete')}</span>
                         </button>
                       </div>
