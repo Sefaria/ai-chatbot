@@ -3099,25 +3099,28 @@
     width: 100%;
   }
 
-  /* height:0 + overflow:visible lets the timestamp paint below this box
-     without the box itself contributing to the grid row's height — so the
-     reserved timestamp space doesn't leave a permanent gap between the
-     bubble and whatever comes next (see .message-location-tag below).
-     A retry button is never hover-only, though, so when one is present the
-     row reserves its real height instead, pushing the pin permanently below
-     it rather than only on hover. */
   .message-meta {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    height: 0;
-    overflow: visible;
     margin-top: 4px;
     padding: 0 4px;
   }
 
+  /* height:0 + overflow:visible lets the timestamp paint below this box
+     without the box itself contributing to the grid row's height — so the
+     reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below).
+     Scoped to user messages only: assistant's .message-meta holds the
+     retry button / feedback thumbs, which are never hover-only, so it
+     keeps its real (auto) height and reserves space for them normally —
+     otherwise they'd float, unreserved, into the next message below. A
+     user message's retry button is just as permanent, so it gets the same
+     real-height treatment via the :has() rule below. */
   .message.user .message-meta {
     justify-content: flex-end;
+    height: 0;
+    overflow: visible;
   }
 
   .message.user .message-meta:has(.retry-btn) {
