@@ -3136,6 +3136,7 @@
     overflow: hidden;
     opacity: 0;
     white-space: nowrap;
+    text-box: trim-both cap alphabetic; /* centre the capitals, not the line box, on the icon */
     transition: max-width 0.2s ease, opacity 0.2s ease;
   }
 
@@ -3156,18 +3157,6 @@
     .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
       max-width: 0;
       opacity: 0;
-    }
-  }
-
-  /* The star is drawn large to stand alone; it shrinks while the label slides out beside it */
-  .lc-chatbot-trigger .entry-star {
-    transition: width 0.2s ease, height 0.2s ease;
-  }
-
-  @media (hover: hover) {
-    .lc-chatbot-container:not(.mode-fullscreen) .lc-chatbot-trigger:is(:hover, :focus, :active) .entry-star {
-      width: 16px;
-      height: 16px;
     }
   }
 
