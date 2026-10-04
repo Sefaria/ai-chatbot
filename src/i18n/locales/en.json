@@ -135,5 +135,6 @@
     "assistant.history.list.empty.header": "No chats yet",
     "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
     "assistant.bar.placeholder": "What would you like to learn about?",
-    "assistant.bar.aria": "Ask the Library Assistant"
+    "assistant.bar.aria": "Ask the Library Assistant",
+    "assistant.pill.label": "What are you learning today?"
 }

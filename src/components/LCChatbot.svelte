@@ -21,6 +21,7 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
+  import PocToolbox from './PocToolbox.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
@@ -235,7 +236,15 @@
   // Phones: the closed launcher is a bar to type into (see sendFromBar)
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
-  let barActive = $derived(barFocused || inputText.trim() !== '');
+  // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', ...getStorage('poc_toolbox', {}) });
+  function savePoc(next) {
+    poc = next;
+    setStorage('poc_toolbox', next);
+  }
+  // The bar and the pill both float full width at the bottom of the phone
+  let hasBar = $derived(isFullscreen && !isOpen && poc.entry !== 'circle');
+  let barActive = $derived(poc.entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -1810,12 +1819,29 @@
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
   class:trigger-hidden={triggerHidden}
-  class:has-bar={isFullscreen && !isOpen}
-  style={isFullscreen && !isOpen && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
+  class:has-bar={hasBar}
+  class:entry-purple={poc.color === 'purple'}
+  style={hasBar && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
-  {#if !isOpen && isFullscreen}
+  {#snippet entryIcon()}
+    {#if poc.icon === 'star'}
+      <span class="entry-star" aria-hidden="true">✦</span>
+    {:else}
+      <!-- Same artwork as static/icons/logo.svg, inline so it shows without the backend serving it -->
+      <svg class="entry-logo" width="20" height="26" viewBox="0 0 20 26" aria-hidden="true">
+        <path fill="currentColor" d="M19.5909 10.3544C19.1687 7.67 18.6217 4.75091 16.261 3.13857C14.8303 2.15597 13.3551 2.08338 11.7055 2.08338C10.5807 2.08338 6.61658 2.0361 4.87983 2.0361C3.14308 2.0361 2.07128 0.666883 2.07128 0C0.972145 1.3287 0.131119 2.79753 0.426846 4.57364C0.691803 6.17247 1.8012 7.1939 3.42513 7.39649C1.58411 9.96273 -0.0791374 12.919 0.00291377 16.0491C0.0541959 18.0227 0.512316 25.8514 9.4747 25.8514H11.1072C14.9345 25.8514 17.2525 23.0455 17.926 21.9666C19.9072 18.7757 20.2388 13.8374 19.6115 10.3713M18.2388 16.5877C17.5619 19.7262 15.2627 21.0583 10.1414 21.0583C-2.44494 21.0583 2.01487 11.0669 3.77385 9.00883C4.51231 8.09546 5.03026 7.34416 6.90718 7.34416H10.4781C15.4576 7.34416 16.4063 7.57714 17.6542 10.091C18.3294 11.4451 18.7191 14.3675 18.2388 16.5927"/>
+      </svg>
+    {/if}
+  {/snippet}
+  {#if hasBar && poc.entry === 'pill'}
+    <!-- Phones (POC): a full-width button that opens the assistant -->
+    <button class="lc-chatbot-pill" onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
+      {@render entryIcon()}
+      <span>{$_('assistant.pill.label')}</span>
+    </button>
+  {:else if hasBar}
     <!-- Phones: a bar to type a question into -->
     <form class="lc-chatbot-bar" onsubmit={sendFromBar}>
       <input
@@ -1843,7 +1869,7 @@
   {:else if !isOpen}
     <!-- Floating Button -->
     <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
-      <img src="{staticIconsBaseUrl}/logo.svg"/>
+      {@render entryIcon()}
       <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
     </button>
   {:else}
@@ -2388,6 +2414,11 @@
     </div>
   {/if}
 </div>
+
+<!-- POC only: switch between launcher versions on phones -->
+{#if isFullscreen && !isOpen}
+  <PocToolbox config={poc} onSave={savePoc} />
+{/if}
 
 <style>
   /* CSS Custom Properties for theming */
@@ -2967,6 +2998,66 @@
     opacity: 1;
   }
 
+  /* Launcher color: Sefaria blue, or purple when picked in the POC toolbox */
+  .lc-chatbot-container {
+    --lc-entry-bg: var(--brand-sefaria-blue);
+    --lc-entry-bg-pressed: #0B1A2D;
+  }
+
+  .lc-chatbot-container.entry-purple {
+    --lc-entry-bg: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple; not in our tokens */
+    --lc-entry-bg-pressed: #4E2544; /* --purple-900 in sefaria-design-foundations */
+  }
+
+  .lc-chatbot-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 560px;
+    min-height: 52px;
+    margin-inline: auto;
+    padding: 0 24px;
+    background: var(--lc-entry-bg);
+    color: var(--core-base-white);
+    border: none;
+    border-radius: 9999px;
+    box-shadow: var(--lc-shadow);
+    font-family: var(--lc-font);
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .lc-chatbot-pill:active {
+    background: var(--lc-entry-bg-pressed);
+  }
+
+  .lc-chatbot-pill:focus-visible {
+    outline: 2px solid var(--core-base-white);
+    outline-offset: -5px;
+  }
+
+  .lc-chatbot-pill .entry-logo {
+    height: 22px;
+  }
+
+  .entry-star {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 26px;
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .lc-chatbot-pill .entry-star {
+    height: 22px;
+  }
+
   .bar-send {
     display: flex;
     align-items: center;
@@ -2975,7 +3066,7 @@
     width: 44px;
     height: 44px;
     padding: 0;
-    background: var(--brand-sefaria-blue);
+    background: var(--lc-entry-bg);
     color: var(--core-base-white);
     border: none;
     border-radius: 50%;
@@ -2983,7 +3074,7 @@
   }
 
   .bar-send:active {
-    background: #0B1A2D;
+    background: var(--lc-entry-bg-pressed);
   }
 
   .bar-send:focus-visible {
@@ -3012,7 +3103,7 @@
     align-items: center;
     gap: 0;
     padding: 12px 20px;
-    background: var(--brand-sefaria-blue);
+    background: var(--lc-entry-bg);
     color: white;
     border: none;
     border-radius: 9999px;
@@ -3032,7 +3123,7 @@
 
 
   .lc-chatbot-trigger:active {
-    background: #0B1A2D;
+    background: var(--lc-entry-bg-pressed);
   }
 
   .trigger-label {
