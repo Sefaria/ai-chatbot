@@ -1827,7 +1827,10 @@
 >
   {#snippet entryIcon()}
     {#if poc.icon === 'star'}
-      <span class="entry-star" aria-hidden="true">✦</span>
+      <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
+      <svg class="entry-star" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
+      </svg>
     {:else}
       <!-- Same artwork as static/icons/logo.svg, inline so it shows without the backend serving it -->
       <svg class="entry-logo" width="20" height="26" viewBox="0 0 20 26" aria-hidden="true">
@@ -3044,18 +3047,9 @@
     height: 22px;
   }
 
-  .entry-star {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 26px;
-    font-size: 20px;
-    line-height: 1;
-  }
-
   .lc-chatbot-pill .entry-star {
-    height: 22px;
+    width: 20px;
+    height: 20px;
   }
 
   .bar-send {
@@ -3158,6 +3152,18 @@
       max-width: 0;
       opacity: 0;
     }
+  }
+
+  /* Phones: the label never shows, so the button is a true circle */
+  .mode-fullscreen .lc-chatbot-trigger {
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+  }
+
+  .mode-fullscreen .trigger-label {
+    display: none;
   }
 
   /* Chat Panel */
