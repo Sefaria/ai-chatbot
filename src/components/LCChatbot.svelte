@@ -247,7 +247,7 @@
   let pocPreview = $state(null);
   let pocEditingText = $state(false);
   let pocView = $derived(pocPreview ?? poc);
-  // The host's POC header item (Sefaria, lam-opus-penina) follows the toolbox live
+  // The host's POC header item (Sefaria, la-sandbox) follows the toolbox live
   $effect(() => {
     document.dispatchEvent(new CustomEvent('chatbot:poc-config', { detail: { ...pocView } }));
   });
