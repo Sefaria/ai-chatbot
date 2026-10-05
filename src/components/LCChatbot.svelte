@@ -232,7 +232,7 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
-  // Phones: a reply landed while the sheet was closed. The closed button shows it until opened.
+  // A reply landed while the assistant was closed. The closed button shows it until opened.
   let responseReady = $state(false);
   let pendingNavigation = null;
 
@@ -1311,7 +1311,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
-      if (isFullscreen && !isOpen) responseReady = true;
+      if (!isOpen) responseReady = true;
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
@@ -2929,7 +2929,7 @@
     }
   }
 
-  /* Phones: a reply arrived while closed. A badge sits on the button, and the button
+  /* A reply arrived while closed. A badge sits on the button, and the button
      nudges twice to draw the eye. */
   .lc-chatbot-trigger.response-ready {
     position: relative;
