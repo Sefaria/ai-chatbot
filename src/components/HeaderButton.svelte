@@ -63,6 +63,14 @@
     border-color: var(--lc-border);
   }
 
+  .history-btn.is-locked,
+  .history-btn.is-locked:hover,
+  .history-btn.is-locked:active {
+    background: transparent;
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
   .close-btn {
     display: inline-flex;
     align-items: center;

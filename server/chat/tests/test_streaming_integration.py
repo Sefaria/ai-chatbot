@@ -152,8 +152,8 @@ class TestStreamingEndpointAuthentication:
         assert response.status_code == 401
         assert response.data["error"] == "invalid_userId"
 
-    def test_missing_token_returns_400(self, client):
-        """Missing userId should return 400 Bad Request."""
+    def test_missing_token_and_anon_id_returns_401(self, client):
+        """No userId and no anonId should be rejected as unauthenticated."""
         request_data = {
             "sessionId": "sess_test123",
             "messageId": "msg_test123",
@@ -167,7 +167,21 @@ class TestStreamingEndpointAuthentication:
             format="json",
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 401
+        assert response.data["error"] == "invalid_userId"
+
+    def test_malformed_anon_id_returns_401(self, client):
+        request_data = {
+            "anonId": "short",
+            "sessionId": "sess_test123",
+            "messageId": "msg_test123",
+            "timestamp": timezone.now().isoformat(),
+            "text": "Hello",
+        }
+
+        response = client.post("/api/v2/chat/stream", data=request_data, format="json")
+
+        assert response.status_code == 401
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="")
     def test_missing_server_secret_returns_401(self, client, secret):
