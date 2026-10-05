@@ -1782,7 +1782,7 @@
       onclick={openPanel}
     >
       <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_(responseReady ? 'assistant.header.responseReady' : 'assistant.header.triggerLabel')}</span>
+      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
       {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
     <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
@@ -2929,17 +2929,11 @@
     }
   }
 
-  /* Phones: a reply arrived while closed. The label slides out, a badge sits on the
-     button, and the button nudges once to draw the eye. */
+  /* Phones: a reply arrived while closed. A badge sits on the button, and the button
+     nudges twice to draw the eye. */
   .lc-chatbot-trigger.response-ready {
     position: relative;
-    gap: 8px;
     animation: trigger-nudge 0.6s ease 2;
-  }
-
-  .lc-chatbot-trigger.response-ready .trigger-label {
-    max-width: 12em;
-    opacity: 1;
   }
 
   .trigger-badge {
