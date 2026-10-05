@@ -143,8 +143,13 @@
     top: calc(16px + env(safe-area-inset-top));
     z-index: 10001;
     max-width: 400px;
+    /* Taller than the screen: scroll inside the panel, with Close and Save always in view */
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
     margin-inline: auto;
-    padding: 16px;
+    padding: 16px 16px 0;
     background: var(--lc-bg);
     color: var(--lc-text);
     border-radius: 16px;
@@ -226,9 +231,14 @@
   }
 
   .poc-actions {
+    position: sticky;
+    bottom: 0;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    padding: 12px 0 16px;
+    background: var(--lc-bg);
+    border-top: 1px solid var(--core-neutral-gray-100);
   }
 
   .poc-actions button {
