@@ -183,5 +183,7 @@
     "assistant.bar.placeholder": "What would you like to learn about?",
     "assistant.bar.aria": "Ask the Library Assistant",
     "assistant.pill.label": "What are you learning today?",
-    "assistant.ask.label": "Ask"
+    "assistant.ask.label": "Ask",
+    "assistant.header.responseReadyAnnouncement": "Your Library Assistant answer is ready",
+    "assistant.header.openReadyResponse": "Open Library Assistant: your answer is ready"
 }

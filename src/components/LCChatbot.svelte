@@ -273,11 +273,14 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
+  // A reply landed while the assistant was closed (from poc/penina-la-mobile-notifications).
+  // With the POC's reply-ready notice on, the closed launcher shows it until opened.
+  let responseReady = $state(false);
   // Phones: the closed launcher is a bar to type into (see sendFromBar)
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', desktopEntry: 'circle', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', notify: 'off', desktopEntry: 'circle', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
@@ -287,6 +290,7 @@
   let pocPreview = $state(null);
   let pocEditingText = $state(false);
   let pocView = $derived(pocPreview ?? poc);
+  let showReady = $derived(responseReady && pocView.notify === 'on');
   // The host's POC header item (Sefaria, la-sandbox) follows the toolbox live
   $effect(() => {
     document.dispatchEvent(new CustomEvent('chatbot:poc-config', { detail: { ...pocView } }));
@@ -620,6 +624,7 @@
 
   function openPanel() {
     isOpen = true;
+    responseReady = false;
     sheetDetent = 'partial';
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
@@ -1632,6 +1637,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
+      if (!isOpen) responseReady = true;
 
     } catch (e) {
       if (e.code === 'login_required') {
@@ -2098,7 +2104,7 @@
   class:mode-docked={layout === 'docked'}
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
-  class:trigger-hidden={triggerHidden}
+  class:trigger-hidden={triggerHidden && !showReady}
   class:has-bar={hasBar}
   class:sheet-split={splitSheet}
   class:entry-purple={pocView.color === 'purple'}
@@ -2120,15 +2126,18 @@
       </svg>
     {/if}
   {/snippet}
+  <span class="sr-only" aria-live="polite">{showReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
   {#if hasBar && pocView.entry === 'pill'}
     <!-- Phones (POC): a full-width button that opens the assistant -->
-    <button class="lc-chatbot-pill" onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
+    <button class="lc-chatbot-pill" class:response-ready={showReady} onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
       {@render entryIcon()}
       <span>{pocView.pillText?.trim() || $_('assistant.pill.label')}</span>
+      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else if hasBar}
     <!-- Phones: a bar to type a question into -->
-    <form class="lc-chatbot-bar" onsubmit={sendFromBar}>
+    <form class="lc-chatbot-bar" class:response-ready={showReady} onsubmit={sendFromBar}>
+      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
       <input
         type="text"
         bind:value={inputText}
@@ -2143,7 +2152,7 @@
       <button
         type="submit"
         class="bar-send"
-        aria-label={inputText.trim() ? $_('assistant.input.send.tooltip') : $_('assistant.header.openAssistant')}
+        aria-label={inputText.trim() ? $_('assistant.input.send.tooltip') : $_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -2153,18 +2162,20 @@
     </form>
   {:else if !isOpen && (isFullscreen ? pocView.entry : pocView.desktopEntry) === 'ask'}
     <!-- POC: the circle grown into a "✦ Ask" pill, in the same corner (phones and desktop each choose) -->
-    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-ask"
+    <button aria-label={$_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={showReady}
             onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
       <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
       <span>{$_('assistant.ask.label')}</span>
+      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else if !isOpen}
     <!-- Floating Button -->
-    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
+    <button aria-label={$_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-trigger" class:response-ready={showReady} onclick={openPanel}>
       {@render entryIcon()}
       <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
+      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -3618,6 +3629,61 @@
 
   .mode-fullscreen .trigger-label {
     display: none;
+  }
+
+  /* A reply arrived while closed (POC reply-ready notice): a badge sits on the launcher,
+     which nudges twice to draw the eye. From poc/penina-la-mobile-notifications. */
+  .response-ready {
+    position: relative;
+    animation: trigger-nudge 0.6s ease 2;
+  }
+
+  .trigger-badge {
+    position: absolute;
+    top: -2px;
+    inset-inline-start: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--lc-danger);
+    box-shadow: 0 0 0 2px var(--lc-bg);
+  }
+
+  .trigger-badge::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--lc-danger);
+    animation: badge-ping 1.6s ease-out infinite;
+  }
+
+  @keyframes trigger-nudge {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-6px); }
+    70% { transform: translateY(0); }
+    85% { transform: translateY(-2px); }
+  }
+
+  @keyframes badge-ping {
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .response-ready,
+    .trigger-badge::after {
+      animation: none;
+    }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   /* Chat Panel */

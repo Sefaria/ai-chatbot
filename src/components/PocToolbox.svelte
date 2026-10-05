@@ -23,6 +23,7 @@
     { key: 'headerSlot', label: 'Header item position', on: 'desktop', when: (d) => d.placement !== 'banner',
       text: () => ['headerText', 'Header item text'],
       options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate', (d) => d.headerStyle !== 'pill'], ['beforeSearch', 'Before search']] },
+    { key: 'notify', label: 'Reply-ready notice', options: [['off', 'Off'], ['on', 'On']] },
     { key: 'color', label: 'Button color', options: [['blue', 'Sefaria blue'], ['purple', 'Purple']] },
     { key: 'icon', label: 'Icon (circle & pill)', options: [['logo', 'Samekh'], ['star', 'Star ✦']] }
   ];

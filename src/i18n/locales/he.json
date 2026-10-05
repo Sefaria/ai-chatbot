@@ -140,5 +140,7 @@
     "assistant.pill.label": "מה אתם לומדים היום?",
     "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא החינמי שלכם.",
     "assistant.anon.login": "התחברו",
-    "assistant.ask.label": "שאלו"
+    "assistant.ask.label": "שאלו",
+    "assistant.header.responseReadyAnnouncement": "התשובה מעוזר הספרייה מוכנה",
+    "assistant.header.openReadyResponse": "פתיחת עוזר הספרייה: התשובה שלך מוכנה"
 }
