@@ -138,8 +138,8 @@
     "assistant.bar.placeholder": "על מה תרצו ללמוד?",
     "assistant.bar.aria": "שאלו את עוזר הספרייה",
     "assistant.pill.label": "מה אתם לומדים היום?",
-    "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא החינמי שלכם.",
-    "assistant.anon.login": "התחברו",
+    "assistant.anon.loginRequired": "כדי להמשיך לשאול, {link} לחשבון ספריא חינמי.",
+    "assistant.anon.login": "התחברו או הירשמו",
     "assistant.ask.label": "שאלו",
     "assistant.header.responseReadyAnnouncement": "התשובה מעוזר הספרייה מוכנה",
     "assistant.header.openReadyResponse": "פתיחת עוזר הספרייה: התשובה שלך מוכנה"
