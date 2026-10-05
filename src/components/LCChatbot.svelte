@@ -2939,7 +2939,7 @@
   .trigger-badge {
     position: absolute;
     top: -2px;
-    inset-inline-end: -2px;
+    inset-inline-start: -2px;
     width: 12px;
     height: 12px;
     border-radius: 50%;
