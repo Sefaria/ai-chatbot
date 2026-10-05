@@ -78,7 +78,7 @@ Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-
 - One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px, with 24px icons (22px in menus and feedback); inline links get block padding for a taller tap area.
 - The header is a drag handle (grabber bar on top, buttons excluded): dragging down more than 120px, or a quick flick, closes the sheet; a shorter drag springs back.
 - No dock mode. History covers the chat; picking a chat returns to it.
-- A reply that lands while the assistant is closed increments `readyCount` (any screen size): the closed button shows it as a count badge until opened, and on phones it stops receding.
+- A reply that lands while the assistant is closed sets `responseReady` (any screen size): the closed button gets a badge until opened, and on phones it stops receding.
 
 ## i18n
 

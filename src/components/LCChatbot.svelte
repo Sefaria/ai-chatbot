@@ -232,9 +232,8 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
-  // Replies that landed while the assistant was closed. The closed button counts them until opened.
-  let readyCount = $state(0);
-  let responseReady = $derived(readyCount > 0);
+  // A reply landed while the assistant was closed. The closed button shows it until opened.
+  let responseReady = $state(false);
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -512,7 +511,7 @@
 
   function openPanel() {
     isOpen = true;
-    readyCount = 0;
+    responseReady = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
@@ -1312,7 +1311,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
-      if (!isOpen) readyCount += 1;
+      if (!isOpen) responseReady = true;
 
     } catch (e) {
       console.error('[lc-chatbot] Send failed:', e);
@@ -1784,7 +1783,7 @@
     >
       <img src="{staticIconsBaseUrl}/logo.svg"/>
       <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
-      {#if responseReady}<span class="trigger-badge" aria-hidden="true">{readyCount > 9 ? '9+' : readyCount}</span>{/if}
+      {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
     <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
   {:else}
@@ -2941,25 +2940,18 @@
     position: absolute;
     top: -2px;
     inset-inline-start: -2px;
-    z-index: 0; /* keeps the ping (z-index -1) behind the number */
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    box-sizing: border-box;
-    border-radius: 9px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
     background: var(--lc-danger);
     box-shadow: 0 0 0 2px var(--lc-bg);
-    color: #fff;
-    font: 600 11px/18px var(--lc-font);
-    text-align: center;
   }
 
   .trigger-badge::after {
     content: '';
     position: absolute;
     inset: 0;
-    z-index: -1;
-    border-radius: inherit;
+    border-radius: 50%;
     background: var(--lc-danger);
     animation: badge-ping 1.6s ease-out infinite;
   }
@@ -2973,7 +2965,7 @@
 
   @keyframes badge-ping {
     0% { transform: scale(1); opacity: 0.6; }
-    100% { transform: scale(2); opacity: 0; }
+    100% { transform: scale(2.4); opacity: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
