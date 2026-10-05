@@ -4770,8 +4770,8 @@
     inset-inline: 18px 28px;
     z-index: 1;
     padding: 8px 12px;
-    background: var(--lc-bg-tertiary);
-    border: 1px solid var(--lc-border);
+    background: var(--lc-bg); /* white, like the input field */
+    border: 1px solid var(--lc-border-strong);
     border-bottom: none;
     border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
     font-family: var(--lc-font);
