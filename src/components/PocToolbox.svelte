@@ -12,6 +12,8 @@
       options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Wide pill'], ['ask', 'Ask pill']] },
     { key: 'mobileOpen', label: 'LA open on mobile', on: 'phone',
       options: [['full', 'Full screen'], ['split', 'Split screen']] },
+    { key: 'desktopEntry', label: 'Entry point', on: 'desktop',
+      options: [['circle', 'Circle'], ['ask', 'Ask pill']] },
     { key: 'placement', label: 'Header item placement', on: 'desktop',
       text: (d) => d.placement === 'banner' && ['bannerText', 'Banner text'],
       options: [['header', 'Header item'], ['banner', 'Banner above Browse']] },
