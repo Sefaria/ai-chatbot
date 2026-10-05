@@ -280,7 +280,7 @@
   let barFocused = $state(false);
   let barKeyboardInset = $state(0);
   // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', notify: 'off', desktopEntry: 'circle', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
+  let poc = $state({ entryPoints: 'all', entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', notify: 'off', desktopEntry: 'circle', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
   function savePoc(next) {
     poc = next;
     setStorage('poc_toolbox', next);
@@ -298,8 +298,10 @@
   // POC: on phones the assistant can open as a half-height sheet over the page instead
   let splitSheet = $derived(isFullscreen && pocView.mobileOpen === 'split');
   const SPLIT_SHEET_RATIO = 0.5;
-  let hasBar = $derived(isFullscreen && !isOpen && (pocView.entry === 'bar' || pocView.entry === 'pill'));
-  let barActive = $derived(pocView.entry === 'bar' && (barFocused || inputText.trim() !== ''));
+  // "Entry points: Circle only" leaves just the circle, as on production (the host hides its own entry points too)
+  let entry = $derived(pocView.entryPoints === 'none' ? 'circle' : isFullscreen ? pocView.entry : pocView.desktopEntry);
+  let hasBar = $derived(isFullscreen && !isOpen && (entry === 'bar' || entry === 'pill'));
+  let barActive = $derived(entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -2127,7 +2129,7 @@
     {/if}
   {/snippet}
   <span class="sr-only" aria-live="polite">{showReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
-  {#if hasBar && pocView.entry === 'pill'}
+  {#if hasBar && entry === 'pill'}
     <!-- Phones (POC): a full-width button that opens the assistant -->
     <button class="lc-chatbot-pill" class:response-ready={showReady} onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
       {@render entryIcon()}
@@ -2160,7 +2162,7 @@
         </svg>
       </button>
     </form>
-  {:else if !isOpen && (isFullscreen ? pocView.entry : pocView.desktopEntry) === 'ask'}
+  {:else if !isOpen && entry === 'ask'}
     <!-- POC: the circle grown into a "✦ Ask" pill, in the same corner (phones and desktop each choose) -->
     <button aria-label={$_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={showReady}
             onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>

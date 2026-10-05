@@ -7,20 +7,23 @@
 
   // Each group can come with a text field (empty keeps the default text)
   const ENTRY_TEXT = { pill: ['pillText', 'Pill text'], bar: ['barText', 'Bar placeholder'] };
+  // "Circle only" hides every other way in, here and on the host page, so only the groups below it apply
+  const extras = (d) => d.entryPoints !== 'none';
   const GROUPS = [
-    { key: 'entry', label: 'Entry point', on: 'phone', text: (d) => ENTRY_TEXT[d.entry],
+    { key: 'entryPoints', label: 'Entry points', options: [['all', 'All'], ['none', 'Circle only']] },
+    { key: 'entry', label: 'Entry point', on: 'phone', when: extras, text: (d) => ENTRY_TEXT[d.entry],
       options: [['circle', 'Circle'], ['bar', 'Input bar'], ['pill', 'Wide pill'], ['ask', 'Ask pill']] },
     { key: 'mobileOpen', label: 'LA open on mobile', on: 'phone',
       options: [['full', 'Full screen'], ['split', 'Split screen']] },
-    { key: 'desktopEntry', label: 'Entry point', on: 'desktop',
+    { key: 'desktopEntry', label: 'Entry point', on: 'desktop', when: extras,
       options: [['circle', 'Circle'], ['ask', 'Ask pill']] },
-    { key: 'placement', label: 'Header item placement', on: 'desktop',
+    { key: 'placement', label: 'Header item placement', on: 'desktop', when: extras,
       text: (d) => d.placement === 'banner' && ['bannerText', 'Banner text'],
       options: [['header', 'Header item'], ['banner', 'Banner above Browse']] },
-    { key: 'headerStyle', label: 'Header item style', on: 'desktop', when: (d) => d.placement !== 'banner',
+    { key: 'headerStyle', label: 'Header item style', on: 'desktop', when: (d) => extras(d) && d.placement !== 'banner',
       options: [['text', 'Star + text'], ['pill', 'Pill']] },
     // The pill sits at an end of a group, never between two header links
-    { key: 'headerSlot', label: 'Header item position', on: 'desktop', when: (d) => d.placement !== 'banner',
+    { key: 'headerSlot', label: 'Header item position', on: 'desktop', when: (d) => extras(d) && d.placement !== 'banner',
       text: () => ['headerText', 'Header item text'],
       options: [['afterDonate', 'After Donate'], ['beforeDonate', 'Before Donate', (d) => d.headerStyle !== 'pill'], ['beforeSearch', 'Before search']] },
     { key: 'notify', label: 'Reply-ready notice', options: [['off', 'Off'], ['on', 'On']] },
