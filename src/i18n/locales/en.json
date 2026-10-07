@@ -6,7 +6,6 @@
     "assistant.header.close.tooltip": "Close",
     "assistant.header.dock.tooltip": "Maximize & move to sidebar",
     "assistant.header.undock.tooltip": "Minimize & detach from sidebar",
-    "assistant.header.triggerLabel": "LIBRARY ASSISTANT",
     "assistant.header.openAssistant": "Open Library Assistant",
     "assistant.header.chatWindow": "Chat window",
     "assistant.header.moreOptions": "More options",
@@ -180,9 +179,6 @@
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
     "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
-    "assistant.bar.placeholder": "What would you like to learn about?",
-    "assistant.bar.aria": "Ask the Library Assistant",
-    "assistant.pill.label": "What are you learning today?",
     "assistant.ask.label": "Ask",
     "assistant.header.responseReadyAnnouncement": "Your Library Assistant answer is ready",
     "assistant.header.openReadyResponse": "Open Library Assistant: your answer is ready"

@@ -81,8 +81,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 ### 1.7 Phone
 
-- Same flows 1.1–1.5 inside the full-screen sheet (and the split-screen sheet, if that's
-  chosen in Sandbox controls).
+- Same flows 1.1–1.5 inside the full-screen sheet.
 - The prompt replaces the text box. Check the button stays clear of the iOS
   home bar and doesn't scroll sideways at 320px.
 - After logging in, the sheet reopens on the conversation (the only time a sheet opens by
@@ -106,11 +105,12 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 ## Still to cover from this PR
 
-- [ ] Entry points: circle, input bar, wide pill, Ask pill (phone); circle or Ask pill
-      (desktop); "Circle only"
-- [ ] LA open on mobile: full screen vs. split screen, and dragging the split sheet
+- [ ] Entry point: the Ask pill, on phones and desktop (decided; circle, input bar and wide
+      pill removed)
+- [ ] LA open on mobile: full screen only (decided; split screen removed)
 - [ ] Header item, banner above Browse, search "Ask" row, resources-panel item, no-results
       button, mobile menu item (Sefaria side, PR Sefaria/Sefaria-Project#3782)
-- [ ] Reply-ready notice
-- [ ] Button color (blue or purple) and icon (Samekh or star)
-- [ ] Sandbox controls themselves (POC only; to be removed before shipping)
+- [ ] Reply-ready notice (decided: always on)
+- [ ] Button color and icon (decided: purple Ask pill with the star; the open assistant
+      stays Sefaria blue)
+- [x] Sandbox controls removed

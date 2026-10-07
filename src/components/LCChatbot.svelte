@@ -21,7 +21,6 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import PocToolbox from './PocToolbox.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
@@ -270,35 +269,8 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
-  // A reply landed while the assistant was closed (from poc/penina-la-mobile-notifications).
-  // With the POC's reply-ready notice on, the closed launcher shows it until opened.
+  // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
-  // Phones: the closed launcher is a bar to type into (see sendFromBar)
-  let barFocused = $state(false);
-  let barKeyboardInset = $state(0);
-  // POC only: which phone launcher the toolbox picked (circle, bar or pill), its color and icon
-  let poc = $state({ entryPoints: 'all', entry: 'bar', color: 'blue', icon: 'logo', mobileOpen: 'full', notify: 'off', desktopEntry: 'circle', placement: 'header', headerSlot: 'afterDonate', headerStyle: 'text', ...getStorage('poc_toolbox', {}) });
-  function savePoc(next) {
-    poc = next;
-    setStorage('poc_toolbox', next);
-  }
-  // The bar and the pill both float full width at the bottom of the phone
-  // While the toolbox is open, its unsaved choices preview live
-  let pocPreview = $state(null);
-  let pocEditingText = $state(false);
-  let pocView = $derived(pocPreview ?? poc);
-  let showReady = $derived(responseReady && pocView.notify === 'on');
-  // The host's POC header item (Sefaria, la-sandbox) follows the toolbox live
-  $effect(() => {
-    document.dispatchEvent(new CustomEvent('chatbot:poc-config', { detail: { ...pocView } }));
-  });
-  // POC: on phones the assistant can open as a half-height sheet over the page instead
-  let splitSheet = $derived(isFullscreen && pocView.mobileOpen === 'split');
-  const SPLIT_SHEET_RATIO = 0.5;
-  // "Entry points: Circle only" leaves just the circle, as on production (the host hides its own entry points too)
-  let entry = $derived(pocView.entryPoints === 'none' ? 'circle' : isFullscreen ? pocView.entry : pocView.desktopEntry);
-  let hasBar = $derived(isFullscreen && !isOpen && (entry === 'bar' || entry === 'pill'));
-  let barActive = $derived(entry === 'bar' && (barFocused || inputText.trim() !== ''));
   let pendingNavigation = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
@@ -307,25 +279,11 @@
   let sheetOffset = $state(0);
   let sheetSettling = $state(false);
   let sheetDrag = null;
-  // POC split sheet: it rests half-height ('partial') or full height ('full'), and its header
-  // drags it between those and closed. splitBox is the space it sits in: the screen, or the
-  // part above the keyboard while typing.
-  let sheetDetent = $state('partial');
-  let sheetDragHeight = $state(null);
-  let splitBox = $state(null); // { top, space }
-  let splitHeights = $derived(splitBox && {
-    partial: Math.min(Math.round(window.innerHeight * SPLIT_SHEET_RATIO), splitBox.space),
-    full: splitBox.space
-  });
   // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
-  let sheetStyle = $derived.by(() => {
-    if (splitSheet && splitHeights) {
-      const height = Math.max(0, Math.min(sheetDragHeight ?? splitHeights[sheetDetent], splitHeights.full));
-      return `top: ${splitBox.top + splitBox.space - height}px; height: ${height}px;`;
-    }
-    return (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
-      (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '');
-  });
+  let sheetStyle = $derived(
+    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
+  );
 
   // How long after leaving for the login page the assistant still reopens on the return
   const RESUME_AFTER_LOGIN_MS = 30 * 60 * 1000;
@@ -624,7 +582,6 @@
   function openPanel() {
     isOpen = true;
     responseReady = false;
-    sheetDetent = 'partial';
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
@@ -653,8 +610,7 @@
   function startSheetDrag(e) {
     if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0,
-                  startHeight: splitHeights?.[sheetDetent] };
+    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
     sheetSettling = false;
   }
 
@@ -664,39 +620,11 @@
     if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
     sheetDrag.lastY = e.clientY;
     sheetDrag.lastT = e.timeStamp;
-    if (splitSheet && splitHeights) sheetDragHeight = sheetDrag.startHeight - (e.clientY - sheetDrag.startY);
-    else sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
-  }
-
-  // Split sheet: settle on the nearest of closed, half and full height. A flick moves one
-  // step in its direction from where the drag started.
-  function endSplitSheetDrag(e) {
-    const moving = e.timeStamp - sheetDrag.lastT < 100;
-    const { velocity, startHeight } = sheetDrag;
-    const height = sheetDragHeight ?? startHeight;
-    const order = ['closed', 'partial', 'full'];
-    const heightOf = { closed: 0, ...splitHeights };
-    let target;
-    if (moving && Math.abs(velocity) > SHEET_CLOSE_VELOCITY && Math.abs(height - startHeight) > 20) {
-      const from = order.indexOf(sheetDetent);
-      target = order[Math.max(0, Math.min(order.length - 1, from + (velocity > 0 ? -1 : 1)))];
-    } else {
-      target = order.reduce((best, d) => Math.abs(heightOf[d] - height) < Math.abs(heightOf[best] - height) ? d : best);
-    }
-    sheetDrag = null;
-    sheetSettling = true;
-    sheetDragHeight = heightOf[target];
-    setTimeout(() => {
-      if (target === 'closed') closePanel();
-      else sheetDetent = target;
-      sheetDragHeight = null;
-      sheetSettling = false;
-    }, 200);
+    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
   }
 
   function endSheetDrag(e) {
     if (!sheetDrag) return;
-    if (splitSheet && splitHeights) return endSplitSheetDrag(e);
     // A flick counts only if the finger was still moving when it lifted
     const moving = e.timeStamp - sheetDrag.lastT < 100;
     const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
@@ -743,21 +671,17 @@
 
   // While the sheet is open, lock the page behind it and track the visual viewport, so
   // a focused field stays above the on-screen keyboard. Only a field in the sheet counts:
-  // opening from the bar leaves the bar's keyboard closing, and sizing the sheet to that
-  // would leave it stuck part-way up the screen.
-  // A split sheet (POC) leaves the page above it scrollable, and sits on the keyboard's top
-  // edge while typing, keeping its height unless the space above the keyboard is smaller.
+  // opening from a host search box leaves that keyboard closing, and sizing the sheet to
+  // it would leave the sheet stuck part-way up the screen.
   $effect(() => {
     if (!isFullscreen || !isOpen) return;
-    const split = splitSheet;
     const root = document.documentElement;
     const overflow = root.style.overflow;
-    if (!split) root.style.overflow = 'hidden';
+    root.style.overflow = 'hidden';
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (split) splitBox = { top: vv.offsetTop, space: typing ? vv.height : window.innerHeight };
-      else if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
+      if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
     if (vv) {
@@ -770,44 +694,25 @@
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
       viewportBox = null;
-      splitBox = null;
     };
   });
 
-  // On phones the closed bar steps aside while the page scrolls and returns once scrolling
-  // stops, so it doesn't sit on the text being read. It stays put while the reader is
-  // typing in it. Capture catches every scroller.
-  const BAR_SCROLL_IDLE_MS = 400;
+  // On phones the closed launcher steps aside while the page scrolls and returns once
+  // scrolling stops, so it doesn't sit on the text being read. Capture catches every scroller.
+  const LAUNCHER_SCROLL_IDLE_MS = 400;
   $effect(() => {
     triggerHidden = false;
-    if (!isFullscreen || isOpen || barActive) return;
+    if (!isFullscreen || isOpen) return;
     let idleTimer;
     function onScroll() {
       triggerHidden = true;
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => { triggerHidden = false; }, BAR_SCROLL_IDLE_MS);
+      idleTimer = setTimeout(() => { triggerHidden = false; }, LAUNCHER_SCROLL_IDLE_MS);
     }
     document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => {
       clearTimeout(idleTimer);
       document.removeEventListener('scroll', onScroll, { capture: true });
-    };
-  });
-
-  // While the bar has focus, lift it above the on-screen keyboard
-  $effect(() => {
-    const vv = window.visualViewport;
-    if (!isFullscreen || isOpen || !(barFocused || pocEditingText) || !vv) return;
-    const sync = () => {
-      barKeyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    };
-    sync();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => {
-      vv.removeEventListener('resize', sync);
-      vv.removeEventListener('scroll', sync);
-      barKeyboardInset = 0;
     };
   });
 
@@ -821,14 +726,6 @@
     if (!question) return;
     await tick();
     handleSend();
-  }
-
-  function sendFromBar(e) {
-    e?.preventDefault();
-    const question = inputText.trim();
-    trackAssistantClick(question ? 'bottom_bar_send' : 'bottom_bar_open');
-    document.activeElement?.blur?.();
-    askInNewChat(question);
   }
 
   // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu,
@@ -2101,78 +1998,21 @@
   class:mode-docked={layout === 'docked'}
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
-  class:trigger-hidden={triggerHidden && !showReady}
-  class:has-bar={hasBar}
-  class:sheet-split={splitSheet}
-  class:entry-purple={pocView.color === 'purple'}
-  class:poc-previewing={pocPreview}
-  style={hasBar && barKeyboardInset ? `bottom: ${barKeyboardInset + 8}px` : ''}
+  class:trigger-hidden={triggerHidden && !responseReady}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
-  {#snippet entryIcon()}
-    {#if pocView.icon === 'star'}
-      <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
-      <svg class="entry-star" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
-      </svg>
-    {:else}
-      <!-- Same artwork as static/icons/logo.svg, inline so it shows without the backend serving it -->
-      <svg class="entry-logo" width="20" height="26" viewBox="0 0 20 26" aria-hidden="true">
-        <path fill="currentColor" d="M19.5909 10.3544C19.1687 7.67 18.6217 4.75091 16.261 3.13857C14.8303 2.15597 13.3551 2.08338 11.7055 2.08338C10.5807 2.08338 6.61658 2.0361 4.87983 2.0361C3.14308 2.0361 2.07128 0.666883 2.07128 0C0.972145 1.3287 0.131119 2.79753 0.426846 4.57364C0.691803 6.17247 1.8012 7.1939 3.42513 7.39649C1.58411 9.96273 -0.0791374 12.919 0.00291377 16.0491C0.0541959 18.0227 0.512316 25.8514 9.4747 25.8514H11.1072C14.9345 25.8514 17.2525 23.0455 17.926 21.9666C19.9072 18.7757 20.2388 13.8374 19.6115 10.3713M18.2388 16.5877C17.5619 19.7262 15.2627 21.0583 10.1414 21.0583C-2.44494 21.0583 2.01487 11.0669 3.77385 9.00883C4.51231 8.09546 5.03026 7.34416 6.90718 7.34416H10.4781C15.4576 7.34416 16.4063 7.57714 17.6542 10.091C18.3294 11.4451 18.7191 14.3675 18.2388 16.5927"/>
-      </svg>
-    {/if}
-  {/snippet}
-  <span class="sr-only" aria-live="polite">{showReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
-  {#if hasBar && entry === 'pill'}
-    <!-- Phones (POC): a full-width button that opens the assistant -->
-    <button class="lc-chatbot-pill" class:response-ready={showReady} onclick={() => { trackAssistantClick('bottom_pill_open'); openPanel(); }}>
-      {@render entryIcon()}
-      <span>{pocView.pillText?.trim() || $_('assistant.pill.label')}</span>
-      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
-    </button>
-  {:else if hasBar}
-    <!-- Phones: a bar to type a question into -->
-    <form class="lc-chatbot-bar" class:response-ready={showReady} onsubmit={sendFromBar}>
-      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
-      <input
-        type="text"
-        bind:value={inputText}
-        onfocus={() => { barFocused = true; }}
-        onblur={() => { barFocused = false; }}
-        maxlength={effectiveMaxInputChars}
-        placeholder={pocView.barText?.trim() || $_('assistant.bar.placeholder')}
-        aria-label={$_('assistant.bar.aria')}
-        enterkeyhint="send"
-        autocomplete="off"
-      />
-      <button
-        type="submit"
-        class="bar-send"
-        aria-label={inputText.trim() ? $_('assistant.input.send.tooltip') : $_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
-      </button>
-    </form>
-  {:else if !isOpen && entry === 'ask'}
-    <!-- POC: the circle grown into a "✦ Ask" pill, in the same corner (phones and desktop each choose) -->
-    <button aria-label={$_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={showReady}
+  <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
+  {#if !isOpen}
+    <!-- Launcher: a "✦ Ask" pill in the corner -->
+    <button aria-label={$_(responseReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={responseReady}
             onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
+      <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
       <span>{$_('assistant.ask.label')}</span>
-      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
-    </button>
-  {:else if !isOpen}
-    <!-- Floating Button -->
-    <button aria-label={$_(showReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-trigger" class:response-ready={showReady} onclick={openPanel}>
-      {@render entryIcon()}
-      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
-      {#if showReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
+      {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else}
     <!-- Chat Panel -->
@@ -2792,18 +2632,6 @@
   {/if}
 </div>
 
-<!-- POC only: switch between launcher versions (desktop keeps the circle, so no entry choice there).
-     Stays available while the assistant is open, so its colors can be compared in place. -->
-<PocToolbox
-  config={poc}
-  onSave={savePoc}
-  onPreview={(next) => { pocPreview = next; }}
-  onEditingText={(editing) => { pocEditingText = editing; }}
-  phone={isFullscreen}
-  defaultTexts={{ pillText: $_('assistant.pill.label'), barText: $_('assistant.bar.placeholder'), headerText: $_('assistant.title'),
-                  bannerText: 'The Library Assistant can help you get started learning.' }}
-/>
-
 <style>
   /* CSS Custom Properties for theming */
   :host {
@@ -2972,18 +2800,6 @@
     background: transparent;
   }
 
-  /* POC split sheet: the page stays visible and usable above a half-height sheet */
-  .lc-chatbot-container.mode-fullscreen.is-open.sheet-split {
-    background: transparent;
-    pointer-events: none;
-  }
-
-  .mode-fullscreen.sheet-split .lc-chatbot-panel {
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.15);
-    pointer-events: auto;
-  }
-
   .mode-fullscreen .lc-chatbot-panel {
     position: absolute;
     top: 0;
@@ -3020,10 +2836,6 @@
 
   .mode-fullscreen .lc-chatbot-panel.sheet-settling {
     transition: transform 0.2s ease;
-  }
-
-  .mode-fullscreen.sheet-split .lc-chatbot-panel.sheet-settling {
-    transition: top 0.2s ease, height 0.2s ease;
   }
 
   /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
@@ -3358,161 +3170,18 @@
     border-radius: 0;
   }
 
-  /* Phones: the closed launcher is a bar floating above the page, inset from both edges */
-  .lc-chatbot-container.has-bar {
-    inset-inline: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    pointer-events: none;
-  }
-
-  .lc-chatbot-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 560px;
-    margin-inline: auto;
-    padding-block: 4px;
-    padding-inline: 16px 8px;
-    background: var(--lc-bg);
-    border: 1px solid var(--core-neutral-gray-100);
-    border-radius: 9999px;
-    box-shadow: var(--lc-shadow);
-    pointer-events: auto;
-  }
-
-  .lc-chatbot-bar input {
-    flex: 1;
-    min-width: 0;
-    min-height: 44px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--lc-text);
-    font-family: var(--lc-font);
-    font-size: 16px; /* below 16px, iOS zooms the page on focus */
-    outline: none;
-    text-overflow: ellipsis;
-  }
-
-  .lc-chatbot-bar input::placeholder {
-    color: var(--semantic-text-muted);
-    opacity: 1;
-  }
-
-  /* POC: while the toolbox previews the launcher, the launcher is only to look at */
-  .poc-previewing * {
-    pointer-events: none !important;
-  }
-
-  /* Accent color (launcher, send buttons, header title): Sefaria blue, or purple when picked in the POC toolbox */
+  /* Launcher color: purple, for the closed button only. Once open, the assistant keeps
+     the Sefaria blue theme (sefaria-design-foundations Core Brand/Purple scale). */
   .lc-chatbot-container {
-    --lc-entry-bg: var(--brand-sefaria-blue);
-    --lc-entry-bg-pressed: #0B1A2D;
-    --lc-entry-bg-hover: var(--lc-primary-hover);
-    --lc-response-text: var(--brand-sefaria-blue);
-  }
-
-  /* POC purple theme: every Sefaria blue becomes --mussar-purple, and the other blues and
-     navies their step on the Core Brand/Purple scale (sefaria-design-foundations tokens).
-     Aliases resolved on :host are redefined here too, or they'd keep the blue. */
-  .lc-chatbot-container.entry-purple {
-    --purple-100: #F7EEF5;
-    --purple-200: #EEDBEA;
     --purple-600: #965386;
     --purple-700: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple */
     --purple-900: #4E2544;
-
-    --brand-sefaria-blue: var(--purple-700);
-    --semantic-action-primary: var(--purple-700);
-    --semantic-text-link: var(--purple-700);
-    --lc-primary: var(--purple-700);
-    --lc-user-bg: var(--purple-700);
-    --lc-sefaria-blue: var(--purple-700);
-    --lc-primary-hover: var(--purple-600);
-    --core-blue-tbr-100: var(--purple-100);
-    --core-blue-tbr-200: var(--purple-200);
-    --lc-topics-bg: var(--purple-100);
-    --lc-bg-tertiary: var(--purple-100);
-    --lc-assistant-bg: var(--purple-100);
-    --lc-border: var(--purple-200);
-    --lc-text: #121212; /* text-primary (gray-1000): reading text stays neutral */
-    --lc-assistant-text: #121212;
-    --lc-response-text: #121212;
-
     --lc-entry-bg: var(--purple-700);
-    --lc-entry-bg-pressed: var(--purple-900);
     --lc-entry-bg-hover: var(--purple-600);
+    --lc-entry-bg-pressed: var(--purple-900);
   }
 
-  .lc-chatbot-pill {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    max-width: 560px;
-    min-height: 52px;
-    margin-inline: auto;
-    padding: 0 24px;
-    background: var(--lc-entry-bg);
-    color: var(--core-base-white);
-    border: none;
-    border-radius: 9999px;
-    box-shadow: var(--lc-shadow);
-    font-family: var(--lc-font);
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-    pointer-events: auto;
-  }
-
-  .lc-chatbot-pill:active {
-    background: var(--lc-entry-bg-pressed);
-  }
-
-  .lc-chatbot-pill:focus-visible {
-    outline: 2px solid var(--core-base-white);
-    outline-offset: -5px;
-  }
-
-  .lc-chatbot-pill .entry-logo {
-    height: 22px;
-  }
-
-  .lc-chatbot-pill .entry-star {
-    width: 20px;
-    height: 20px;
-  }
-
-  .bar-send {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    background: var(--lc-entry-bg);
-    color: var(--core-base-white);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-  }
-
-  .bar-send:active {
-    background: var(--lc-entry-bg-pressed);
-  }
-
-  .bar-send:focus-visible {
-    outline: 2px solid var(--core-base-white);
-    outline-offset: -4px;
-  }
-
-  .interface-hebrew .bar-send svg {
-    transform: scaleX(-1);
-  }
-
-  /* Without motion, the bar fades out and back in place */
+  /* Without motion, the launcher fades out and back in place */
   @media (prefers-reduced-motion: reduce) {
     .lc-chatbot-container.mode-fullscreen {
       transition: opacity 0.2s ease;
@@ -3523,73 +3192,7 @@
     }
   }
 
-  /* Trigger Button */
-  .lc-chatbot-trigger {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    min-width: 52px; /* with the label hidden, a circle */
-    height: 52px;
-    padding: 0 15px;
-    background: var(--lc-entry-bg);
-    color: white;
-    border: none;
-    border-radius: 9999px;
-    cursor: pointer;
-    font-family: var(--lc-font);
-    font-size: var(--lc-font-size);
-    font-weight: 500;
-    box-shadow: var(--lc-shadow);
-    transition: all 0.2s ease;
-  }
-
-  .lc-chatbot-trigger:hover,
-  .lc-chatbot-trigger:focus,
-  .lc-chatbot-trigger:active {
-    gap: 8px;
-  }
-
-
-  .lc-chatbot-trigger:active {
-    background: var(--lc-entry-bg-pressed);
-  }
-
-  .trigger-label {
-    font-weight: 400;
-    color: var(--lc-user-text);
-    font-family: var(--lc-font);
-    font-size: var(--lc-font-size-sm);
-    line-height: 18px; 
-    letter-spacing: 0.24px;
-    max-width: 0;
-    overflow: hidden;
-    opacity: 0;
-    white-space: nowrap;
-    transition: max-width 0.2s ease, opacity 0.2s ease;
-  }
-
-  .lc-chatbot-trigger:hover .trigger-label,
-  .lc-chatbot-trigger:focus .trigger-label,
-  .lc-chatbot-trigger:active .trigger-label {
-    max-width: 12em;
-    opacity: 1;
-  }
-
-  /* Touch screens: a tap opens the assistant straight away. Without hover, the label
-     would slide out first, and iOS can spend the first tap on that hover state. */
-  @media (hover: none) {
-    .lc-chatbot-trigger:is(:hover, :focus, :active) {
-      gap: 0;
-    }
-
-    .lc-chatbot-trigger:is(:hover, :focus, :active) .trigger-label {
-      max-width: 0;
-      opacity: 0;
-    }
-  }
-
-  /* Phones: the label never shows, so the button is a true circle */
+  /* Launcher */
   .lc-chatbot-ask {
     display: flex;
     align-items: center;
@@ -3607,6 +3210,13 @@
     cursor: pointer;
   }
 
+  /* Hover only where it exists: on touch screens it would stick after the tap */
+  @media (hover: hover) {
+    .lc-chatbot-ask:hover {
+      background: var(--lc-entry-bg-hover);
+    }
+  }
+
   .lc-chatbot-ask:active {
     background: var(--lc-entry-bg-pressed);
   }
@@ -3616,19 +3226,8 @@
     outline-offset: -5px;
   }
 
-  .mode-fullscreen .lc-chatbot-trigger {
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    padding: 0;
-  }
-
-  .mode-fullscreen .trigger-label {
-    display: none;
-  }
-
-  /* A reply arrived while closed (POC reply-ready notice): a badge sits on the launcher,
-     which nudges twice to draw the eye. From poc/penina-la-mobile-notifications. */
+  /* A reply arrived while closed: a badge sits on the launcher, which nudges twice to
+     draw the eye */
   .response-ready {
     position: relative;
     animation: trigger-nudge 0.6s ease 2;
@@ -4223,7 +3822,7 @@
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--lc-entry-bg);
+    color: var(--brand-sefaria-blue);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
@@ -4251,7 +3850,7 @@
        and a font-dependent mismatch would otherwise throw off centering. */
     line-height: inherit;
     letter-spacing: 0.36px;
-    color: var(--lc-entry-bg);
+    color: var(--brand-sefaria-blue);
   }
 
   .header-actions {
@@ -4726,7 +4325,7 @@
     justify-content: center;
     width: var(--lc-send-size);
     height: var(--lc-send-size);
-    background: var(--lc-entry-bg);
+    background: var(--brand-sefaria-blue);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -4735,7 +4334,7 @@
   }
 
   .send-btn:hover:not(:disabled) {
-    background: var(--lc-entry-bg-hover);
+    background: var(--lc-primary-hover);
   }
 
   .send-btn:disabled {
@@ -4779,7 +4378,7 @@
     justify-content: center;
     min-height: var(--lc-send-size);
     padding: 0 var(--global-dimension-200);
-    background: var(--lc-entry-bg);
+    background: var(--brand-sefaria-blue);
     color: var(--lc-on-primary);
     border-radius: var(--lc-radius-sm);
     font-family: Roboto, Arial, sans-serif;
@@ -4794,7 +4393,7 @@
   }
 
   .anon-login-footer-button:hover {
-    background: var(--lc-entry-bg-hover);
+    background: var(--lc-primary-hover);
   }
 
   .anon-login-footer-button:focus-visible {
@@ -5280,7 +4879,7 @@
     margin-block: 16px 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--lc-response-text);
+    color: var(--brand-sefaria-blue);
     font-style: normal;
     line-height: normal;
   }
@@ -5289,7 +4888,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--lc-response-text);
+    color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -5298,7 +4897,7 @@
 
   .message-content :global(.response-section) {
     margin-block: 14px 4px;
-    color: var(--lc-response-text);
+    color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -5316,7 +4915,7 @@
   }
 
   .message-content :global(.response-list) {
-    color: var(--lc-response-text);
+    color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
