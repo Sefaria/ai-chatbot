@@ -61,6 +61,9 @@
   // Width of the message list's scrollbar (0 where scrollbars float over content), so the
   // login banner can center on the list's visible width
   let messageScrollbarWidth = $state(0);
+  // The banner's height: the message list keeps that much room at its end, so the last
+  // message (and its feedback buttons) can scroll clear of the banner
+  let anonBannerHeight = $state(0);
   // The banner sentence holds a {link} slot for the "log in" link, so translations can
   // put the link anywhere in the sentence.
   const LINK_SLOT = '\u0000';
@@ -2553,6 +2556,7 @@
         class="lc-chatbot-messages"
         class:clearing={isClearing}
         class:has-anon-banner={anonLoginRequired}
+        style:--lc-anon-banner-height={anonLoginRequired && anonBannerHeight ? `${anonBannerHeight}px` : null}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -2702,7 +2706,7 @@
 
       {#if anonLoginRequired}
         <div class="anon-limit-banner-anchor">
-          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt" style="--lc-scrollbar-width: {messageScrollbarWidth}px">
+          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt" style="--lc-scrollbar-width: {messageScrollbarWidth}px" bind:offsetHeight={anonBannerHeight}>
             <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
           </div>
         </div>
@@ -5073,8 +5077,9 @@
 
   /* Clearing animation for message list */
   /* Room under the last message so the floating login banner doesn't cover it */
+  /* Room for the banner floating over the list's end, plus the usual gap */
   .lc-chatbot-messages.has-anon-banner {
-    padding-bottom: calc(var(--spacing-spacing-medium, 12px) + 64px);
+    padding-bottom: calc(var(--spacing-spacing-medium, 12px) + var(--lc-anon-banner-height, 64px));
   }
 
   .lc-chatbot-messages.clearing {
