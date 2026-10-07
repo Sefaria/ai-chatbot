@@ -8,10 +8,23 @@ class Migration(migrations.Migration):
         ("chat", "0012_appetizer_data_and_history_search_indexes"),
     ]
 
+    # A database-level default, so code that doesn't know the column yet (other branches'
+    # previews sharing a database, or the old pods during a rollout) can still insert rows.
     operations = [
-        migrations.AddField(
-            model_name="chatmessage",
-            name="counts_toward_anon_limit",
-            field=models.BooleanField(default=True),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    "ALTER TABLE chat_chatmessage "
+                    "ADD COLUMN IF NOT EXISTS counts_toward_anon_limit boolean NOT NULL DEFAULT true;",
+                    reverse_sql="ALTER TABLE chat_chatmessage DROP COLUMN IF EXISTS counts_toward_anon_limit;",
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name="chatmessage",
+                    name="counts_toward_anon_limit",
+                    field=models.BooleanField(default=True),
+                ),
+            ],
         ),
     ]
