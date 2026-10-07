@@ -269,6 +269,10 @@ class ChatMessage(models.Model):
     # Flow context (denormalized for easy querying)
     flow = models.CharField(max_length=20, blank=True, default="")
 
+    # False for a logged-out visitor's one prompt from the search no-results button
+    # that was answered without using up their last free response.
+    counts_toward_anon_limit = models.BooleanField(default=True)
+
     # Agent metadata (for assistant messages)
     model_name = models.CharField(max_length=100, blank=True, default="")
     llm_calls = models.IntegerField(null=True, blank=True)

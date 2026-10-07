@@ -44,6 +44,7 @@ from ..auth import (
 )
 from ..models import ChatMessage
 from ..serializers import (
+    ENTRY_SOURCE_SEARCH_NO_RESULTS,
     ChatRequestSerializer,
     ClientStreamEventSerializer,
     FeedbackRequestSerializer,
@@ -91,14 +92,30 @@ def _compute_turn_count(session_id: str) -> int:
     ).count()
 
 
-def _anon_responses_remaining(actor) -> int:
-    """Free responses a logged-out visitor has left, across all their sessions."""
-    used = ChatMessage.objects.filter(
+def _anon_answered_prompts(actor):
+    return ChatMessage.objects.filter(
         user_id=actor.user_id,
         role=ChatMessage.Role.USER,
         response_message__status=ChatMessage.Status.SUCCESS,
-    ).count()
+    )
+
+
+def _anon_responses_remaining(actor) -> int:
+    """Free responses a logged-out visitor has left, across all their sessions."""
+    used = _anon_answered_prompts(actor).filter(counts_toward_anon_limit=True).count()
     return max(0, settings.CHATBOT_ANON_FREE_RESPONSES - used)
+
+
+def _counts_toward_anon_limit(actor, entry_source: str, remaining: int) -> bool:
+    """A prompt from the search no-results button never uses up the last free response.
+
+    The source is client-supplied, so each visitor gets this once.
+    """
+    return not (
+        entry_source == ENTRY_SOURCE_SEARCH_NO_RESULTS
+        and remaining == 1
+        and not _anon_answered_prompts(actor).filter(counts_toward_anon_limit=False).exists()
+    )
 
 
 def _login_required_response() -> Response:
@@ -296,8 +313,14 @@ def chat_stream_v2(request):
     actor = _authenticate_actor_or_response(request, data)
     if isinstance(actor, Response):
         return actor
-    if actor.is_anonymous and _anon_responses_remaining(actor) <= 0:
-        return _login_required_response()
+    counts_toward_anon_limit = True
+    if actor.is_anonymous:
+        remaining = _anon_responses_remaining(actor)
+        if remaining <= 0:
+            return _login_required_response()
+        counts_toward_anon_limit = _counts_toward_anon_limit(
+            actor, data.get("entrySource", ""), remaining
+        )
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
@@ -416,6 +439,7 @@ def chat_stream_v2(request):
         page_url=page_url,
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
+        counts_toward_anon_limit=counts_toward_anon_limit,
     )
     if appetizer_metrics.get("appetizer_data"):
         user_message.appetizer_data = appetizer_metrics["appetizer_data"]

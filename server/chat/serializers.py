@@ -6,6 +6,8 @@ from rest_framework import serializers
 
 from .models import ChatMessage
 
+ENTRY_SOURCE_SEARCH_NO_RESULTS = "search_no_results"
+
 
 class MessageContextSerializer(serializers.Serializer):
     """Context information sent with each message."""
@@ -40,6 +42,10 @@ class ChatRequestSerializer(serializers.Serializer):
     # The signed-in user's personal memory ("Personalize Responses"), kept by the widget
     memory = serializers.CharField(max_length=1000, required=False, allow_blank=True)
     isLoadTest = serializers.BooleanField(required=False, default=False)
+    # Where the widget was asked from, when that affects the anonymous free-response limit
+    entrySource = serializers.ChoiceField(
+        choices=[ENTRY_SOURCE_SEARCH_NO_RESULTS], required=False, allow_blank=True
+    )
 
 
 class FeedbackRequestSerializer(serializers.Serializer):

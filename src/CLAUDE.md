@@ -67,7 +67,7 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 ## Host Events
 
 - Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
-- Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is asked in a new chat.
+- Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is asked in a new chat. With `source: 'search_no_results'` the question is sent with `entrySource: "search_no_results"`, which the server never lets use up a logged-out visitor's last free answer (whatever the limit; once per visitor). Past the limit, a question is not sent: the panel opens on the login prompt.
 
 ## Launcher
 

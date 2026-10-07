@@ -24,6 +24,7 @@ import { generateMessageId } from './session.js';
  * @property {string} text
  * @property {MessageContext} context
  * @property {PromptSlugs} [promptSlugs]
+ * @property {string} [entrySource] - 'search_no_results' when asked from Sefaria's search no-results button
  */
 
 /**
@@ -264,7 +265,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
- * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the signed-in user's personal memory text
+ * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: string, entrySource?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the signed-in user's personal memory text; entrySource marks a question from the search no-results button, which never uses up a logged-out visitor's last free answer
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
  * @returns {Promise<ChatResponse>}
  */
@@ -300,7 +301,8 @@ export async function sendMessageStream(
     timestamp,
     text,
     context,
-    memory
+    memory,
+    entrySource: requestMetadata?.entrySource
   };
 
   if (promptSlugs) {

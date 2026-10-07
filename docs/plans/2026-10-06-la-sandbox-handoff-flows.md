@@ -91,6 +91,30 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 - All of the above with `interface-lang="he"`: the prompt in Hebrew, right-aligned.
 
+### 1.9 Asking from the search no-results button
+
+- **Start:** logged out, on Sefaria's search page with no results. Clicking **Try Library
+  Assistant** opens the assistant and asks the rewritten search in a new chat
+  (`chatbot:open` with `source: 'search_no_results'`; the widget sends
+  `entrySource: "search_no_results"` with that one question).
+- **Rule (any limit N):** a question from this button counts like any other, except it
+  never uses up the last free answer:
+  - If it isn't the last free answer, it counts as usual.
+  - If it would be the last free answer, it is answered but not counted, and no login
+    prompt appears. The visitor's next question then counts as usual.
+  - If the visitor is already at the limit, nothing is sent: the assistant opens on the
+    login prompt (1.2). The server would refuse it anyway (`login_required`). The button's
+    question is not kept: after they log in and come back (1.5), the text box is empty and
+    they can click the button again or type their own question (decided 2026-10-07; not
+    auto-sent, not prefilled).
+- **Example (N = 2):** the button as their first question leaves 1 free answer. One
+  question of their own, then the button: answered, still 1 left. Their next question uses
+  it and the login prompt appears.
+- **Once per visitor:** the source comes from the browser, so each anonymous visitor gets
+  this exemption once, across all their chats. A second button question in the same spot
+  counts as usual and uses the last answer. A failed answer doesn't use up the exemption.
+- Signed-in users are unaffected.
+
 ### Edge cases and open questions
 
 - **Clearing site data gives a fresh quota.** Free answers are counted per anonymous id,

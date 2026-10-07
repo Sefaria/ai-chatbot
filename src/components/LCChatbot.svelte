@@ -719,14 +719,19 @@
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
-  async function askInNewChat(question) {
+  // Past the free-answer limit nothing is sent: the panel opens on the login prompt.
+  async function askInNewChat(question, entrySource) {
+    if (anonLoginRequired) {
+      if (!isOpen) openPanel();
+      return;
+    }
     question = question.trim();
     if (question && messages.length > 0) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
     if (!question) return;
     await tick();
-    handleSend();
+    handleSend({ entrySource });
   }
 
   // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu,
@@ -734,7 +739,10 @@
   $effect(() => {
     function onOpenRequest(e) {
       trackAssistantClick(e.detail?.source || 'host_open');
-      if (e.detail?.question) askInNewChat(e.detail.question);
+      // The server never lets a question from the search no-results button use up a
+      // logged-out visitor's last free answer.
+      const entrySource = e.detail?.source === 'search_no_results' ? 'search_no_results' : undefined;
+      if (e.detail?.question) askInNewChat(e.detail.question, entrySource);
       else if (!isOpen) openPanel();
     }
     document.addEventListener('chatbot:open', onOpenRequest);
@@ -1355,7 +1363,7 @@
     track('assistant_click', { feature_name: 'memory_editor_clear' });
   }
 
-  async function handleSend() {
+  async function handleSend({ entrySource } = {}) {
     const text = inputText.trim();
     if (onboarding) {
       // While the questions run, whatever the user types is their answer.
@@ -1454,7 +1462,8 @@
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp,
         anonId,
-        memory
+        memory,
+        entrySource
       }, interfaceLang);
 
       const cachedPayload = conversationCache[sendingSessionId];
@@ -2557,7 +2566,7 @@
         ></textarea>
         <button
           class="send-btn"
-          onclick={handleSend}
+          onclick={() => handleSend()}
           disabled={!inputText.trim() || isCurrentSessionSending || limitReached || anonLoginRequired}
           aria-label={$_('assistant.input.send.tooltip')}
         >

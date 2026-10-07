@@ -149,3 +149,85 @@ class TestAnonymousQuota:
         )
 
         assert response.data["requestFound"] is False
+
+
+def _ask(client, n: int, from_search: bool = False):
+    data = _payload(n, anonId=ANON_ID)
+    if from_search:
+        data["entrySource"] = "search_no_results"
+    return client.post("/api/v2/chat/stream", data, format="json")
+
+
+def _remaining_after(client, n: int, from_search: bool = False) -> int:
+    return _final_message(_ask(client, n, from_search))["anonResponsesRemaining"]
+
+
+@pytest.mark.django_db
+class TestSearchNoResultsPrompt:
+    """A prompt from the search no-results button never uses up the last free response."""
+
+    def test_counts_when_it_is_not_the_last_free_response(self, client, agent):
+        assert _remaining_after(client, 1, from_search=True) == 1
+
+    def test_last_free_response_is_not_used(self, client, agent):
+        assert _remaining_after(client, 1) == 1
+        assert _remaining_after(client, 2, from_search=True) == 1
+        assert _remaining_after(client, 3) == 0
+
+        assert _ask(client, 4).status_code == 403
+
+    @override_settings(CHATBOT_ANON_FREE_RESPONSES=3)
+    def test_works_for_other_limits(self, client, agent):
+        assert _remaining_after(client, 1, from_search=True) == 2
+        assert _remaining_after(client, 2) == 1
+        assert _remaining_after(client, 3, from_search=True) == 1
+        assert _remaining_after(client, 4) == 0
+
+    @override_settings(CHATBOT_ANON_FREE_RESPONSES=1)
+    def test_first_prompt_with_one_free_response(self, client, agent):
+        assert _remaining_after(client, 1, from_search=True) == 1
+        assert _remaining_after(client, 2) == 0
+
+    def test_refused_at_the_limit(self, client, agent):
+        _remaining_after(client, 1)
+        _remaining_after(client, 2)
+
+        response = _ask(client, 3, from_search=True)
+
+        assert response.status_code == 403
+        assert response.data["error"] == "login_required"
+        assert agent.send_message.await_count == 2
+
+    def test_only_one_exemption_per_visitor(self, client, agent):
+        assert _remaining_after(client, 1) == 1
+        assert _remaining_after(client, 2, from_search=True) == 1
+        data = _payload(3, anonId=ANON_ID) | {
+            "sessionId": "sess_anon_other",
+            "entrySource": "search_no_results",
+        }
+        response = client.post("/api/v2/chat/stream", data, format="json")
+
+        assert _final_message(response)["anonResponsesRemaining"] == 0
+
+    def test_failed_response_does_not_use_the_exemption(self, client, agent):
+        _remaining_after(client, 1)
+        agent.send_message.side_effect = RuntimeError("boom")
+        b"".join(_ask(client, 2, from_search=True).streaming_content)
+        agent.send_message.side_effect = None
+
+        assert _remaining_after(client, 3, from_search=True) == 1
+
+    def test_unknown_entry_source_is_rejected(self, client, agent):
+        data = _payload(1, anonId=ANON_ID) | {"entrySource": "elsewhere"}
+
+        assert client.post("/api/v2/chat/stream", data, format="json").status_code == 400
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+    def test_signed_in_users_are_unaffected(self, client, agent):
+        token = create_test_token("user_123", SECRET)
+        data = _payload(1, userId=token) | {"entrySource": "search_no_results"}
+
+        response = client.post("/api/v2/chat/stream", data, format="json")
+
+        assert response.status_code == 200
+        assert "anonResponsesRemaining" not in _final_message(response)
