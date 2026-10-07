@@ -50,6 +50,7 @@
     "assistant.header.moreOptions": "אפשרויות נוספות",
     "assistant.menu.settings.aria": "פתח הגדרות",
     "assistant.menu.restart.aria": "התחלת שיחה מחדש",
+    "assistant.menu.restart.login_tooltip": "התחברו כדי להתחיל שיחה חדשה",
     "assistant.menu.help.aria": "עזרה",
     "assistant.menu.optOut.aria": "כיבוי בהגדרת",
     "assistant.input.aria": "שדה טקסט",
