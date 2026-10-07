@@ -134,5 +134,9 @@
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
-    "assistant.writing": "כותב…"
+    "assistant.writing": "כותב…",
+    "assistant.anon.login_button": "להתחברות או הרשמה",
+    "assistant.header.history.login_tooltip": "התחברו כדי לראות את היסטוריית השיחות",
+    "assistant.header.response_ready_announcement": "התשובה מעוזר הספרייה מוכנה",
+    "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה"
 }
