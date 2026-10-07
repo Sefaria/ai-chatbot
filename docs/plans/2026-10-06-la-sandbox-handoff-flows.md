@@ -24,8 +24,8 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 - **Steps:** open the assistant, ask a question, get an answer; ask a second one.
 - **Expected:**
   - Both questions are answered normally.
-  - The history icon in the header is visible but locked, with the tooltip "Log in to save
-    your chats".
+  - The history icon in the header is visible but locked, with the tooltip "Log in to see
+    chat history".
   - No warning before the last free answer (a one-left warning was tried and removed).
 
 ### 1.2 Free answers run out

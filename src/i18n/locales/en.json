@@ -151,7 +151,7 @@
     "assistant.stop.tooltip": "Stop",
     "assistant.stop.aria": "Stop",
     "assistant.header.history.tooltip": "Chat history",
-    "assistant.header.history.loginTooltip": "Log in to save your chats",
+    "assistant.header.history.loginTooltip": "Log in to see chat history",
     "assistant.header.history.aria": "Chat history",
     "assistant.history.header.new.tooltip": "New chat",
     "assistant.history.header.new.aria": "New chat",
