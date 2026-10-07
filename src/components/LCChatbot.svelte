@@ -15,6 +15,7 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
+  import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
@@ -224,6 +225,15 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Phones (portrait, or landscape where the panel can't fit) get a full-screen sheet
+  // instead of the floating/docked panel.
+  const FULLSCREEN_QUERY = '(max-width: 600px), (max-height: 500px)';
+  let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
+  let layout = $derived(isFullscreen ? 'fullscreen' : mode);
+  let viewportBox = $state(null);
+  let triggerHidden = $state(false);
+  let pendingNavigation = null;
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -234,7 +244,8 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    // A full-screen sheet never opens by itself: it would hide the page the user came for.
+    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -490,6 +501,11 @@
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
 
+    if (isFullscreen) {
+      pushSheetEntry(onSheetPopped);
+      return; // no autofocus: the keyboard would cover the conversation
+    }
+
     // Focus input after panel opens
     setTimeout(() => {
       inputRef?.focus();
@@ -502,7 +518,93 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
+    popSheetEntry();
   }
+
+  // Back pressed, or the UI closed the sheet and its pop has landed.
+  function onSheetPopped() {
+    if (isOpen) closePanel();
+    if (pendingNavigation) {
+      const detail = pendingNavigation;
+      pendingNavigation = null;
+      navigateHost(detail);
+    }
+  }
+
+  // In-page navigation through the host's 'sefaria:bootstrap-url' listener. On phones the
+  // sheet closes to reveal the page, and the host navigates only once the sheet's history
+  // entry is popped, or it would push the new URL on top of it.
+  function navigateHost(detail) {
+    if (hasSheetEntry()) {
+      pendingNavigation = detail;
+      closePanel();
+      return;
+    }
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail }));
+    if (isFullscreen && isOpen) closePanel();
+  }
+
+  $effect(() => {
+    const query = window.matchMedia(FULLSCREEN_QUERY);
+    const sync = () => { isFullscreen = query.matches; };
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
+
+  // While the sheet is open, lock the page behind it and track the visual viewport, so
+  // the input stays above the on-screen keyboard.
+  $effect(() => {
+    if (!isFullscreen || !isOpen) return;
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    const vv = window.visualViewport;
+    const sync = () => { viewportBox = { top: vv.offsetTop, height: vv.height }; };
+    if (vv) {
+      sync();
+      vv.addEventListener('resize', sync);
+      vv.addEventListener('scroll', sync);
+    }
+    return () => {
+      root.style.overflow = overflow;
+      vv?.removeEventListener('resize', sync);
+      vv?.removeEventListener('scroll', sync);
+      viewportBox = null;
+    };
+  });
+
+  // On phones the closed button recedes while the page scrolls forward and returns on any
+  // scroll back, so it doesn't sit on the text being read. Capture catches every scroller.
+  $effect(() => {
+    triggerHidden = false;
+    if (!isFullscreen || isOpen) return;
+    let scroller = null;
+    let lastTop = 0;
+    function onScroll(e) {
+      const el = e.target === document ? document.scrollingElement : e.target;
+      if (!(el instanceof Element)) return;
+      if (el !== scroller) {
+        scroller = el;
+        lastTop = el.scrollTop;
+        return;
+      }
+      if (Math.abs(el.scrollTop - lastTop) < 12) return;
+      triggerHidden = el.scrollTop > lastTop && el.scrollTop > 100;
+      lastTop = el.scrollTop;
+    }
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+  });
+
+  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu.
+  $effect(() => {
+    function onOpenRequest(e) {
+      if (!isOpen) openPanel();
+      trackAssistantClick(e.detail?.source || 'host_open');
+    }
+    document.addEventListener('chatbot:open', onOpenRequest);
+    return () => document.removeEventListener('chatbot:open', onOpenRequest);
+  });
 
   function toggleMode() {
     const newMode = mode === 'floating' ? 'docked' : 'floating';
@@ -794,6 +896,8 @@
 
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
+    // Phones show the history list and the chat one at a time.
+    if (isFullscreen) showHistoryPanel = false;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
@@ -1369,12 +1473,7 @@
 
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
 
-    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-      detail: {
-        url: path,
-        replaceHistory: true
-      }
-    }));
+    navigateHost({ url: path, replaceHistory: true });
   }
 
   function toggleMenu() {
@@ -1435,6 +1534,7 @@
 
   function handleRestartConvo() {
     closeMenu();
+    if (isFullscreen) showHistoryPanel = false;
     isRestarted = true;
     handleNewChat();
   }
@@ -1576,7 +1676,7 @@
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
       if (isSefariaHostname(hostname)) {
-        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+        navigateHost({ url });
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
@@ -1590,9 +1690,7 @@
 
     if (onSefaria) {
       // In-page navigation via ReaderApp's existing event listener
-      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-        detail: { url: `/topics/${topicSlug}` }
-      }));
+      navigateHost({ url: `/topics/${topicSlug}` });
     } else {
       // Off-site: open topic page in new tab
       window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
@@ -1619,10 +1717,13 @@
 
 <div
   class="lc-chatbot-container"
-  class:mode-floating={mode === 'floating'}
-  class:mode-docked={mode === 'docked'}
+  class:mode-floating={layout === 'floating'}
+  class:mode-docked={layout === 'docked'}
+  class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
+  class:trigger-hidden={triggerHidden}
   class:interface-hebrew={interfaceLang === 'he'}
+  style={viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : ''}
 >
   {#if !isOpen}
     <!-- Floating Button -->
@@ -1635,7 +1736,7 @@
     <div 
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      style={isFullscreen ? '' : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
       aria-label={$_('assistant.header.chatWindow')}
     >
@@ -1676,6 +1777,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if !isFullscreen}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1688,6 +1790,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1707,10 +1810,12 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if !isFullscreen}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2073,6 +2178,7 @@
           maxlength={effectiveMaxInputChars}
           placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
+          enterkeyhint="send"
           rows="1"
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
@@ -2289,6 +2395,91 @@
   .lc-chatbot-container.mode-docked .resize-se,
   .lc-chatbot-container.mode-docked .resize-sw {
     display: none;
+  }
+
+  /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
+  .lc-chatbot-container.mode-fullscreen {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    inset-inline-end: 16px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.trigger-hidden {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* top/height follow the visual viewport (inline style) while the keyboard is up */
+  .lc-chatbot-container.mode-fullscreen.is-open {
+    top: 0;
+    bottom: auto;
+    inset-inline: 0;
+    height: 100vh;
+    height: 100dvh;
+    transition: none;
+  }
+
+  .mode-fullscreen .lc-chatbot-panel {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .mode-fullscreen .resize-handle {
+    display: none;
+  }
+
+  .mode-fullscreen .lc-chatbot-header {
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px 16px;
+  }
+
+  .mode-fullscreen .header-actions {
+    gap: 4px;
+  }
+
+  .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
+    width: 36px;
+    height: 36px;
+  }
+
+  .mode-fullscreen .menu-item {
+    padding: 14px 16px;
+    font-size: 15px;
+  }
+
+  .mode-fullscreen .lc-chatbot-body {
+    position: relative;
+  }
+
+  /* History covers the chat rather than squeezing it; the chat keeps its scroll position */
+  .mode-fullscreen .chat-history-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: auto;
+    min-width: 0;
+    border: 0;
+  }
+
+  .mode-fullscreen .lc-chatbot-messages,
+  .mode-fullscreen .history-list {
+    overscroll-behavior: contain;
+  }
+
+  .mode-fullscreen .lc-chatbot-input {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* Below 16px, iOS zooms the page when the field takes focus */
+  .mode-fullscreen .lc-chatbot-input textarea {
+    font-size: 16px;
+  }
+
+  .mode-fullscreen .feedback-modal-overlay {
+    inset: 0;
+    border-radius: 0;
   }
 
   /* Trigger Button */
@@ -2678,6 +2869,17 @@
   .history-row-menu:focus-within .history-row-menu-trigger,
   .history-row-menu-trigger[aria-expanded="true"] {
     opacity: 1;
+  }
+
+  /* No hover on touch screens: keep rename/delete reachable */
+  @media (hover: none) {
+    .history-row {
+      padding-inline-end: 26px;
+    }
+
+    .history-row-menu-trigger {
+      opacity: 1;
+    }
   }
 
   .history-row-dropdown {
