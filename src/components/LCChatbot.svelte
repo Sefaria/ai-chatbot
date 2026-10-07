@@ -169,6 +169,12 @@
   let hasMoreConversations = $state(false);
   let isLoadingConversations = $state(false);
   let hasLoadedConversations = $state(false);
+  // Last known answer to "does this user have saved chats?" (see STORAGE_KEYS.HAS_CONVERSATIONS)
+  let knownHasConversations = $state(!!getStorage(STORAGE_KEYS.HAS_CONVERSATIONS, false));
+  function rememberHasConversations(value) {
+    knownHasConversations = value;
+    setStorage(STORAGE_KEYS.HAS_CONVERSATIONS, value);
+  }
   let historySearchOpen = $state(false);
   let historySearchText = $state('');
   let submittedHistorySearch = $state('');
@@ -309,7 +315,10 @@
       anonId = getOrCreateAnonId();
       anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
       // Logged out: forget the memory so the next person on this browser doesn't inherit it.
-      if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
+      if (identityChanged) {
+        setStorage(STORAGE_KEYS.MEMORY, null);
+        rememberHasConversations(false);
+      }
     } else {
       const savedMemory = PERSONALIZE_ENABLED ? getStorage(STORAGE_KEYS.MEMORY, null) : null;
       memory = typeof savedMemory === 'string' ? savedMemory : null;
@@ -382,8 +391,10 @@
     }
   });
 
+  // Loads when the assistant opens, not only when History does, so History's search button
+  // is already right (enabled only if there are chats) the moment History appears
   $effect(() => {
-    if (showHistoryPanel && !hasLoadedConversations && !isLoadingConversations) {
+    if ((showHistoryPanel || (isOpen && userId)) && !hasLoadedConversations && !isLoadingConversations) {
       loadConversationPage({ reset: true });
     }
   });
@@ -824,6 +835,7 @@
     conversations = [normalized, ...withoutCurrent].sort((a, b) => {
       return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
     });
+    if (!knownHasConversations) rememberHasConversations(true);
   }
 
   function setSessionSending(targetSessionId, value) {
@@ -922,6 +934,7 @@
       conversations = reset ? nextConversations : [...conversations, ...nextConversations];
       conversationsOffset = offset + nextConversations.length;
       hasMoreConversations = data.hasMore ?? false;
+      if (reset && !search) rememberHasConversations(nextConversations.length > 0);
     } catch (e) {
       console.warn('[lc-chatbot] Failed to load conversations:', e);
       historyError = '';
@@ -2227,7 +2240,7 @@
                   aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
                   data-feature-name="chat_history_search"
                   onclick={toggleHistorySearch}
-                  disabled={!historySearchOpen && conversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
+                  disabled={!historySearchOpen && !submittedHistorySearch && (hasLoadedConversations ? conversations.length === 0 : !(knownHasConversations || conversations.length > 0 || messages.length > 0))}
                 >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
@@ -3165,10 +3178,24 @@
     height: 20px;
   }
 
-  /* Open clear of the 44px trigger, wide enough for the 15px labels */
+  /* Rename: a 44px Done button, with more room between it and a narrower field whose text
+     lines up with the chat titles */
+  .mode-fullscreen .history-rename-form {
+    gap: 16px;
+    padding-inline: 12px 4px;
+  }
+
+  .mode-fullscreen .history-rename-form button {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Open clear of the 44px trigger, wide enough for the 15px labels, and inset from the
+     screen edge */
   .mode-fullscreen .history-row-dropdown {
     inset-block-start: 44px;
-    width: 160px;
+    inset-inline-end: 12px;
+    width: 136px;
   }
 
   .mode-fullscreen .history-row-dropdown.flip-up {
