@@ -2,7 +2,7 @@
 
 <script>
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, getOrCreateAnonId } from '../lib/session.js';
   import {
     sendMessageStream,
     loadHistory,
@@ -47,8 +47,34 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    'login-url': loginUrl = '/login'
   } = $props();
+
+  // No user-id means a logged-out visitor: they chat under an anonymous id until the
+  // server's free responses run out, then get a login prompt in the canvas.
+  let isAnonymous = $derived(!userId);
+  let anonId = $state('');
+  let anonLoginRequired = $state(false);
+
+  // "Personalize Responses": the signed-in user's memory is a short text about them that
+  // goes with every message, where the server adds it to the prompt. It lives in this
+  // browser's storage. The first time, scripted questions draft it (each picked answer
+  // becomes a statement, the last answer is kept verbatim); after that it is edited as text.
+  const MEMORY_MAX_CHARS = 1000;
+  const MEMORY_NOTES_MAX_CHARS = 250;
+  const MEMORY_CHOICE_MAX_CHARS = 100;
+  const ONBOARDING_STEPS = [
+    { field: 'experience', options: ['never', 'a_bit', 'grew_up', 'recent'] },
+    { field: 'orientation', options: ['spiritual', 'intellectual', 'both', 'unsure'] },
+    { field: 'hebrew', options: ['none', 'alphabet', 'some', 'strong', 'fluent'] },
+    { field: 'notes', options: ['skip'] }
+  ];
+  let memory = $state(null); // string | null
+  let showMemoryEditor = $state(false);
+  let memoryDraft = $state('');
+  let onboarding = $state(null); // { step, answers, questionMessageId } while the questions run
+  let isNotesStep = $derived(onboarding?.step === ONBOARDING_STEPS.length - 1);
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -150,6 +176,12 @@
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
+  let inputMaxChars = $derived(
+    !onboarding ? effectiveMaxInputChars : isNotesStep ? MEMORY_NOTES_MAX_CHARS : MEMORY_CHOICE_MAX_CHARS
+  );
+  let showPersonalizeTab = $derived(
+    !isAnonymous && !memory && !onboarding && !limitReached && !isCurrentSessionSending
+  );
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
@@ -226,8 +258,22 @@
 
   // Initialize on mount
   $effect(() => {
+    // A stored session belongs to whoever started it; logging in or out starts a new one.
+    const identity = userId ? 'user' : 'anon';
+    const identityChanged = getStorage(STORAGE_KEYS.IDENTITY, identity) !== identity;
+    setStorage(STORAGE_KEYS.IDENTITY, identity);
+    if (!userId) {
+      anonId = getOrCreateAnonId();
+      anonLoginRequired = getStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, false);
+      // Logged out: forget the memory so the next person on this browser doesn't inherit it.
+      if (identityChanged) setStorage(STORAGE_KEYS.MEMORY, null);
+    } else {
+      const savedMemory = getStorage(STORAGE_KEYS.MEMORY, null);
+      memory = typeof savedMemory === 'string' ? savedMemory : null;
+    }
+
     // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession();
+    const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
@@ -500,6 +546,7 @@
   function closePanel() {
     isOpen = false;
     showSettings = false;
+    showMemoryEditor = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
   }
@@ -520,6 +567,7 @@
     inputText = '';
     isLoadingHistory = false;
     hasMoreHistory = false;
+    onboarding = null;
 
     stopThinkingMessages();
     turnCount = 0;
@@ -814,6 +862,7 @@
 
     chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
     sessionId = conversation.sessionId;
+    onboarding = null;
     messages = await historyMessagesToUiMessages(payload.messages);
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
@@ -826,6 +875,7 @@
 
   async function openSettings() {
     showSettings = true;
+    showMemoryEditor = false;
     settingsError = '';
 
     if (!settingsLoaded && apiBaseUrl) {
@@ -1001,10 +1051,125 @@
     }
   }
 
+  function requireLogin() {
+    anonLoginRequired = true;
+    setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
+  }
+
+  // Built at click time: the host navigates client-side, so the page can change under us.
+  // A real page load, so the message list's in-page link routing must not see this click.
+  function goToLogin(e) {
+    e.stopPropagation();
+    const here = window.location.pathname + window.location.search + window.location.hash;
+    const separator = loginUrl.includes('?') ? '&' : '?';
+    e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
+  }
+
+  function addLocalMessage(role, content, extra = {}) {
+    const message = {
+      messageId: generateMessageId(),
+      sessionId,
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+      local: true,
+      ...extra
+    };
+    messages = [...messages, message];
+    saveMessagesToStorage();
+    scrollToBottom();
+    return message;
+  }
+
+  function startOnboarding(featureName) {
+    closeMenu();
+    showSettings = false;
+    track('assistant_click', { feature_name: featureName });
+    onboarding = { step: 0, answers: {}, questionMessageId: null };
+    askOnboardingQuestion(0);
+  }
+
+  function askOnboardingQuestion(step) {
+    const { field, options } = ONBOARDING_STEPS[step];
+    const t = get(_);
+    const question = addLocalMessage('assistant', t(`assistant.personalize.${field}.question`), {
+      options: options.map(value => ({ value, label: t(`assistant.personalize.${field}.${value}`) }))
+    });
+    onboarding = { ...onboarding, step, questionMessageId: question.messageId };
+    inputRef?.focus();
+  }
+
+  function answerOnboarding(value, label) {
+    const { field } = ONBOARDING_STEPS[onboarding.step];
+    addLocalMessage('user', label);
+    const answers = { ...onboarding.answers, [field]: value };
+    if (onboarding.step < ONBOARDING_STEPS.length - 1) {
+      onboarding = { ...onboarding, answers };
+      askOnboardingQuestion(onboarding.step + 1);
+    } else {
+      finishOnboarding(answers);
+    }
+  }
+
+  /** Picked answers become statements ("The user knows some Hebrew."); typed ones stay as typed. */
+  function composeMemory(answers) {
+    const t = get(_);
+    const statements = ONBOARDING_STEPS.slice(0, -1)
+      .map(({ field, options }) => {
+        const value = answers[field];
+        if (!value) return '';
+        return options.includes(value) ? t(`assistant.personalize.${field}.${value}.memory`) : value;
+      })
+      .filter(Boolean);
+    return [statements.join('\n'), answers.notes].filter(Boolean).join('\n\n');
+  }
+
+  function setMemory(text) {
+    memory = text || null;
+    setStorage(STORAGE_KEYS.MEMORY, memory);
+  }
+
+  function finishOnboarding(answers) {
+    onboarding = null;
+    setMemory(composeMemory(answers));
+    addLocalMessage('assistant', get(_)('assistant.personalize.done'));
+    track('assistant_click', { feature_name: 'personalize_completed' });
+  }
+
+  function openMemoryEditor() {
+    closeMenu();
+    showSettings = false;
+    memoryDraft = memory || '';
+    showMemoryEditor = true;
+    track('assistant_click', { feature_name: 'memory_editor_open' });
+  }
+
+  function saveMemoryDraft() {
+    setMemory(memoryDraft.trim());
+    showMemoryEditor = false;
+    track('assistant_click', { feature_name: 'memory_editor_save' });
+  }
+
+  function clearMemory() {
+    setMemory(null);
+    showMemoryEditor = false;
+    addLocalMessage('assistant', get(_)('assistant.personalize.cleared'));
+    track('assistant_click', { feature_name: 'memory_editor_clear' });
+  }
+
   async function handleSend() {
     const text = inputText.trim();
-    const isConfigured = userId && apiBaseUrl;
-    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
+    if (onboarding) {
+      // While the questions run, whatever the user types is their answer.
+      if (!text) return;
+      inputText = '';
+      setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+      answerOnboarding(text.slice(0, inputMaxChars), text);
+      return;
+    }
+    const isConfigured = (userId || anonId) && apiBaseUrl;
+    const isReadyToSend = text && !isCurrentSessionSending && !limitReached && !anonLoginRequired;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
     // Reset auto-scroll on each new send
@@ -1085,7 +1250,9 @@
         }
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
-        timestamp: userMessage.timestamp
+        timestamp: userMessage.timestamp,
+        anonId,
+        memory
       }, interfaceLang);
 
       const cachedPayload = conversationCache[sendingSessionId];
@@ -1146,6 +1313,9 @@
       if (response.session) {
         turnCount = response.session.turnCount ?? 0;
       }
+      if (isAnonymous && response.anonResponsesRemaining === 0) {
+        requireLogin();
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -1162,6 +1332,15 @@
       });
 
     } catch (e) {
+      if (e.code === 'login_required') {
+        // Not an error to retry: drop the prompt back into the draft so it survives the login.
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        inputText = text;
+        setStorage(STORAGE_KEYS.DRAFT, { text });
+        requireLogin();
+        return;
+      }
       console.error('[lc-chatbot] Send failed:', e);
 
       // Mark message as failed for other errors
@@ -1667,6 +1846,7 @@
           </h2>
         </div>
         <div class="header-actions">
+          {#if !isAnonymous}
           <HeaderButton
             className="history-btn"
             title={$_('assistant.header.history.tooltip')}
@@ -1676,6 +1856,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {/if}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1719,10 +1900,18 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                {#if !isAnonymous}
+                <button class="menu-item" onclick={() => (memory ? openMemoryEditor() : startOnboarding('personalize_menu'))} disabled={!!onboarding || isCurrentSessionSending} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/pencil.svg" alt="" width="16" height="16" />
+                  {$_(memory ? 'assistant.menu.memory.update' : 'assistant.menu.personalize')}
+                </button>
+                {/if}
+                {#if !isAnonymous}
                 <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.optout')}
                 </a>
+                {/if}
               </div>
             {/if}
           </div>
@@ -1929,6 +2118,29 @@
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
         </div>
+      {:else if showMemoryEditor}
+        <div class="settings-panel memory-panel">
+          <div class="settings-header">
+            <button class="settings-back" onclick={() => (showMemoryEditor = false)} aria-label={$_('assistant.settings.back.aria')}>
+              {$_('assistant.settings.back')}
+            </button>
+            <div class="settings-title">{$_('assistant.memory.title')}</div>
+          </div>
+          <p class="settings-note">{$_('assistant.memory.description')}</p>
+          <textarea
+            class="memory-textarea"
+            bind:value={memoryDraft}
+            maxlength={MEMORY_MAX_CHARS}
+            rows="10"
+            placeholder={$_('assistant.memory.placeholder')}
+            aria-label={$_('assistant.memory.title')}
+          ></textarea>
+          <div class="memory-char-count" aria-live="polite">{memoryDraft.length}/{MEMORY_MAX_CHARS}</div>
+          <div class="settings-actions">
+            <button class="settings-save" onclick={saveMemoryDraft}>{$_('assistant.memory.save')}</button>
+            <button class="settings-reset" onclick={clearMemory}>{$_('assistant.memory.clear')}</button>
+          </div>
+        </div>
       {:else}
       <!-- Message List -->
       <div
@@ -1997,7 +2209,18 @@
         {/if}
 
         {#each messages as item (item.messageId)}
-          {#if item.role === 'assistant'}
+          {#if item.role === 'assistant' && item.local}
+            {@render assistantBubble(item.content, false, item)}
+            {#if item.options && onboarding?.questionMessageId === item.messageId}
+              <div class="onboarding-options" role="group" aria-label={item.content}>
+                {#each item.options as option (option.value)}
+                  <button type="button" class="onboarding-option" onclick={() => answerOnboarding(option.value === 'skip' ? '' : option.value, option.label)}>
+                    {option.label}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
                 <Accordion kind="topics"
@@ -2062,7 +2285,26 @@
             </div>
           </div>
         {/if}
+
+        {#if anonLoginRequired}
+          <div class="message assistant limit-message" data-element-shown-name="anon_login_prompt">
+            <div class="message-content">
+              <p>{$_('assistant.anon.loginRequired')}</p>
+              <p>
+                <a class="link-like" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>
+              </p>
+            </div>
+          </div>
+        {/if}
       </div>
+
+      {#if showPersonalizeTab}
+        <div class="personalize-tab-anchor">
+          <button type="button" class="personalize-tab" data-feature-name="personalize_tab" data-element-shown-name="personalize_tab" onclick={() => startOnboarding('personalize_tab')}>
+            <span aria-hidden="true">✦</span> {$_('assistant.personalize.tab')}
+          </button>
+        </div>
+      {/if}
 
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
@@ -2070,16 +2312,16 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          maxlength={inputMaxChars}
+          placeholder={limitReached || anonLoginRequired ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           rows="1"
-          disabled={isCurrentSessionSending || limitReached}
+          disabled={isCurrentSessionSending || limitReached || anonLoginRequired}
         ></textarea>
         <button
           class="send-btn"
           onclick={handleSend}
-          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+          disabled={!inputText.trim() || isCurrentSessionSending || limitReached || anonLoginRequired}
           aria-label={$_('assistant.input.send.tooltip')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2088,6 +2330,9 @@
           </svg>
         </button>
       </footer>
+      {#if isNotesStep}
+        <div class="input-char-count" aria-live="polite">{inputText.length}/{MEMORY_NOTES_MAX_CHARS}</div>
+      {/if}
       {/if}
       </section>
       </div>
@@ -3418,6 +3663,95 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.95);
+  }
+
+  /* Personalize Responses: a tab rising out of the canvas's bottom edge */
+  .personalize-tab-anchor {
+    position: relative;
+    height: 0;
+  }
+
+  .personalize-tab {
+    position: absolute;
+    /* Overlap the footer's top border so the tab reads as part of the edge */
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px 4px;
+    background: var(--lc-body-bg);
+    color: var(--lc-primary);
+    border: 1px solid var(--lc-border);
+    border-bottom: none;
+    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 -2px 6px rgb(0 0 0 / 0.05);
+  }
+
+  .personalize-tab:hover {
+    background: var(--lc-topics-bg);
+  }
+
+  .onboarding-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: calc(-1 * var(--global-dimension-100, 8px));
+  }
+
+  .onboarding-option {
+    padding: 6px 12px;
+    background: var(--lc-bg);
+    color: var(--lc-primary);
+    border: 1px solid var(--lc-primary);
+    border-radius: 999px;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .onboarding-option:hover {
+    background: var(--lc-topics-bg);
+  }
+
+  .memory-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size);
+    line-height: 1.5;
+    color: var(--lc-text);
+    background: var(--lc-bg);
+    resize: vertical;
+    outline: none;
+  }
+
+  .memory-textarea:focus {
+    border-color: var(--brand-sefaria-blue);
+  }
+
+  .memory-char-count {
+    margin-top: -8px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-muted);
+    text-align: end;
+  }
+
+  .input-char-count {
+    padding: 0 18px 8px;
+    margin-top: -10px;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-muted);
+    text-align: end;
   }
 
   /* Settings Panel */
