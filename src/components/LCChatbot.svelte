@@ -115,7 +115,9 @@
   let isSending = $state(false);
   let sendingSessionIds = $state({});
   let isLoadingHistory = $state(false);
-  let hasMoreHistory = $state(true);
+  // Only the server can say a session has older messages, so assume none until it does
+  // (a new chat, a logged-out visitor, or messages carried over after logging in)
+  let hasMoreHistory = $state(false);
   let sessionId = $state('');
   let panelWidth = $state(300);
   let panelHeight = $state(456);
@@ -1247,11 +1249,11 @@
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
       }
+      hasMoreHistory = result.hasMore;
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
         messages = result.messages.map(m => ({ ...m, noEntryAnimation: true }));
-        hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
         scrollToBottom({ instant: true });
       }
@@ -1261,7 +1263,7 @@
   }
 
   async function loadMoreHistory() {
-    if (isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
+    if (!userId || isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
     
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
