@@ -67,8 +67,8 @@
     "assistant.source.readWhileWaiting": "Found a source — read while you wait",
     "assistant.source.readOnSefaria": "Read on Sefaria",
     "assistant.limit.reached": "The conversation has reached its limit.",
-    "assistant.anon.limitReached": "To keep asking, log in or register for free.",
-    "assistant.anon.loginButton": "Log in or register",
+    "assistant.anon.limit_reached": "To keep asking, log in or register for free.",
+    "assistant.anon.login_button": "Log in or register",
     "assistant.personalize.tab": "Personalize Responses",
     "assistant.personalize.experience.question": "Let’s personalize my responses. Have you learned Jewish texts before?",
     "assistant.personalize.experience.never": "Never",
@@ -150,7 +150,7 @@
     "assistant.stop.tooltip": "Stop",
     "assistant.stop.aria": "Stop",
     "assistant.header.history.tooltip": "Chat history",
-    "assistant.header.history.loginTooltip": "Log in to see chat history",
+    "assistant.header.history.login_tooltip": "Log in to see chat history",
     "assistant.header.history.aria": "Chat history",
     "assistant.history.header.new.tooltip": "New chat",
     "assistant.history.header.new.aria": "New chat",
@@ -179,7 +179,7 @@
     "assistant.history.delete_modal.delete": "Delete",
     "assistant.history.list.empty.header": "No chats yet",
     "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
-    "assistant.ask.label": "Ask",
-    "assistant.header.responseReadyAnnouncement": "Your Library Assistant answer is ready",
-    "assistant.header.openReadyResponse": "Open Library Assistant: your answer is ready"
+    "assistant.floating_button.label": "Ask",
+    "assistant.header.response_ready_announcement": "Your Library Assistant answer is ready",
+    "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready"
 }

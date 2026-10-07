@@ -105,7 +105,7 @@
     "assistant.stop.tooltip": "עצור",
     "assistant.stop.aria": "עצור",
     "assistant.header.history.tooltip": "היסטוריית שיחות",
-    "assistant.header.history.loginTooltip": "התחברו כדי לשמור את השיחות שלכם",
+    "assistant.header.history.login_tooltip": "התחברו כדי לראות את היסטוריית השיחות",
     "assistant.header.history.aria": "היסטוריית שיחות",
     "assistant.history.header.new.tooltip": "שיחה חדשה",
     "assistant.history.header.new.aria": "שיחה חדשה",
@@ -134,9 +134,9 @@
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
-    "assistant.ask.label": "שאלו",
-    "assistant.header.responseReadyAnnouncement": "התשובה מעוזר הספרייה מוכנה",
-    "assistant.header.openReadyResponse": "פתיחת עוזר הספרייה: התשובה שלך מוכנה",
-    "assistant.anon.limitReached": "על מנת להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי.",
-    "assistant.anon.loginButton": "להתחברות או הרשמה"
+    "assistant.floating_button.label": "שאלו",
+    "assistant.header.response_ready_announcement": "התשובה מעוזר הספרייה מוכנה",
+    "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה",
+    "assistant.anon.limit_reached": "כדי להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי.",
+    "assistant.anon.login_button": "להתחברות או הרשמה"
 }

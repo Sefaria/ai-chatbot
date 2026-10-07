@@ -38,7 +38,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   - Screen readers hear the prompt (`role="status"`). Focus is not moved; the button is
     reachable with Tab.
   - The prompt slides and fades in over 200ms; no motion with reduced motion.
-  - Hebrew: "על מנת להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי." and the button
+  - Hebrew: "כדי להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי." and the button
     "להתחברות או הרשמה".
 - **Visual spec:** the input area keeps its padding and top line. Line: Roboto (Heebo in
   Hebrew), the body size (14px desktop, 16px phone), 20px line height, Text/Secondary.
@@ -97,8 +97,8 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   which lives in the browser's storage, so clearing it or using another browser resets the
   count. Fine for a soft limit; engineering and product to confirm.
 - **Failed answers don't count.** Only successful answers use up the quota.
-- **Copy and translation keys.** The prompt uses new keys, `assistant.anon.limitReached`
-  and `assistant.anon.loginButton`; the banner's `assistant.anon.loginRequired` and
+- **Copy and translation keys.** The prompt uses new keys, `assistant.anon.limit_reached`
+  and `assistant.anon.login_button`; the banner's `assistant.anon.loginRequired` and
   `assistant.anon.login` were removed.
 - **"Register" vs. "sign up".** UX-copy guidance prefers "sign up"; keep "register" only
   if it matches Sefaria's own login page.

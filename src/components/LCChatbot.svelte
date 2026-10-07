@@ -2002,16 +2002,16 @@
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
-  <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.responseReadyAnnouncement') : ''}</span>
+  <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
     <!-- Launcher: a "✦ Ask" pill in the corner -->
-    <button aria-label={$_(responseReady ? 'assistant.header.openReadyResponse' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={responseReady}
+    <button aria-label={$_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={responseReady}
             onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
-      <span>{$_('assistant.ask.label')}</span>
+      <span>{$_('assistant.floating_button.label')}</span>
       {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else}
@@ -2077,7 +2077,7 @@
                tooltip still shows on hover and the button stays focusable. -->
           <HeaderButton
             className="history-btn is-locked"
-            title={$_('assistant.header.history.loginTooltip')}
+            title={$_('assistant.header.history.login_tooltip')}
             onClick={(e) => e.stopPropagation()}
             aria-disabled="true"
             data-feature-name="chat_history_locked"
@@ -2529,8 +2529,8 @@
       {#if anonLoginRequired}
         <!-- Logged out and the free answers are used up: the input gives way to logging in -->
         <footer class="lc-chatbot-input anon-login-footer" role="status" data-element-shown-name="anon_login_prompt">
-          <p class="anon-login-footer-text">{$_('assistant.anon.limitReached')}</p>
-          <a class="anon-login-footer-button" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.loginButton')}</a>
+          <p class="anon-login-footer-text">{$_('assistant.anon.limit_reached')}</p>
+          <a class="anon-login-footer-button" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login_button')}</a>
         </footer>
       {:else}
       <footer class="lc-chatbot-input">
