@@ -85,6 +85,7 @@
     "assistant.accordion.showThought": "הצגת תהליך חשיבה",
     "assistant.accordion.hideThought": "הסתרת תהליך חשיבה",
     "assistant.loading.thinking": "",
+    "assistant.writing": "כותב…",
     "assistant.loading.initial": "חושב",
     "assistant.thinking.array.01": "מפענח את השאלה",
     "assistant.thinking.array.02": "מחפש בספרייה",
