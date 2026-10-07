@@ -58,7 +58,6 @@
   let isAnonymous = $derived(!userId);
   let anonId = $state('');
   let anonLoginRequired = $state(false);
-  let anonLoginLinkRef = $state(null);
   // The banner sentence holds a {link} slot for the "log in" link, so translations can
   // put the link anywhere in the sentence. A line break in it marks where the sentence may
   // split into two lines: each line is kept whole when the banner is too narrow for one.
@@ -1350,13 +1349,11 @@
     }
   }
 
-  // Called right after the visitor sends, so the input they were using is now disabled:
-  // hand focus to the login link. A limit restored from storage on load doesn't grab focus.
-  async function requireLogin() {
+  // Shows the login banner and disables the input. Focus stays where it is: the banner
+  // announces itself (role="status"), and the link is reachable with Tab.
+  function requireLogin() {
     anonLoginRequired = true;
     setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
-    await tick();
-    anonLoginLinkRef?.focus({ preventScroll: true });
   }
 
   // Built at click time: the host navigates client-side, so the page can change under us.
@@ -2697,7 +2694,7 @@
         <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
           <p class="anon-limit-banner-text">
             {#each anonBannerLines as parts, i}
-              {#if i > 0}{' '}{/if}<span class="anon-limit-banner-line">{parts[0]}{#if parts.length > 1}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{parts[1]}{/if}</span>
+              {#if i > 0}{' '}{/if}<span class="anon-limit-banner-line">{parts[0]}{#if parts.length > 1}<a class="anon-limit-banner-link" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{parts[1]}{/if}</span>
             {/each}
           </p>
         </div>

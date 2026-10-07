@@ -38,7 +38,8 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
     second drops below, each line kept whole. (Hebrew still has the earlier one-line copy;
     to be updated.)
   - The text box and send button are disabled.
-  - Screen readers hear the banner (`role="status"`); keyboard focus moves to the link.
+  - Screen readers hear the banner (`role="status"`). Focus is not moved; the link is
+    reachable with Tab.
   - The banner slides and fades in over 200ms; no motion with reduced motion.
 - **Visual spec:** Figma "LA / Anonymous login banner" (node 7566:9922). One block with the
   input area: the panel surface (#F9FAFB), a 1px #EDEDEC top border (Border/Default) and
