@@ -2008,7 +2008,7 @@
     <button aria-label={$_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={responseReady}
             onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
-      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
       <span>{$_('assistant.floating_button.label')}</span>
@@ -2378,6 +2378,7 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
+        class:anon-blocked={anonLoginRequired}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -3227,7 +3228,7 @@
   }
 
   /* A reply arrived while closed: a badge sits on the launcher, which nudges twice to
-     draw the eye */
+     draw the eye. The badge pings with each nudge, then stays put, still. */
   .response-ready {
     position: relative;
     animation: trigger-nudge 0.6s ease 2;
@@ -3250,7 +3251,7 @@
     inset: 0;
     border-radius: 50%;
     background: var(--lc-danger);
-    animation: badge-ping 1.6s ease-out infinite;
+    animation: badge-ping 0.6s ease-out 2;
   }
 
   @keyframes trigger-nudge {
@@ -4863,6 +4864,11 @@
   .feedback-thanks {
     font-size: var(--lc-font-size-sm);
     color: var(--lc-sefaria-blue);
+  }
+
+  /* The login prompt is taller and heavier than the input it replaces: more room above it */
+  .lc-chatbot-messages.anon-blocked {
+    padding-bottom: var(--global-dimension-300, 24px);
   }
 
   .message.assistant .message-content,
