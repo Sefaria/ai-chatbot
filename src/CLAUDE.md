@@ -50,7 +50,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | Yes | Encrypted user token |
+| `user-id` | string | No | Encrypted user token. Omit for logged-out visitors: they chat under an anonymous id (`localStorage`) until the server's free responses run out, then see a login prompt |
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
@@ -60,8 +60,18 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `login-url` | string | No | Login page for the anonymous login prompt (default `/login`); `?next=<current page>` is appended at click time |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
+
+## Host asks
+
+A host page can open the widget with a prompt: set `window.lcChatbotPendingAsk = { text, intent }`
+and dispatch `new Event('chatbot:ask')` on `document`. The widget takes it on mount or on the
+event (whichever comes first), starts a fresh conversation and sends `text`. With
+`intent: 'interview'` it first shows two quick questions with checkboxes (no model call); ticking
+fills the input with a sentence, and sending it passes the original prompt, the answer and a
+"suggest three places" instruction to the model. Nothing from it goes into personal memory.
 
 ## i18n
 
