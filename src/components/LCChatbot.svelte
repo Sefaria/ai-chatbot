@@ -58,12 +58,13 @@
   let isAnonymous = $derived(!userId);
   let anonId = $state('');
   let anonLoginRequired = $state(false);
+  // Width of the message list's scrollbar (0 where scrollbars float over content), so the
+  // login banner can center on the list's visible width
+  let messageScrollbarWidth = $state(0);
   // The banner sentence holds a {link} slot for the "log in" link, so translations can
-  // put the link anywhere in the sentence. A line break in it marks where the sentence may
-  // split into two lines: each line is kept whole when the banner is too narrow for one.
+  // put the link anywhere in the sentence.
   const LINK_SLOT = '\u0000';
-  let anonBannerLines = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } })
-    .split('\n').map(line => line.split(LINK_SLOT)));
+  let anonBannerParts = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } }).split(LINK_SLOT));
 
   // "Personalize Responses": the signed-in user's memory is a short text about them that
   // goes with every message, where the server adds it to the prompt. It lives in this
@@ -1348,6 +1349,15 @@
       applyAutoScroll(elBottom - containerHeight);
     }
   }
+
+  $effect(() => {
+    const list = messageListRef;
+    if (!anonLoginRequired || !list) return;
+    // Fires when the list resizes and when its scrollbar comes or goes (its content box changes)
+    const observer = new ResizeObserver(() => { messageScrollbarWidth = list.offsetWidth - list.clientWidth; });
+    observer.observe(list);
+    return () => observer.disconnect();
+  });
 
   // Shows the login banner and disables the input. Focus stays where it is: the banner
   // announces itself (role="status"), and the link is reachable with Tab.
@@ -2691,12 +2701,10 @@
       {/if}
 
       {#if anonLoginRequired}
-        <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
-          <p class="anon-limit-banner-text">
-            {#each anonBannerLines as parts, i}
-              {#if i > 0}{' '}{/if}<span class="anon-limit-banner-line">{parts[0]}{#if parts.length > 1}<a class="anon-limit-banner-link" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{parts[1]}{/if}</span>
-            {/each}
-          </p>
+        <div class="anon-limit-banner-anchor">
+          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt" style="--lc-scrollbar-width: {messageScrollbarWidth}px">
+            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
+          </div>
         </div>
       {/if}
 
@@ -4759,30 +4767,38 @@
   /* Personalize Responses: a tab rising out of the canvas's bottom edge */
   /* Floats over the bottom of the message list and rests on the input footer's top
      border (which stays visible), like a tab; the canvas shows on either side of it. */
-  /* The top row of the input footer: one block with it (same surface, no line between), so the
-     message list and its scrollbar end at the block's top edge as they do without the banner.
-     In the normal flow, so it pushes the message list up. Values from Figma ("LA / Anonymous
-     login banner"); --lc-ds-* holds design-system values the chatbot's own variables don't have. */
+  /* A tab resting on the input footer's top line (which stays visible), with rounded top
+     corners. It floats over the end of the message list, centered on the list's visible
+     width (the scrollbar excluded). */
+  .anon-limit-banner-anchor {
+    position: relative;
+    height: 0;
+  }
+
   .anon-limit-banner {
-    --lc-ds-border-default: #ededec;
+    /* Foundations values the chatbot's own variables don't have */
     --lc-ds-font-size-small: 14px;
 
-    /* Same side padding as the footer (.lc-chatbot-input), so the text widens with it.
-       No bottom padding: the footer's top padding spaces it from the text box. */
-    padding: var(--global-dimension-150) 16px 0 18px;
-    background: var(--lc-body-bg); /* the panel surface the footer sits on */
-    border-top: 1px solid var(--lc-ds-border-default);
+    position: absolute;
+    bottom: 0;
+    /* The same gap from the panel's start edge and from the scrollbar (or end edge) */
+    inset-inline: var(--global-dimension-150) calc(var(--global-dimension-150) + var(--lc-scrollbar-width, 0px));
+    /* Fills that space while the text wraps; once it fits on one line, it stops growing and
+       stays centered */
+    width: fit-content;
+    margin-inline: auto;
+    z-index: 1;
+    padding: var(--global-dimension-100) var(--global-dimension-150);
+    background: var(--lc-bg); /* white, like the input field */
+    border: 1px solid var(--lc-border-strong);
+    border-bottom: none;
+    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
     /* Same size on desktop and phones */
     font-family: Roboto, Arial, sans-serif;
     font-size: var(--lc-ds-font-size-small);
     line-height: var(--global-dimension-250); /* 20px */
     text-align: center;
     animation: lc-anon-banner-in 200ms ease-out;
-  }
-
-  /* The banner's top border takes over from the footer's */
-  .anon-limit-banner + .lc-chatbot-input {
-    border-top: none;
   }
 
   .interface-hebrew .anon-limit-banner {
@@ -4792,18 +4808,13 @@
   .anon-limit-banner-text {
     margin: 0;
     color: var(--lc-text-secondary);
-  }
-
-  /* Each line is a block that stays whole: side by side when both fit on one line,
-     otherwise the second drops below (and wraps inside itself only if it's too long) */
-  .anon-limit-banner-line {
-    display: inline-block;
-    /* A line that has to wrap splits into even halves, never leaving one word alone */
-    text-wrap: balance;
+    /* One line until it has to wrap; then no line is left with a single word */
+    text-wrap: pretty;
   }
 
   .anon-limit-banner-link {
     color: var(--semantic-text-link);
+    white-space: nowrap; /* the action never splits across lines */
     font-weight: 600;
     text-decoration: underline;
     /* A thin line close to the words; it breaks around descenders (skip-ink) */

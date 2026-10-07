@@ -32,20 +32,22 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 - **Start:** the visitor has just received their last free answer.
 - **Expected:**
-  - The top of the input area shows, centered: "To continue asking questions," / "**log in or
-    register** for a free Sefaria account." The underlined part is the link. The two lines
-    sit side by side when the panel is wide enough for the whole sentence; otherwise the
-    second drops below, each line kept whole. (Hebrew still has the earlier one-line copy;
-    to be updated.)
+  - A tab on the top edge of the input area shows: "To continue asking, **log in or register** for a free
+    Sefaria account." The underlined part is the link. One line
+    when it fits; otherwise it wraps with no line left holding a single word. (Hebrew still
+    has the earlier copy; to be updated.)
   - The text box and send button are disabled.
   - Screen readers hear the banner (`role="status"`). Focus is not moved; the link is
     reachable with Tab.
   - The banner slides and fades in over 200ms; no motion with reduced motion.
-- **Visual spec:** Figma "LA / Anonymous login banner" (node 7566:9922). One block with the
-  input area: the panel surface (#F9FAFB), a 1px #EDEDEC top border (Border/Default) and
-  no line between banner and text box; padding 12px top, 16px right, 18px left (the input
-  area's sides), none at the bottom. Roboto 14px / 20px, centered, the same on desktop and
-  phone; text in Text/Secondary, link in Text/Link, semibold, underlined 1px at 0.15em.
+- **Visual spec:** a tab resting on the input area's top line (which stays visible). White
+  background with a 1px #CCCCCC border (gray-300; Foundations Border/Focus) on the top and sides, no
+  shadow, 8px rounded top corners, 8×12px
+  padding. Centered on the message list's visible width: 12px from the left edge and 12px from
+  the scrollbar (or the panel edge where scrollbars float over content). Once the text fits on one
+  line the tab stops widening (its one-line width is its maximum) and stays centered. Gray
+  text (#575757); the link in Text/Link blue, semibold, underlined 1px at 0.15em, never
+  split across lines. Roboto 14px / 20px, centered, the same on desktop and phone.
 
 ### 1.3 Visitor tries to ask past the limit (server says no)
 
