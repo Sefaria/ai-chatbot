@@ -4798,6 +4798,8 @@
      otherwise the second drops below (and wraps inside itself only if it's too long) */
   .anon-limit-banner-line {
     display: inline-block;
+    /* A line that has to wrap splits into even halves, never leaving one word alone */
+    text-wrap: balance;
   }
 
   .anon-limit-banner-link {
