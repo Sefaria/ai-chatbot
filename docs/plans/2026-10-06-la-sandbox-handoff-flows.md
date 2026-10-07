@@ -127,6 +127,18 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 - **"Register" vs. "sign up".** UX-copy guidance prefers "sign up"; keep "register" only
   if it matches Sefaria's own login page.
 
+## 2. Search no-results button
+
+### 2.1 Signed-in user clicks Try Library Assistant
+
+- **Rule:** the question the button sends always opens in a **new chat**. It is never added
+  to the conversation the user already has open.
+- **Steps:** signed in, any search tab with no results, click **Try Library Assistant**.
+- **Expected:** the assistant opens (or stays open) on a new, empty chat and the rewritten
+  question is sent there right away. The previous conversation is untouched and stays in
+  History. If the open chat is already empty, the question is sent in it.
+- Same for logged-out visitors, until they hit the limit (1.9).
+
 ## Still to cover from this PR
 
 - [ ] Entry point: the Ask pill, on phones and desktop (decided; circle, input bar and wide
