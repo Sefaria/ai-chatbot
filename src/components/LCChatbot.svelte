@@ -18,6 +18,7 @@
   import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
+  import { tooltip } from '../lib/tooltip.js';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -2057,7 +2058,10 @@
         {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
           <h2>
-            <span class="header-sparkle" aria-hidden="true">✦</span>
+            <!-- Same drawn ✦ as the Ask button; as text it looked different from the other entry points -->
+            <svg class="header-sparkle" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
+            </svg>
             <span class="header-title-text">{$_('assistant.title')}{#if testingVersion} (V{testingVersion}){/if}</span>
           </h2>
         </div>
@@ -2114,7 +2118,13 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
+                <!-- At the free-answer limit: aria-disabled (not disabled) so the tooltip still shows on hover -->
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button"
+                        onclick={() => { if (!anonLoginRequired) handleRestartConvo(); }}
+                        disabled={messages.length === 0 && !anonLoginRequired}
+                        aria-disabled={anonLoginRequired ? 'true' : undefined}
+                        use:tooltip={anonLoginRequired ? $_('assistant.menu.restart.login_tooltip') : ''}
+                        role="menuitem">
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
@@ -2159,7 +2169,7 @@
           <div class="history-toolbar">
             <div class="history-toolbar-group">
               <Tooltip text={$_('assistant.history.header.new.tooltip')}>
-                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0 || anonLoginRequired}>
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
@@ -2378,7 +2388,6 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
-        class:anon-blocked={anonLoginRequired}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -3842,15 +3851,9 @@
   }
 
 
+  /* Foundations icon-small (12px) */
   .header-sparkle {
-    font-size: 12px;
-    font-weight: 500;
-    /* Inherit the title's line-height (rather than an independent fixed value)
-       so the two elements share the same vertical metrics — needed for
-       .interface-hebrew, where the title's line-height switches to "normal"
-       and a font-dependent mismatch would otherwise throw off centering. */
-    line-height: inherit;
-    letter-spacing: 0.36px;
+    flex-shrink: 0;
     color: var(--brand-sefaria-blue);
   }
 
@@ -3907,11 +3910,12 @@
     transition: background 0.15s ease;
   }
 
-  .menu-item:hover:not(:disabled) {
+  .menu-item:hover:not(:disabled, [aria-disabled="true"]) {
     background: var(--lc-bg-tertiary);
   }
 
-  .menu-item:disabled {
+  .menu-item:disabled,
+  .menu-item[aria-disabled="true"] {
     opacity: 0.5;
     cursor: not-allowed;
   }
@@ -3930,7 +3934,7 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-spacing-large, 16px);
@@ -4054,8 +4058,6 @@
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    height: 0;
-    overflow: visible;
     margin-top: 4px;
     padding: 0 4px;
   }
@@ -4864,11 +4866,6 @@
   .feedback-thanks {
     font-size: var(--lc-font-size-sm);
     color: var(--lc-sefaria-blue);
-  }
-
-  /* The login prompt is taller and heavier than the input it replaces: more room above it */
-  .lc-chatbot-messages.anon-blocked {
-    padding-bottom: var(--global-dimension-300, 24px);
   }
 
   .message.assistant .message-content,

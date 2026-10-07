@@ -20,6 +20,7 @@
     "assistant.menu.settings": "Settings",
     "assistant.menu.settings.aria": "Open settings",
     "assistant.menu.restart.aria": "Restart convo",
+    "assistant.menu.restart.login_tooltip": "Log in to start a new chat",
     "assistant.menu.help.aria": "Get help",
     "assistant.menu.optOut.aria": "Opt-out",
     "assistant.empty.description": "You can ask questions while you study.",
