@@ -32,7 +32,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 - **Start:** the visitor has just received their last free answer.
 - **Expected:**
-  - The top of the input area shows, centered: "To continue asking me," / "**log in or
+  - The top of the input area shows, centered: "To continue asking questions," / "**log in or
     register** for a free Sefaria account." The underlined part is the link. The two lines
     sit side by side when the panel is wide enough for the whole sentence; otherwise the
     second drops below, each line kept whole. (Hebrew still has the earlier one-line copy;

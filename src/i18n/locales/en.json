@@ -68,7 +68,7 @@
     "assistant.source.readWhileWaiting": "Found a source — read while you wait",
     "assistant.source.readOnSefaria": "Read on Sefaria",
     "assistant.limit.reached": "The conversation has reached its limit.",
-    "assistant.anon.loginRequired": "To continue asking me,\n{link} for a free Sefaria account.",
+    "assistant.anon.loginRequired": "To continue asking questions,\n{link} for a free Sefaria account.",
     "assistant.anon.login": "log in or register",
     "assistant.personalize.tab": "Personalize Responses",
     "assistant.personalize.experience.question": "Let’s personalize my responses. Have you learned Jewish texts before?",
