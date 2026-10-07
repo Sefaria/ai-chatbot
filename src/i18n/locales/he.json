@@ -138,5 +138,6 @@
     "assistant.anon.login_button": "להתחברות או הרשמה",
     "assistant.header.history.login_tooltip": "התחברו כדי לראות את היסטוריית השיחות",
     "assistant.header.response_ready_announcement": "התשובה מעוזר הספרייה מוכנה",
-    "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה"
+    "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה",
+    "assistant.anon.limit_reached": "כדי להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי."
 }
