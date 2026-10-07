@@ -38,7 +38,8 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   - Screen readers hear the prompt (`role="status"`). Focus is not moved; the button is
     reachable with Tab.
   - The prompt slides and fades in over 200ms; no motion with reduced motion.
-  - (Hebrew strings still to be added; it shows the English for now.)
+  - Hebrew: "על מנת להמשיך לשאול, התחברו או הירשמו לחשבון ספריא חינמי." and the button
+    "להתחברות או הרשמה".
 - **Visual spec:** the input area keeps its padding and top line. Line: Roboto (Heebo in
   Hebrew), the body size (14px desktop, 16px phone), 20px line height, Text/Secondary.
   Button: full width, the send button's height (40px desktop, 44px phone), Sefaria blue
