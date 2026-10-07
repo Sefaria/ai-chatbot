@@ -182,5 +182,6 @@
     "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
     "assistant.floating_button.label": "Ask",
     "assistant.header.response_ready_announcement": "Your Library Assistant answer is ready",
-    "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready"
+    "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready",
+    "assistant.writing": "Writing…"
 }

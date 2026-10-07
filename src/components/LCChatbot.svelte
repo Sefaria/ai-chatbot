@@ -2487,19 +2487,21 @@
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
-              <div class="message-meta">
-                {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
-                    {$_('assistant.messages.retry')}
-                  </button>
-                {/if}
-                <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
-              </div>
-              {#if item.locationRef}
-                <div class="message-location-tag">
-                  <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+              <div class="message-meta-row">
+                <div class="message-meta">
+                  {#if item.status === STATUS_FAILED}
+                    <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
+                      {$_('assistant.messages.retry')}
+                    </button>
+                  {/if}
+                  <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
                 </div>
-              {/if}
+                {#if item.locationRef}
+                  <div class="message-location-tag">
+                    <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+                  </div>
+                {/if}
+              </div>
             </div>
           {/if}
         {/each}
@@ -4059,10 +4061,17 @@
     cursor: pointer;
   }
 
-  /* height:0 + overflow:visible lets the timestamp paint below this box
-     without the box itself contributing to the flex column's height — so
-     the reserved timestamp space doesn't leave a permanent gap between the
-     bubble and whatever comes next (see .message-location-tag below). */
+  /* .message-meta (timestamp/retry row) and .message-location-tag (pin) share
+     this wrapper's single fit-content column, so a left-aligned retry button
+     lines up with the pin's own left edge (right on RTL) instead of the
+     message column's full width — see .message-meta's :has(.retry-btn) rule. */
+  .message-meta-row {
+    display: grid;
+    grid-template-columns: fit-content(min(560px, 100%));
+    justify-content: end;
+    width: 100%;
+  }
+
   .message-meta {
     display: flex;
     align-items: flex-start;
@@ -4071,8 +4080,25 @@
     padding: 0 4px;
   }
 
+  /* height:0 + overflow:visible lets the timestamp paint below this box
+     without the box itself contributing to the grid row's height — so the
+     reserved timestamp space doesn't leave a permanent gap between the
+     bubble and whatever comes next (see .message-location-tag below).
+     Scoped to user messages only: assistant's .message-meta holds the
+     retry button / feedback thumbs, which are never hover-only, so it
+     keeps its real (auto) height and reserves space for them normally —
+     otherwise they'd float, unreserved, into the next message below. A
+     user message's retry button is just as permanent, so it gets the same
+     real-height treatment via the :has() rule below. */
   .message.user .message-meta {
     justify-content: flex-end;
+    height: 0;
+    overflow: visible;
+  }
+
+  .message.user .message-meta:has(.retry-btn) {
+    height: auto;
+    justify-content: space-between;
   }
 
   .message-timestamp {
@@ -4084,15 +4110,23 @@
     transition: opacity 0.15s ease;
   }
 
-  .message.user:hover .message-timestamp,
-  .message.user:focus-within .message-timestamp {
+  /* Hover is scoped to the prompt bubble itself, and :focus-within to the
+     retry/timestamp row specifically (not the whole message) — neither the
+     pin nor its link should be a trigger. Focusing the pin to click or tab
+     to it would otherwise also reveal the timestamp AND (below) shift the
+     pin itself out from under the cursor mid-click, turning one click into
+     two. */
+  .message-content:hover ~ .message-meta-row .message-timestamp,
+  .message-meta:focus-within .message-timestamp {
     opacity: 1;
   }
 
   /* Bubble and pin sit flush by default (no reserved timestamp gap). On
      hover the pin transforms down to make room for the timestamp fading in
      above it — a transform doesn't affect layout, so nothing below this
-     message (the next one in the list) ever shifts. */
+     message (the next one in the list) ever shifts. Skipped when a retry
+     button is present: that row already reserves real height above, so the
+     pin's natural (untransformed) position already sits below it. */
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
@@ -4102,7 +4136,11 @@
     /* Figma: max width = chat bubble width (560px), but never exceed the
        available message column so long refs truncate instead of overflowing. */
     max-width: min(560px, 100%);
-    align-self: flex-end;
+  }
+
+  .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
+  .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
+    transform: translateY(18px);
   }
 
   .message.user:hover .message-location-tag,
