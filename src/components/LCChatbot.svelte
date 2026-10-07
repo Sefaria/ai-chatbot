@@ -58,16 +58,6 @@
   let isAnonymous = $derived(!userId);
   let anonId = $state('');
   let anonLoginRequired = $state(false);
-  // Width of the message list's scrollbar (0 where scrollbars float over content), so the
-  // login banner can center on the list's visible width
-  let messageScrollbarWidth = $state(0);
-  // The banner's height: the message list keeps that much room at its end, so the last
-  // message (and its feedback buttons) can scroll clear of the banner
-  let anonBannerHeight = $state(0);
-  // The banner sentence holds a {link} slot for the "log in" link, so translations can
-  // put the link anywhere in the sentence.
-  const LINK_SLOT = '\u0000';
-  let anonBannerParts = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } }).split(LINK_SLOT));
 
   // "Personalize Responses": the signed-in user's memory is a short text about them that
   // goes with every message, where the server adds it to the prompt. It lives in this
@@ -1355,17 +1345,8 @@
     }
   }
 
-  $effect(() => {
-    const list = messageListRef;
-    if (!anonLoginRequired || !list) return;
-    // Fires when the list resizes and when its scrollbar comes or goes (its content box changes)
-    const observer = new ResizeObserver(() => { messageScrollbarWidth = list.offsetWidth - list.clientWidth; });
-    observer.observe(list);
-    return () => observer.disconnect();
-  });
-
-  // Shows the login banner and disables the input. Focus stays where it is: the banner
-  // announces itself (role="status"), and the link is reachable with Tab.
+  // Replaces the input with the login prompt. Focus isn't moved: the prompt announces itself
+  // (role="status"), and its button is reachable with Tab.
   function requireLogin() {
     anonLoginRequired = true;
     setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
@@ -2557,8 +2538,6 @@
       <div
         class="lc-chatbot-messages"
         class:clearing={isClearing}
-        class:has-anon-banner={anonLoginRequired}
-        style:--lc-anon-banner-height={anonLoginRequired && anonBannerHeight ? `${anonBannerHeight}px` : null}
         bind:this={messageListRef}
         onscroll={handleScroll}
         onwheel={handleWheel}
@@ -2706,22 +2685,21 @@
         </div>
       {/if}
 
-      {#if anonLoginRequired}
-        <div class="anon-limit-banner-anchor">
-          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt" style="--lc-scrollbar-width: {messageScrollbarWidth}px" bind:offsetHeight={anonBannerHeight}>
-            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
-          </div>
-        </div>
-      {/if}
-
       <!-- Input Footer -->
+      {#if anonLoginRequired}
+        <!-- Logged out and the free answers are used up: the input gives way to logging in -->
+        <footer class="lc-chatbot-input anon-login-footer" role="status" data-element-shown-name="anon_login_prompt">
+          <p class="anon-login-footer-text">{$_('assistant.anon.limitReached')}</p>
+          <a class="anon-login-footer-button" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.loginButton')}</a>
+        </footer>
+      {:else}
       <footer class="lc-chatbot-input">
         <textarea
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={inputMaxChars}
-          placeholder={limitReached ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
+          placeholder={limitReached || anonLoginRequired ? "" : $_(onboarding ? (isNotesStep ? 'assistant.personalize.placeholder.notes' : 'assistant.personalize.placeholder.choice') : 'assistant.input.placeholder')}
           aria-label={$_('assistant.input.aria')}
           enterkeyhint="send"
           rows="1"
@@ -2739,6 +2717,7 @@
           </svg>
         </button>
       </footer>
+      {/if}
       {#if isNotesStep}
         <div class="input-char-count" aria-live="polite">{inputText.length}/{MEMORY_NOTES_MAX_CHARS}</div>
       {/if}
@@ -4734,9 +4713,11 @@
     color: var(--lc-text-muted);
   }
 
+  /* Nothing to scroll in a disabled box: no inner scrollbar */
   .lc-chatbot-input textarea:disabled {
     background: var(--lc-bg-secondary);
     cursor: not-allowed;
+    overflow: hidden;
   }
 
   .send-btn {
@@ -4770,75 +4751,53 @@
     transform: scale(0.95);
   }
 
-  /* Personalize Responses: a tab rising out of the canvas's bottom edge */
-  /* Floats over the bottom of the message list and rests on the input footer's top
-     border (which stays visible), like a tab; the canvas shows on either side of it. */
-  /* A tab resting on the input footer's top line (which stays visible), with rounded top
-     corners. It floats over the end of the message list, centered on the list's visible
-     width (the scrollbar excluded). */
-  .anon-limit-banner-anchor {
-    position: relative;
-    height: 0;
-  }
-
-  .anon-limit-banner {
-    /* Foundations values the chatbot's own variables don't have */
-    --lc-ds-font-size-small: 14px;
-
-    position: absolute;
-    bottom: 0;
-    /* The same gap from the panel's start edge and from the scrollbar (or end edge) */
-    inset-inline: var(--global-dimension-150) calc(var(--global-dimension-150) + var(--lc-scrollbar-width, 0px));
-    /* Fills that space while the text wraps; once it fits on one line, it stops growing and
-       stays centered */
-    width: fit-content;
-    margin-inline: auto;
-    z-index: 1;
-    padding: var(--global-dimension-100) var(--global-dimension-150);
-    background: var(--lc-bg); /* white, like the input field */
-    border: 1px solid var(--lc-border-strong);
-    border-bottom: none;
-    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
-    /* Same size on desktop and phones */
-    font-family: Roboto, Arial, sans-serif;
-    font-size: var(--lc-ds-font-size-small);
-    line-height: var(--global-dimension-250); /* 20px */
+  /* Logged out, free answers used up: a line and a full-width button where the text box was */
+  .anon-login-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--global-dimension-100);
     text-align: center;
     animation: lc-anon-banner-in 200ms ease-out;
   }
 
-  .interface-hebrew .anon-limit-banner {
+  .anon-login-footer-text {
+    margin: 0;
+    color: var(--lc-text-secondary);
+    font-family: Roboto, Arial, sans-serif;
+    font-size: var(--lc-font-size);
+    line-height: var(--global-dimension-250);
+  }
+
+  .interface-hebrew .anon-login-footer-text {
     font-family: Heebo, Arial, sans-serif;
   }
 
-  .anon-limit-banner-text {
-    margin: 0;
-    color: var(--lc-text-secondary);
-    /* One line until it has to wrap; then no line is left with a single word */
-    text-wrap: pretty;
-  }
-
-  .anon-limit-banner-link {
-    color: var(--semantic-text-link);
-    white-space: nowrap; /* the action never splits across lines */
+  /* The same height as the send button it replaces (40px; 44px on phones) */
+  .anon-login-footer-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--lc-send-size);
+    padding: 0 var(--global-dimension-200);
+    background: var(--lc-entry-bg);
+    color: var(--lc-on-primary);
+    border-radius: var(--lc-radius-sm);
+    font-family: Roboto, Arial, sans-serif;
+    font-size: var(--lc-font-size);
     font-weight: 600;
-    text-decoration: underline;
-    /* A thin line close to the words; it breaks around descenders (skip-ink) */
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.15em;
-    border-radius: 2px;
+    text-decoration: none;
   }
 
-  /* Hebrew System Small Strong is Heebo Bold */
-  .interface-hebrew .anon-limit-banner-link {
+  .interface-hebrew .anon-login-footer-button {
+    font-family: Heebo, Arial, sans-serif;
     font-weight: 700;
   }
 
-  .anon-limit-banner-link:hover {
-    color: var(--lc-primary-hover);
+  .anon-login-footer-button:hover {
+    background: var(--lc-entry-bg-hover);
   }
 
-  .anon-limit-banner-link:focus-visible {
+  .anon-login-footer-button:focus-visible {
     outline: 2px solid var(--lc-primary);
     outline-offset: 2px;
   }
@@ -4849,11 +4808,14 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .anon-limit-banner {
+    .anon-login-footer {
       animation: none;
     }
   }
 
+  /* Personalize Responses: a tab rising out of the canvas's bottom edge */
+  /* Floats over the bottom of the message list and rests on the input footer's top
+     border (which stays visible), like a tab; the canvas shows on either side of it. */
   .personalize-tab-anchor {
     position: relative;
     height: 0;
@@ -5078,12 +5040,6 @@
   }
 
   /* Clearing animation for message list */
-  /* Room under the last message so the floating login banner doesn't cover it */
-  /* Room for the banner floating over the list's end, plus the usual gap */
-  .lc-chatbot-messages.has-anon-banner {
-    padding-bottom: calc(var(--spacing-spacing-medium, 12px) + var(--lc-anon-banner-height, 64px));
-  }
-
   .lc-chatbot-messages.clearing {
     opacity: 0.5;
     transition: opacity 0.15s ease;

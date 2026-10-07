@@ -10,7 +10,7 @@ Status: **anonymous usage drafted**. Other parts of the PR still to cover (see t
   (private window = logged out; Sandbox controls > Entry points: Circle only for a
   production-like view)
 - Figma: [Library Assistant Wireframes, ↳Anonymous Usage](https://www.figma.com/design/Y31hDgxSjr0l1fcm0nNJSD/Library-Assistant-Wireframes?node-id=7552-291)
-  (component "LA / Anonymous login banner", desktop and phone, EN and HE)
+  (earlier banner explorations; the shipped design replaces the input instead)
 
 ## 1. Anonymous usage
 
@@ -32,22 +32,18 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 - **Start:** the visitor has just received their last free answer.
 - **Expected:**
-  - A tab on the top edge of the input area shows: "To continue asking, **log in or register** for a free
-    Sefaria account." The underlined part is the link. One line
-    when it fits; otherwise it wraps with no line left holding a single word. (Hebrew still
-    has the earlier copy; to be updated.)
-  - The text box and send button are disabled.
-  - Screen readers hear the banner (`role="status"`). Focus is not moved; the link is
+  - The text box and send button are replaced by a centered line, "To keep asking, log in
+    or register for free.", and a full-width **Log in or register** button below it.
+  - Nothing covers the conversation, so the last answer can be read to the end.
+  - Screen readers hear the prompt (`role="status"`). Focus is not moved; the button is
     reachable with Tab.
-  - The banner slides and fades in over 200ms; no motion with reduced motion.
-- **Visual spec:** a tab resting on the input area's top line (which stays visible). White
-  background with a 1px #CCCCCC border (gray-300; Foundations Border/Focus) on the top and sides, no
-  shadow, 8px rounded top corners, 8×12px
-  padding. Centered on the message list's visible width: 12px from the left edge and 12px from
-  the scrollbar (or the panel edge where scrollbars float over content). Once the text fits on one
-  line the tab stops widening (its one-line width is its maximum) and stays centered. Gray
-  text (#575757); the link in Text/Link blue, semibold, underlined 1px at 0.15em, never
-  split across lines. Roboto 14px / 20px, centered, the same on desktop and phone.
+  - The prompt slides and fades in over 200ms; no motion with reduced motion.
+  - (Hebrew strings still to be added; it shows the English for now.)
+- **Visual spec:** the input area keeps its padding and top line. Line: Roboto (Heebo in
+  Hebrew), the body size (14px desktop, 16px phone), 20px line height, Text/Secondary.
+  Button: full width, the send button's height (40px desktop, 44px phone), Sefaria blue
+  (`--lc-entry-bg`, darker on hover), white semibold text, 8px corners, a focus ring for
+  keyboard users.
 
 ### 1.3 Visitor tries to ask past the limit (server says no)
 
@@ -55,18 +51,18 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   the text box is still open.
 - **Steps:** send a question.
 - **Expected:** the server answers `403 login_required`. The question is removed from the
-  chat, put back in the text box as a draft, and the banner appears as in 1.2. Nothing is
+  chat, put back in the text box as a draft, and the login prompt replaces the input as in 1.2. Nothing is
   shown as an error.
 
 ### 1.4 Visitor closes and comes back later (still logged out)
 
 - **Start:** limit reached, then the page is reloaded or revisited in the same browser.
-- **Expected:** the banner and disabled input are still there (the "login required" state
+- **Expected:** the login prompt is still there in place of the input (the "login required" state
   is remembered in the browser). The earlier conversation is still shown.
 
-### 1.5 Visitor logs in from the banner and comes back
+### 1.5 Visitor logs in from the prompt and comes back
 
-- **Steps:** click "log in or register".
+- **Steps:** click **Log in or register**.
 - **Expected:**
   - The browser goes to Sefaria's login page with `?next=<the page they were on>`. The
     assistant does not appear on the login page.
@@ -86,17 +82,14 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 - Same flows 1.1–1.5 inside the full-screen sheet (and the split-screen sheet, if that's
   chosen in Sandbox controls).
-- The banner sits above the disabled text box. Check the layout stays clear of the iOS
+- The prompt replaces the text box. Check the button stays clear of the iOS
   home bar and doesn't scroll sideways at 320px.
 - After logging in, the sheet reopens on the conversation (the only time a sheet opens by
   itself).
 
 ### 1.8 Hebrew
 
-- All of the above with `interface-lang="he"`: banner right-aligned and in Hebrew, link in
-  the middle of the sentence.
-- Open issue: the banner text uses the system font rather than Heebo in Hebrew (the rest
-  of the Hebrew interface uses Heebo).
+- All of the above with `interface-lang="he"`: the prompt in Hebrew, right-aligned.
 
 ### Edge cases and open questions
 
@@ -104,8 +97,9 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   which lives in the browser's storage, so clearing it or using another browser resets the
   count. Fine for a soft limit; engineering and product to confirm.
 - **Failed answers don't count.** Only successful answers use up the quota.
-- **Copy and translation keys.** `assistant.anon.login` changed meaning from "log in" to
-  "log in or register". It should get a new key before this goes to main (Weblate rule).
+- **Copy and translation keys.** The prompt uses new keys, `assistant.anon.limitReached`
+  and `assistant.anon.loginButton`; the banner's `assistant.anon.loginRequired` and
+  `assistant.anon.login` were removed.
 - **"Register" vs. "sign up".** UX-copy guidance prefers "sign up"; keep "register" only
   if it matches Sefaria's own login page.
 
