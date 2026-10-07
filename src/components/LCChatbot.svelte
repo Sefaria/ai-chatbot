@@ -50,7 +50,9 @@
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
     'interface-lang': interfaceLang = 'en',
-    'login-url': loginUrl = '/login'
+    'login-url': loginUrl = '/login',
+    // Set by the host on reading pages (Sefaria: a text, a topic, a sheet)
+    'hide-launcher-on-scroll': hideLauncherOnScrollAttr = false
   } = $props();
 
   // No user-id means a logged-out visitor: they chat under an anonymous id until the
@@ -84,6 +86,7 @@
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
+  let hideLauncherOnScroll = $derived(!!hideLauncherOnScrollAttr && hideLauncherOnScrollAttr !== 'false');
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
@@ -270,6 +273,8 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
   let triggerHidden = $state(false);
+  // Host-set launcher (chatbot:launcher): another label, and a question its click asks
+  let launcherOverride = $state(null);
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
   let pendingNavigation = null;
@@ -698,12 +703,13 @@
     };
   });
 
-  // On phones the closed launcher steps aside while the page scrolls and returns once
-  // scrolling stops, so it doesn't sit on the text being read. Capture catches every scroller.
+  // On phones, on pages the host marks as reading pages (hide-launcher-on-scroll), the closed
+  // launcher steps aside while the page scrolls and returns once scrolling stops, so it doesn't
+  // sit on the text being read. Capture catches every scroller.
   const LAUNCHER_SCROLL_IDLE_MS = 400;
   $effect(() => {
     triggerHidden = false;
-    if (!isFullscreen || isOpen) return;
+    if (!isFullscreen || isOpen || !hideLauncherOnScroll) return;
     let idleTimer;
     function onScroll() {
       triggerHidden = true;
@@ -747,6 +753,33 @@
     }
     document.addEventListener('chatbot:open', onOpenRequest);
     return () => document.removeEventListener('chatbot:open', onOpenRequest);
+  });
+
+  function askFromLauncher() {
+    if (launcherOverride?.question) {
+      const { source, question } = launcherOverride;
+      trackAssistantClick(source || 'ask_pill_open');
+      askInNewChat(question, source === 'search_no_results' ? source : undefined);
+    } else {
+      trackAssistantClick('ask_pill_open');
+      openPanel();
+    }
+  }
+
+  // A host page can turn the closed launcher into a page-specific action, e.g. Sefaria's
+  // phone search no-results page: "✦ Search with Library Assistant", asking about the search.
+  // detail = { label | callout, question, source }, or null to go back to the "✦ Ask" pill.
+  // `callout` keeps the pill as is and shows a small box above it instead, or beside it with
+  // calloutPosition: 'side' (PROTOTYPE).
+  $effect(() => {
+    function onLauncher(e) {
+      const d = e.detail;
+      launcherOverride = d?.label || d?.callout
+        ? { label: d.label || '', callout: d.callout || '', calloutSide: d.calloutPosition === 'side', question: d.question || '', source: d.source || '' }
+        : null;
+    }
+    document.addEventListener('chatbot:launcher', onLauncher);
+    return () => document.removeEventListener('chatbot:launcher', onLauncher);
   });
 
   function toggleMode() {
@@ -2014,14 +2047,19 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
+    {#if launcherOverride?.callout}
+      <!-- PROTOTYPE: a hint above the pill; tapping it does what the pill does -->
+      <button type="button" class="launcher-callout" class:side={launcherOverride.calloutSide} onclick={() => askFromLauncher()}>{launcherOverride.callout}</button>
+    {/if}
     <!-- Launcher: a "✦ Ask" pill in the corner -->
-    <button aria-label={$_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')} class="lc-chatbot-ask" class:response-ready={responseReady}
-            onclick={() => { trackAssistantClick('ask_pill_open'); openPanel(); }}>
+    <button aria-label={launcherOverride?.label && !responseReady ? launcherOverride.label : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
+            class="lc-chatbot-ask" class:response-ready={responseReady}
+            onclick={() => askFromLauncher()}>
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
-      <span>{$_('assistant.floating_button.label')}</span>
+      <span>{launcherOverride?.label || $_('assistant.floating_button.label')}</span>
       {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else}
@@ -3211,6 +3249,69 @@
     .lc-chatbot-container.mode-fullscreen.trigger-hidden {
       transform: none;
     }
+  }
+
+  /* PROTOTYPE: hint box above the launcher, right-aligned with it, pointing down at it */
+  .launcher-callout {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    inset-inline-end: 0;
+    width: max-content;
+    max-width: min(240px, calc(100vw - 32px));
+    padding: 10px 14px;
+    background: var(--lc-bg);
+    color: var(--brand-sefaria-blue);
+    border: 1px solid var(--lc-border);
+    border-radius: 8px;
+    box-shadow: var(--lc-shadow);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    line-height: 20px;
+    text-align: start;
+    text-wrap: balance;
+    cursor: pointer;
+    animation: launcher-callout-in 0.2s ease;
+  }
+  .launcher-callout::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    inset-inline-end: 28px;
+    border: 7px solid transparent;
+    border-top-color: var(--lc-bg);
+  }
+  /* Beside the pill instead, vertically centred on it, pointing at it (the inline-end side
+     follows the pill's corner, so it faces into the page in Hebrew too) */
+  .launcher-callout.side {
+    bottom: auto;
+    top: 50%;
+    inset-inline-end: calc(100% + 12px);
+    max-width: min(200px, calc(100vw - 140px));
+    animation-name: launcher-callout-side-in;
+    transform: translateY(-50%);
+  }
+  .launcher-callout.side::after {
+    top: 50%;
+    inset-inline-end: auto;
+    inset-inline-start: 100%;
+    margin-top: -7px;
+    border-top-color: transparent;
+    border-inline-start-color: var(--lc-bg);
+  }
+  @keyframes launcher-callout-side-in {
+    from { opacity: 0; transform: translateY(-50%) translateX(4px); }
+    to { opacity: 1; transform: translateY(-50%); }
+  }
+  .launcher-callout:focus-visible {
+    outline: 2px solid var(--brand-sefaria-blue);
+    outline-offset: 2px;
+  }
+  @keyframes launcher-callout-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .launcher-callout { animation: none; }
   }
 
   /* Launcher */
