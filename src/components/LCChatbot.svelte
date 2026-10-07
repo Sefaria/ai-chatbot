@@ -60,9 +60,11 @@
   let anonLoginRequired = $state(false);
   let anonLoginLinkRef = $state(null);
   // The banner sentence holds a {link} slot for the "log in" link, so translations can
-  // put the link anywhere in the sentence.
+  // put the link anywhere in the sentence. A line break in it marks where the sentence may
+  // split into two lines: each line is kept whole when the banner is too narrow for one.
   const LINK_SLOT = '\u0000';
-  let anonBannerParts = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } }).split(LINK_SLOT));
+  let anonBannerLines = $derived($_('assistant.anon.loginRequired', { values: { link: LINK_SLOT } })
+    .split('\n').map(line => line.split(LINK_SLOT)));
 
   // "Personalize Responses": the signed-in user's memory is a short text about them that
   // goes with every message, where the server adds it to the prompt. It lives in this
@@ -2692,10 +2694,12 @@
       {/if}
 
       {#if anonLoginRequired}
-        <div class="anon-limit-banner-anchor">
-          <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
-            <p class="anon-limit-banner-text">{anonBannerParts[0]}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{anonBannerParts[1] ?? ''}</p>
-          </div>
+        <div class="anon-limit-banner" role="status" data-element-shown-name="anon_login_prompt">
+          <p class="anon-limit-banner-text">
+            {#each anonBannerLines as parts, i}
+              {#if i > 0}{' '}{/if}<span class="anon-limit-banner-line">{parts[0]}{#if parts.length > 1}<a class="anon-limit-banner-link" bind:this={anonLoginLinkRef} href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login')}</a>{parts[1]}{/if}</span>
+            {/each}
+          </p>
         </div>
       {/if}
 
@@ -2863,6 +2867,7 @@
     --lc-font-size-sm: 12px;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
+    --lc-send-size: 40px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
     --lc-border-strong: var(--core-neutral-gray-300);
@@ -2946,6 +2951,7 @@
   /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
   /* Phones read at arm's length: one step up the type scale, 44px touch targets */
   .lc-chatbot-container.mode-fullscreen {
+    --lc-send-size: 44px;
     --lc-font-size-sm: 14px;
     --lc-font-size: 16px;
     --lc-font-size-lg: 18px;
@@ -3088,8 +3094,6 @@
   }
 
   .mode-fullscreen .send-btn {
-    width: 44px;
-    height: 44px;
     flex: none;
   }
 
@@ -4728,8 +4732,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
     background: var(--lc-entry-bg);
     color: white;
     border: none;
@@ -4758,26 +4762,34 @@
   /* Personalize Responses: a tab rising out of the canvas's bottom edge */
   /* Floats over the bottom of the message list and rests on the input footer's top
      border (which stays visible), like a tab; the canvas shows on either side of it. */
-  .anon-limit-banner-anchor {
-    position: relative;
-    height: 0;
+  /* The top row of the input footer: one block with it (same surface, no line between), so the
+     message list and its scrollbar end at the block's top edge as they do without the banner.
+     In the normal flow, so it pushes the message list up. Values from Figma ("LA / Anonymous
+     login banner"); --lc-ds-* holds design-system values the chatbot's own variables don't have. */
+  .anon-limit-banner {
+    --lc-ds-border-default: #ededec;
+    --lc-ds-font-size-small: 14px;
+
+    /* Same side padding as the footer (.lc-chatbot-input), so the text widens with it.
+       No bottom padding: the footer's top padding spaces it from the text box. */
+    padding: var(--global-dimension-150) 16px 0 18px;
+    background: var(--lc-body-bg); /* the panel surface the footer sits on */
+    border-top: 1px solid var(--lc-ds-border-default);
+    /* Same size on desktop and phones */
+    font-family: Roboto, Arial, sans-serif;
+    font-size: var(--lc-ds-font-size-small);
+    line-height: var(--global-dimension-250); /* 20px */
+    text-align: center;
+    animation: lc-anon-banner-in 200ms ease-out;
   }
 
-  .anon-limit-banner {
-    position: absolute;
-    bottom: 0;
-    /* Start lines up with the textarea; the end clears the message list's scrollbar */
-    inset-inline: 18px 28px;
-    z-index: 1;
-    padding: 8px 12px;
-    background: var(--lc-bg); /* white, like the input field */
-    border: 1px solid var(--lc-border-strong);
-    border-bottom: none;
-    border-radius: var(--lc-radius-sm) var(--lc-radius-sm) 0 0;
-    font-family: var(--lc-font);
-    font-size: var(--lc-font-size-sm);
-    line-height: 1.4;
-    animation: lc-anon-banner-in 200ms ease-out;
+  /* The banner's top border takes over from the footer's */
+  .anon-limit-banner + .lc-chatbot-input {
+    border-top: none;
+  }
+
+  .interface-hebrew .anon-limit-banner {
+    font-family: Heebo, Arial, sans-serif;
   }
 
   .anon-limit-banner-text {
@@ -4785,13 +4797,25 @@
     color: var(--lc-text-secondary);
   }
 
+  /* Each line is a block that stays whole: side by side when both fit on one line,
+     otherwise the second drops below (and wraps inside itself only if it's too long) */
+  .anon-limit-banner-line {
+    display: inline-block;
+  }
+
   .anon-limit-banner-link {
-    color: var(--lc-primary);
+    color: var(--semantic-text-link);
     font-weight: 600;
     text-decoration: underline;
-    /* Clear the descender of the "g" in "log in" */
-    text-underline-offset: 3px;
+    /* A thin line close to the words; it breaks around descenders (skip-ink) */
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.15em;
     border-radius: 2px;
+  }
+
+  /* Hebrew System Small Strong is Heebo Bold */
+  .interface-hebrew .anon-limit-banner-link {
+    font-weight: 700;
   }
 
   .anon-limit-banner-link:hover {
