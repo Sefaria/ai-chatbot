@@ -223,5 +223,6 @@ class TestHistoryMessageSerializer:
             "responseMessageId",
             "appetizerData",
             "toolCalls",
+            "processingState",
         }
         assert set(data.keys()) == expected_fields

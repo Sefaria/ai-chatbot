@@ -7,6 +7,19 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 
+class TurnCancelled(Exception):
+    """Raised inside the agent when the user abandons the turn.
+
+    Unwinding out of the SDK's `async with` block is what makes the cancel real:
+    it closes the ClaudeSDKClient, which terminates the agent subprocess, so no
+    further model calls are billed.
+    """
+
+
+#: Polled by the agent between steps. True means "stop now".
+CancelCheck = Callable[[], bool]
+
+
 @dataclass
 class AgentProgressUpdate:
     """Streamed to the client via SSE during a single chat turn."""
@@ -83,6 +96,7 @@ class SdkRunner(Protocol):
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> Any: ...
 
 
