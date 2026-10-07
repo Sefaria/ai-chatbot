@@ -111,7 +111,7 @@
     "assistant.history.header.new.aria": "שיחה חדשה",
     "assistant.history.header.search_open.tooltip": "חיפוש",
     "assistant.history.header.search_open.aria": "חיפוש בשיחות",
-    "assistant.history.header.search_close.tooltip": "סגירת סרגל חיפוש",
+    "assistant.history.header.search_close.tooltip": "סגירת תיבת חיפוש",
     "assistant.history.header.search_close.aria": "סגירת סרגל חיפוש",
     "assistant.history.header.close.tooltip": "סגירה",
     "assistant.history.header.close.aria": "סגירת היסטוריית שיחות",
