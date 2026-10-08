@@ -717,19 +717,29 @@
   // On phones, on pages the host marks as reading pages (hide-launcher-on-scroll), the closed
   // launcher steps aside while the page scrolls and returns once scrolling stops, so it doesn't
   // sit on the text being read. Capture catches every scroller.
+  // Only the reader's own scrolling counts (a swipe, the wheel, the keyboard, including the
+  // momentum after a swipe): the host scrolling by itself, e.g. opening a text or restoring
+  // the position on reload, would otherwise make the pill blink out and back.
   const LAUNCHER_SCROLL_IDLE_MS = 400;
+  const USER_SCROLL_WINDOW_MS = 1500;
   $effect(() => {
     triggerHidden = false;
     if (!isFullscreen || isOpen || !hideLauncherOnScroll) return;
     let idleTimer;
+    let lastUserInput = -Infinity;
+    function onUserInput() { lastUserInput = performance.now(); }
     function onScroll() {
+      if (performance.now() - lastUserInput > USER_SCROLL_WINDOW_MS) return;
       triggerHidden = true;
       clearTimeout(idleTimer);
       idleTimer = setTimeout(() => { triggerHidden = false; }, LAUNCHER_SCROLL_IDLE_MS);
     }
+    const inputs = ['touchstart', 'touchmove', 'wheel', 'keydown', 'pointerdown'];
+    inputs.forEach(type => document.addEventListener(type, onUserInput, { capture: true, passive: true }));
     document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     return () => {
       clearTimeout(idleTimer);
+      inputs.forEach(type => document.removeEventListener(type, onUserInput, { capture: true }));
       document.removeEventListener('scroll', onScroll, { capture: true });
     };
   });
