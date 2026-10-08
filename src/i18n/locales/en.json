@@ -141,5 +141,6 @@
     "assistant.header.response_ready_announcement": "Your Library Assistant answer is ready",
     "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready",
     "assistant.floating_button.label": "Ask",
-    "assistant.menu.restart.login_tooltip": "Log in to start a new chat"
+    "assistant.menu.restart.login_tooltip": "Log in to start a new chat",
+    "assistant.floating_button.search_label": "Search with Library Assistant"
 }
