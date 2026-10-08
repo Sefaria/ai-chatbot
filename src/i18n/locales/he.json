@@ -135,7 +135,7 @@
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
-    "assistant.floating_button.label": "שאלו",
+    "assistant.floating_button.label": "שאלו אותי",
     "assistant.floating_button.search_label": "לחיפוש עם עוזר הספרייה",
     "assistant.header.response_ready_announcement": "התשובה מעוזר הספרייה מוכנה",
     "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה",
