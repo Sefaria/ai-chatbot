@@ -281,6 +281,9 @@
   let triggerHidden = $state(false);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
+  // The pill's label for each host source that relabels it (chatbot:launcher)
+  const LAUNCHER_LABELS = { search_no_results: 'assistant.floating_button.search_label' };
+  let launcherLabel = $derived(launcherOverride ? $_(LAUNCHER_LABELS[launcherOverride.source]) : '');
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
   let pendingNavigation = null;
@@ -792,8 +795,9 @@
   }
 
   // A host page can turn the closed launcher into a page-specific action, e.g. Sefaria's
-  // phone search no-results page: "✦ Search with Library Assistant", asking about the search.
-  // detail = { label, question, source }, or null to go back to the "✦ Ask" pill.
+  // search no-results page: "✦ Search with Library Assistant", asking about the search.
+  // detail = { source, question }, or null to go back to the "✦ Ask" pill. The widget owns the
+  // label (so it's translated with the rest of the assistant): known sources map to one below.
   $effect(() => {
     // Going back to "✦ Ask" waits a moment: moving between two no-results tabs, the old page
     // resets the pill just before the new one relabels it, and the pill shouldn't flicker
@@ -801,8 +805,8 @@
     function onLauncher(e) {
       const d = e.detail;
       clearTimeout(resetTimer);
-      if (d?.label) {
-        launcherOverride = { label: d.label, question: d.question || '', source: d.source || '' };
+      if (d?.source && LAUNCHER_LABELS[d.source]) {
+        launcherOverride = { source: d.source, question: d.question || '' };
       } else {
         resetTimer = setTimeout(() => { launcherOverride = null; }, 50);
       }
@@ -2099,15 +2103,15 @@
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
     <!-- Launcher: a "✦ Ask" pill in the corner -->
-    <button aria-label={launcherOverride?.label && !responseReady ? launcherOverride.label : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
+    <button aria-label={launcherLabel && !responseReady ? launcherLabel : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
             class="lc-chatbot-ask" class:response-ready={responseReady}
-            use:animateWidth={launcherOverride?.label}
+            use:animateWidth={launcherLabel}
             onclick={() => askFromLauncher()}>
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
       </svg>
-      <span>{launcherOverride?.label || $_('assistant.floating_button.label')}</span>
+      <span>{launcherLabel || $_('assistant.floating_button.label')}</span>
       {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
     </button>
   {:else}

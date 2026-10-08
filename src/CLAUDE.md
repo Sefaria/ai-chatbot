@@ -69,7 +69,7 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 
 - Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
 - Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is always asked in a new chat, never added to the open conversation (signed-in users included). With `source: 'search_no_results'` the question is sent with `entrySource: "search_no_results"`, which the server never lets use up a logged-out visitor's last free answer (whatever the limit; once per visitor). Past the free-answer limit, a question is not sent and no new chat starts: the panel opens on the visitor's last conversation, with the login prompt in place of the input.
-- Listens for `chatbot:launcher` on `document`: `detail = { label, question, source }` relabels the closed pill (Sefaria's search no-results page: "✦ Search with Library Assistant") and makes a click ask `question` in a new chat, as `chatbot:open` would; `detail = null` puts the "✦ Ask" pill back.
+- Listens for `chatbot:launcher` on `document`: `detail = { source, question }` relabels the closed pill with the widget's own label for that source (`search_no_results` → `assistant.floating_button.search_label`, "✦ Search with Library Assistant") and makes a click ask `question` in a new chat, as `chatbot:open` would; `detail = null` puts the "✦ Ask" pill back.
 
 ## Launcher
 
