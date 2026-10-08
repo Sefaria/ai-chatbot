@@ -141,5 +141,6 @@
     "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה",
     "assistant.anon.limit_reached": "כדי להמשיך לשאול, התחברו או הירשמו בחינם.",
     "assistant.menu.restart.login_tooltip": "התחברו כדי להתחיל שיחה חדשה",
-    "assistant.floating_button.search_label": "לחיפוש עם עוזר הספרייה"
+    "assistant.floating_button.search_label": "לחיפוש עם עוזר הספרייה",
+    "assistant.floating_button.label": "שאלו"
 }
