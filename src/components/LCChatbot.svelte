@@ -781,12 +781,23 @@
   // phone search no-results page: "✦ Search with Library Assistant", asking about the search.
   // detail = { label, question, source }, or null to go back to the "✦ Ask" pill.
   $effect(() => {
+    // Going back to "✦ Ask" waits a moment: moving between two no-results tabs, the old page
+    // resets the pill just before the new one relabels it, and the pill shouldn't flicker
+    let resetTimer;
     function onLauncher(e) {
       const d = e.detail;
-      launcherOverride = d?.label ? { label: d.label, question: d.question || '', source: d.source || '' } : null;
+      clearTimeout(resetTimer);
+      if (d?.label) {
+        launcherOverride = { label: d.label, question: d.question || '', source: d.source || '' };
+      } else {
+        resetTimer = setTimeout(() => { launcherOverride = null; }, 50);
+      }
     }
     document.addEventListener('chatbot:launcher', onLauncher);
-    return () => document.removeEventListener('chatbot:launcher', onLauncher);
+    return () => {
+      clearTimeout(resetTimer);
+      document.removeEventListener('chatbot:launcher', onLauncher);
+    };
   });
 
   function toggleMode() {
@@ -970,6 +981,23 @@
   }
 
   /** Svelte action: focus the input and place the cursor/scroll at the end of its text. */
+  // When the pill's label changes (Ask ↔ a host label), it grows or shrinks to the new width
+  // over 200ms instead of jumping. No motion with reduced motion.
+  function animateWidth(node) {
+    let width = node.offsetWidth;
+    return {
+      async update() {
+        const from = width;
+        await tick(); // measure once the new label is in place
+        width = node.offsetWidth;
+        if (!from || from === width || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        node.style.overflow = 'hidden';
+        node.animate([{ width: `${from}px` }, { width: `${width}px` }], { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)' })
+          .finished.finally(() => { node.style.overflow = ''; });
+      }
+    };
+  }
+
   function focusEnd(node) {
     node.focus();
     const end = node.value.length;
@@ -2059,6 +2087,7 @@
     <!-- Launcher: a "✦ Ask" pill in the corner -->
     <button aria-label={launcherOverride?.label && !responseReady ? launcherOverride.label : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
             class="lc-chatbot-ask" class:response-ready={responseReady}
+            use:animateWidth={launcherOverride?.label}
             onclick={() => askFromLauncher()}>
       <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -3276,6 +3305,7 @@
     align-items: center;
     gap: 8px;
     height: 56px;
+    white-space: nowrap;
     padding-inline: 20px 24px;
     background: var(--lc-entry-bg);
     color: var(--core-base-white);
