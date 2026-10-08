@@ -324,8 +324,12 @@
       memory = typeof savedMemory === 'string' ? savedMemory : null;
     }
 
-    // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession(identityChanged);
+    // Initialize session. A logged-out visitor past the free-answer limit keeps their last
+    // conversation however old it is: they can't start a new one, so an expired session
+    // would otherwise leave them on an empty welcome screen behind the login prompt.
+    const { sessionId: sid, isNew } = getOrCreateSession(identityChanged, {
+      keepExpired: !userId && anonLoginRequired,
+    });
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);

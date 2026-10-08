@@ -132,7 +132,11 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 ### 2.1 Signed-in user clicks Try Library Assistant
 
 - **Rule:** the question the button sends always opens in a **new chat**. It is never added
-  to the conversation the user already has open.
+  to the conversation the user already has open. This holds for signed-in users and for
+  logged-out visitors with free answers left.
+- **Exception, logged-out visitor already at the limit:** no new chat and nothing sent. The
+  assistant opens on their **last conversation**, with the login prompt in place of the text
+  box (1.2). After they log in, the text box is empty (1.9).
 - **Steps:** signed in, any search tab with no results, click **Try Library Assistant**.
 - **Expected:** the assistant opens (or stays open) on a new, empty chat and the rewritten
   question is sent there right away. The previous conversation is untouched and stays in
