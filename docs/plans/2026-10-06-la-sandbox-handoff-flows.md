@@ -143,6 +143,13 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   History. If the open chat is already empty, the question is sent in it.
 - Same for logged-out visitors, until they hit the limit (1.9).
 
+### 2.2 Closing and reopening from the same no-results page
+
+- **Steps:** click **✦ Search with Library Assistant**, close the assistant, click it again.
+- **Expected:** the assistant reopens on the chat it started; the question is not asked
+  again. The same holds when moving to another empty tab of the same search. A new search
+  with no results asks its own question once.
+
 ## Still to cover from this PR
 
 - [ ] Entry point: the Ask pill, on phones and desktop (decided; circle, input bar and wide

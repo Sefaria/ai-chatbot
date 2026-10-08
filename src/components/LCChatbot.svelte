@@ -783,11 +783,17 @@
     return () => document.removeEventListener('chatbot:open', onOpenRequest);
   });
 
+  // The host's question is asked once per page: closing and reopening from the same pill
+  // goes back to that chat instead of asking it again
   function askFromLauncher() {
-    if (launcherOverride?.question) {
+    if (launcherOverride?.question && !launcherOverride.asked) {
       const { source, question } = launcherOverride;
       trackAssistantClick(source || 'ask_pill_open');
+      if (!anonLoginRequired) launcherOverride.asked = true;
       askInNewChat(question, source === 'search_no_results' ? source : undefined);
+    } else if (launcherOverride) {
+      trackAssistantClick(launcherOverride.source);
+      openPanel();
     } else {
       trackAssistantClick('ask_pill_open');
       openPanel();
@@ -806,7 +812,10 @@
       const d = e.detail;
       clearTimeout(resetTimer);
       if (d?.source && LAUNCHER_LABELS[d.source]) {
-        launcherOverride = { source: d.source, question: d.question || '' };
+        const question = d.question || '';
+        // Same page again (e.g. another empty tab of the same search): keep whether it was asked
+        const asked = launcherOverride?.source === d.source && launcherOverride.question === question && launcherOverride.asked;
+        launcherOverride = { source: d.source, question, asked };
       } else {
         resetTimer = setTimeout(() => { launcherOverride = null; }, 50);
       }
