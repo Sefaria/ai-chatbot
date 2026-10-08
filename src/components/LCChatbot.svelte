@@ -779,15 +779,11 @@
 
   // A host page can turn the closed launcher into a page-specific action, e.g. Sefaria's
   // phone search no-results page: "✦ Search with Library Assistant", asking about the search.
-  // detail = { label | callout, question, source }, or null to go back to the "✦ Ask" pill.
-  // `callout` keeps the pill as is and shows a small box above it instead, or beside it with
-  // calloutPosition: 'side' (PROTOTYPE).
+  // detail = { label, question, source }, or null to go back to the "✦ Ask" pill.
   $effect(() => {
     function onLauncher(e) {
       const d = e.detail;
-      launcherOverride = d?.label || d?.callout
-        ? { label: d.label || '', callout: d.callout || '', calloutSide: d.calloutPosition === 'side', question: d.question || '', source: d.source || '' }
-        : null;
+      launcherOverride = d?.label ? { label: d.label, question: d.question || '', source: d.source || '' } : null;
     }
     document.addEventListener('chatbot:launcher', onLauncher);
     return () => document.removeEventListener('chatbot:launcher', onLauncher);
@@ -2060,10 +2056,6 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    {#if launcherOverride?.callout}
-      <!-- PROTOTYPE: a hint above the pill; tapping it does what the pill does -->
-      <button type="button" class="launcher-callout" class:side={launcherOverride.calloutSide} onclick={() => askFromLauncher()}>{launcherOverride.callout}</button>
-    {/if}
     <!-- Launcher: a "✦ Ask" pill in the corner -->
     <button aria-label={launcherOverride?.label && !responseReady ? launcherOverride.label : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
             class="lc-chatbot-ask" class:response-ready={responseReady}
@@ -3276,69 +3268,6 @@
     .lc-chatbot-container.mode-fullscreen.trigger-hidden {
       transform: none;
     }
-  }
-
-  /* PROTOTYPE: hint box above the launcher, right-aligned with it, pointing down at it */
-  .launcher-callout {
-    position: absolute;
-    bottom: calc(100% + 12px);
-    inset-inline-end: 0;
-    width: max-content;
-    max-width: min(240px, calc(100vw - 32px));
-    padding: 10px 14px;
-    background: var(--lc-bg);
-    color: var(--brand-sefaria-blue);
-    border: 1px solid var(--lc-border);
-    border-radius: 8px;
-    box-shadow: var(--lc-shadow);
-    font-family: var(--lc-font);
-    font-size: 14px;
-    line-height: 20px;
-    text-align: start;
-    text-wrap: balance;
-    cursor: pointer;
-    animation: launcher-callout-in 0.2s ease;
-  }
-  .launcher-callout::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    inset-inline-end: 28px;
-    border: 7px solid transparent;
-    border-top-color: var(--lc-bg);
-  }
-  /* Beside the pill instead, vertically centred on it, pointing at it (the inline-end side
-     follows the pill's corner, so it faces into the page in Hebrew too) */
-  .launcher-callout.side {
-    bottom: auto;
-    top: 50%;
-    inset-inline-end: calc(100% + 12px);
-    max-width: min(200px, calc(100vw - 140px));
-    animation-name: launcher-callout-side-in;
-    transform: translateY(-50%);
-  }
-  .launcher-callout.side::after {
-    top: 50%;
-    inset-inline-end: auto;
-    inset-inline-start: 100%;
-    margin-top: -7px;
-    border-top-color: transparent;
-    border-inline-start-color: var(--lc-bg);
-  }
-  @keyframes launcher-callout-side-in {
-    from { opacity: 0; transform: translateY(-50%) translateX(4px); }
-    to { opacity: 1; transform: translateY(-50%); }
-  }
-  .launcher-callout:focus-visible {
-    outline: 2px solid var(--brand-sefaria-blue);
-    outline-offset: 2px;
-  }
-  @keyframes launcher-callout-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: none; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .launcher-callout { animation: none; }
   }
 
   /* Launcher */
