@@ -51,8 +51,6 @@ export const STORAGE_KEYS = {
   RESUME_AFTER_LOGIN: 'resume_after_login',
   // 'user' | 'anon' — the identity the stored session belongs to
   IDENTITY: 'identity',
-  // Signed-in user's "Personalize Responses" answers, sent with every message
-  MEMORY: 'memory',
   // Whether the signed-in user had saved chats last time history loaded, so its search
   // button starts out enabled or disabled before the list arrives
   HAS_CONVERSATIONS: 'has_conversations'

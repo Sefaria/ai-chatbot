@@ -76,8 +76,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 ### 1.6 Signed-in user logs out
 
-- **Expected:** a new, empty session starts as a logged-out visitor. Personal memory is
-  cleared from the browser so the next person on it doesn't inherit it.
+- **Expected:** a new, empty session starts as a logged-out visitor.
 
 ### 1.7 Phone
 

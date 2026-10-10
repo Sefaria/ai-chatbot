@@ -37,7 +37,6 @@ def build_turn_prompt(
         core_prompt=core_prompt,
         summary_text=context.summary_text,
         page_url=context.page_url,
-        user_memory=context.user_memory_text,
     )
     return PromptBuildResult(
         conversation_text=conversation_text,

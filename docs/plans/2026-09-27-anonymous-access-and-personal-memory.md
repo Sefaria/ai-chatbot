@@ -1,5 +1,10 @@
 # Anonymous access + personal memory
 
+> **Note (2026-10-10):** Personalize Responses / personal memory was removed from
+> [ai-chatbot#242](https://github.com/Sefaria/ai-chatbot/pull/242); only anonymous access
+> ships. The Personalize work lives on in the archived sandbox PR
+> [ai-chatbot#236](https://github.com/Sefaria/ai-chatbot/pull/236).
+
 Status: in review. [ai-chatbot#222](https://github.com/Sefaria/ai-chatbot/pull/222) +
 [Sefaria-Project#3762](https://github.com/Sefaria/Sefaria-Project/pull/3762) (both branch
 `claude/gracious-noether-3tuqmy`; the cauldron's image segment is `claudegracious-noether-3tuqmy`)
