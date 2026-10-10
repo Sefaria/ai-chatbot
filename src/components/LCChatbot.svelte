@@ -3369,11 +3369,6 @@
     background: var(--lc-entry-bg-pressed);
   }
 
-  .lc-chatbot-ask:focus-visible {
-    outline: 2px solid var(--core-base-white);
-    outline-offset: -5px;
-  }
-
   /* A reply arrived while closed: a badge sits on the launcher, which nudges twice to
      draw the eye. The badge pings with each nudge, then stays put, still. */
   .response-ready {
@@ -4570,11 +4565,6 @@
 
   .anon-login-footer-button:hover {
     background: var(--lc-primary-hover);
-  }
-
-  .anon-login-footer-button:focus-visible {
-    outline: 2px solid var(--lc-primary);
-    outline-offset: 2px;
   }
 
   @keyframes lc-anon-banner-in {
