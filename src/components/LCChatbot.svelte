@@ -2825,7 +2825,7 @@
   .mode-fullscreen .history-rename-form input,
   .mode-fullscreen .feedback-modal-input,
   .mode-fullscreen .settings-field input {
-    font-size: 16px;
+    font-size: var(--lc-font-size);
   }
 
   .mode-fullscreen .lc-chatbot-input textarea {
@@ -2859,13 +2859,13 @@
   }
 
   .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
-    font-size: 14px;
+    font-size: var(--lc-font-size-sm);
     line-height: 22px;
   }
 
   /* Rotating loading text ("Searching the library", "Synthesizing response") and its glyph */
   .mode-fullscreen :is(.lc-thinking-glyph, .lc-thinking-label) {
-    font-size: 14px;
+    font-size: var(--lc-font-size-sm);
     line-height: 22px;
   }
 
@@ -2881,7 +2881,7 @@
   .mode-fullscreen :global(.lc-location-tag) {
     min-height: 36px;
     padding: var(--global-dimension-100) var(--global-dimension-150);
-    font-size: 14px;
+    font-size: var(--lc-font-size-sm);
   }
 
   .mode-fullscreen :is(.message-timestamp, .message-status, .retry-btn) {
@@ -2925,7 +2925,7 @@
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-title {
-    font-size: 18px;
+    font-size: var(--lc-font-size-lg);
     line-height: 24px;
     margin-bottom: var(--global-dimension-100);
   }
@@ -2943,7 +2943,7 @@
   .mode-fullscreen .delete-modal .feedback-modal-btn {
     flex: 1 1 0;
     height: 48px;
-    font-size: 16px;
+    font-size: var(--lc-font-size);
     border-radius: var(--lc-radius-sm);
   }
 
@@ -2997,7 +2997,7 @@
   }
 
   .mode-fullscreen .history-row-title {
-    font-size: 16px;
+    font-size: var(--lc-font-size);
     line-height: 22px;
   }
 
@@ -3100,7 +3100,7 @@
   }
 
   .mode-fullscreen .history-empty strong {
-    font-size: 16px;
+    font-size: var(--lc-font-size);
     line-height: 22px;
   }
 
@@ -3116,7 +3116,7 @@
   }
 
   .mode-fullscreen .history-loading.inline {
-    font-size: 14px;
+    font-size: var(--lc-font-size-sm);
     line-height: 20px;
   }
 
