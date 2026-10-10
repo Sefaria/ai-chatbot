@@ -3128,12 +3128,12 @@
   /* Launcher color: purple, for the closed button only. Once open, the assistant keeps
      the Sefaria blue theme (sefaria-design-foundations Core Brand/Purple scale). */
   .lc-chatbot-container {
-    --purple-600: #965386;
     --purple-700: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple */
-    --purple-900: #4E2544;
+    --purple-800: #653259;
     --lc-entry-bg: var(--purple-700);
-    --lc-entry-bg-hover: var(--purple-600);
-    --lc-entry-bg-pressed: var(--purple-900);
+    /* Hover and pressed share the darker step, like Sefaria's header Library Assistant pill */
+    --lc-entry-bg-hover: var(--purple-800);
+    --lc-entry-bg-pressed: var(--purple-800);
   }
 
   /* Without motion, the launcher fades out and back in place */
