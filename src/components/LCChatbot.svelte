@@ -2767,7 +2767,7 @@
     width: 36px;
     height: 5px;
     border-radius: 3px;
-    background: var(--lc-border-strong, #cbd5e1);
+    background: var(--lc-border-strong);
     transform: translateX(-50%);
   }
 
