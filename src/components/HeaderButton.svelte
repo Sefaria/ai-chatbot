@@ -63,6 +63,17 @@
     border-color: var(--lc-border);
   }
 
+  .history-btn.is-locked,
+  .history-btn.is-locked:hover,
+  /* Not yet aligned with the design system: Foundations Semantic/Icon/Disabled is
+     #999999 (Core/Neutral/Gray/400), while 40% opacity over the secondary icon gray
+     renders about #BEBEBE on the header */
+  .history-btn.is-locked:active {
+    background: transparent;
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
   .close-btn {
     display: inline-flex;
     align-items: center;

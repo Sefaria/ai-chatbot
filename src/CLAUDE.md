@@ -50,7 +50,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | Yes | Encrypted user token |
+| `user-id` | string | No | Encrypted user token. Omit for logged-out visitors: they chat under an anonymous id (`localStorage`) until the server's free responses run out, then see a login prompt |
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
@@ -60,8 +60,31 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `login-url` | string | No | Login page for the anonymous login prompt (default `/login`); `?next=<current page>` is appended at click time |
+| `hide-launcher-on-scroll` | boolean | No | On phones, hide the closed Ask pill while the page scrolls. Sefaria sets it on reading pages only: a text, a single topic, a sheet (reading or editing) |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
+
+## Host Events
+
+- Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
+- Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is always asked in a new chat, never added to the open conversation (signed-in users included). With `source: 'search_no_results'` the question is sent with `entrySource: "search_no_results"`, which the server never lets use up a logged-out visitor's last free answer (whatever the limit; once per visitor). Past the free-answer limit, a question is not sent and no new chat starts: the panel opens on the visitor's last conversation, with the login prompt in place of the input.
+- Listens for `chatbot:launcher` on `document`: `detail = { source, question }` relabels the closed pill with the widget's own label for that source (`search_no_results` → `assistant.floating_button.search_label`, "✦ Search with Library Assistant") and makes a click ask `question` in a new chat, as `chatbot:open` would. It asks once: later clicks with the same source and question (e.g. after closing the assistant, or on another empty tab of the same search) just reopen the assistant; `detail = null` puts the "✦ Ask" pill back.
+
+## Launcher
+
+The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-container`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened.
+
+## Phones
+
+Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-screen sheet, not a floating/docked panel:
+
+- Never opens on load, whatever `default-open` or saved state says. On pages with `hide-launcher-on-scroll`, the closed launcher steps aside while the page scrolls and returns once scrolling stops.
+- Owns one history entry (`lib/sheetHistory.js`), so Back closes it. Its popstate listener is registered at bundle load so it runs before the host's; Sefaria loads the bundle in `<head>`. In-page links close the sheet and navigate after the pop.
+- Locks page scroll. The open container is a full-screen backdrop in the panel's colour, and only the panel follows `visualViewport`, so the input stays above the keyboard and the page never flashes through while the keyboard closes. Every text field is 16px (smaller makes iOS zoom).
+- One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px, with 24px icons (22px in menus and feedback); inline links get block padding for a taller tap area.
+- The header is a drag handle (grabber bar on top, buttons excluded): dragging down more than 120px, or a quick flick, closes the sheet; a shorter drag springs back.
+- No dock mode. History covers the chat; picking a chat returns to it.
 
 ## i18n
 
