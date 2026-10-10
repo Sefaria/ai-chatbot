@@ -111,7 +111,7 @@
     "assistant.history.header.new.aria": "שיחה חדשה",
     "assistant.history.header.search_open.tooltip": "חיפוש",
     "assistant.history.header.search_open.aria": "חיפוש בשיחות",
-    "assistant.history.header.search_close.tooltip": "סגירת סרגל חיפוש",
+    "assistant.history.header.search_close.tooltip": "סגירת תיבת חיפוש",
     "assistant.history.header.search_close.aria": "סגירת סרגל חיפוש",
     "assistant.history.header.close.tooltip": "סגירה",
     "assistant.history.header.close.aria": "סגירת היסטוריית שיחות",
@@ -134,5 +134,13 @@
     "assistant.history.delete_modal.delete": "מחיקה",
     "assistant.history.list.empty.header": "אין כאן שיחות",
     "assistant.history.list.empty.subheader": "שיחות שניהלת עם עוזר הספרייה יופיעו כאן.",
-    "assistant.writing": "כותב…"
+    "assistant.writing": "כותב…",
+    "assistant.anon.login_button": "להתחברות או הרשמה",
+    "assistant.header.history.login_tooltip": "התחברו כדי לראות את היסטוריית השיחות",
+    "assistant.header.response_ready_announcement": "התשובה מעוזר הספרייה מוכנה",
+    "assistant.header.open_ready_response": "פתחו את עוזר הספרייה: התשובה שלך מוכנה",
+    "assistant.anon.limit_reached": "כדי להמשיך לשאול, התחברו או הירשמו בחינם.",
+    "assistant.menu.restart.login_tooltip": "התחברו כדי להתחיל שיחה חדשה",
+    "assistant.floating_button.search_label": "חיפוש עם עוזר הספרייה",
+    "assistant.floating_button.label": "שאלו אותי"
 }
