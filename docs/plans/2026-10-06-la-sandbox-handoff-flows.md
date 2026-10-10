@@ -150,6 +150,21 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   again. The same holds when moving to another empty tab of the same search. A new search
   with no results asks its own question once.
 
+## 3. Chat history
+
+### 3.1 Opening a saved chat that takes a moment to load
+
+- **Steps:** signed in, open History, pick a chat not yet opened in this visit.
+- **Expected:** the open chat clears right away and the chat area shows the animated
+  loader alone (Lucide `loader-circle`, 24px, Semantic/Icon/Muted #6F6F6F, one turn every
+  0.8s as on lucide-animated.com), centered on the chat area
+  ([Figma](https://www.figma.com/design/Y31hDgxSjr0l1fcm0nNJSD/Library-Assistant-Wireframes?node-id=7430-9494)).
+  The picked chat then appears at its last message. Screen readers hear "Loading
+  messages...". If loading fails, the previous chat comes back. A chat already opened in
+  this visit appears at once, with no loader.
+- Phones and desktop alike. The same loader shows at the top while older messages load
+  above an open chat.
+
 ## Still to cover from this PR
 
 - [ ] Entry point: the Ask pill, on phones and desktop (decided; circle, input bar and wide

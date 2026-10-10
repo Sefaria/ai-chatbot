@@ -1145,6 +1145,9 @@
 
     let payload = conversationCache[conversation.sessionId];
     if (!payload) {
+      // The open chat clears while the picked one loads, so it doesn't show in its place
+      const previousMessages = messages;
+      messages = [];
       isLoadingHistory = true;
       try {
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
@@ -1152,6 +1155,7 @@
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
         historyError = '';
+        messages = previousMessages;
         isLoadingHistory = false;
         return;
       }
@@ -2546,9 +2550,12 @@
         {/snippet}
 
         {#if isLoadingHistory}
-          <div class="loading-indicator">
-            <div class="loading-spinner"></div>
-            <span>{$_('assistant.messages.loadingHistory')}</span>
+          <!-- Lucide loader-circle, spinning as on lucide-animated.com: centered in an empty
+               chat, at the top while older messages load above the open one -->
+          <div class="loading-indicator" class:centered={messages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
+            <svg class="loading-spinner" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
           </div>
         {/if}
 
@@ -2775,6 +2782,7 @@
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
     --functional-icon-icon-primary: #666666;
+    --semantic-icon-muted: #6F6F6F;
 
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
@@ -2812,6 +2820,7 @@
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
     --lc-icon-primary: var(--functional-icon-icon-primary);
+    --lc-icon-muted: var(--semantic-icon-muted);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
@@ -3220,17 +3229,21 @@
     height: 22px;
   }
 
-  .mode-fullscreen .history-row-dropdown img,
-  .mode-fullscreen .history-rename-form img {
+  .mode-fullscreen .history-row-dropdown img {
     width: 20px;
     height: 20px;
   }
 
-  /* Rename: a 44px Done button, with more room between it and a narrower field whose text
-     lines up with the chat titles */
+  /* Rename: a 44px Done button whose 24px check sits right under the header's close X, with
+     room between it and a field whose text lines up with the chat titles */
   .mode-fullscreen .history-rename-form {
     gap: 16px;
-    padding-inline: 12px 4px;
+    padding-inline: 12px;
+  }
+
+  .mode-fullscreen .history-rename-form img {
+    width: 24px;
+    height: 24px;
   }
 
   .mode-fullscreen .history-rename-form button {
@@ -4424,18 +4437,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
     padding: 12px;
-    color: var(--lc-text-muted);
-    font-size: 13px;
+    color: var(--lc-icon-muted);
+  }
+
+  /* The list's bottom padding is 12px deeper than its top: even it out to center on the canvas */
+  .loading-indicator.centered {
+    flex: 1;
+    padding-block: 24px 12px;
   }
 
   .loading-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--lc-border);
-    border-top-color: var(--brand-sefaria-blue);
-    border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
 
