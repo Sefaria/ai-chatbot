@@ -2710,8 +2710,8 @@
     --lc-font-size-sm: 14px;
     --lc-font-size: 16px;
     --lc-font-size-lg: 18px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    inset-inline-end: 16px;
+    bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom));
+    inset-inline-end: var(--global-dimension-200);
     transition: transform 0.2s ease, opacity 0.2s ease;
   }
 
@@ -2754,7 +2754,7 @@
   /* The header is the sheet's drag handle; the grabber bar sits above the title */
   .mode-fullscreen .lc-chatbot-header {
     position: relative;
-    padding: calc(20px + env(safe-area-inset-top)) 12px 8px 16px;
+    padding: calc(var(--global-dimension-250) + env(safe-area-inset-top)) var(--global-dimension-150) var(--global-dimension-100) var(--global-dimension-200);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -2762,7 +2762,7 @@
 
   .sheet-grabber {
     position: absolute;
-    inset-block-start: calc(8px + env(safe-area-inset-top));
+    inset-block-start: calc(var(--global-dimension-100) + env(safe-area-inset-top));
     left: 50%; /* physical, so translateX centres it in RTL too */
     width: 36px;
     height: 5px;
@@ -2786,13 +2786,13 @@
   }
 
   .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
-    width: 44px;
-    height: 44px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
   }
 
   .mode-fullscreen .menu-item {
     min-height: 48px;
-    padding: 12px 16px;
+    padding: var(--global-dimension-150) var(--global-dimension-200);
     font-size: var(--lc-font-size);
   }
 
@@ -2816,7 +2816,7 @@
   }
 
   .mode-fullscreen .lc-chatbot-input {
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom));
   }
 
   /* Below 16px, iOS zooms the page when a field takes focus */
@@ -2829,7 +2829,7 @@
   }
 
   .mode-fullscreen .lc-chatbot-input textarea {
-    min-height: 44px;
+    min-height: var(--lc-send-size);
   }
 
   .mode-fullscreen .send-btn {
@@ -2847,7 +2847,7 @@
   }
 
   .mode-fullscreen .message.assistant .message-content :global(li) {
-    margin-bottom: 8px;
+    margin-bottom: var(--global-dimension-100);
   }
 
   /* Inline links: block padding widens the tap area without moving the text */
@@ -2870,17 +2870,17 @@
   }
 
   .mode-fullscreen :global(.progress-trail-toggle) {
-    min-height: 44px;
+    min-height: var(--lc-send-size);
     font-size: 13px;
   }
 
   .mode-fullscreen :global(.lc-accordion-header) {
-    min-height: 44px;
+    min-height: var(--lc-send-size);
   }
 
   .mode-fullscreen :global(.lc-location-tag) {
     min-height: 36px;
-    padding: 8px 12px;
+    padding: var(--global-dimension-100) var(--global-dimension-150);
     font-size: 14px;
   }
 
@@ -2895,8 +2895,8 @@
   }
 
   .mode-fullscreen .retry-btn {
-    min-height: 44px;
-    padding: 0 8px;
+    min-height: var(--lc-send-size);
+    padding: 0 var(--global-dimension-100);
   }
 
   .mode-fullscreen .feedback-buttons {
@@ -2908,63 +2908,63 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
     padding: 0;
   }
 
   .mode-fullscreen .feedback-modal-btn {
-    min-height: 44px;
+    min-height: var(--lc-send-size);
   }
 
   /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
   .mode-fullscreen .delete-modal {
     width: 320px;
-    padding: 24px 20px 20px;
+    padding: var(--global-dimension-300) var(--global-dimension-250) var(--global-dimension-250);
     border-radius: 12px;
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-title {
     font-size: 18px;
     line-height: 24px;
-    margin-bottom: 8px;
+    margin-bottom: var(--global-dimension-100);
   }
 
   .mode-fullscreen .delete-modal-subtext {
     font-size: 15px;
     line-height: 22px;
-    margin-bottom: 24px;
+    margin-bottom: var(--global-dimension-300);
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-actions {
-    gap: 12px;
+    gap: var(--global-dimension-150);
   }
 
   .mode-fullscreen .delete-modal .feedback-modal-btn {
     flex: 1 1 0;
     height: 48px;
     font-size: 16px;
-    border-radius: 8px;
+    border-radius: var(--lc-radius-sm);
   }
 
   /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
   .mode-fullscreen .history-toolbar {
     height: 60px;
     min-height: 60px;
-    padding-block: 8px;
-    padding-inline: 6px 12px;
+    padding-block: var(--global-dimension-100);
+    padding-inline: 6px var(--global-dimension-150);
   }
 
   .mode-fullscreen .history-toolbar-group {
-    gap: 8px;
+    gap: var(--global-dimension-100);
   }
 
   /* Search field: 48px tall, with a full 44px search/clear button at its end */
   .mode-fullscreen .history-search {
     height: 48px;
-    margin: 0 12px 12px;
-    padding: 0 1px 0 16px;
-    gap: 4px;
+    margin: 0 var(--global-dimension-150) var(--global-dimension-150);
+    padding: 0 1px 0 var(--global-dimension-200);
+    gap: var(--space-1);
   }
 
   .mode-fullscreen .history-search input {
@@ -2973,8 +2973,8 @@
   }
 
   .mode-fullscreen .history-search-submit {
-    width: 44px;
-    height: 44px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
     flex: 0 0 44px;
   }
 
@@ -2993,7 +2993,7 @@
     height: auto;
     min-height: 64px;
     padding-block: 10px;
-    padding-inline: 16px 48px;
+    padding-inline: var(--global-dimension-200) 48px;
   }
 
   .mode-fullscreen .history-row-title {
@@ -3011,8 +3011,8 @@
   }
 
   .mode-fullscreen .history-row-menu-trigger {
-    width: 44px;
-    height: 44px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
   }
 
   .mode-fullscreen .history-row-menu-trigger img {
@@ -3045,8 +3045,8 @@
   /* Rename: a 44px Done button whose 24px check sits right under the header's close X, with
      room between it and a field whose text lines up with the chat titles */
   .mode-fullscreen .history-rename-form {
-    gap: 16px;
-    padding-inline: 12px;
+    gap: var(--global-dimension-200);
+    padding-inline: var(--global-dimension-150);
   }
 
   .mode-fullscreen .history-rename-form img {
@@ -3055,15 +3055,15 @@
   }
 
   .mode-fullscreen .history-rename-form button {
-    width: 44px;
-    height: 44px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
   }
 
   /* Open clear of the 44px trigger, wide enough for the 15px labels, and inset from the
      screen edge */
   .mode-fullscreen .history-row-dropdown {
     inset-block-start: 44px;
-    inset-inline-end: 12px;
+    inset-inline-end: var(--global-dimension-150);
     width: 136px;
   }
 
@@ -3075,7 +3075,7 @@
   .mode-fullscreen .history-row-dropdown button {
     height: 48px;
     min-height: 48px;
-    padding: 0 16px;
+    padding: 0 var(--global-dimension-200);
     font-size: 15px !important;
   }
 
@@ -3151,10 +3151,10 @@
   .lc-chatbot-ask {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--global-dimension-100);
     height: 56px;
     white-space: nowrap;
-    padding-inline: 20px 24px;
+    padding-inline: var(--global-dimension-250) var(--global-dimension-300);
     background: var(--lc-entry-bg);
     color: var(--core-base-white);
     border: none;
@@ -3188,8 +3188,8 @@
     position: absolute;
     top: -2px;
     inset-inline-start: -2px;
-    width: 12px;
-    height: 12px;
+    width: var(--global-dimension-150);
+    height: var(--global-dimension-150);
     border-radius: 50%;
     background: var(--lc-danger);
     box-shadow: 0 0 0 2px var(--lc-bg);
@@ -4247,7 +4247,7 @@
   /* The list's bottom padding is 12px deeper than its top: even it out to center on the canvas */
   .loading-indicator.centered {
     flex: 1;
-    padding-block: 24px 12px;
+    padding-block: var(--global-dimension-300) var(--global-dimension-150);
   }
 
   .loading-spinner {
@@ -4759,7 +4759,7 @@
   /* Headings sit close to the text they introduce. Without margins set, browser
      defaults (h3 1em, h4 1.33em, top and bottom) left a ~20px gap under each. */
   .message-content :global(.response-title) {
-    margin-block: 16px 6px;
+    margin-block: var(--global-dimension-200) 6px;
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
     color: var(--brand-sefaria-blue);
@@ -4779,7 +4779,7 @@
   }
 
   .message-content :global(.response-section) {
-    margin-block: 14px 4px;
+    margin-block: 14px var(--space-1);
     color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
     font-style: normal;
@@ -4788,7 +4788,7 @@
   }
 
   .message-content :global(.response-title + .response-section) {
-    margin-top: 8px;
+    margin-top: var(--global-dimension-100);
   }
 
   /* The text under a heading drops its own top margin, which would otherwise win
