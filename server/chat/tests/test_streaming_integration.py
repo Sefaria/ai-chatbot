@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,7 +27,15 @@ from chat.V2.views import _compute_turn_count
 @pytest.fixture(autouse=True)
 def mock_auxiliary_services():
     """Endpoint tests exercise persistence and transport without external LLM calls."""
+    executors = []
+
+    def executor_factory():
+        executor = ThreadPoolExecutor(max_workers=1)
+        executors.append(executor)
+        return executor
+
     with (
+        patch("chat.V2.views._create_traced_executor", side_effect=executor_factory),
         patch("chat.V2.views._flush_braintrust"),
         patch("chat.V2.views.get_summary_service") as summary,
         patch("chat.V2.appetizer.appetizer_service.get_appetizer_service") as appetizer,
@@ -36,6 +45,8 @@ def mock_auxiliary_services():
         )
         appetizer.return_value.find_appetizer = AsyncMock(return_value=None)
         yield
+        for executor in executors:
+            executor.shutdown(wait=True)
 
 
 def create_test_token(
@@ -1346,10 +1357,10 @@ class TestChatCancelV2:
         response = self._post(client, secret)
 
         assert response.status_code == 200
-        assert response.data["status"] == "cancelling"
+        assert response.data["status"] == "cancelled"
         user_msg.refresh_from_db()
-        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLING
-        assert user_msg.processing_finished_at is None
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+        assert user_msg.processing_finished_at is not None
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_cancels_a_turn_that_has_only_started(self, client, secret):
@@ -1357,9 +1368,9 @@ class TestChatCancelV2:
 
         response = self._post(client, secret)
 
-        assert response.data["status"] == "cancelling"
+        assert response.data["status"] == "cancelled"
         user_msg.refresh_from_db()
-        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLING
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_completed_turn_is_left_alone(self, client, secret):
@@ -1378,11 +1389,11 @@ class TestChatCancelV2:
     def test_double_cancel_is_idempotent(self, client, secret):
         self._make_turn(ChatMessage.ProcessingState.RUNNING)
 
-        assert self._post(client, secret).data["status"] == "cancelling"
+        assert self._post(client, secret).data["status"] == "cancelled"
         second = self._post(client, secret)
 
         assert second.status_code == 200
-        assert second.data["status"] == "cancelling"
+        assert second.data["status"] == "cancelled"
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_unknown_message_returns_404(self, client, secret):
@@ -1531,6 +1542,7 @@ class TestStreamingCancelPropagation:
     @patch("chat.V2.views.get_agent_service")
     def test_cancel_request_stops_a_running_agent(self, mock_get_agent, client, secret):
         observed = {"polls": 0, "saw_cancel": False}
+        acknowledged = threading.Event()
 
         async def slow_send_message(*, should_cancel=None, **kwargs):
             # Stand-in for the SDK loop: works until told to stop.
@@ -1538,6 +1550,7 @@ class TestStreamingCancelPropagation:
                 observed["polls"] += 1
                 if should_cancel and should_cancel():
                     observed["saw_cancel"] = True
+                    acknowledged.set()
                     raise TurnCancelled()
                 await asyncio.sleep(0.05)
             return AgentResponse(content="Never reached", tool_calls=[], latency_ms=0)
@@ -1571,11 +1584,11 @@ class TestStreamingCancelPropagation:
             },
             format="json",
         )
-        assert cancel.data["status"] == "cancelling"
+        assert cancel.data["status"] == "cancelled"
 
         body = b"".join(stream).decode()
 
-        assert observed["saw_cancel"] is True, "agent never observed the cancel flag"
+        assert acknowledged.wait(2), "agent never observed the cancel flag"
         assert "event: cancelled" in body
         assert "event: message" not in body
         assert not ChatMessage.objects.filter(
@@ -1584,8 +1597,8 @@ class TestStreamingCancelPropagation:
 
 
 @pytest.mark.django_db
-class TestStreamingCompletionWins:
-    """A validated answer wins a cancel request not yet acknowledged by the worker."""
+class TestStreamingAcceptedStopWins:
+    """An accepted stop rejects an answer returned later by the worker."""
 
     @pytest.fixture
     def client(self):
@@ -1598,7 +1611,7 @@ class TestStreamingCompletionWins:
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     @patch("chat.V2.views.get_summary_service")
     @patch("chat.V2.views.get_agent_service")
-    def test_completed_response_wins_unacknowledged_cancel(
+    def test_late_response_cannot_overwrite_accepted_stop(
         self, mock_get_agent, mock_get_summary, client, secret
     ):
         cancel_done = threading.Event()
@@ -1645,22 +1658,22 @@ class TestStreamingCompletionWins:
                 },
                 format="json",
             ).data["status"]
-            == "cancelling"
+            == "cancelled"
         )
         cancel_done.set()
 
         body = b"".join(stream).decode()
 
-        assert "event: cancelled" not in body
-        assert "event: message" in body
-        assert ChatMessage.objects.filter(
+        assert "event: cancelled" in body
+        assert "event: message" not in body
+        assert not ChatMessage.objects.filter(
             session_id="sess_late", role=ChatMessage.Role.ASSISTANT
         ).exists()
-        assert mock_get_summary.called
+        assert not mock_get_summary.called
 
         user_msg = ChatMessage.objects.get(message_id="msg_late")
-        assert user_msg.processing_state == ChatMessage.ProcessingState.COMPLETED
-        assert user_msg.response_message is not None
+        assert user_msg.processing_state == ChatMessage.ProcessingState.CANCELLED
+        assert user_msg.response_message is None
 
 
 @pytest.mark.django_db
@@ -1686,6 +1699,7 @@ class TestStreamingCancelDuringBusyStream:
     @patch("chat.V2.views.get_agent_service")
     def test_cancel_is_seen_while_progress_is_streaming(self, mock_get_agent, client, secret):
         observed = {"saw_cancel": False}
+        acknowledged = threading.Event()
 
         async def chatty_send_message(*, should_cancel=None, on_progress=None, **kwargs):
             # Emits faster than the loop's poll interval, so the queue never
@@ -1695,6 +1709,7 @@ class TestStreamingCancelDuringBusyStream:
                     on_progress(AgentProgressUpdate(type="status", text="Searching sources"))
                 if should_cancel and should_cancel():
                     observed["saw_cancel"] = True
+                    acknowledged.set()
                     raise TurnCancelled()
                 await asyncio.sleep(0.005)
             return AgentResponse(content="Never reached", tool_calls=[], latency_ms=0)
@@ -1728,12 +1743,12 @@ class TestStreamingCancelDuringBusyStream:
             },
             format="json",
         )
-        assert cancel.data["status"] == "cancelling"
+        assert cancel.data["status"] == "cancelled"
 
         body = b"".join(stream).decode()
 
         assert "event: progress" in body, "the busy path this test exists for was never exercised"
-        assert observed["saw_cancel"] is True, "agent never observed the cancel flag"
+        assert acknowledged.wait(2), "agent never observed the cancel flag"
         assert "event: cancelled" in body
         assert "event: message" not in body
         assert not ChatMessage.objects.filter(
@@ -1803,7 +1818,7 @@ class TestStreamingCancelAfterClientDisconnect:
             },
             format="json",
         )
-        assert cancel.data["status"] == "cancelling"
+        assert cancel.data["status"] == "cancelled"
 
         # Stands in for the browser hanging up: closing the underlying generator
         # raises GeneratorExit at the yield, exactly as a dropped socket does.

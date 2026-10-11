@@ -161,7 +161,7 @@ def _mark_turn_failed(user_message_id: int, error: str = "") -> None:
 
 
 def _mark_turn_cancelled(user_message_id: int) -> int:
-    """Record the terminal outcome only after the worker acknowledges cancellation."""
+    """Fence the turn against future publication; worker cleanup may continue."""
     now = timezone.now()
     return ChatMessage.objects.filter(
         id=user_message_id,
@@ -179,7 +179,7 @@ def _mark_turn_cancelled(user_message_id: int) -> int:
 
 
 def _is_turn_cancelled(user_message_id: int) -> bool:
-    """Read a cross-process request; completion may still win until acknowledgement."""
+    """Read the durable cross-process stop fence (including legacy requests)."""
     return ChatMessage.objects.filter(
         id=user_message_id,
         processing_state__in=[
@@ -637,7 +637,8 @@ def chat_stream_v2(request):
                 now = time.time()
                 if now - last_cancel_poll >= STREAM_CANCEL_POLL_SECONDS:
                     last_cancel_poll = now
-                    relay_cancel_if_flagged()
+                    if relay_cancel_if_flagged():
+                        break
 
                 try:
                     update = progress_queue.get(timeout=STREAM_CANCEL_POLL_SECONDS)
@@ -696,11 +697,9 @@ def chat_stream_v2(request):
             latency_ms = int((time.time() - start_time) * 1000)
             logging_service = get_turn_logging_service()
 
-            # A returned, validated answer wins a simultaneous stop. A request
-            # remains CANCELLING until the worker actually raises TurnCancelled.
-            if result_holder["cancelled"] or (
-                result_holder["response"] is None and _is_turn_cancelled(user_message.id)
-            ):
+            # An accepted stop fences all late results, including a worker that
+            # has not yet finished shutdown. Committed completion wins instead.
+            if result_holder["cancelled"] or _is_turn_cancelled(user_message.id):
                 _mark_turn_cancelled(user_message.id)
                 logger.info(
                     "Turn cancelled; no assistant message persisted (agent_returned_response=%s)",
@@ -719,19 +718,25 @@ def chat_stream_v2(request):
             if result_holder["error"]:
                 logger.error(f"Agent error: {result_holder['error']}")
 
-                error_msg = logging_service.record_error_message(
-                    session_id=data["sessionId"],
-                    actor=actor,
-                    turn_id=turn_id,
-                    latency_ms=latency_ms,
-                    error_text=ERROR_FALLBACK_MESSAGE,
-                )
+                with transaction.atomic():
+                    locked_message = ChatMessage.objects.select_for_update().get(pk=user_message.pk)
+                    if locked_message.processing_state in (
+                        ChatMessage.ProcessingState.CANCELLED,
+                        ChatMessage.ProcessingState.CANCELLING,
+                    ):
+                        raise TurnCancelled()
+                    error_msg = logging_service.record_error_message(
+                        session_id=data["sessionId"],
+                        actor=actor,
+                        turn_id=turn_id,
+                        latency_ms=latency_ms,
+                        error_text=ERROR_FALLBACK_MESSAGE,
+                    )
 
-                user_message.response_message = error_msg
-                user_message.save(update_fields=["response_message"])
-                assistant_persisted = True
-                _mark_turn_failed(user_message.id, result_holder["error"])
-
+                    user_message.response_message = error_msg
+                    user_message.save(update_fields=["response_message"])
+                    assistant_persisted = True
+                    _mark_turn_failed(user_message.id, result_holder["error"])
                 logger.info(
                     "Assistant row persisted after agent error",
                     extra={
@@ -786,7 +791,12 @@ def chat_stream_v2(request):
                 ) + aux_cost_at_persist
 
             with transaction.atomic():
-                ChatMessage.objects.select_for_update().get(pk=user_message.pk)
+                locked_message = ChatMessage.objects.select_for_update().get(pk=user_message.pk)
+                if locked_message.processing_state in (
+                    ChatMessage.ProcessingState.CANCELLED,
+                    ChatMessage.ProcessingState.CANCELLING,
+                ):
+                    raise TurnCancelled()
                 logging_result = logging_service.persist_assistant_response(
                     user_message=user_message,
                     agent_response=agent_response,
@@ -896,6 +906,11 @@ def chat_stream_v2(request):
                     "response_message_id": response_message.message_id,
                 },
             )
+        except TurnCancelled:
+            relay_cancel_if_flagged()
+            _mark_turn_cancelled(user_message.id)
+            final_event_sent = True
+            yield f"event: cancelled\ndata: {json.dumps({'messageId': data['messageId']})}\n\n"
         except (BrokenPipeError, ConnectionResetError, GeneratorExit):
             if not final_event_sent:
                 logger.warning(
@@ -1054,7 +1069,7 @@ def chat_recover_v2(request):
 
 @api_view(["POST"])
 def chat_cancel_v2(request):
-    """Abandon an in-flight turn so the agent stops billing for it.
+    """Fence an in-flight turn immediately, then interrupt its worker asynchronously.
 
     POST /api/v2/chat/cancel
 
@@ -1088,10 +1103,13 @@ def chat_cancel_v2(request):
         if user_message is None:
             return Response({"status": "not_found"}, status=status.HTTP_404_NOT_FOUND)
         state = user_message.processing_state
-        if state in (ChatMessage.ProcessingState.STARTED, ChatMessage.ProcessingState.RUNNING):
-            user_message.processing_state = ChatMessage.ProcessingState.CANCELLING
-            user_message.save(update_fields=["processing_state"])
-            state = ChatMessage.ProcessingState.CANCELLING
+        if state in (
+            ChatMessage.ProcessingState.STARTED,
+            ChatMessage.ProcessingState.RUNNING,
+            ChatMessage.ProcessingState.CANCELLING,
+        ):
+            _mark_turn_cancelled(user_message.id)
+            state = ChatMessage.ProcessingState.CANCELLED
         outcome = {
             ChatMessage.ProcessingState.CANCELLING: "cancelling",
             ChatMessage.ProcessingState.CANCELLED: "cancelled",

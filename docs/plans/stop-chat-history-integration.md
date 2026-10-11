@@ -8,8 +8,8 @@ Base: e305242. Reuses Steve Kaplan's feature/sc-42230/1 (58e4627).
 - Preserve the prompt, location and visible topics; remove thinking; do not scroll to the notice.
 - Restore the prompt/cursor to its own conversation when cancellation finishes.
 - Keep the notice when reopening; remove it on the next prompt in that conversation, retaining topics.
-- A fully validated answer returned before cancellation acknowledgement wins the race.
-- Cancellation requests are `cancelling`; only acknowledged cancellation is `cancelled`.
+- A committed answer wins the race. An accepted stop atomically fences the turn against later success/error persistence.
+- Stop returns durable `cancelled` immediately; shutdown and telemetry continue in the background. Legacy `cancelling` responses remain supported by the frontend.
 
 ## Implementation
 
@@ -34,3 +34,15 @@ Backend: 121 tests pass across streaming, SDK, serialization, models and history
 No live LLM calls or deployment were performed. Cancellation closes the SDK client at a checkpoint or during a quiet response wait; already in-flight synchronous auxiliary work (guardrail/router/appetizer calls) may finish before its next checkpoint and is not promised to have zero additional provider cost. The independent appetizer cannot publish after a noticed stop request. Production latency and multi-process PostgreSQL behavior still need staging QA.
 
 The full Chat History Google document was not available. The supplied Stop spec and the approved notice policy govern this integration.
+
+## Stop latency follow-up — 11 October 2026
+
+- [x] Atomically mark accepted stops cancelled under the same row lock used by response persistence. Guard both late success and late error writes.
+- [x] End the SSE loop on the shared stop flag without waiting for worker completion or Braintrust flush.
+- [x] Release the frontend on a confirmed cancel response, abort its stream, and ignore the old promise outcome. Preserve the existing stopped-turn/history rendering path and failure behavior.
+- [x] Test a blocked worker and blocked log flush independently: Stop completes and a second prompt in the same session completes before cleanup is released.
+- [x] Test Stop landing between the initial result check and final success/error persistence, plus already-completed cancellation, idempotence, and history recovery.
+
+Results: 125 backend tests pass; the same pre-existing history search test fails. Eight frontend tests pass and production build succeeds. Local backend tests measured about 0.26 seconds to terminal SSE with cleanup still blocked. Browser verification with a simulated API returning cancellation immediately but delaying terminal SSE for 10 seconds restored the question, enabled Send and preserved topics in 296 ms (automation measurement, not a production performance guarantee).
+
+The outcome boundary is committed response persistence, not the moment the provider generates its last token. PostgreSQL cross-process row-lock contention and live provider cancellation still need staging validation. This change shortens the UI wait; it does not make physical worker shutdown or logging faster, and old work can consume resources briefly while shutting down.

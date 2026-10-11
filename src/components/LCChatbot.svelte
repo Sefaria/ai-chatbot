@@ -1,6 +1,7 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
+  import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
@@ -1092,7 +1093,7 @@
           saveMessagesToStorage();
         }
       }).catch(() => {});
-      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
+      const response = await waitForTurn(sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
           if (request.stopping) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
@@ -1126,7 +1127,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal });
+      }, interfaceLang, { signal: request.controller.signal }), request.controller.signal);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
@@ -1281,7 +1282,14 @@
         userId, sessionId: targetSessionId, messageId: request.messageId
       });
       if (activeRequests[targetSessionId] !== request) return;
-      // Keep reading SSE (or recovery) to resolve cancellation vs completion.
+      // Only a durable server stop may unlock the composer before the stream ends.
+      if (outcome.status === 'cancelled') {
+        const error = new Error('Turn cancelled');
+        error.name = 'AbortError';
+        error.code = 'stream_cancelled';
+        request.controller.abort(error);
+      }
+      // Older servers may still return cancelling; completion keeps its normal path.
       if (!['cancelling', 'cancelled', 'complete'].includes(outcome.status)) throw new Error('Cancel not accepted');
     } catch {
       if (activeRequests[targetSessionId] !== request) return;
