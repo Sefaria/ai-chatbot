@@ -1,6 +1,6 @@
 # Native Multi-Turn Conversations via SDK Session Resume
 
-**Status:** Proposed
+**Status:** In progress (step 1 done)
 **Date:** 2026-10-11
 **Scope:** Replace summary-based multi-turn context with Claude Agent SDK session resume,
 backed by a Postgres transcript store, and let the CLI's built-in auto-compaction manage
@@ -30,12 +30,18 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 
 ## 3. Steps
 
-### Step 1 — Postgres `SessionStore`
+### Step 1 — Postgres `SessionStore` ✅
 - `SdkTranscriptEntry` model (`chat/models.py`, migration `0013`): one row per transcript
   line, keyed by `(project_key, session_id, subpath)`, `uuid` as idempotency key via a partial
   unique constraint.
 - `PostgresSessionStore` (`chat/V2/agent/session_store.py`): implements `append`, `load`,
   `list_sessions`, `delete`, `list_subkeys`. ORM calls run via `sync_to_async`.
+- ORM work closes its connection after each call (`close_old_connections`): the SDK calls
+  the store outside any request cycle, so Django would otherwise never release it.
+- Verified with the SDK's `run_session_store_conformance` suite
+  (`chat/tests/test_session_store.py`). `list_session_summaries` is not implemented (optional;
+  only used by SDK session listing, which we don't need).
+- `claude-agent-sdk` floor raised to `0.2.159` (first version tested with `session_store`).
 - Not wired into the agent yet — no behavior change.
 
 ### Step 2 — Track the conversation head

@@ -21,6 +21,7 @@ server/
 │       │   ├── claude_service.py    # Claude Agent SDK integration
 │       │   ├── tracing_guard.py     # Thread-local Braintrust span suppression
 │       │   ├── sdk_options_builder.py # Claude SDK subprocess options
+│       │   ├── session_store.py     # Postgres SessionStore for SDK transcripts
 │       │   ├── tool_executor.py     # Sefaria tool execution
 │       │   ├── tool_schemas.py      # Tool definitions
 │       │   └── sefaria_client.py    # Sefaria API client
