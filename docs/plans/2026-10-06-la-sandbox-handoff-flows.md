@@ -164,6 +164,16 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 - Phones and desktop alike. The same loader shows at the top while older messages load
   above an open chat.
 
+## 4. Cookie banner on phones
+
+### 4.1 The Ask button sits above the cookie banner
+
+- **Start:** a phone (or any window up to 842px wide) where the visitor hasn't accepted cookies, so Sefaria's cookie banner spans the bottom of the screen.
+- **Expected:** the closed Ask button sits 16px above the banner, not behind it. When the visitor taps OK, the button slides back to its usual spot (0.2s; no motion with reduced motion). If the banner's text wraps to more lines, the button follows its height.
+- **How:** Sefaria publishes the banner's height as `--lc-launcher-bottom-offset` on `:root` (`static/js/sefaria/launcherOffset.js`); the widget adds it to the closed button's distance from the bottom.
+- **Desktop:** unchanged. At 843px and wider the banner is a 360px card in the corner, so the offset is 0.
+- **Known limit (decided 2026-10-11):** a short-term fix. With One Tap, fundraising modals and other banners also on a phone screen, it gets crowded; a longer-term design for stacked overlays is still needed.
+
 ## Still to cover from this PR
 
 - [ ] Entry point: the Ask pill, on phones and desktop (decided; circle, input bar and wide

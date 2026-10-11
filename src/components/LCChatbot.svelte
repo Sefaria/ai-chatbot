@@ -2652,9 +2652,11 @@
     padding: 0;
   }
 
+  /* --lc-launcher-bottom-offset: set by the host to lift the closed widget above its own
+     bottom bar (Sefaria's cookie banner) while that bar shows */
   .lc-chatbot-container {
     position: fixed;
-    bottom: 24px;
+    bottom: calc(24px + var(--lc-launcher-bottom-offset, 0px));
     inset-inline-end: 24px;
     z-index: 9999;
     direction: ltr;
@@ -2710,9 +2712,9 @@
     --lc-font-size-sm: 14px;
     --lc-font-size: 16px;
     --lc-font-size-lg: 18px;
-    bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom));
+    bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom) + var(--lc-launcher-bottom-offset, 0px));
     inset-inline-end: var(--global-dimension-200);
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease, bottom 0.2s ease;
   }
 
   .lc-chatbot-container.mode-fullscreen.trigger-hidden {

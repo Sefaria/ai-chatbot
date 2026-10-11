@@ -73,7 +73,7 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 
 ## Launcher
 
-The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-container`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened.
+The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-container`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height on phones and tablets until the banner is dismissed.
 
 ## Phones
 
