@@ -79,6 +79,7 @@ pytest                                    # Run tests
 | `AGENT_MODEL` | No | Model for normal requests (default: claude-sonnet-4-6) |
 | `APPETIZER_MODEL` | No | Model for the topic appetizer (default: same as `AGENT_MODEL`) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
+| `NATIVE_MULTI_TURN_ENABLED` | No | Resume the SDK session each turn instead of summary-only context (default: `false`) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
 

@@ -23,6 +23,7 @@ class SDKOptionsBuilder:
         mcp_server_name: str,
         braintrust_logging_enabled: bool = True,
         thinking_disabled: bool = True,
+        session_cwd: str | None = None,
         logger: logging.Logger | None = None,
     ):
         self.options_cls = options_cls
@@ -34,6 +35,7 @@ class SDKOptionsBuilder:
         self.braintrust_logging_enabled = braintrust_logging_enabled
         self.mcp_server_name = mcp_server_name
         self.thinking_disabled = thinking_disabled
+        self.session_cwd = session_cwd
         self.logger = logger or logging.getLogger("chat.agent")
 
     def _supports_option(self, option_name: str) -> bool:
@@ -55,8 +57,14 @@ class SDKOptionsBuilder:
         system_prompt: str,
         mcp_server: Any,
         allowed_tools: list[str],
+        session_store: Any = None,
+        resume: str | None = None,
     ) -> tuple[Any, bool]:
-        """Construct options and return (options, system_prompt_in_options)."""
+        """Construct options and return (options, system_prompt_in_options).
+
+        With ``session_store``, the SDK mirrors the transcript to the store and
+        ``resume`` continues that stored session.
+        """
         options_kwargs: dict[str, Any] = {
             "model": self.model,
             "permission_mode": "bypassPermissions",
@@ -91,9 +99,24 @@ class SDKOptionsBuilder:
         if self.thinking_disabled and self._supports_option("thinking"):
             options_kwargs["thinking"] = {"type": "disabled"}
 
+        if session_store is not None:
+            options_kwargs["session_store"] = session_store
+            options_kwargs["resume"] = resume
+            if self.session_cwd:
+                # The store's project_key derives from cwd, so pin it across pods/deploys.
+                options_kwargs["cwd"] = self.session_cwd
+
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
             options_kwargs["system_prompt"] = system_prompt
+            if session_store is not None:
+                # Without snapshot=False a resumed session keeps its first-turn
+                # system prompt and ignores the router's per-turn core prompt.
+                options_kwargs["system_prompt"] = {
+                    "type": "custom",
+                    "prompt": system_prompt,
+                    "snapshot": False,
+                }
             system_prompt_in_options = True
 
         return self.options_cls(**options_kwargs), system_prompt_in_options

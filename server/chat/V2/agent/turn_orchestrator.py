@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -26,6 +27,8 @@ from .sdk_runner import ClaudeSDKRunner
 from .tool_runtime import ToolRuntime
 from .tool_schemas import get_tools_for_labs
 from .trace_logger import BraintrustTraceLogger
+
+logger = logging.getLogger("chat.agent")
 
 MAX_RESPONSE_LINK_REPAIR_ATTEMPTS = 1
 LINK_REPAIR_INSTRUCTION = """The draft response below contains links that failed deterministic validation.
@@ -61,6 +64,7 @@ class TurnOrchestrator:
         router: Router,
         trace_logger: BraintrustTraceLogger,
         logging_enabled: bool = True,
+        session_store: Any = None,
     ):
         self.model = model
         self.mcp_server_name = mcp_server_name
@@ -73,6 +77,7 @@ class TurnOrchestrator:
         self.router = router
         self.trace_logger = trace_logger
         self.logging_enabled = logging_enabled
+        self.session_store = session_store
 
     async def run_turn(
         self,
@@ -153,11 +158,19 @@ class TurnOrchestrator:
         if self.options_builder.thinking_disabled:
             system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
 
-        options, system_prompt_in_options = self.options_builder.build(
-            system_prompt=system_prompt,
-            mcp_server=mcp_server,
-            allowed_tools=allowed_tools,
-        )
+        def build_options(resume: str | None) -> tuple[Any, bool]:
+            return self.options_builder.build(
+                system_prompt=system_prompt,
+                mcp_server=mcp_server,
+                allowed_tools=allowed_tools,
+                session_store=self.session_store,
+                resume=resume,
+            )
+
+        # Native multi-turn: resume the stored SDK session so the model sees the
+        # full prior conversation, tool results included.
+        resume = context.sdk_resume_session_id if self.session_store else None
+        options, system_prompt_in_options = build_options(resume)
         self.trace_logger.log_prompt_metadata(
             bt_span=bt_span,
             core_prompt_id=core_prompt.prompt_id,
@@ -165,6 +178,7 @@ class TurnOrchestrator:
             system_prompt_in_options=system_prompt_in_options,
             summary_included=prompt_result.summary_included,
             route=route,
+            sdk_resumed=resume is not None,
         )
 
         # Avoid sending the full prompt text if it's already included in the options
@@ -185,17 +199,36 @@ class TurnOrchestrator:
             synthesis_status_emitted = True
             emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
+        sdk_start_time = time.time()
         try:
-            sdk_start_time = time.time()
-            sdk_result = await self.sdk_runner.run(
-                options=options,
-                prompt_text=prompt_text,
-                on_first_final_text_delta=emit_synthesis_status_once,
-            )
+            try:
+                sdk_result = await self.sdk_runner.run(
+                    options=options,
+                    prompt_text=prompt_text,
+                    on_first_final_text_delta=emit_synthesis_status_once,
+                )
+            except Exception:
+                if resume is None:
+                    raise
+                # A lost or unreadable transcript must not break the conversation:
+                # fall back to a fresh session (the summary still carries context).
+                logger.warning(
+                    "Resuming SDK session %s failed; starting a fresh session",
+                    resume,
+                    exc_info=True,
+                )
+                bt_span.log(metadata={"sdk_resume_failed": True})
+                options, _ = build_options(None)
+                sdk_result = await self.sdk_runner.run(
+                    options=options,
+                    prompt_text=prompt_text,
+                    on_first_final_text_delta=emit_synthesis_status_once,
+                )
         except Exception as exc:
             latency_ms = int((time.time() - start_time) * 1000)
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
+        sdk_session_id = sdk_result.session_id if self.session_store else None
 
         emit_synthesis_status_once()
 
@@ -209,16 +242,20 @@ class TurnOrchestrator:
         ):
             repair_attempts += 1
             emitter.emit(AgentProgressUpdate(type="status", text="Repairing response links..."))
-            repair_prompt = (
-                prompt_text
-                + SECTION_SEPARATOR
-                + LINK_REPAIR_INSTRUCTION.format(
-                    issues=format_link_validation_issues(validation_result.issues),
-                    draft_response=output,
-                )
+            repair_instruction = LINK_REPAIR_INSTRUCTION.format(
+                issues=format_link_validation_issues(validation_result.issues),
+                draft_response=output,
             )
+            if sdk_session_id:
+                # Continue the session so the stored transcript ends with the
+                # repaired answer the user actually sees.
+                repair_options, _ = build_options(sdk_session_id)
+                repair_prompt = repair_instruction
+            else:
+                repair_options = options
+                repair_prompt = prompt_text + SECTION_SEPARATOR + repair_instruction
             repair_result = await self.sdk_runner.run(
-                options=options,
+                options=repair_options,
                 prompt_text=repair_prompt,
                 on_first_final_text_delta=emit_synthesis_status_once,
             )
@@ -231,6 +268,8 @@ class TurnOrchestrator:
                 )
             if repair_result.trace_id:
                 sdk_result.trace_id = repair_result.trace_id
+            if sdk_session_id and repair_result.session_id:
+                sdk_session_id = repair_result.session_id
 
         if not validation_result.is_valid:
             output = ERROR_FALLBACK_MESSAGE
@@ -267,4 +306,5 @@ class TurnOrchestrator:
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
+            sdk_session_id=sdk_session_id,
         )

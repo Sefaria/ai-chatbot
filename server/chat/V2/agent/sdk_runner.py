@@ -19,6 +19,7 @@ class SDKRunResult:
     usage: dict[str, Any] | None
     total_cost_usd: float | None
     first_final_text_delta_elapsed_s: float | None = None
+    session_id: str | None = None
 
 
 class ClaudeSDKRunner:
@@ -50,6 +51,7 @@ class ClaudeSDKRunner:
         llm_call_count = 0
         usage: dict[str, Any] | None = None
         total_cost_usd: float | None = None
+        session_id: str | None = None
         pending_first_text_delta_elapsed_s: float | None = None
         final_text_delta_candidate_elapsed_s: float | None = None
         first_final_text_delta_elapsed_s: float | None = None
@@ -74,6 +76,7 @@ class ClaudeSDKRunner:
                         notify_first_final_text_delta()
                     usage = message.usage
                     total_cost_usd = message.total_cost_usd
+                    session_id = getattr(message, "session_id", None)
                     first_final_text_delta_elapsed_s = final_text_delta_candidate_elapsed_s
                 elif isinstance(message, self.stream_event_cls):
                     delta = self.extract_text_delta_from_stream_event(message)
@@ -110,6 +113,7 @@ class ClaudeSDKRunner:
             usage=usage,
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
+            session_id=session_id,
         )
 
     @staticmethod

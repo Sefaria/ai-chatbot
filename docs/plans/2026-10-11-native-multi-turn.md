@@ -1,6 +1,6 @@
 # Native Multi-Turn Conversations via SDK Session Resume
 
-**Status:** In progress (step 1 done)
+**Status:** In progress (steps 1, 2, 4 done; behind `NATIVE_MULTI_TURN_ENABLED`, default off)
 **Date:** 2026-10-11
 **Scope:** Replace summary-based multi-turn context with Claude Agent SDK session resume,
 backed by a Postgres transcript store, and let the CLI's built-in auto-compaction manage
@@ -44,14 +44,26 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - `claude-agent-sdk` floor raised to `0.2.159` (first version tested with `session_store`).
 - Not wired into the agent yet — no behavior change.
 
-### Step 2 — Track the conversation head
-- `ChatSession.sdk_session_id` (nullable).
-- `SDKRunResult.session_id` read from `ResultMessage.session_id`.
-- Options: `resume=<head>`, `fork_session=True`, `session_store=PostgresSessionStore()`,
-  subprocess `env["CLAUDE_CONFIG_DIR"]` pointing at a temp dir. Drop
-  `continue_conversation=False`.
-- Persist the new head only on success, so failed/blocked turns never touch history and
-  concurrent turns are last-write-wins.
+### Step 2 — Track the conversation head ✅
+- `ChatSession.sdk_session_id` (nullable, migration `0014`).
+- `SDKRunResult.session_id` read from `ResultMessage.session_id`, surfaced as
+  `AgentResponse.sdk_session_id` and saved in `update_session_success` (success path only, so
+  errored and guardrail-blocked turns never move the head).
+- `views.py` passes `MessageContext.sdk_resume_session_id` and, when
+  `NATIVE_MULTI_TURN_ENABLED` and not a load test, `get_agent_service(session_store=...)`.
+- `SDKOptionsBuilder.build(session_store=, resume=)` sets `session_store`, `resume` and pins
+  `cwd` to `BASE_DIR` (the store's `project_key` derives from cwd; prod already runs there).
+- **Decision: resume in place, no `fork_session`.** Forking likely copies the full transcript
+  into a new session each turn (quadratic storage). The cost of resuming in place: a turn that
+  fails mid-run leaves its partial entries in the transcript.
+- **Decision: no `CLAUDE_CONFIG_DIR` override.** Resumed runs already materialize into an
+  SDK-managed temp dir; first turns write to the default local dir, as they do today.
+- **Fallback:** if a resumed run raises (missing/unreadable transcript), the orchestrator logs
+  `sdk_resume_failed` and retries once as a fresh session.
+- The summary is still injected into the system prompt during rollout, which keeps that
+  fallback context-aware.
+- Store ORM calls run with `thread_sensitive=False` so concurrent turns don't serialize on one
+  thread.
 
 ### Step 3 — Send only the new message
 - `build_turn_prompt` stops flattening history; `prompt_text` is the (router-rewritten) user
@@ -59,8 +71,8 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - Move `page_url` from the system prompt into the user message so the system prompt stays
   stable and prompt caching hits across turns.
 
-### Step 4 — System prompt snapshot
-- Pass the system prompt as `{"type": "custom", ..., "snapshot": False}` — otherwise a resumed
+### Step 4 — System prompt snapshot ✅
+- Done with step 2 (only when a store is set). Pass the system prompt as `{"type": "custom", ..., "snapshot": False}` — otherwise a resumed
   session keeps its first-turn prompt and ignores the router's per-turn core prompt.
 
 ### Step 5 — Context management
@@ -70,20 +82,20 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - Optionally log compactions to Braintrust via the `PreCompact` hook.
 
 ### Step 6 — Cleanup and rollout
-- Link-repair loop resumes from the turn's new session id and sends only the repair
-  instruction.
+- ✅ Link-repair loop resumes from the turn's new session id and sends only the repair
+  instruction (done in step 2).
 - Sessions without `sdk_session_id` fall back to the summary path for their first turn.
 - Keep `SummaryService` behind a setting for one release, then remove `summarization/`,
   summary fragments and summary columns.
-- Load tests use no store (or an in-memory one).
+- ✅ Load tests use no store.
 - `/api/v2/chat/anthropic` keeps flattening its message array.
 
 ## 4. Open questions
 
-- **Storage growth with `fork_session`.** If forking copies the full transcript under the new
-  session id every turn, storage is quadratic in turn count. Verify against the pinned CLI;
-  if so, delete the previous head's rows once the new head is persisted (step 2).
-- **Snapshot and compaction behavior** across CLI versions — verify with a real multi-turn
-  test against the bundled CLI before rollout.
+- **Verify against the real CLI before enabling** (not possible in CI, no API key): a
+  multi-turn conversation in staging with `NATIVE_MULTI_TURN_ENABLED=true` should show
+  `sdk_resumed: true` in Braintrust from turn 2, a stable `ChatSession.sdk_session_id`, the
+  model answering follow-ups from earlier turns, and the router's per-turn core prompt taking
+  effect (snapshot off). Check auto-compaction on a long conversation.
 - **Retention.** Transcripts contain user text; align deletion with `ChatSession.is_deleted`
   and any retention policy.

@@ -44,6 +44,7 @@ class MessageContext:
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
+    sdk_resume_session_id: str | None = None  # SDK session to resume (native multi-turn)
 
 
 @dataclass
@@ -61,6 +62,7 @@ class AgentResponse:
     cache_creation_tokens: int | None = None
     cache_read_tokens: int | None = None
     total_cost_usd: float | None = None
+    sdk_session_id: str | None = None  # SDK session to resume next turn
 
 
 ProgressCallback = Callable[[AgentProgressUpdate], None]

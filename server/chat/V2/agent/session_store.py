@@ -30,7 +30,9 @@ async def _run_db(fn: Callable[[], T]) -> T:
     """Run ORM work off the event loop, releasing the connection afterwards.
 
     The SDK calls the store outside any request cycle, so Django never closes
-    the executor thread's connection on its own.
+    the executor thread's connection on its own. Not thread-sensitive: the
+    default would funnel every concurrent turn's store calls through one
+    process-wide thread.
     """
 
     def _wrapped() -> T:
@@ -39,7 +41,7 @@ async def _run_db(fn: Callable[[], T]) -> T:
         finally:
             close_old_connections()
 
-    return await sync_to_async(_wrapped)()
+    return await sync_to_async(_wrapped, thread_sensitive=False)()
 
 
 def _key_filter(key: SessionKey) -> dict[str, str]:

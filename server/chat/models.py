@@ -38,6 +38,9 @@ class ChatSession(models.Model):
     )
     summary_updated_at = models.DateTimeField(null=True, blank=True)
 
+    # Claude Agent SDK session resumed on the next turn (see PostgresSessionStore)
+    sdk_session_id = models.CharField(max_length=64, null=True, blank=True)
+
     # Aggregate token usage for the session
     total_input_tokens = models.IntegerField(default=0)
     total_output_tokens = models.IntegerField(default=0)

@@ -141,14 +141,14 @@ class TestGetAgentServiceFactory:
             from chat.V2.agent.claude_service import get_agent_service
 
             get_agent_service()
-            MockSvc.assert_called_once_with(is_load_test=False)
+            MockSvc.assert_called_once_with(is_load_test=False, session_store=None)
 
     def test_passes_true(self):
         with patch("chat.V2.agent.claude_service.ClaudeAgentService") as MockSvc:
             from chat.V2.agent.claude_service import get_agent_service
 
             get_agent_service(is_load_test=True)
-            MockSvc.assert_called_once_with(is_load_test=True)
+            MockSvc.assert_called_once_with(is_load_test=True, session_store=None)
 
 
 # ---------------------------------------------------------------------------
