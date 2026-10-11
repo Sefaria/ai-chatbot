@@ -26,6 +26,9 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   - Both questions are answered normally.
   - The history icon in the header is visible but locked, with the tooltip "Log in to see
     chat history".
+  - "New chat" in the menu is visible but locked from the start, with the tooltip "Log in to
+    start a new chat" (decided 2026-10-11). A question from the search no-results button still
+    starts its own new chat.
   - No warning before the last free answer (a one-left warning was tried and removed).
 
 ### 1.2 Free answers run out

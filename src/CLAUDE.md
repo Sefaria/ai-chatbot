@@ -50,7 +50,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | No | Encrypted user token. Omit for logged-out visitors: they chat under an anonymous id (`localStorage`) until the server's free responses run out, then see a login prompt |
+| `user-id` | string | No | Encrypted user token. Omit for logged-out visitors: they chat under an anonymous id (`localStorage`) until the server's free responses run out, then see a login prompt. History and "New chat" are locked for them |
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |

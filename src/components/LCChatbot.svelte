@@ -2089,12 +2089,13 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <!-- At the free-answer limit: aria-disabled (not disabled) so the tooltip still shows on hover -->
+                <!-- Logged out: New chat is locked from the start, aria-disabled (not disabled) so the
+                     "Log in to start a new chat" tooltip still shows on hover -->
                 <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button"
-                        onclick={() => { if (!anonLoginRequired) handleRestartConvo(); }}
-                        disabled={messages.length === 0 && !anonLoginRequired}
-                        aria-disabled={anonLoginRequired ? 'true' : undefined}
-                        use:tooltip={anonLoginRequired ? $_('assistant.menu.restart.login_tooltip') : ''}
+                        onclick={() => { if (!isAnonymous) handleRestartConvo(); }}
+                        disabled={messages.length === 0 && !isAnonymous}
+                        aria-disabled={isAnonymous ? 'true' : undefined}
+                        use:tooltip={isAnonymous ? $_('assistant.menu.restart.login_tooltip') : ''}
                         role="menuitem">
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
@@ -2134,7 +2135,7 @@
           <div class="history-toolbar">
             <div class="history-toolbar-group">
               <Tooltip text={$_('assistant.history.header.new.tooltip')}>
-                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0 || anonLoginRequired}>
+                <button class="history-icon-btn" type="button" aria-label={$_('assistant.history.header.new.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0 || isAnonymous}>
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                 </button>
               </Tooltip>
