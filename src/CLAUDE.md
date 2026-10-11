@@ -37,14 +37,19 @@ npm run build    # Build bundle to dist/
 
 ## Analytics (GA4)
 
-Events (`assistant_click`, `assistant_element_shown`, `assistant_message_sent`) go
-through the `track()` helper in `LCChatbot.svelte`. **Never call `window.gtag`
-directly** — `track()` is the only place `is_staff` and `la_version` are attached,
-and analysts filter on `is_staff` to exclude internal traffic, so a bypassing event
-silently skews their reports.
+Analytics uses the shared [`@sefaria/analytics`](https://github.com/Sefaria/Sefaria-Analytics)
+package (also used by Sefaria-Project). Events (`assistant_click`, `assistant_element_shown`,
+`assistant_message_sent`) go through the `track()` helper in `LCChatbot.svelte`, which calls
+the package. **Never call `window.gtag` directly** — the package's `commonParams` is the only
+place `is_staff` and `la_version` are attached, and analysts filter on `is_staff` to exclude
+internal traffic, so a bypassing event silently skews their reports.
+
+A new event parameter must be added to `extraAllowedParams` in `LCChatbot.svelte`, or the
+package drops it (with a console warning). Follow the naming rules in the package's README.
 
 Label a click or impression by adding `data-feature-name` / `data-element-shown-name`
-to the element; host-level listeners pick it up across the shadow-DOM boundary.
+to the element; host-level listeners (`analytics.listen` / `analytics.observeFirstSeen`)
+pick it up across the shadow-DOM boundary.
 
 ## Widget Attributes
 
