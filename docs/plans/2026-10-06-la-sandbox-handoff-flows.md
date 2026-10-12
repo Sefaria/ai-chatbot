@@ -27,8 +27,8 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
   - The history icon in the header is visible but locked, with the tooltip "Log in to see
     chat history".
   - "New chat" in the menu is visible but locked from the start, with the tooltip "Log in to
-    start a new chat" (decided 2026-10-11). A question from the search no-results button still
-    starts its own new chat.
+    start a new chat" (decided 2026-10-11). A question from the search no-results button is asked
+    in their single chat too.
   - No warning before the last free answer (a one-left warning was tried and removed).
 
 ### 1.2 Free answers run out
@@ -96,7 +96,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 ### 1.9 Asking from the search no-results button
 
 - **Start:** logged out, on Sefaria's search page with no results. Clicking **Try Library
-  Assistant** opens the assistant and asks the rewritten search in a new chat
+  Assistant** opens the assistant and asks the rewritten search in their single chat
   (`chatbot:open` with `source: 'search_no_results'`; the widget sends
   `entrySource: "search_no_results"` with that one question).
 - **Rule (any limit N):** a question from this button counts like any other, except it
@@ -133,9 +133,9 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 
 ### 2.1 Signed-in user clicks Try Library Assistant
 
-- **Rule:** the question the button sends always opens in a **new chat**. It is never added
-  to the conversation the user already has open. This holds for signed-in users and for
-  logged-out visitors with free answers left.
+- **Rule:** for signed-in users, the question the button sends always opens in a **new
+  chat**; it is never added to the conversation they already have open. Logged-out
+  visitors have a single chat, so it is asked there (decided 2026-10-11).
 - **Exception, logged-out visitor already at the limit:** no new chat and nothing sent. The
   assistant opens on their **last conversation**, with the login prompt in place of the text
   box (1.2). After they log in, the text box is empty (1.9).
@@ -143,7 +143,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 - **Expected:** the assistant opens (or stays open) on a new, empty chat and the rewritten
   question is sent there right away. The previous conversation is untouched and stays in
   History. If the open chat is already empty, the question is sent in it.
-- Same for logged-out visitors, until they hit the limit (1.9).
+- Logged-out visitors: the question is added to their single chat, until they hit the limit (1.9).
 
 ### 2.2 Closing and reopening from the same no-results page
 

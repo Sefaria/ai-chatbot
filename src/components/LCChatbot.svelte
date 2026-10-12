@@ -716,15 +716,16 @@
   });
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
-  // doesn't open on (and scroll through) the previous conversation. No question just opens it.
-  // Past the free-answer limit nothing is sent: the panel opens on the login prompt.
+  // doesn't open on (and scroll through) the previous conversation. Logged-out visitors have a
+  // single chat, so theirs is asked there. No question just opens it. Past the free-answer
+  // limit nothing is sent: the panel opens on the login prompt.
   async function askInNewChat(question, entrySource) {
     if (anonLoginRequired) {
       if (!isOpen) openPanel();
       return;
     }
     question = question.trim();
-    if (question && messages.length > 0) handleNewChat();
+    if (question && messages.length > 0 && !isAnonymous) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
     if (!question) return;
