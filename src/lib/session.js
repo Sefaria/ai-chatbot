@@ -41,12 +41,13 @@ function isSessionExpired(lastActivity) {
 /**
  * Get or create a session ID
  * @param {boolean} forceNew - Force creation of new session
+ * @param {{ keepExpired?: boolean }} [options] - keepExpired: reuse the stored session even if it timed out
  * @returns {{ sessionId: string, isNew: boolean }}
  */
-export function getOrCreateSession(forceNew = false) {
+export function getOrCreateSession(forceNew = false, { keepExpired = false } = {}) {
   const stored = getStorage(STORAGE_KEYS.SESSION, null);
   
-  if (forceNew || !stored || isSessionExpired(stored.lastActivity)) {
+  if (forceNew || !stored || (!keepExpired && isSessionExpired(stored.lastActivity))) {
     const sessionId = generateSessionId();
     const session = {
       sessionId,
@@ -68,4 +69,17 @@ export function updateSessionActivity(sessionId) {
     sessionId,
     lastActivity: new Date().toISOString()
   });
+}
+
+/**
+ * Get (or create) the anonymous id that identifies a logged-out visitor to the server.
+ * @returns {string}
+ */
+export function getOrCreateAnonId() {
+  let anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
+  if (!anonId) {
+    anonId = crypto.randomUUID();
+    setStorage(STORAGE_KEYS.ANON_ID, anonId);
+  }
+  return anonId;
 }
