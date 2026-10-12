@@ -1,0 +1,207 @@
+<title>Stop Button Cauldron QA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  /* Layout: single reading column, sticky progress header, grouped checklists */
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --fg: #1c2330;
+    --muted: #5d6676;
+    --line: #dde1e8;
+    --accent: #18345d;
+    --done: #2f7a4f;
+    --warn-bg: #fff6e0;
+    --warn-fg: #6b4d00;
+    --font-display: "Source Serif 4", Georgia, serif;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161d; --surface: #1a2029; --fg: #e4e8ef; --muted: #9aa3b2;
+      --line: #2c3442; --accent: #8fb3e8; --done: #6cc28f;
+      --warn-bg: #2e2612; --warn-fg: #f0d58a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --fg: #e4e8ef; --muted: #9aa3b2;
+    --line: #2c3442; --accent: #8fb3e8; --done: #6cc28f;
+    --warn-bg: #2e2612; --warn-fg: #f0d58a; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 0 48px; }
+  .wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+  header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; background: var(--bg); padding-block: 20px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1.2; margin: 0; text-wrap: balance; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .meta code { font-family: var(--font-mono); font-size: 12px; }
+  .progress { display: flex; align-items: center; gap: 12px; }
+  .bar { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--done); transition: width .2s ease; }
+  .count { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 64px; text-align: right; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  section { display: flex; flex-direction: column; gap: 14px; }
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 20px; margin: 0; }
+  h2 small { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: var(--muted); margin-left: 6px; }
+  h3 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  li + li { border-top: 1px solid var(--line); }
+  li.sub label { padding-left: 40px; }
+  label { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; cursor: pointer; min-width: 0; }
+  input[type="checkbox"] { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--done); cursor: pointer; }
+  label span { min-width: 0; }
+  li.checked label span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+  .note { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+  .confirm { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .bar span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Stop Button Cauldron QA</h1>
+    <div class="meta">Branch <code>design-qa/stop-button</code>, built on <code>feature/stop-chat-history-integration</code></div>
+    <div class="progress">
+      <div class="bar"><span id="bar"></span></div>
+      <div class="count" id="count">0 / 0</div>
+    </div>
+    <div class="actions">
+      <button type="button" id="reset">Clear all checks</button>
+      <span class="confirm" id="confirm" hidden>Clear every check?
+        <button type="button" id="confirm-yes">Clear</button>
+        <button type="button" id="confirm-no">Cancel</button>
+      </span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Stop and chat history <small>Yonadav / Steve</small></h2>
+
+    <div class="group">
+      <h3>Basic stop</h3>
+      <ul>
+        <li><label><input type="checkbox" id="b1"><span>Sending a prompt swaps Send for Stop right away, and the input is disabled</span></label></li>
+        <li><label><input type="checkbox" id="b2"><span>Clicking Stop releases the UI within about a second: Send is back and the prompt is restored</span></label></li>
+        <li><label><input type="checkbox" id="b3"><span>The thinking label disappears after Stop</span></label></li>
+        <li><label><input type="checkbox" id="b4"><span>Topics that appeared before Stop stay visible</span></label></li>
+        <li><label><input type="checkbox" id="b5"><span>The location tag on the stopped prompt matches the page you were on</span></label></li>
+        <li><label><input type="checkbox" id="b6"><span>Hovering Stop shows the tooltip</span></label></li>
+        <li><label><input type="checkbox" id="b7"><span>In the Hebrew interface, Stop copy is Hebrew and placement is correct for RTL</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Races and errors</h3>
+      <ul>
+        <li><label><input type="checkbox" id="r1"><span>Stop clicked just as the answer arrives: the answer shows normally, with no notice</span></label></li>
+        <li><label><input type="checkbox" id="r2"><span>Clicking Stop several times quickly causes no errors or duplicate notices</span></label></li>
+        <li><label><input type="checkbox" id="r3"><span>When the stop can't be confirmed (throttle or go offline in DevTools), the "Couldn't confirm the stop" message shows, and Stop works on retry</span></label></li>
+        <li><label><input type="checkbox" id="r4"><span>A new prompt right after a stop, in the same chat, gets a normal answer with nothing left over from the stopped turn</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Chat history</h3>
+      <ul>
+        <li><label><input type="checkbox" id="h1"><span>After a page reload, the stopped turn is still there: prompt, notice and topics</span></label></li>
+        <li><label><input type="checkbox" id="h2"><span>Reopening a stopped conversation from the history list shows the stopped turn correctly</span></label></li>
+        <li><label><input type="checkbox" id="h3"><span>Switching to another chat mid-generation and back still shows generating, and Stop still works</span></label></li>
+        <li><label><input type="checkbox" id="h4"><span>Stopping in chat A doesn't put a notice or restored prompt into chat B</span></label></li>
+        <li><label><input type="checkbox" id="h5"><span>The restored prompt stays with its own chat and doesn't follow you to other chats</span></label></li>
+        <li><label><input type="checkbox" id="h6"><span>Starting a new chat while one is generating keeps the old chat's turn intact</span></label></li>
+        <li><label><input type="checkbox" id="h7"><span>A stopped turn isn't marked failed and has no retry button</span></label></li>
+        <li><label><input type="checkbox" id="h8"><span>Turn count and prompt limit behave sensibly after a stop</span></label></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Design changes <small>Penina</small></h2>
+
+    <div class="group">
+      <h3>Stop button and input</h3>
+      <ul>
+        <li><label><input type="checkbox" id="d1"><span>Stop keeps its square icon the whole time, with no spinner, even on a slow connection</span></label></li>
+        <li><label><input type="checkbox" id="d2"><span>While generating, the input looks like prod: no gray fill, just the placeholder, and it can't be clicked</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Stop notice</h3>
+      <ul>
+        <li><label><input type="checkbox" id="n1b"><span>After Stop and a new prompt, the earlier "Stopped generating…" line disappears, and its prompt and topics stay</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="n2b"><span>It stays gone after a reload and after reopening from history</span></label></li>
+        <li><label><input type="checkbox" id="n5"><span>On Stop, the canvas scrolls to the bottom and the notice is visible</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="n6"><span>This happens even if you scrolled up during generation</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="n7"><span>A normal response still lands at the top of the answer, not the bottom</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Input growth</h3>
+      <ul>
+        <li><label><input type="checkbox" id="g1"><span>Typing grows the input from 1 to 2 to 3 lines, then it scrolls inside with no 4th line</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="g2"><span>It shrinks back to one line on Send</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="g3"><span>It shrinks when you delete text</span></label></li>
+        <li class="sub"><label><input type="checkbox" id="g4"><span>Shift+Enter line breaks count toward the 3 lines</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Restored prompt</h3>
+      <ul>
+        <li><label><input type="checkbox" id="p1"><span>A one-line prompt comes back at one line</span></label></li>
+        <li><label><input type="checkbox" id="p2"><span>A long prompt comes back at 3 lines, scrolled to the bottom</span></label></li>
+        <li><label><input type="checkbox" id="p3"><span>The cursor is at the end, and you can type right away without clicking</span></label></li>
+      </ul>
+    </div>
+
+    <div class="group">
+      <h3>Across layouts</h3>
+      <ul>
+        <li><label><input type="checkbox" id="l1"><span>Hebrew / RTL: input growth, cursor at the end and the notice all look right</span></label></li>
+        <li><label><input type="checkbox" id="l2"><span>Floating mode</span></label></li>
+        <li><label><input type="checkbox" id="l3"><span>Panel mode</span></label></li>
+        <li><label><input type="checkbox" id="l4"><span>Mobile width</span></label></li>
+      </ul>
+    </div>
+
+    <div class="note">Known issue, no need to report: a lone ✦ flashes for a moment after clicking Stop. This also happens on Yonadav's branch.</div>
+  </section>
+</div>
+
+<script>
+  const KEY = 'stop-qa-checks';
+  const boxes = [...document.querySelectorAll('input[type="checkbox"]')];
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
+
+  function render() {
+    const done = boxes.filter(b => b.checked).length;
+    document.getElementById('count').textContent = `${done} / ${boxes.length}`;
+    document.getElementById('bar').style.width = `${(done / boxes.length) * 100}%`;
+    boxes.forEach(b => b.closest('li').classList.toggle('checked', b.checked));
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(boxes.map(b => [b.id, b.checked])))); } catch {}
+  }
+
+  boxes.forEach(b => {
+    b.checked = !!saved[b.id];
+    b.addEventListener('change', () => { save(); render(); });
+  });
+
+  const confirmEl = document.getElementById('confirm');
+  document.getElementById('reset').addEventListener('click', () => { confirmEl.hidden = false; });
+  document.getElementById('confirm-no').addEventListener('click', () => { confirmEl.hidden = true; });
+  document.getElementById('confirm-yes').addEventListener('click', () => {
+    boxes.forEach(b => { b.checked = false; });
+    save(); render(); confirmEl.hidden = true;
+  });
+
+  render();
+</script>
