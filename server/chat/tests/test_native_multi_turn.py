@@ -138,7 +138,11 @@ def _run_turn(orchestrator, resume_id):
             messages=[ConversationMessage(role="user", content="And what about Rashi?")],
             core_prompt_id=None,
             on_progress=None,
-            context=MessageContext(sdk_resume_session_id=resume_id),
+            context=MessageContext(
+                sdk_resume_session_id=resume_id,
+                summary_text="SUMMARY",
+                page_url="https://www.sefaria.org/Genesis.1",
+            ),
         )
     )
 
@@ -277,3 +281,48 @@ def test_view_disabled_passes_no_store(mock_get_agent):
 
     assert mock_get_agent.call_args.kwargs["session_store"] is None
     assert ChatSession.objects.get(session_id="sess_disabled").sdk_session_id is None
+
+
+def test_resumed_turn_sends_stable_system_prompt_and_only_the_new_message():
+    sdk_runner = MagicMock(run=AsyncMock(return_value=_sdk_result()))
+    with _valid_links():
+        _run_turn(_orchestrator(sdk_runner, object()), "sdk-old")
+
+    call = sdk_runner.run.call_args.kwargs
+    assert call["options"]["system_prompt"] == "core"
+    assert "SUMMARY" not in call["prompt_text"]
+    assert "Genesis.1" in call["prompt_text"]
+    assert call["prompt_text"].endswith("And what about Rashi?")
+    assert not call["prompt_text"].startswith("User:")
+
+
+def test_fresh_native_turn_includes_summary():
+    sdk_runner = MagicMock(run=AsyncMock(return_value=_sdk_result()))
+    with _valid_links():
+        _run_turn(_orchestrator(sdk_runner, object()), None)
+
+    call = sdk_runner.run.call_args.kwargs
+    assert call["options"]["system_prompt"] == "core"
+    assert "SUMMARY" in call["prompt_text"]
+
+
+def test_resume_fallback_prompt_includes_summary():
+    sdk_runner = MagicMock(
+        run=AsyncMock(side_effect=[RuntimeError("no transcript"), _sdk_result()])
+    )
+    with _valid_links():
+        _run_turn(_orchestrator(sdk_runner, object()), "sdk-old")
+
+    first, fallback = (call.kwargs["prompt_text"] for call in sdk_runner.run.call_args_list)
+    assert "SUMMARY" not in first
+    assert "SUMMARY" in fallback
+
+
+def test_legacy_turn_keeps_full_system_prompt():
+    sdk_runner = MagicMock(run=AsyncMock(return_value=_sdk_result()))
+    with _valid_links():
+        _run_turn(_orchestrator(sdk_runner, None), None)
+
+    system_prompt = sdk_runner.run.call_args.kwargs["options"]["system_prompt"]
+    assert "SUMMARY" in system_prompt
+    assert "And what about Rashi?" in system_prompt

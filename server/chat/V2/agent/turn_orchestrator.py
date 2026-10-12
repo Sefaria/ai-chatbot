@@ -19,7 +19,7 @@ from .contracts import AgentProgressUpdate, AgentResponse, ConversationMessage, 
 from .guardrail_gate import DefaultGuardrailGate
 from .metrics_mapper import build_agent_response, build_braintrust_metrics, map_usage
 from .progress import ProgressEmitter
-from .prompt_pipeline import build_turn_prompt
+from .prompt_pipeline import build_native_turn_prompt, build_turn_prompt
 from .response_link_validator import ResponseLinkValidator, format_link_validation_issues
 from .router import Router
 from .sdk_options_builder import SDKOptionsBuilder
@@ -131,11 +131,28 @@ class TurnOrchestrator:
             build_vars={"response_format": response_format.text},
         )
 
-        prompt_result = build_turn_prompt(
-            messages=messages,
-            core_prompt=core_prompt.text,
-            context=context,
-        )
+        # Native multi-turn: resume the stored SDK session so the model sees the
+        # full prior conversation, tool results included.
+        resume = context.sdk_resume_session_id if self.session_store else None
+
+        def native_prompt(include_summary: bool):
+            return build_native_turn_prompt(
+                messages=messages,
+                core_prompt=core_prompt.text,
+                context=context,
+                include_summary=include_summary,
+            )
+
+        if self.session_store:
+            # A resumed session already holds the history; the summary is only
+            # needed when starting fresh.
+            prompt_result = native_prompt(include_summary=resume is None)
+        else:
+            prompt_result = build_turn_prompt(
+                messages=messages,
+                core_prompt=core_prompt.text,
+                context=context,
+            )
 
         tool_calls_list: list[dict[str, Any]] = []
         tools = get_tools_for_labs(context.labs)
@@ -167,9 +184,6 @@ class TurnOrchestrator:
                 resume=resume,
             )
 
-        # Native multi-turn: resume the stored SDK session so the model sees the
-        # full prior conversation, tool results included.
-        resume = context.sdk_resume_session_id if self.session_store else None
         options, system_prompt_in_options = build_options(resume)
         self.trace_logger.log_prompt_metadata(
             bt_span=bt_span,
@@ -219,6 +233,7 @@ class TurnOrchestrator:
                 )
                 bt_span.log(metadata={"sdk_resume_failed": True})
                 options, _ = build_options(None)
+                prompt_text = native_prompt(include_summary=True).conversation_text
                 sdk_result = await self.sdk_runner.run(
                     options=options,
                     prompt_text=prompt_text,

@@ -1,6 +1,6 @@
 # Native Multi-Turn Conversations via SDK Session Resume
 
-**Status:** In progress (steps 1, 2, 4 done; behind `NATIVE_MULTI_TURN_ENABLED`, default off)
+**Status:** In progress (steps 1–4 done; behind `NATIVE_MULTI_TURN_ENABLED`, default off)
 **Date:** 2026-10-11
 **Scope:** Replace summary-based multi-turn context with Claude Agent SDK session resume,
 backed by a Postgres transcript store, and let the CLI's built-in auto-compaction manage
@@ -65,11 +65,15 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - Store ORM calls run with `thread_sensitive=False` so concurrent turns don't serialize on one
   thread.
 
-### Step 3 — Send only the new message
-- `build_turn_prompt` stops flattening history; `prompt_text` is the (router-rewritten) user
-  message.
-- Move `page_url` from the system prompt into the user message so the system prompt stays
-  stable and prompt caching hits across turns.
+### Step 3 — Send only the new message ✅
+- Found: the legacy path's SDK system prompt is `full_prompt` (core + summary + page URL +
+  the user message), so it changed every turn and the message was sent twice.
+- Native turns use `build_native_turn_prompt`: system prompt = core prompt only (identical
+  across turns on the same route, so it caches); user message = page context + the raw
+  router-rewritten message (no `User:` prefix).
+- The summary goes in the user message only when starting a fresh session (first native turn
+  of a legacy conversation, or the resume fallback). Resumed turns omit it.
+- The legacy path (flag off, Anthropic endpoint) is unchanged.
 
 ### Step 4 — System prompt snapshot ✅
 - Done with step 2 (only when a store is set). Pass the system prompt as `{"type": "custom", ..., "snapshot": False}` — otherwise a resumed
