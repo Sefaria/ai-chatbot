@@ -1031,7 +1031,7 @@
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
       messageId: generateMessageId(), controller: new AbortController(), text,
-      stopping: false, slow: false, appetizerData: null
+      stopping: false, appetizerData: null
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1251,7 +1251,6 @@
         });
       }
     } finally {
-      clearTimeout(request.spinnerTimer);
       delete activeRequests[sendingSessionId];
       delete stopErrors[sendingSessionId];
       setSessionSending(sendingSessionId, false);
@@ -1276,7 +1275,6 @@
     request.stopping = true;
     stopThinkingMessages();
     delete stopErrors[targetSessionId];
-    request.spinnerTimer = setTimeout(() => { request.slow = true; }, 200);
     try {
       const outcome = await cancelStream(apiBaseUrl, {
         userId, sessionId: targetSessionId, messageId: request.messageId
@@ -1294,8 +1292,6 @@
     } catch {
       if (activeRequests[targetSessionId] !== request) return;
       request.stopping = false;
-      request.slow = false;
-      clearTimeout(request.spinnerTimer);
       stopErrors[targetSessionId] = true;
       if (sessionId === targetSessionId) startThinkingMessages();
     }
@@ -2191,11 +2187,7 @@
           <Tooltip text={$_('assistant.stop.tooltip')}>
             <button type="button" class="stop-btn" onclick={handleStop}
               disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
-              {#if activeRequests[sessionId]?.slow}
-                <span class="stop-spinner" aria-hidden="true"></span>
-              {:else}
-                <img src={stopIcon} alt="" width="18" height="18" />
-              {/if}
+              <img src={stopIcon} alt="" width="18" height="18" />
             </button>
           </Tooltip>
         {:else}
@@ -4068,16 +4060,9 @@
   .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
   .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
   .stop-btn:disabled { cursor: default; }
-  .stop-spinner {
-    width: 16px; height: 16px; border: 2px solid var(--lc-border-strong);
-    border-top-color: var(--lc-icon-primary); border-radius: 50%;
-    animation: lc-stop-spin .7s linear infinite;
-  }
-  @keyframes lc-stop-spin { to { transform: rotate(360deg); } }
   .message.assistant.stopped-message { align-self: stretch; }
   .stop-notice { color: var(--semantic-text-secondary, #575757); font-family: var(--lc-font); font-size: 12px; line-height: 20px; margin: 16px 0 0; }
   .stop-error { color: var(--lc-text-secondary); margin: 4px 16px; font-size: 13px; }
   .lc-chatbot-input textarea:disabled { background: #e6e6e6; }
-  @media (prefers-reduced-motion: reduce) { .stop-spinner { animation-duration: 2.5s; } }
 
 </style>
