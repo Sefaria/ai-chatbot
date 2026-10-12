@@ -4063,6 +4063,5 @@
   .message.assistant.stopped-message { align-self: stretch; }
   .stop-notice { color: var(--semantic-text-secondary, #575757); font-family: var(--lc-font); font-size: 12px; line-height: 20px; margin: 16px 0 0; }
   .stop-error { color: var(--lc-text-secondary); margin: 4px 16px; font-size: 13px; }
-  .lc-chatbot-input textarea:disabled { background: #e6e6e6; }
 
 </style>
