@@ -30,6 +30,10 @@ Related branches: `feature/stop-chat-history-integration`, `poc/penina-stopbutto
 ## Mobile (once merged with `la-anon-mobile-entry`)
 
 - [ ] **Don't focus the input after Stop on phones.** In the full-screen sheet (`isFullscreen`), restore the prompt text but skip `focus()`. Focusing opens the Android keyboard over the stop notice; iOS ignores focus that isn't from a tap, so behavior would differ by platform. Matches the anon-mobile branch, which already skips autofocus when the sheet opens. Desktop keeps focus and cursor-at-end. Can't be built on `design-qa/stop-button` because `isFullscreen` only exists on the mobile branch.
+- [ ] **Stop button matches Send on phones.** Size it with the mobile branch's `--lc-send-size` (44px on phones) and grow the icon 18px → 22px in `.mode-fullscreen`, the way Send's icon goes 20px → 24px. Until then it stays a fixed 40px, because `--lc-send-size` isn't in the codebase yet.
+- [ ] **No Stop tooltip on phones.** Pass an empty tooltip text when `isFullscreen`.
+
+- [x] **Design variables (done on this branch).** Stop styles use existing codebase variables: `--lc-radius-sm`, `--lc-text-secondary`, `--lc-font-size-sm` (notice and error, so they step up to 14px on phones), `--global-dimension-200`. Hover is mouse-only (`@media (hover: hover)`); touch gets a pressed state. Still fixed for lack of a variable: 40px button size, 20px notice line height, 4px error spacing, 2px focus outline.
 
 ## Known issue (not addressed)
 

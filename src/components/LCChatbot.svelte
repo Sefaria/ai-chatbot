@@ -4070,14 +4070,18 @@
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
     background: var(--lc-bg); color: var(--lc-icon-primary);
-    border: 1px solid var(--lc-border-strong); border-radius: 8px;
+    border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
     cursor: pointer; flex-shrink: 0;
   }
-  .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
+  /* Hover only for mouse pointers; touch gets the pressed state alone */
+  @media (hover: hover) {
+    .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
+  }
+  .stop-btn:active:not(:disabled) { background: var(--lc-bg-hover); transform: scale(0.95); }
   .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
   .stop-btn:disabled { cursor: default; }
   .message.assistant.stopped-message { align-self: stretch; }
-  .stop-notice { color: var(--semantic-text-secondary, #575757); font-family: var(--lc-font); font-size: 12px; line-height: 20px; margin: 16px 0 0; }
-  .stop-error { color: var(--lc-text-secondary); margin: 4px 16px; font-size: 13px; }
+  .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
+  .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
 
 </style>
