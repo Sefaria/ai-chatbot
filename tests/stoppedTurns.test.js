@@ -10,10 +10,10 @@ test('reopening a stopped conversation restores its notice and topics', () => {
   assert.deepEqual(result[1].appetizerData, topics);
   assert.equal(result[1].sessionId, 'chat-a');
 });
-test('a new prompt removes the notice but retains the original prompt and topics', () => {
+test('the notice stays on the canvas after a new prompt', () => {
   const result = withStoppedTurns([...withStoppedTurns([stopped]), {messageId:'two', role:'user', content:'Next'}]);
   assert.equal(result[0].content, 'Question');
-  assert.equal(result[1].showNotice, false);
+  assert.equal(result[1].showNotice, true);
   assert.deepEqual(result[1].appetizerData, topics);
   assert.deepEqual(withStoppedTurns(result), result, 'cached notices are not resurrected');
 });
