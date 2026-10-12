@@ -92,7 +92,7 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 ### Step 6 — Cleanup and rollout
 - ✅ Link-repair loop resumes from the turn's new session id and sends only the repair
   instruction (done in step 2).
-- Sessions without `sdk_session_id` fall back to the summary path for their first turn.
+- ✅ Sessions without `sdk_session_id` get the summary in their first native turn (step 3).
 - Keep `SummaryService` behind a setting for one release, then remove `summarization/`,
   summary fragments and summary columns.
 - ✅ Load tests use no store.
@@ -105,5 +105,11 @@ say about *that*?") lose context, and every turn pays for an extra summarization
   `sdk_resumed: true` in Braintrust from turn 2, a stable `ChatSession.sdk_session_id`, the
   model answering follow-ups from earlier turns, and the router's per-turn core prompt taking
   effect (snapshot off). Check auto-compaction on a long conversation.
-- **Retention.** Transcripts contain user text; align deletion with `ChatSession.is_deleted`
-  and any retention policy.
+- **Retention.** Transcripts contain user text (messages and tool results). Deleting a
+  conversation is a soft delete (`chat/views.py`, `conversation_detail`) that keeps
+  `ChatMessage` rows, and transcripts follow the same policy. Any future hard-delete or TTL
+  job must also delete `SdkTranscriptEntry` rows for the session
+  (`PostgresSessionStore.delete` cascades).
+- **Remaining work (step 6)** is gated on the staging check above: drop the summary from
+  native turns entirely, then remove `SummaryService` and the summary columns once the flag
+  is on everywhere.
