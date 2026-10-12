@@ -29,13 +29,16 @@ class PromptSlugsSerializer(serializers.Serializer):
 class ChatRequestSerializer(serializers.Serializer):
     """Incoming chat message from client."""
 
-    userId = serializers.CharField(max_length=512)
+    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    anonId = serializers.CharField(max_length=100, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
     timestamp = serializers.DateTimeField()
     text = serializers.CharField(max_length=10000)
     context = MessageContextSerializer(required=False)
     promptSlugs = PromptSlugsSerializer(required=False)
+    # The signed-in user's personal memory ("Personalize Responses"), kept by the widget
+    memory = serializers.CharField(max_length=1000, required=False, allow_blank=True)
     isLoadTest = serializers.BooleanField(required=False, default=False)
 
 
@@ -46,7 +49,7 @@ class FeedbackRequestSerializer(serializers.Serializer):
 
     traceId = serializers.CharField(max_length=200)
     score = serializers.ChoiceField(choices=SCORE_CHOICES)
-    userId = serializers.CharField(max_length=512)
+    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
@@ -58,7 +61,8 @@ class FeedbackRequestSerializer(serializers.Serializer):
 class RecoveryRequestSerializer(serializers.Serializer):
     """Lookup request for a streamed response that may have been persisted already."""
 
-    userId = serializers.CharField(max_length=512)
+    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    anonId = serializers.CharField(max_length=100, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
@@ -66,7 +70,8 @@ class RecoveryRequestSerializer(serializers.Serializer):
 class ClientStreamEventSerializer(serializers.Serializer):
     """Browser-side telemetry for stream failures and recoveries."""
 
-    userId = serializers.CharField(max_length=512)
+    userId = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    anonId = serializers.CharField(max_length=100, required=False, allow_blank=True)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
     timestamp = serializers.DateTimeField()

@@ -35,6 +35,7 @@ class MessageContext:
     """Per-request context passed through the agent layer for prompting and tracing."""
 
     summary_text: str | None = None
+    user_memory_text: str | None = None
     page_url: str | None = None
     session_id: str | None = None
     origin: str | None = None

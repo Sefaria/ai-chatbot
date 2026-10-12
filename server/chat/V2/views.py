@@ -91,6 +91,20 @@ def _compute_turn_count(session_id: str) -> int:
     ).count()
 
 
+def _anon_responses_remaining(actor) -> int:
+    """Free responses a logged-out visitor has left, across all their sessions."""
+    used = ChatMessage.objects.filter(
+        user_id=actor.user_id,
+        role=ChatMessage.Role.USER,
+        response_message__status=ChatMessage.Status.SUCCESS,
+    ).count()
+    return max(0, settings.CHATBOT_ANON_FREE_RESPONSES - used)
+
+
+def _login_required_response() -> Response:
+    return Response({"error": "login_required"}, status=status.HTTP_403_FORBIDDEN)
+
+
 def _mark_turn_started(user_message_id: int) -> None:
     now = timezone.now()
     ChatMessage.objects.filter(id=user_message_id).update(
@@ -226,9 +240,9 @@ def _is_client_event_rate_limited(user_id: str) -> bool:
 
 
 def _authenticate_actor_or_response(request, data):
-    """Authenticate a request payload or return an error Response."""
+    """Authenticate a request payload (signed-in or anonymous) or return an error Response."""
     try:
-        return authenticate_request(request, data)
+        return authenticate_request(request, data, allow_anonymous=True)
     except UserTokenExpired:
         logger.warning("expired userId token")
         return Response({"error": "userId_expired"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -282,6 +296,8 @@ def chat_stream_v2(request):
     actor = _authenticate_actor_or_response(request, data)
     if isinstance(actor, Response):
         return actor
+    if actor.is_anonymous and _anon_responses_remaining(actor) <= 0:
+        return _login_required_response()
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
@@ -408,6 +424,7 @@ def chat_stream_v2(request):
 
     msg_context = MessageContext(
         summary_text=summary_text,
+        user_memory_text=None if actor.is_anonymous else (data.get("memory") or None),
         page_url=page_url or None,
         session_id=data["sessionId"],
         # Note: Anthropic endpoint reads origin from X-Origin header (anthropic_views.py).
@@ -736,6 +753,8 @@ def chat_stream_v2(request):
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
             )
+            if actor.is_anonymous:
+                final_data["anonResponsesRemaining"] = _anon_responses_remaining(actor)
 
             if (
                 context.get("forceStreamBreakBeforeFinal", False)
@@ -887,6 +906,8 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
     )
+    if actor.is_anonymous:
+        payload["anonResponsesRemaining"] = _anon_responses_remaining(actor)
     recovery_status = (
         "failed" if response_message.status == ChatMessage.Status.FAILED else "complete"
     )

@@ -91,6 +91,7 @@ async function reportClientStreamEvent(
   apiBaseUrl,
   {
     userId,
+    anonId,
     sessionId,
     messageId,
     event,
@@ -107,6 +108,7 @@ async function reportClientStreamEvent(
       },
       body: JSON.stringify({
         userId,
+        anonId,
         sessionId,
         messageId,
         timestamp,
@@ -120,7 +122,7 @@ async function reportClientStreamEvent(
   }
 }
 
-async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
+async function recoverStreamMessage(apiBaseUrl, { userId, anonId, sessionId, messageId, context }) {
   const fallbackDeadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
   let heartbeatDeadline = null;
   let timeoutReason = 'recovery_timeout';
@@ -134,6 +136,7 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
         },
         body: JSON.stringify({
           userId,
+          anonId,
           sessionId,
           messageId
         })
@@ -171,6 +174,8 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
 
   await reportClientStreamEvent(apiBaseUrl, {
     userId,
+    anonId,
+    anonId,
     sessionId,
     messageId,
     event: 'stream_recovery_timeout',
@@ -259,7 +264,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {string} [origin] - Origin identifier for Braintrust trace tagging
  * @param {boolean} [isStaff] - Whether the user is a staff/moderator, for trace tagging
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
- * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
+ * @param {{messageId?: string, timestamp?: string, anonId?: string, memory?: string}} [requestMetadata] - Stable request identifiers; anonId identifies a logged-out visitor (sent instead of userId); memory is the signed-in user's personal memory text
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
  * @returns {Promise<ChatResponse>}
  */
@@ -278,6 +283,8 @@ export async function sendMessageStream(
 ) {
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
+  const anonId = userId ? undefined : requestMetadata?.anonId;
+  const memory = userId ? requestMetadata?.memory || undefined : undefined;
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (shouldForceStreamBreak(text)) {
@@ -287,11 +294,13 @@ export async function sendMessageStream(
   /** @type {SendMessagePayload} */
   const payload = {
     userId,
+    anonId,
     sessionId,
     messageId,
     timestamp,
     text,
-    context
+    context,
+    memory
   };
 
   if (promptSlugs) {
@@ -310,6 +319,7 @@ export async function sendMessageStream(
   } catch (error) {
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
+      anonId,
       sessionId,
       messageId,
       event: 'stream_fetch_failed',
@@ -320,6 +330,7 @@ export async function sendMessageStream(
 
     const recovered = await recoverStreamMessage(apiBaseUrl, {
       userId,
+      anonId,
       sessionId,
       messageId,
       context
@@ -392,6 +403,7 @@ export async function sendMessageStream(
                   toolCalls: data.toolCalls,
                   stats: data.stats,
                   session: data.session,
+                  anonResponsesRemaining: data.anonResponsesRemaining,
                   recovered: data.recovered || false
                 };
                 if (callbacks.onMessage) {
@@ -401,6 +413,7 @@ export async function sendMessageStream(
                 streamError = data.error || 'Stream error';
                 await reportClientStreamEvent(apiBaseUrl, {
                   userId,
+                  anonId,
                   sessionId,
                   messageId,
                   event: 'stream_error_event',
@@ -432,6 +445,7 @@ export async function sendMessageStream(
     streamReadError = error;
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
+      anonId,
       sessionId,
       messageId,
       event: 'stream_read_failed',
@@ -444,6 +458,7 @@ export async function sendMessageStream(
   if (!finalMessage) {
     await reportClientStreamEvent(apiBaseUrl, {
       userId,
+      anonId,
       sessionId,
       messageId,
       event: 'stream_missing_final_message',
@@ -454,6 +469,7 @@ export async function sendMessageStream(
 
     const recovered = await recoverStreamMessage(apiBaseUrl, {
       userId,
+      anonId,
       sessionId,
       messageId,
       context
@@ -461,6 +477,7 @@ export async function sendMessageStream(
     if (recovered?.status === 'complete') {
       await reportClientStreamEvent(apiBaseUrl, {
         userId,
+        anonId,
         sessionId,
         messageId,
         event: 'stream_recovery_succeeded',

@@ -69,3 +69,16 @@ export function updateSessionActivity(sessionId) {
     lastActivity: new Date().toISOString()
   });
 }
+
+/**
+ * Get (or create) the anonymous id that identifies a logged-out visitor to the server.
+ * @returns {string}
+ */
+export function getOrCreateAnonId() {
+  let anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
+  if (!anonId) {
+    anonId = crypto.randomUUID();
+    setStorage(STORAGE_KEYS.ANON_ID, anonId);
+  }
+  return anonId;
+}

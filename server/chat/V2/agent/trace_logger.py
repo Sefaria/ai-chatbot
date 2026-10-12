@@ -25,6 +25,8 @@ class BraintrustTraceLogger:
             span_input["page_url"] = context.page_url
         if context.summary_text:
             span_input["summary"] = context.summary_text
+        if context.user_memory_text:
+            span_input["user_memory"] = context.user_memory_text
         span_metadata: dict[str, Any] = {"model": model}
         if context.session_id:
             span_metadata["session_id"] = context.session_id
