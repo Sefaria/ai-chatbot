@@ -295,6 +295,23 @@
     }
   });
 
+  function sizePrompt(element) {
+    if (!element || !element.clientWidth) return;
+    const styles = getComputedStyle(element);
+    const borders = parseFloat(styles.borderTopWidth) + parseFloat(styles.borderBottomWidth);
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight + borders}px`;
+  }
+
+  // Wait for bound text to reach the DOM before measuring typing or restored drafts.
+  $effect(() => {
+    inputText;
+    const element = inputRef;
+    let cancelled = false;
+    tick().then(() => { if (!cancelled) sizePrompt(element); });
+    return () => { cancelled = true; };
+  });
+
   // Save draft on input change
   $effect(() => {
     if (sessionId) {
@@ -1031,7 +1048,7 @@
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
       messageId: generateMessageId(), controller: new AbortController(), text,
-      stopping: false, slow: false, appetizerData: null
+      stopping: false, appetizerData: null
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1251,7 +1268,6 @@
         });
       }
     } finally {
-      clearTimeout(request.spinnerTimer);
       delete activeRequests[sendingSessionId];
       delete stopErrors[sendingSessionId];
       setSessionSending(sendingSessionId, false);
@@ -1261,8 +1277,12 @@
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
           if (sessionId === sendingSessionId) {
+            sizePrompt(inputRef);
             inputRef?.focus({ preventScroll: true });
             inputRef?.setSelectionRange(text.length, text.length);
+            if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
+            // Reveal the notice only after the restored composer has its final size.
+            await scrollToBottom({ instant: true });
           }
         }
       }
@@ -1276,7 +1296,6 @@
     request.stopping = true;
     stopThinkingMessages();
     delete stopErrors[targetSessionId];
-    request.spinnerTimer = setTimeout(() => { request.slow = true; }, 200);
     try {
       const outcome = await cancelStream(apiBaseUrl, {
         userId, sessionId: targetSessionId, messageId: request.messageId
@@ -1294,8 +1313,6 @@
     } catch {
       if (activeRequests[targetSessionId] !== request) return;
       request.stopping = false;
-      request.slow = false;
-      clearTimeout(request.spinnerTimer);
       stopErrors[targetSessionId] = true;
       if (sessionId === targetSessionId) startThinkingMessages();
     }
@@ -2191,11 +2208,7 @@
           <Tooltip text={$_('assistant.stop.tooltip')}>
             <button type="button" class="stop-btn" onclick={handleStop}
               disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
-              {#if activeRequests[sessionId]?.slow}
-                <span class="stop-spinner" aria-hidden="true"></span>
-              {:else}
-                <img src={stopIcon} alt="" width="18" height="18" />
-              {/if}
+              <img src={stopIcon} alt="" width="18" height="18" />
             </button>
           </Tooltip>
         {:else}
@@ -3488,7 +3501,9 @@
   .lc-chatbot-input textarea {
     flex: 1;
     min-height: 40px;
-    max-height: 120px;
+    /* Three text lines, plus the existing vertical padding and borders. */
+    max-height: calc(4.2em + 22px);
+    overflow-y: auto;
     padding: 10px 14px;
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
@@ -4062,22 +4077,17 @@
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; padding: 0;
     background: var(--lc-bg); color: var(--lc-icon-primary);
-    border: 1px solid var(--lc-border-strong); border-radius: 8px;
+    border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
     cursor: pointer; flex-shrink: 0;
   }
-  .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
+  @media (hover: hover) {
+    .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
+  }
+  .stop-btn:active:not(:disabled) { background: var(--lc-bg-hover); transform: scale(0.95); }
   .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
   .stop-btn:disabled { cursor: default; }
-  .stop-spinner {
-    width: 16px; height: 16px; border: 2px solid var(--lc-border-strong);
-    border-top-color: var(--lc-icon-primary); border-radius: 50%;
-    animation: lc-stop-spin .7s linear infinite;
-  }
-  @keyframes lc-stop-spin { to { transform: rotate(360deg); } }
   .message.assistant.stopped-message { align-self: stretch; }
-  .stop-notice { color: var(--semantic-text-secondary, #575757); font-family: var(--lc-font); font-size: 12px; line-height: 20px; margin: 16px 0 0; }
-  .stop-error { color: var(--lc-text-secondary); margin: 4px 16px; font-size: 13px; }
-  .lc-chatbot-input textarea:disabled { background: #e6e6e6; }
-  @media (prefers-reduced-motion: reduce) { .stop-spinner { animation-duration: 2.5s; } }
+  .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
+  .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
 
 </style>
