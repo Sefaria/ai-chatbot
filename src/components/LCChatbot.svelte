@@ -50,9 +50,7 @@
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
     'interface-lang': interfaceLang = 'en',
-    'login-url': loginUrl = '/login',
-    // Set by the host on reading pages (Sefaria: a text, a topic, a sheet)
-    'hide-launcher-on-scroll': hideLauncherOnScrollAttr = false
+    'login-url': loginUrl = '/login'
   } = $props();
 
   // No user-id means a logged-out visitor: they chat under an anonymous id until the
@@ -64,7 +62,6 @@
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
-  let hideLauncherOnScroll = $derived(!!hideLauncherOnScrollAttr && hideLauncherOnScrollAttr !== 'false');
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
@@ -250,7 +247,6 @@
   let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
-  let triggerHidden = $state(false);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
   // The pill's label for each host source that relabels it (chatbot:launcher)
@@ -684,36 +680,6 @@
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
       viewportBox = null;
-    };
-  });
-
-  // On phones, on pages the host marks as reading pages (hide-launcher-on-scroll), the closed
-  // launcher steps aside while the page scrolls and returns once scrolling stops, so it doesn't
-  // sit on the text being read. Capture catches every scroller.
-  // Only the reader's own scrolling counts (a swipe, the wheel, the keyboard, including the
-  // momentum after a swipe): the host scrolling by itself, e.g. opening a text or restoring
-  // the position on reload, would otherwise make the pill blink out and back.
-  const LAUNCHER_SCROLL_IDLE_MS = 400;
-  const USER_SCROLL_WINDOW_MS = 1500;
-  $effect(() => {
-    triggerHidden = false;
-    if (!isFullscreen || isOpen || !hideLauncherOnScroll) return;
-    let idleTimer;
-    let lastUserInput = -Infinity;
-    function onUserInput() { lastUserInput = performance.now(); }
-    function onScroll() {
-      if (performance.now() - lastUserInput > USER_SCROLL_WINDOW_MS) return;
-      triggerHidden = true;
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => { triggerHidden = false; }, LAUNCHER_SCROLL_IDLE_MS);
-    }
-    const inputs = ['touchstart', 'touchmove', 'wheel', 'keydown', 'pointerdown'];
-    inputs.forEach(type => document.addEventListener(type, onUserInput, { capture: true, passive: true }));
-    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    return () => {
-      clearTimeout(idleTimer);
-      inputs.forEach(type => document.removeEventListener(type, onUserInput, { capture: true }));
-      document.removeEventListener('scroll', onScroll, { capture: true });
     };
   });
 
@@ -1971,7 +1937,6 @@
   class:mode-docked={layout === 'docked'}
   class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
-  class:trigger-hidden={triggerHidden && !responseReady}
   class:interface-hebrew={interfaceLang === 'he'}
   class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
@@ -2720,13 +2685,6 @@
     --lc-font-size-lg: 18px;
     bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom) + var(--lc-launcher-bottom-offset, 0px));
     inset-inline-end: var(--global-dimension-200);
-    transition: transform 0.2s ease, opacity 0.2s ease, bottom 0.2s ease;
-  }
-
-  .lc-chatbot-container.mode-fullscreen.trigger-hidden {
-    transform: translateY(calc(100% + 24px));
-    opacity: 0;
-    pointer-events: none;
   }
 
   /* The open container is a full-screen backdrop in the panel's colour. Only the panel
@@ -3142,17 +3100,6 @@
     /* Hover and pressed share the darker step, like Sefaria's header Library Assistant pill */
     --lc-entry-bg-hover: var(--purple-800);
     --lc-entry-bg-pressed: var(--purple-800);
-  }
-
-  /* Without motion, the launcher fades out and back in place */
-  @media (prefers-reduced-motion: reduce) {
-    .lc-chatbot-container.mode-fullscreen {
-      transition: opacity 0.2s ease;
-    }
-
-    .lc-chatbot-container.mode-fullscreen.trigger-hidden {
-      transform: none;
-    }
   }
 
   /* Launcher */

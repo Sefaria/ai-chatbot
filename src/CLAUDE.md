@@ -61,7 +61,6 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 | `login-url` | string | No | Login page for the anonymous login prompt (default `/login`); `?next=<current page>` is appended at click time |
-| `hide-launcher-on-scroll` | boolean | No | On phones, hide the closed Ask pill while the page scrolls. Sefaria sets it on reading pages only: a text, a single topic, a sheet (reading or editing) |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
@@ -79,7 +78,7 @@ The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It i
 
 Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-screen sheet, not a floating/docked panel:
 
-- Never opens on load, whatever `default-open` or saved state says. On pages with `hide-launcher-on-scroll`, the closed launcher steps aside while the page scrolls and returns once scrolling stops.
+- Never opens on load, whatever `default-open` or saved state says. The closed launcher stays put while the page scrolls (hiding it on scroll was tried and dropped: the flicker distracted more than the button covered).
 - Owns one history entry (`lib/sheetHistory.js`), so Back closes it. Its popstate listener is registered at bundle load so it runs before the host's; Sefaria loads the bundle in `<head>`. In-page links close the sheet and navigate after the pop.
 - Locks page scroll. The open container is a full-screen backdrop in the panel's colour, and only the panel follows `visualViewport`, so the input stays above the keyboard and the page never flashes through while the keyboard closes. Every text field is 16px (smaller makes iOS zoom).
 - One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px, with 24px icons (22px in menus and feedback); inline links get block padding for a taller tap area.
