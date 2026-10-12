@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("chat", "0012_appetizer_data_and_history_search_indexes"),
+        ("chat", "0013_alter_chatmessage_processing_state"),
     ]
 
     operations = [

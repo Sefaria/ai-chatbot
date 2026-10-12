@@ -31,7 +31,7 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 ## 3. Steps
 
 ### Step 1 — Postgres `SessionStore` ✅
-- `SdkTranscriptEntry` model (`chat/models.py`, migration `0013`): one row per transcript
+- `SdkTranscriptEntry` model (`chat/models.py`, migration `0014`): one row per transcript
   line, keyed by `(project_key, session_id, subpath)`, `uuid` as idempotency key via a partial
   unique constraint.
 - `PostgresSessionStore` (`chat/V2/agent/session_store.py`): implements `append`, `load`,
@@ -45,7 +45,7 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - Not wired into the agent yet — no behavior change.
 
 ### Step 2 — Track the conversation head ✅
-- `ChatSession.sdk_session_id` (nullable, migration `0014`).
+- `ChatSession.sdk_session_id` (nullable, migration `0015`).
 - `SDKRunResult.session_id` read from `ResultMessage.session_id`, surfaced as
   `AgentResponse.sdk_session_id` and saved in `update_session_success` (success path only, so
   errored and guardrail-blocked turns never move the head).

@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("chat", "0013_sdk_transcript_entry"),
+        ("chat", "0014_sdk_transcript_entry"),
     ]
 
     operations = [
