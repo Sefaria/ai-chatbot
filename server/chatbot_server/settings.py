@@ -176,6 +176,8 @@ BRAINTRUST_LOGGING_ENABLED = os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true"
 # Native multi-turn: resume the Claude Agent SDK session each turn (transcripts in
 # Postgres via PostgresSessionStore) instead of relying on the rolling summary alone.
 NATIVE_MULTI_TURN_ENABLED = os.environ.get("NATIVE_MULTI_TURN_ENABLED", "false").lower() == "true"
+# Context size (tokens, e.g. "200k") at which resumed sessions auto-compact; empty = CLI default.
+NATIVE_MULTI_TURN_COMPACT_WINDOW = os.environ.get("NATIVE_MULTI_TURN_COMPACT_WINDOW", "")
 
 
 def _read_env_float(name: str, default: float) -> float:

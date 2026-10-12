@@ -80,6 +80,7 @@ pytest                                    # Run tests
 | `APPETIZER_MODEL` | No | Model for the topic appetizer (default: same as `AGENT_MODEL`) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
 | `NATIVE_MULTI_TURN_ENABLED` | No | Resume the SDK session each turn instead of summary-only context (default: `false`) |
+| `NATIVE_MULTI_TURN_COMPACT_WINDOW` | No | Context size (e.g. `200k`) at which resumed sessions auto-compact (default: CLI's per-model value) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
 

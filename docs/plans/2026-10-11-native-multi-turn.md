@@ -1,6 +1,6 @@
 # Native Multi-Turn Conversations via SDK Session Resume
 
-**Status:** In progress (steps 1–4 done; behind `NATIVE_MULTI_TURN_ENABLED`, default off)
+**Status:** In progress (steps 1–5 done; behind `NATIVE_MULTI_TURN_ENABLED`, default off)
 **Date:** 2026-10-11
 **Scope:** Replace summary-based multi-turn context with Claude Agent SDK session resume,
 backed by a Postgres transcript store, and let the CLI's built-in auto-compaction manage
@@ -79,11 +79,15 @@ say about *that*?") lose context, and every turn pays for an extra summarization
 - Done with step 2 (only when a store is set). Pass the system prompt as `{"type": "custom", ..., "snapshot": False}` — otherwise a resumed
   session keeps its first-turn prompt and ignores the router's per-turn core prompt.
 
-### Step 5 — Context management
-- Rely on CLI auto-compaction; tune the threshold via subprocess env.
-- If carried-over Sefaria tool results make turns too expensive, strip old `tool_result`
-  content in `PostgresSessionStore.load()`.
-- Optionally log compactions to Braintrust via the `PreCompact` hook.
+### Step 5 — Context management ✅
+- Rely on CLI auto-compaction. `NATIVE_MULTI_TURN_COMPACT_WINDOW` (e.g. `200k`; the bundled
+  CLI accepts `auto` or 100k–1M) is passed as `CLAUDE_CODE_AUTO_COMPACT_WINDOW` to stored
+  sessions only. Unset = the CLI's per-model default, which it recommends.
+- Compactions are counted from `compact_boundary` system messages in the stream (no hook
+  needed) and logged as `sdk_compactions` on the Braintrust span.
+- **Decision: no tool-result stripping for now.** The transcript format is CLI-internal, and
+  stripping older results changes the prefix each turn, so it defeats prompt caching. Prior
+  turns are cheap cache reads. Revisit only if staging costs say otherwise.
 
 ### Step 6 — Cleanup and rollout
 - ✅ Link-repair loop resumes from the turn's new session id and sends only the repair

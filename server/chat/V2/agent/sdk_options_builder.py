@@ -24,6 +24,7 @@ class SDKOptionsBuilder:
         braintrust_logging_enabled: bool = True,
         thinking_disabled: bool = True,
         session_cwd: str | None = None,
+        auto_compact_window: str = "",
         logger: logging.Logger | None = None,
     ):
         self.options_cls = options_cls
@@ -36,6 +37,7 @@ class SDKOptionsBuilder:
         self.mcp_server_name = mcp_server_name
         self.thinking_disabled = thinking_disabled
         self.session_cwd = session_cwd
+        self.auto_compact_window = auto_compact_window
         self.logger = logger or logging.getLogger("chat.agent")
 
     def _supports_option(self, option_name: str) -> bool:
@@ -89,6 +91,9 @@ class SDKOptionsBuilder:
             if self.braintrust_logging_enabled:
                 env["BRAINTRUST_API_KEY"] = self.braintrust_api_key
                 env["BRAINTRUST_PROJECT"] = self.braintrust_project
+            if session_store is not None and self.auto_compact_window:
+                # Resumed sessions grow every turn; the CLI auto-compacts at this window.
+                env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = self.auto_compact_window
             options_kwargs["env"] = env
         if debug_enabled:
             if self._supports_option("extra_args"):

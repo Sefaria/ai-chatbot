@@ -23,7 +23,7 @@ from chat.V2.agent.turn_orchestrator import TurnOrchestrator
 # ---------------------------------------------------------------------------
 
 
-def _build(**kwargs):
+def _build(auto_compact_window="", **kwargs):
     builder = SDKOptionsBuilder(
         options_cls=MagicMock(spec=[]),
         model="claude-test",
@@ -33,6 +33,7 @@ def _build(**kwargs):
         braintrust_project="proj",
         mcp_server_name="sefaria",
         session_cwd="/server",
+        auto_compact_window=auto_compact_window,
     )
     with patch.object(builder, "_supports_option", return_value=True):
         builder.build(system_prompt="SYS", mcp_server=MagicMock(), allowed_tools=[], **kwargs)
@@ -56,6 +57,17 @@ def test_builder_with_store_resumes_and_disables_prompt_snapshot():
     assert options["system_prompt"] == {"type": "custom", "prompt": "SYS", "snapshot": False}
 
 
+def test_builder_sets_compact_window_only_for_stored_sessions():
+    assert (
+        _build(auto_compact_window="200k", session_store=object())["env"][
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+        ]
+        == "200k"
+    )
+    assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in _build(auto_compact_window="200k")["env"]
+    assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in _build(session_store=object())["env"]
+
+
 # ---------------------------------------------------------------------------
 # ClaudeSDKRunner
 # ---------------------------------------------------------------------------
@@ -66,6 +78,12 @@ class FakeResultMessage:
     usage: dict
     total_cost_usd: float
     session_id: str
+
+
+@dataclass
+class FakeSystemMessage:
+    subtype: str
+    data: dict
 
 
 class FakeClient:
@@ -82,6 +100,7 @@ class FakeClient:
         pass
 
     async def receive_response(self):
+        yield FakeSystemMessage(subtype="compact_boundary", data={})
         yield {"content": [{"type": "text", "text": "answer"}]}
         yield FakeResultMessage(usage={}, total_cost_usd=0.01, session_id="sdk-new")
 
@@ -91,6 +110,7 @@ def test_runner_returns_result_session_id():
     result = asyncio.run(runner.run(options=None, prompt_text="hi"))
     assert result.final_text == "answer"
     assert result.session_id == "sdk-new"
+    assert result.compaction_count == 1
 
 
 # ---------------------------------------------------------------------------

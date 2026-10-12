@@ -20,6 +20,7 @@ class SDKRunResult:
     total_cost_usd: float | None
     first_final_text_delta_elapsed_s: float | None = None
     session_id: str | None = None
+    compaction_count: int = 0
 
 
 class ClaudeSDKRunner:
@@ -52,6 +53,7 @@ class ClaudeSDKRunner:
         usage: dict[str, Any] | None = None
         total_cost_usd: float | None = None
         session_id: str | None = None
+        compaction_count = 0
         pending_first_text_delta_elapsed_s: float | None = None
         final_text_delta_candidate_elapsed_s: float | None = None
         first_final_text_delta_elapsed_s: float | None = None
@@ -71,6 +73,8 @@ class ClaudeSDKRunner:
             async for message in client.receive_response():
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
+                if getattr(message, "subtype", None) == "compact_boundary":
+                    compaction_count += 1
                 if isinstance(message, self.result_message_cls):
                     if final_text_delta_candidate_elapsed_s is not None:
                         notify_first_final_text_delta()
@@ -114,6 +118,7 @@ class ClaudeSDKRunner:
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
             session_id=session_id,
+            compaction_count=compaction_count,
         )
 
     @staticmethod

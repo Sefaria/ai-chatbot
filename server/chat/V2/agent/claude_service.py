@@ -108,6 +108,7 @@ class ClaudeAgentService:
             braintrust_logging_enabled=self.braintrust_logging_enabled,
             mcp_server_name=self._mcp_server_name,
             session_cwd=str(django_settings.BASE_DIR),
+            auto_compact_window=django_settings.NATIVE_MULTI_TURN_COMPACT_WINDOW,
             logger=logger,
         )
         sdk_runner = ClaudeSDKRunner(

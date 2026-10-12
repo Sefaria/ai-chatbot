@@ -244,6 +244,8 @@ class TurnOrchestrator:
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
         sdk_session_id = sdk_result.session_id if self.session_store else None
+        if sdk_result.compaction_count:
+            bt_span.log(metadata={"sdk_compactions": sdk_result.compaction_count})
 
         emit_synthesis_status_once()
 
