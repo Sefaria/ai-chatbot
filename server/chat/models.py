@@ -38,6 +38,9 @@ class ChatSession(models.Model):
     )
     summary_updated_at = models.DateTimeField(null=True, blank=True)
 
+    # Claude Agent SDK session resumed on the next turn (see PostgresSessionStore)
+    sdk_session_id = models.CharField(max_length=64, null=True, blank=True)
+
     # Aggregate token usage for the session
     total_input_tokens = models.IntegerField(default=0)
     total_output_tokens = models.IntegerField(default=0)
@@ -307,3 +310,31 @@ class ChatMessage(models.Model):
     def generate_turn_id(cls):
         """Generate a unique turn ID."""
         return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+class SdkTranscriptEntry(models.Model):
+    """One line of a Claude Agent SDK session transcript (see PostgresSessionStore).
+
+    Entries are opaque SDK-owned JSON; ``uuid`` is the SDK's idempotency key.
+    """
+
+    project_key = models.CharField(max_length=255)
+    session_id = models.CharField(max_length=64)
+    subpath = models.CharField(max_length=255, blank=True, default="")
+    uuid = models.CharField(max_length=64, null=True, blank=True)
+    data = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["project_key", "session_id", "subpath", "id"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project_key", "session_id", "subpath", "uuid"],
+                condition=models.Q(uuid__isnull=False),
+                name="unique_sdk_transcript_entry_uuid",
+            )
+        ]
+
+    def __str__(self):
+        return f"Transcript {self.session_id} {self.data.get('type', '')}"

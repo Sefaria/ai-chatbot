@@ -43,3 +43,31 @@ def build_turn_prompt(
         full_prompt=full_prompt,
         summary_included=summary_included,
     )
+
+
+def build_native_turn_prompt(
+    *,
+    messages: list[ConversationMessage],
+    core_prompt: str,
+    context: MessageContext,
+    include_summary: bool,
+) -> PromptBuildResult:
+    """Build a turn for a resumable SDK session (native multi-turn).
+
+    The system prompt is the core prompt alone, so it stays identical across turns
+    and prompt caching hits. Per-turn context (page, and the summary when starting a
+    fresh session) rides on the user message; history comes from the transcript.
+    """
+    last_user_message = next(
+        (message.content for message in reversed(messages) if message.role == "user"), ""
+    )
+    turn_text, summary_included = build_prompt(
+        last_user_message,
+        summary_text=context.summary_text if include_summary else None,
+        page_url=context.page_url,
+    )
+    return PromptBuildResult(
+        conversation_text=turn_text,
+        full_prompt=core_prompt,
+        summary_included=summary_included,
+    )

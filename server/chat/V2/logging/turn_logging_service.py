@@ -126,6 +126,9 @@ class TurnLoggingService:
             session.conversation_summary = summary_text
             session.summary_updated_at = timezone.now()
             update_fields.extend(["conversation_summary", "summary_updated_at"])
+        if agent_response.sdk_session_id:
+            session.sdk_session_id = agent_response.sdk_session_id
+            update_fields.append("sdk_session_id")
         if not session.title:
             session.title = self._default_title(user_message.content)
             session.title_updated_at = timezone.now()

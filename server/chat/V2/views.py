@@ -61,6 +61,7 @@ from .agent import (
     TurnCancelled,
     get_agent_service,
 )
+from .agent.session_store import PostgresSessionStore
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
@@ -473,7 +474,9 @@ def chat_stream_v2(request):
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
+        sdk_resume_session_id=session.sdk_session_id,
     )
+    native_multi_turn = settings.NATIVE_MULTI_TURN_ENABLED and not is_load_test
 
     def generate_sse():
         """Generator that yields SSE events for a single chat turn.
@@ -552,7 +555,10 @@ def chat_stream_v2(request):
             bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service(is_load_test=is_load_test)
+                agent = get_agent_service(
+                    is_load_test=is_load_test,
+                    session_store=PostgresSessionStore() if native_multi_turn else None,
+                )
 
                 async def _send():
                     return await agent.send_message(

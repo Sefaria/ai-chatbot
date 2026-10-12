@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
+from typing import Any
 
 import braintrust
 from braintrust.wrappers.claude_agent_sdk import setup_claude_agent_sdk
@@ -61,6 +62,7 @@ class ClaudeAgentService:
         temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
         is_load_test: bool = False,
+        session_store: Any = None,
     ):
         if (
             ClaudeAgentOptions is None
@@ -111,6 +113,8 @@ class ClaudeAgentService:
             braintrust_project=self.braintrust_project,
             braintrust_logging_enabled=self.braintrust_logging_enabled,
             mcp_server_name=self._mcp_server_name,
+            session_cwd=str(django_settings.BASE_DIR),
+            auto_compact_window=django_settings.NATIVE_MULTI_TURN_COMPACT_WINDOW,
             logger=logger,
         )
         sdk_runner = ClaudeSDKRunner(
@@ -132,6 +136,7 @@ class ClaudeAgentService:
             router=Router(logger=logger),
             trace_logger=trace_logger,
             logging_enabled=self.braintrust_logging_enabled,
+            session_store=session_store,
         )
 
     def _setup_braintrust_tracing(self) -> None:
@@ -182,6 +187,9 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
-    """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService(is_load_test=is_load_test)
+def get_agent_service(is_load_test: bool = False, session_store: Any = None) -> ClaudeAgentService:
+    """Create a fresh service instance (one per request).
+
+    Pass ``session_store`` to persist and resume SDK sessions (native multi-turn).
+    """
+    return ClaudeAgentService(is_load_test=is_load_test, session_store=session_store)
