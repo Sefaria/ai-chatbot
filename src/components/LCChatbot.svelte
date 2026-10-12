@@ -295,6 +295,18 @@
     }
   });
 
+  // Grow the input with its content; CSS caps it at three lines
+  function resizeInput() {
+    if (!inputRef) return;
+    inputRef.style.height = 'auto';
+    inputRef.style.height = inputRef.scrollHeight + inputRef.offsetHeight - inputRef.clientHeight + 'px';
+  }
+
+  $effect(() => {
+    inputText;
+    resizeInput();
+  });
+
   // Save draft on input change
   $effect(() => {
     if (sessionId) {
@@ -1260,8 +1272,10 @@
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
           if (sessionId === sendingSessionId) {
+            resizeInput();
             inputRef?.focus({ preventScroll: true });
             inputRef?.setSelectionRange(text.length, text.length);
+            if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
           }
         }
       }
@@ -3480,7 +3494,7 @@
   .lc-chatbot-input textarea {
     flex: 1;
     min-height: 40px;
-    max-height: 120px;
+    max-height: calc(3 * 1.4em + 22px);
     padding: 10px 14px;
     border: 1px solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
