@@ -1281,8 +1281,8 @@
             inputRef?.focus({ preventScroll: true });
             inputRef?.setSelectionRange(text.length, text.length);
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
-            // Reveal the notice only after the restored composer has its final size.
-            await scrollToBottom({ instant: true });
+            // Smoothly reveal the notice after the restored composer has its final size.
+            await scrollToBottom();
           }
         }
       }

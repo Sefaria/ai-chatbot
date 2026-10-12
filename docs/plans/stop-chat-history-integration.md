@@ -61,3 +61,7 @@ Reference: PR #246 at e43cedc, run locally with a simulated API. Treated as a be
 Future mobile layout, keyboard/tooltip changes, anonymous authentication, quotas and migrations remain out of scope. Backend code is unchanged.
 
 Validation: reference and implementation both measured 80.8px for the capped composer and restored the five-line prompt at cursor position 114/114 with internal scrolling at the bottom. Verified single-line reset (42px), retained Stop icon during delayed confirmation, notice visible after scrolling to the top of a long conversation, notice dismissal on resubmission with retained topics, completed-answer precedence, and retry after cancellation failure. Eight Node tests and production build pass. Browser checks use a simulated API, not production LLM calls. A simulation pagination bug initially returned duplicate messages; corrected the test server and reran the Stop/resubmit/completion/error flow with no browser errors.
+
+## Stop scroll refinement — 12 October 2026
+
+Per Penina’s follow-up, reveal the stopped notice using the existing smooth-scroll path after restoring the composer. History navigation retains its instant positioning. Production build verified.
