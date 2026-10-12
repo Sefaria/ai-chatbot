@@ -295,8 +295,10 @@
     // Initialize session. A logged-out visitor past the free-answer limit keeps their last
     // conversation however old it is: they can't start a new one, so an expired session
     // would otherwise leave them on an empty welcome screen behind the login prompt.
+    // untrack: reaching the limit later must not re-run this setup (on phones that would
+    // close the sheet just as the login prompt appears)
     const { sessionId: sid, isNew } = getOrCreateSession(identityChanged, {
-      keepExpired: !userId && anonLoginRequired,
+      keepExpired: !userId && untrack(() => anonLoginRequired),
     });
     sessionId = sid;
     isNewSession = isNew;
