@@ -346,3 +346,12 @@ def test_legacy_turn_keeps_full_system_prompt():
     system_prompt = sdk_runner.run.call_args.kwargs["options"]["system_prompt"]
     assert "SUMMARY" in system_prompt
     assert "And what about Rashi?" in system_prompt
+
+
+def test_stop_during_resumed_turn_does_not_fall_back():
+    from chat.V2.agent.contracts import TurnCancelled
+
+    sdk_runner = MagicMock(run=AsyncMock(side_effect=TurnCancelled()))
+    with _valid_links(), pytest.raises(TurnCancelled):
+        _run_turn(_orchestrator(sdk_runner, object()), "sdk-old")
+    assert sdk_runner.run.call_count == 1
