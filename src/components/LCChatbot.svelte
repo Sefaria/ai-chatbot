@@ -2657,13 +2657,15 @@
   }
 
   /* --lc-launcher-bottom-offset: set by the host to lift the closed widget above its own
-     bottom bar (Sefaria's cookie banner) while that bar shows */
+     bottom bar (Sefaria's cookie banner) while that bar shows. It always slides there and
+     back, at every width and with reduced motion too: a jump reads as a glitch. */
   .lc-chatbot-container {
     position: fixed;
     bottom: calc(24px + var(--lc-launcher-bottom-offset, 0px));
     inset-inline-end: 24px;
     z-index: 9999;
     direction: ltr;
+    transition: bottom 0.2s ease;
   }
 
   .lc-chatbot-container.interface-hebrew {
