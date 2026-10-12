@@ -27,6 +27,10 @@ Related branches: `feature/stop-chat-history-integration`, `poc/penina-stopbutto
 - [x] **Scroll to the stop notice**
   - On Stop, scroll the canvas to the bottom so the notice is visible (unlike a response, which keeps the user at its top). Scrolls even if the user scrolled up during generation, since Stop is deliberate.
 
+## Mobile (once merged with `la-anon-mobile-entry`)
+
+- [ ] **Don't focus the input after Stop on phones.** In the full-screen sheet (`isFullscreen`), restore the prompt text but skip `focus()`. Focusing opens the Android keyboard over the stop notice; iOS ignores focus that isn't from a tap, so behavior would differ by platform. Matches the anon-mobile branch, which already skips autofocus when the sheet opens. Desktop keeps focus and cursor-at-end. Can't be built on `design-qa/stop-button` because `isFullscreen` only exists on the mobile branch.
+
 ## Known issue (not addressed)
 
 - For a moment after clicking Stop, a lone ✦ glyph shows where the thinking label was. Also present on Yonadav's branch.
