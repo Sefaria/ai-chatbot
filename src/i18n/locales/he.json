@@ -102,7 +102,7 @@
     "assistant.menu.dock": "הגדלה והצמדה לצד",
     "assistant.menu.undock": "הקטנה וניתוק מהצד",
     "assistant.stop.message": "התגובה נעצרה. אפשר לערוך את השאלה למטה, או לכתוב שאלה חדשה.",
-    "assistant.input.generating": "ממתינים לתגובה...",
+    "assistant.input.generating": "ממתינים לתשובה...",
     "assistant.stop.tooltip": "עצור",
     "assistant.stop.aria": "עצור",
     "assistant.header.history.tooltip": "היסטוריית שיחות",
