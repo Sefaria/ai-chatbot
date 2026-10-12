@@ -13,9 +13,8 @@ Related branches: `feature/stop-chat-history-integration`, `poc/penina-stopbutto
   - Don't change the input field's color while generating.
   - Match current main/prod behavior: disabled state just looks like placeholder text and isn't clickable.
   - Done: removed the branch's `#e6e6e6` override; main's disabled style applies. The "Waiting for a response…" placeholder is kept.
-- [x] **Keep "stopped generating" message on the canvas**
-  - The stop-generating message should stay in the conversation even after the next prompt is sent.
-  - Done: `withStoppedTurns` shows the notice on every cancelled turn, not just the last one.
+- [ ] ~~**Keep "stopped generating" message on the canvas**~~ (reverted 2026-10-12)
+  - Tried keeping the notice on every stopped turn, then reverted. Decision: keep the original agreed behavior, where the notice is removed when the next prompt is sent (topics stay).
 - [x] **Multi-line prompt restored after stop**
   - Today, a prompt longer than one line comes back into the input as a tiny scrollable box after Stop, with the cursor at the start.
   - Per the original Figma: the input should grow with its content up to **3 lines**, then scroll internally.
