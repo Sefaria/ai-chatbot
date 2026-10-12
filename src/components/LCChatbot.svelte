@@ -2691,10 +2691,13 @@
      follows the visual viewport (inline top/height), and the viewport reports a closing
      keyboard only after it has gone, so without the backdrop the page flashes through
      where the keyboard was. While the sheet is dragged, the backdrop clears to show the page. */
+  /* One step above the host's own bottom bars (Sefaria's cookie banner is also z-index 9999),
+     so they can't cover the input; they show again once the sheet closes */
   .lc-chatbot-container.mode-fullscreen.is-open {
     top: 0;
     bottom: 0;
     inset-inline: 0;
+    z-index: 10000;
     background: var(--lc-body-bg);
     transition: none;
   }

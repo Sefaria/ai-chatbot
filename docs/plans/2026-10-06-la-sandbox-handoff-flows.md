@@ -175,6 +175,7 @@ answers (`CHATBOT_ANON_FREE_RESPONSES`, default **2**), then are asked to log in
 - **Expected:** the closed Ask button sits 16px above the banner, not behind it. When the visitor taps OK, the button slides back to its usual spot (0.2s, at every width up to 842px, reduced motion included). If the banner's text wraps to more lines, the button follows its height.
 - **How:** Sefaria publishes the banner's height as `--lc-launcher-bottom-offset` on `:root` (`static/js/sefaria/launcherOffset.js`); the widget adds it to the closed button's distance from the bottom.
 - **Desktop:** unchanged. At 843px and wider the banner is a 360px card in the corner, so the offset is 0.
+- **Open on a phone:** the full-screen assistant is drawn above the banner, so the banner can't cover the text box; the banner shows again when the assistant closes (decided 2026-10-12).
 - **Known limit (decided 2026-10-11):** a short-term fix. With One Tap, fundraising modals and other banners also on a phone screen, it gets crowded; a longer-term design for stacked overlays is still needed.
 
 ## Still to cover from this PR
