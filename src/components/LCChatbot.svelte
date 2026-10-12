@@ -1227,6 +1227,8 @@
         if (sessionId === sendingSessionId) {
           messages = stopped;
           inputText = text;
+          // Unlike a response (kept at its top), Stop reveals the notice at the bottom
+          scrollToBottom();
         }
         track('assistant_response_stopped');
       } else {
