@@ -247,6 +247,8 @@
   let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
+  // Phones: the text box's own scroll thumb ({ top, height } in px), since phone browsers only show theirs mid-scroll
+  let inputThumb = $state(null);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
   // The pill's label for each host source that relabels it (chatbot:launcher)
@@ -347,8 +349,27 @@
     inputText;
     const element = inputRef;
     let cancelled = false;
-    tick().then(() => { if (!cancelled) sizePrompt(element); });
+    tick().then(() => { if (!cancelled) { sizePrompt(element); syncInputThumb(); } });
     return () => { cancelled = true; };
+  });
+
+  // Phones: past 3 lines the text box shows a thumb that stays visible, not only while scrolling
+  function syncInputThumb() {
+    const el = inputRef;
+    if (!isFullscreen || !el || el.disabled || el.scrollHeight <= el.clientHeight + 1) {
+      inputThumb = null;
+      return;
+    }
+    const inset = 4; // keeps the thumb clear of the box's rounded corners
+    const track = el.clientHeight - inset * 2;
+    const height = Math.max(16, track * el.clientHeight / el.scrollHeight);
+    const top = inset + (track - height) * el.scrollTop / (el.scrollHeight - el.clientHeight);
+    inputThumb = { top, height };
+  }
+
+  $effect(() => {
+    isFullscreen; isCurrentSessionSending; limitReached;
+    tick().then(syncInputThumb);
   });
 
   // Save draft on input change
@@ -2454,10 +2475,12 @@
       {/if}
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
+        <div class="input-field">
         <textarea
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          onscroll={syncInputThumb}
           maxlength={effectiveMaxInputChars}
           placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
@@ -2465,6 +2488,10 @@
           rows="1"
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
+        {#if inputThumb}
+          <span class="input-scroll-thumb" style="top: {inputThumb.top}px; height: {inputThumb.height}px;" aria-hidden="true"></span>
+        {/if}
+        </div>
         {#if isCurrentSessionSending}
           <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
             <button type="button" class="stop-btn" onclick={handleStop}
@@ -2820,6 +2847,21 @@
 
   .mode-fullscreen .lc-chatbot-input textarea {
     min-height: var(--lc-send-size);
+    /* The browser's own scrollbar only shows mid-scroll here; .input-scroll-thumb stays instead */
+    scrollbar-width: none;
+  }
+
+  .mode-fullscreen .lc-chatbot-input textarea::-webkit-scrollbar {
+    display: none;
+  }
+
+  .input-scroll-thumb {
+    position: absolute;
+    inset-inline-end: 4px;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--lc-border-strong);
+    pointer-events: none;
   }
 
   .mode-fullscreen .send-btn {
@@ -4248,8 +4290,16 @@
     border-top: 1px solid var(--lc-border);
   }
 
+  .input-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+  }
+
   .lc-chatbot-input textarea {
     flex: 1;
+    min-width: 0;
     min-height: 40px;
     /* Three text lines, plus the existing vertical padding and borders. */
     max-height: calc(4.2em + 22px);
