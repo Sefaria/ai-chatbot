@@ -82,6 +82,7 @@ Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-
 - Locks page scroll. The open container is a full-screen backdrop in the panel's colour, and only the panel follows `visualViewport`, so the input stays above the keyboard and the page never flashes through while the keyboard closes. Every text field is 16px (smaller makes iOS zoom).
 - Past 3 lines the text box shows its own 4px scroll thumb (`.input-scroll-thumb`, `--lc-border-strong`) that stays visible; phone browsers only show their scrollbar mid-scroll, so theirs is hidden.
 - When the chat area changes height (keyboard opening or closing, the text box growing), the chat scrolls by the same amount, so what was just above the text box stays there; at the bottom it stays at the bottom.
+- After Stop, the chat scrolls to the bottom so the stop notice shows above the restored question.
 - One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px, with 24px icons (22px in menus and feedback); inline links get block padding for a taller tap area.
 - The header is a drag handle (grabber bar on top, buttons excluded): dragging down more than 120px, or a quick flick, closes the sheet; a shorter drag springs back.
 - No dock mode. History covers the chat; picking a chat returns to it.

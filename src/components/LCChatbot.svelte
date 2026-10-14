@@ -1503,6 +1503,9 @@
         if (sessionId === sendingSessionId) {
           messages = stopped;
           inputText = text;
+          // Phones: show the stop notice above the text box. When the restored question then
+          // grows the box, the chat keeps its bottom in view (see the chat-area resize effect).
+          if (isFullscreen) scrollToBottom({ instant: true });
         }
         track('assistant_response_stopped');
       } else {
