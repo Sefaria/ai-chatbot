@@ -688,18 +688,36 @@
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
-      else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+      const box = typing ? { top: vv.offsetTop, height: vv.height }
+        : vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+      if (box?.top !== viewportBox?.top || box?.height !== viewportBox?.height) viewportBox = box;
+    };
+    // The keyboard moves the visual viewport before it reports a resize (iOS reports it only once
+    // the keyboard is up), so the sheet snapped into place late. Follow it every frame while it opens or closes.
+    let frame = 0;
+    const follow = () => {
+      cancelAnimationFrame(frame);
+      const end = performance.now() + 600;
+      const step = () => {
+        sync();
+        if (performance.now() < end) frame = requestAnimationFrame(step);
+      };
+      step();
     };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
       vv.addEventListener('scroll', sync);
+      document.addEventListener('focusin', follow);
+      document.addEventListener('focusout', follow);
     }
     return () => {
       root.style.overflow = overflow;
+      cancelAnimationFrame(frame);
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
+      document.removeEventListener('focusin', follow);
+      document.removeEventListener('focusout', follow);
       viewportBox = null;
     };
   });
