@@ -17,7 +17,7 @@
     renameConversation,
     deleteConversation
   } from '../lib/api.js';
-  import { tick, untrack } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -247,6 +247,8 @@
   let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
+  // Phones: the on-screen keyboard's height, once seen
+  let keyboardHeight = 0;
   // Phones: the text box's own scroll thumb ({ top, height } in px), since phone browsers only show theirs mid-scroll
   let inputThumb = $state(null);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
@@ -696,40 +698,43 @@
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      const box = typing ? { top: vv.offsetTop, height: vv.height }
-        : vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
-      const current = untrack(() => viewportBox);
-      if (box?.top !== current?.top || box?.height !== current?.height) viewportBox = box;
-    };
-    // The keyboard moves the visual viewport before it reports a resize (iOS reports it only once
-    // the keyboard is up), so the sheet snapped into place late. Follow it every frame while it opens or closes.
-    let frame = 0;
-    const follow = () => {
-      cancelAnimationFrame(frame);
-      const end = performance.now() + 600;
-      const step = () => {
-        sync();
-        if (performance.now() < end) frame = requestAnimationFrame(step);
-      };
-      step();
+      if (typing) {
+        viewportBox = { top: vv.offsetTop, height: vv.height };
+        if (vv.height < window.innerHeight) keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+      }
+      else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
       vv.addEventListener('scroll', sync);
-      document.addEventListener('focusin', follow);
-      document.addEventListener('focusout', follow);
     }
     return () => {
       root.style.overflow = overflow;
-      cancelAnimationFrame(frame);
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
-      document.removeEventListener('focusin', follow);
-      document.removeEventListener('focusout', follow);
       viewportBox = null;
     };
   });
+
+  // Phones: iOS scrolls the page to keep a focused field above the keyboard, and animates that
+  // scroll after it has already reported the final viewport, so the sheet dropped and climbed back.
+  // Making room before the keyboard opens leaves iOS nothing to scroll.
+  let inputTouchY = 0;
+  function makeRoomForKeyboard(e) {
+    const vv = window.visualViewport;
+    if (!isFullscreen || !vv || inputRef.disabled || inputRef.getRootNode().activeElement === inputRef) return;
+    if (Math.abs(e.changedTouches[0].clientY - inputTouchY) > 10) return; // a drag, not a tap
+    e.preventDefault(); // we focus it ourselves, once the sheet is out of the keyboard's way
+    const room = keyboardHeight || Math.round(window.innerHeight / 2);
+    viewportBox = { top: 0, height: window.innerHeight - room };
+    flushSync();
+    inputRef.focus({ preventScroll: true });
+    // No on-screen keyboard came (e.g. a hardware keyboard): give the room back
+    setTimeout(() => {
+      if (isOpen && vv.height >= window.innerHeight) viewportBox = { top: vv.offsetTop, height: vv.height };
+    }, 600);
+  }
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
@@ -2535,6 +2540,8 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           onscroll={syncInputThumb}
+          ontouchstart={(e) => { inputTouchY = e.touches[0].clientY; }}
+          ontouchend={makeRoomForKeyboard}
           maxlength={effectiveMaxInputChars}
           placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
