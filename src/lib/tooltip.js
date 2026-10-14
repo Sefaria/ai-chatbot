@@ -126,8 +126,13 @@ export function tooltip(node, text = '') {
     }
   }
 
-  node.addEventListener('mouseenter', show);
-  node.addEventListener('mouseleave', hide);
+  // Mouse only: a tap's emulated mouseenter would leave the bubble stuck on touch screens.
+  function onPointerEnter(e) {
+    if (e.pointerType === 'mouse') show();
+  }
+
+  node.addEventListener('pointerenter', onPointerEnter);
+  node.addEventListener('pointerleave', hide);
 
   return {
     update(next) {
@@ -138,8 +143,8 @@ export function tooltip(node, text = '') {
     },
     destroy() {
       hide();
-      node.removeEventListener('mouseenter', show);
-      node.removeEventListener('mouseleave', hide);
+      node.removeEventListener('pointerenter', onPointerEnter);
+      node.removeEventListener('pointerleave', hide);
     },
   };
 }
