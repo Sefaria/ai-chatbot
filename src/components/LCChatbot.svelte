@@ -257,6 +257,8 @@
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
   let pendingNavigation = null;
+  // Where the chat was scrolled, so reopening the assistant returns there
+  let lastScroll = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
   const SHEET_CLOSE_DISTANCE = 120;
@@ -588,8 +590,10 @@
   });
 
   function openPanel() {
-    // The chat is rebuilt on open, at its top: land on the answer that arrived while closed, else the end
+    // The chat is rebuilt on open, at its top: land on the answer that arrived while closed,
+    // else where the reader left this chat, else its end
     if (responseReady) scrollToResponseStart({ instant: true });
+    else if (lastScroll?.sessionId === sessionId) restoreScroll(lastScroll.top);
     else scrollToBottom({ instant: true });
     isOpen = true;
     responseReady = false;
@@ -610,6 +614,7 @@
   }
 
   function closePanel() {
+    if (messageListRef) lastScroll = { sessionId, top: messageListRef.scrollTop };
     isOpen = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
@@ -1298,6 +1303,11 @@
     const lastResponse = contents.at(-1)?.closest('.message.assistant');
     if (!lastResponse) return;
     applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
+  }
+
+  async function restoreScroll(top) {
+    await tick();
+    messageListRef?.scrollTo({ top, behavior: 'instant' });
   }
 
   function applyAutoScroll(top, behavior = 'smooth') {
