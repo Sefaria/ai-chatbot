@@ -280,7 +280,7 @@
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
     // (Returning from login opens it below, through openPanel.)
-    isOpen = savedUI?.isOpen ?? defaultOpen; 
+    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
