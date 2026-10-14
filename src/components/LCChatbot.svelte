@@ -26,6 +26,7 @@
   import Accordion from './Accordion.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
+  import { createAnalytics } from '@sefaria/analytics';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -61,9 +62,17 @@
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
 
+  // GA4 analytics, through the shared @sefaria/analytics package. It sends through the host page's
+  // window.gtag and does nothing if there isn't one.
+  const analytics = createAnalytics({
+    // Parameter names the chatbot sends on top of the package's BASE_ALLOWED_PARAMS. Anything else is dropped.
+    extraAllowedParams: ['link_text', 'link_url', 'source', 'search_text', 'length'],
+    // Read on every event, so a change to is-moderator while the page is open is picked up.
+    commonParams: () => ({ is_staff: isStaff, la_version: APP_VERSION }),
+  });
+
   function track(event, params = {}) {
-    if (typeof window.gtag !== 'function') return;
-    window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
+    analytics.track(event, params);
   }
 
   function trackAssistantClick(featureName) {
@@ -325,8 +334,8 @@
     const host = $host();
     if (!host) return;
 
-    function trackClick(e) {
-      const path = e.composedPath();
+    // `path` is every element the click passed through, innermost first, including the ones inside the shadow root.
+    return analytics.listen(host, 'click', (e, path) => {
       // Skip the toggle button — toggleMode() fires its own specific event
       const isToggle = path.some(
         el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
@@ -370,10 +379,7 @@
       );
       if (!target) return;
       track('assistant_click', { feature_name: target.getAttribute('aria-label') });
-    }
-
-    host.addEventListener('click', trackClick);
-    return () => host.removeEventListener('click', trackClick);
+    });
   });
 
   // GA4 tracking: fire 'assistant_element_shown' the first time an element with
@@ -385,41 +391,12 @@
     if (!messageListRef) return;
     const root = messageListRef;
 
-    const seen = new WeakSet();
-    const io = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const el = entry.target;
-        io.unobserve(el);
-        if (seen.has(el)) continue;
-        seen.add(el);
-        track('assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
-      }
-    }, { root, threshold: 0.5 });
-
-    function observe(node) {
-      if (!(node instanceof Element)) return;
-      if (node.hasAttribute('data-element-shown-name') && !seen.has(node)) {
-        io.observe(node);
-      }
-      node.querySelectorAll?.('[data-element-shown-name]').forEach(el => {
-        if (!seen.has(el)) io.observe(el);
-      });
-    }
-
-    observe(root);
-
-    const mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        m.addedNodes.forEach(observe);
-      }
-    });
-    mo.observe(root, { childList: true, subtree: true });
-
-    return () => {
-      io.disconnect();
-      mo.disconnect();
-    };
+    return analytics.observeFirstSeen(
+      root,
+      '[data-element-shown-name]',
+      el => track('assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') }),
+      { root, threshold: 0.5 }
+    );
   });
 
   // Dispatch custom events
