@@ -588,6 +588,9 @@
   });
 
   function openPanel() {
+    // The chat is rebuilt on open, at its top: land on the answer that arrived while closed, else the end
+    if (responseReady) scrollToResponseStart({ instant: true });
+    else scrollToBottom({ instant: true });
     isOpen = true;
     responseReady = false;
     showSettings = false;
@@ -1277,14 +1280,15 @@
     return messageListRef.scrollTop + elRect.top - containerRect.top;
   }
 
-  async function scrollToResponseStart() {
+  async function scrollToResponseStart({ instant = false } = {}) {
     await tick();
-    if (!messageListRef || !autoScrollEnabled) return;
+    if (!messageListRef || (!autoScrollEnabled && !instant)) return;
+    const behavior = instant ? 'instant' : 'smooth';
     // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top.
     // querySelectorAll returns a NodeList (no Array.at), so spread before indexing.
     const pkgEl = [...messageListRef.querySelectorAll('.lc-response-package')].at(-1);
     if (pkgEl) {
-      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
+      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET, behavior);
       return;
     }
 
@@ -1292,11 +1296,11 @@
     const contents = [...messageListRef.querySelectorAll('.message.assistant .message-content')];
     const lastResponse = contents.at(-1)?.closest('.message.assistant');
     if (!lastResponse) return;
-    applyAutoScroll(getScrollTopForElement(lastResponse));
+    applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
-  function applyAutoScroll(top) {
-    messageListRef.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  function applyAutoScroll(top, behavior = 'smooth') {
+    messageListRef.scrollTo({ top: Math.max(0, top), behavior });
   }
 
   function resetScroll() {
