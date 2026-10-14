@@ -279,7 +279,6 @@
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
-    // (Returning from login opens it below, through openPanel.)
     isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
@@ -1511,8 +1510,11 @@
           await tick();
           if (sessionId === sendingSessionId) {
             sizePrompt(inputRef);
-            inputRef?.focus({ preventScroll: true });
-            inputRef?.setSelectionRange(text.length, text.length);
+            // Phones: focus would open the keyboard over the stop notice (iOS ignores it anyway)
+            if (!isFullscreen) {
+              inputRef?.focus({ preventScroll: true });
+              inputRef?.setSelectionRange(text.length, text.length);
+            }
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
             // Smoothly reveal the notice after the restored composer has its final size.
             await scrollToBottom();
@@ -2464,7 +2466,7 @@
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
         {#if isCurrentSessionSending}
-          <Tooltip text={$_('assistant.stop.tooltip')}>
+          <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
             <button type="button" class="stop-btn" onclick={handleStop}
               disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
               <img src={stopIcon} alt="" width="18" height="18" />
@@ -3015,7 +3017,8 @@
     height: 24px;
   }
 
-  .mode-fullscreen .menu-item :is(img, svg) {
+  .mode-fullscreen .menu-item :is(img, svg),
+  .mode-fullscreen .stop-btn img {
     width: 22px;
     height: 22px;
   }
@@ -4844,7 +4847,7 @@
 
   .stop-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 40px; height: 40px; padding: 0;
+    width: var(--lc-send-size); height: var(--lc-send-size); padding: 0;
     background: var(--lc-bg); color: var(--lc-icon-primary);
     border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
     cursor: pointer; flex-shrink: 0;
