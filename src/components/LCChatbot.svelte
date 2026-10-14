@@ -693,7 +693,8 @@
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
       const box = typing ? { top: vv.offsetTop, height: vv.height }
         : vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
-      if (box?.top !== viewportBox?.top || box?.height !== viewportBox?.height) viewportBox = box;
+      const current = untrack(() => viewportBox);
+      if (box?.top !== current?.top || box?.height !== current?.height) viewportBox = box;
     };
     // The keyboard moves the visual viewport before it reports a resize (iOS reports it only once
     // the keyboard is up), so the sheet snapped into place late. Follow it every frame while it opens or closes.
