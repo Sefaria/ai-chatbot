@@ -372,6 +372,24 @@
     tick().then(syncInputThumb);
   });
 
+  // Phones: when the chat area changes height (the keyboard opens or closes, the text box grows),
+  // keep what was just above the text box in place instead of letting it slide under it
+  $effect(() => {
+    const el = messageListRef;
+    if (!el || !isFullscreen) return;
+    let previous = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const delta = previous - el.clientHeight;
+      // A hidden list (sheet closed) measures 0: just remember the new height
+      if (delta && previous && el.clientHeight) {
+        el.scrollTo({ top: el.scrollTop + delta, behavior: 'instant' });
+      }
+      previous = el.clientHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
   // Save draft on input change
   $effect(() => {
     if (sessionId) {
