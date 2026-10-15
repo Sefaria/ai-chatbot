@@ -683,15 +683,31 @@
       }
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
+    // iOS reports the keyboard closing only ~0.5s after the text box loses focus, so the sheet
+    // sat above the empty space. Give it the full height as soon as typing stops, after the tap
+    // that ended it lands (moving Send mid-tap would lose the tap).
+    const shadow = inputRef?.getRootNode();
+    let stopTimer;
+    const stopTyping = (e) => {
+      if (e.relatedTarget?.matches?.('input, textarea')) return;
+      clearTimeout(stopTimer);
+      stopTimer = setTimeout(() => {
+        if (inputRef?.getRootNode().activeElement?.matches('input, textarea')) return;
+        viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+      });
+    };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
       vv.addEventListener('scroll', sync);
+      shadow?.addEventListener('focusout', stopTyping);
     }
     return () => {
       root.style.overflow = overflow;
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
+      shadow?.removeEventListener('focusout', stopTyping);
+      clearTimeout(stopTimer);
       viewportBox = null;
     };
   });
