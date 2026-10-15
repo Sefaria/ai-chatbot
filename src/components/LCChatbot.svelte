@@ -1392,7 +1392,9 @@
 
     messages = withStoppedTurns([...messages, userMessage]);
     saveMessagesToStorage();
-    scrollToBottom();
+    // Phones: the emptied text box shrinks right after, which would cut a smooth scroll short
+    if (isFullscreen) pinChatToBottom();
+    else scrollToBottom();
 
     appetizerData = null;
     startThinkingMessages();
