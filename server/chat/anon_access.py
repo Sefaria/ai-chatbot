@@ -1,0 +1,76 @@
+"""
+The free-answer limit for logged-out (anonymous) visitors.
+
+An admin sets the number in Sefaria's Django admin, as the remote config entry
+`feature.chatbot.anonymous_free_answers`. This server reads it from Sefaria's
+public /api/remote-config. There is no default here: if the key isn't in
+Sefaria's config (for example when this server runs without Sefaria), there is
+no limit.
+"""
+
+import logging
+
+import httpx
+from django.core.cache import cache
+
+from .models import ChatMessage
+from .V2.agent.sefaria_client import _get_default_sefaria_base_url
+
+logger = logging.getLogger("chat")
+
+REMOTE_CONFIG_KEY = "feature.chatbot.anonymous_free_answers"
+CACHE_KEY = "anon_access:free_answer_limit"
+CACHE_SECONDS = 60
+REQUEST_TIMEOUT_SECONDS = 3
+
+
+def get_anon_answer_limit() -> int | None:
+    """How many answers a logged-out visitor gets, or None for no limit."""
+    cached = cache.get(CACHE_KEY)
+    if cached is not None:
+        return cached["limit"]
+
+    limit = _fetch_limit()
+    # Cache "no limit" too, so an unreachable Sefaria isn't asked on every question.
+    cache.set(CACHE_KEY, {"limit": limit}, CACHE_SECONDS)
+    return limit
+
+
+def _fetch_limit() -> int | None:
+    url = f"{_get_default_sefaria_base_url().rstrip('/')}/api/remote-config"
+    try:
+        response = httpx.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        config = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Could not read remote config from Sefaria: %s", exc)
+        return None
+
+    value = config.get(REMOTE_CONFIG_KEY) if isinstance(config, dict) else None
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        logger.warning("Ignoring invalid %s in remote config: %r", REMOTE_CONFIG_KEY, value)
+        return None
+    return value
+
+
+def count_anon_answers(user_id: str) -> int:
+    """Answers a logged-out visitor got, across all their sessions.
+
+    Only real answers count: refused questions, failed turns and cancelled
+    turns don't.
+    """
+    return ChatMessage.objects.filter(
+        user_id=user_id,
+        role=ChatMessage.Role.ASSISTANT,
+        status=ChatMessage.Status.SUCCESS,
+    ).count()
+
+
+def anon_answers_remaining(user_id: str) -> int | None:
+    """Answers this logged-out visitor has left, or None when there's no limit."""
+    limit = get_anon_answer_limit()
+    if limit is None:
+        return None
+    return max(limit - count_anon_answers(user_id), 0)

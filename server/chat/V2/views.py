@@ -40,6 +40,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .. import anon_access
 from ..auth import (
     AuthenticationRequired,
     InvalidUserToken,
@@ -233,6 +234,14 @@ def _build_response_payload(
     }
 
 
+def _anon_payload_fields(actor) -> dict:
+    """For a logged-out visitor under a limit: how many free answers are left."""
+    if not actor.is_anonymous:
+        return {}
+    remaining = anon_access.anon_answers_remaining(actor.user_id)
+    return {} if remaining is None else {"anonResponsesRemaining": remaining}
+
+
 def _build_appetizer_payload(result) -> dict:
     return {
         "version": 1,
@@ -329,6 +338,9 @@ def chat_stream_v2(request):
     actor = _authenticate_actor_or_response(request, data)
     if isinstance(actor, Response):
         return actor
+
+    if actor.is_anonymous and anon_access.anon_answers_remaining(actor.user_id) == 0:
+        return Response({"error": "login_required"}, status=status.HTTP_403_FORBIDDEN)
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
@@ -873,6 +885,7 @@ def chat_stream_v2(request):
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
             )
+            final_data.update(_anon_payload_fields(actor))
 
             if (
                 context.get("forceStreamBreakBeforeFinal", False)
@@ -1050,6 +1063,7 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
     )
+    payload.update(_anon_payload_fields(actor))
     recovery_status = (
         "failed" if response_message.status == ChatMessage.Status.FAILED else "complete"
     )

@@ -1,11 +1,11 @@
 /**
- * How many free answers a logged-out visitor gets.
+ * How many free answers a logged-out visitor gets in the widget tests.
  *
- * An admin will set this number; where it lives is not decided yet. Tests and
- * the mock chat server read it from here, so choosing the real source changes
- * only this function.
- *
- * TODO(sc-47704): read the limit from wherever the admin sets it.
+ * This is the limit the mock chat server is configured with, not the real one:
+ * in production an admin sets it in Sefaria's remote config
+ * (`feature.chatbot.anonymous_free_answers`), and the chat server reads it from
+ * there. The widget tests never talk to Sefaria, so the mock and the tests
+ * both take the number from here.
  */
 export function getFreeAnswerLimit() {
   return 2;

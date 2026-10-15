@@ -67,7 +67,9 @@ class TurnLoggingService:
             tool_calls_count=len(agent_response.tool_calls),
             tool_calls_data=agent_response.tool_calls,
             model_name=model_name,
-            status=ChatMessage.Status.SUCCESS,
+            status=(
+                ChatMessage.Status.REFUSED if agent_response.refused else ChatMessage.Status.SUCCESS
+            ),
             input_tokens=agent_response.input_tokens,
             output_tokens=agent_response.output_tokens,
             cache_creation_tokens=agent_response.cache_creation_tokens,

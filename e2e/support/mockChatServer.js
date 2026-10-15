@@ -10,9 +10,10 @@
  * It must behave like this:
  *
  * - It answers questions. (Done.)
- * - A logged-out visitor gets getFreeAnswerLimit() answers (see
- *   ./freeAnswerLimit.js). After that it refuses, in whatever way the widget
- *   turns into the login prompt. (Later step of sc-47704.)
+ * - A logged-out visitor (a request with `anonId`) gets getFreeAnswerLimit()
+ *   answers (see ./freeAnswerLimit.js), like the real server: each answer
+ *   carries `anonResponsesRemaining`, and the send after the last one gets
+ *   403 {"error": "login_required"}. (Done.)
  * - It keeps each visitor's conversation. After the visitor signs up or logs
  *   in, that conversation is in the user's chat history. (Later step.)
  *
@@ -21,6 +22,8 @@
  *   The last paragraph of answer n is `End of answer n.`
  */
 
+import { getFreeAnswerLimit } from './freeAnswerLimit.js';
+
 const LONG_ANSWER_PARAGRAPHS = 30;
 
 /**
@@ -28,7 +31,9 @@ const LONG_ANSWER_PARAGRAPHS = 30;
  * @param {{ longAnswers?: boolean }} [options]
  */
 export async function mockChatServer(context, { longAnswers = false } = {}) {
+  const limit = getFreeAnswerLimit();
   let answersGiven = 0;
+  const answersByAnonId = new Map();
 
   function answerText(n) {
     if (!longAnswers) {
@@ -39,6 +44,16 @@ export async function mockChatServer(context, { longAnswers = false } = {}) {
   }
 
   function answer(route, body) {
+    let remaining;
+    if (body.anonId) {
+      const used = answersByAnonId.get(body.anonId) ?? 0;
+      if (used >= limit) {
+        return route.fulfill({ status: 403, json: { error: 'login_required' } });
+      }
+      answersByAnonId.set(body.anonId, used + 1);
+      remaining = limit - (used + 1);
+    }
+
     answersGiven += 1;
     const n = answersGiven;
     const message = {
@@ -50,6 +65,9 @@ export async function mockChatServer(context, { longAnswers = false } = {}) {
       toolCalls: [],
       stats: {},
     };
+    if (remaining !== undefined) {
+      message.anonResponsesRemaining = remaining;
+    }
     return route.fulfill({
       status: 200,
       contentType: 'text/event-stream',

@@ -1,9 +1,12 @@
 """Logged-out (anonymous) visitors use the chat endpoints with an anonId instead of a userId."""
 
 import hashlib
+import json
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -22,7 +25,17 @@ OTHER_ANON_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 SESSION_ID = "sess_anon"
 MESSAGE_ID = "msg_anon"
 
-pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("agent")]
+LIMIT_FUNCTION = "chat.anon_access.get_anon_answer_limit"
+
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("agent", "no_limit_by_default")]
+
+
+@pytest.fixture
+def no_limit_by_default():
+    """Tests that don't set a limit run without one (no Sefaria remote config)."""
+    cache.clear()
+    with patch(LIMIT_FUNCTION, return_value=None) as limit:
+        yield limit
 
 
 @pytest.fixture
@@ -43,12 +56,12 @@ def agent():
         yield mock
 
 
-def ask(client, identity, message_id=MESSAGE_ID):
+def ask(client, identity, message_id=MESSAGE_ID, session_id=SESSION_ID):
     return client.post(
         "/api/v2/chat/stream",
         data={
             **identity,
-            "sessionId": SESSION_ID,
+            "sessionId": session_id,
             "messageId": message_id,
             "timestamp": timezone.now().isoformat(),
             "text": "A question",
@@ -175,3 +188,216 @@ def test_logged_in_question_is_still_stored_under_the_user(client):
     answered(ask(client, {"userId": create_test_token("user_logged_in", SECRET)}))
 
     assert ChatSession.objects.get(session_id=SESSION_ID).user_id == "user_logged_in"
+
+
+# ── The free-answer limit ─────────────────────────────────────────────────
+
+
+def final_message(response):
+    """The final `message` event of a streamed answer."""
+    content = answered(response)
+    events = []
+    current = None
+    for line in content.split("\n"):
+        if line.startswith("event: "):
+            current = line[len("event: ") :].strip()
+        elif line.startswith("data: ") and current == "message":
+            events.append(json.loads(line[len("data: ") :]))
+    assert len(events) == 1
+    return events[0]
+
+
+def assert_login_required(response):
+    assert response.status_code == 403
+    assert json.loads(response.content) == {"error": "login_required"}
+
+
+class Visitor:
+    """A logged-out visitor asking questions; each gets its own message id."""
+
+    def __init__(self, client, anon_id=ANON_ID, session_id=SESSION_ID):
+        self.client = client
+        self.anon_id = anon_id
+        self.session_id = session_id
+        self.asked = 0
+
+    def ask(self, session_id=None):
+        self.asked += 1
+        return ask(
+            self.client,
+            {"anonId": self.anon_id},
+            message_id=f"msg_{self.anon_id[:8]}_{self.asked}",
+            session_id=session_id or self.session_id,
+        )
+
+    def last_message_id(self):
+        return f"msg_{self.anon_id[:8]}_{self.asked}"
+
+    def use_up(self, limit):
+        for _ in range(limit):
+            final_message(self.ask())
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_each_answer_reports_how_many_are_left(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 3
+    visitor = Visitor(client)
+
+    remaining = [final_message(visitor.ask())["anonResponsesRemaining"] for _ in range(limit)]
+
+    assert remaining == list(range(limit - 1, -1, -1))
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_send_after_the_last_free_answer_needs_login(client, agent, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit)
+
+    response = visitor.ask()
+
+    assert_login_required(response)
+    assert agent.send_message.await_count == limit
+    assert not ChatMessage.objects.filter(message_id=visitor.last_message_id()).exists()
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_limit_counts_across_sessions(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit)
+
+    assert_login_required(visitor.ask(session_id="sess_anon_other"))
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_limit_never_resets(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit)
+    long_ago = timezone.now() - timedelta(days=365)
+    ChatMessage.objects.filter(user_id=anonymous_user_id(ANON_ID)).update(server_timestamp=long_ago)
+
+    assert_login_required(visitor.ask())
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_each_anonymous_id_has_its_own_limit(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    Visitor(client).use_up(limit)
+
+    other = Visitor(client, anon_id=OTHER_ANON_ID, session_id="sess_other")
+
+    assert final_message(other.ask())["anonResponsesRemaining"] == limit - 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_refused_question_does_not_use_up_a_free_answer(client, agent, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    agent.send_message.return_value = AgentResponse(
+        content="I can only help with Jewish texts.",
+        tool_calls=[],
+        latency_ms=10,
+        trace_id="trace_refused",
+        refused=True,
+    )
+    visitor = Visitor(client)
+
+    refused = final_message(visitor.ask())
+
+    assert refused["anonResponsesRemaining"] == limit
+    assert (
+        ChatMessage.objects.get(
+            user_id=anonymous_user_id(ANON_ID), role=ChatMessage.Role.ASSISTANT
+        ).status
+        == ChatMessage.Status.REFUSED
+    )
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_failed_turn_does_not_use_up_a_free_answer(client, agent, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    agent.send_message.side_effect = [
+        Exception("Agent crashed"),
+        AgentResponse(content="An answer", tool_calls=[], latency_ms=10, trace_id="t1"),
+    ]
+    visitor = Visitor(client)
+    with patch("chat.V2.views.capture_exception"):
+        answered(visitor.ask())
+
+    assert final_message(visitor.ask())["anonResponsesRemaining"] == limit - 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_cancelled_turn_does_not_use_up_a_free_answer(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    ChatSession.objects.create(session_id=SESSION_ID, user_id=anonymous_user_id(ANON_ID))
+    ChatMessage.objects.create(
+        message_id="msg_cancelled",
+        session_id=SESSION_ID,
+        user_id=anonymous_user_id(ANON_ID),
+        turn_id="turn_cancelled",
+        role=ChatMessage.Role.USER,
+        content="A stopped question",
+        processing_state=ChatMessage.ProcessingState.CANCELLED,
+    )
+
+    assert final_message(Visitor(client).ask())["anonResponsesRemaining"] == limit - 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_raising_the_limit_lets_the_visitor_ask_again(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit)
+    assert_login_required(visitor.ask())
+
+    no_limit_by_default.return_value = limit + 1
+
+    assert final_message(visitor.ask())["anonResponsesRemaining"] == 0
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_limit_of_zero_gives_no_answers(client, agent, no_limit_by_default):
+    no_limit_by_default.return_value = 0
+
+    assert_login_required(Visitor(client).ask())
+    agent.send_message.assert_not_awaited()
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_without_a_limit_a_visitor_is_never_refused(client):
+    visitor = Visitor(client)
+
+    for _ in range(5):
+        assert "anonResponsesRemaining" not in final_message(visitor.ask())
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_logged_in_users_have_no_free_answer_limit(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 1
+    token = create_test_token("user_logged_in", SECRET)
+
+    for n in range(limit + 2):
+        response = ask(client, {"userId": token}, message_id=f"msg_user_{n}")
+        assert "anonResponsesRemaining" not in final_message(response)
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_recover_reports_how_many_answers_are_left(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    final_message(visitor.ask())
+
+    response = client.post(
+        "/api/v2/chat/recover",
+        data={
+            "anonId": ANON_ID,
+            "sessionId": SESSION_ID,
+            "messageId": visitor.last_message_id(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["message"]["anonResponsesRemaining"] == limit - 1
