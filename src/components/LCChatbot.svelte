@@ -684,29 +684,41 @@
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
     // iOS reports the keyboard closing only ~0.5s after the text box loses focus, so the sheet
-    // sat above the empty space. Give it the full height as soon as typing stops, after the tap
-    // that ended it lands (moving Send mid-tap would lose the tap).
+    // sat above the empty space. Give it the full height as soon as typing stops; when a tap
+    // ended it (e.g. on Send), only once that tap's click has landed, since iOS fires the click
+    // after the blur and moving Send first would lose it.
     const shadow = inputRef?.getRootNode();
+    let lastTouchEnd = -Infinity;
     let stopTimer;
+    const noteTouchEnd = (e) => { lastTouchEnd = e.timeStamp; };
+    const grow = () => {
+      clearTimeout(stopTimer);
+      shadow?.removeEventListener('click', grow);
+      if (inputRef?.getRootNode().activeElement?.matches('input, textarea')) return;
+      viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+    };
     const stopTyping = (e) => {
       if (e.relatedTarget?.matches?.('input, textarea')) return;
       clearTimeout(stopTimer);
-      stopTimer = setTimeout(() => {
-        if (inputRef?.getRootNode().activeElement?.matches('input, textarea')) return;
-        viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
-      });
+      if (e.timeStamp - lastTouchEnd < 300) {
+        shadow?.addEventListener('click', grow, { once: true });
+        stopTimer = setTimeout(grow, 400); // the tap may have been a drag, with no click
+      } else stopTimer = setTimeout(grow);
     };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
       vv.addEventListener('scroll', sync);
       shadow?.addEventListener('focusout', stopTyping);
+      shadow?.addEventListener('touchend', noteTouchEnd, { capture: true });
     }
     return () => {
       root.style.overflow = overflow;
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
       shadow?.removeEventListener('focusout', stopTyping);
+      shadow?.removeEventListener('touchend', noteTouchEnd, { capture: true });
+      shadow?.removeEventListener('click', grow);
       clearTimeout(stopTimer);
       viewportBox = null;
     };
