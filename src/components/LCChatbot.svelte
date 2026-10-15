@@ -1575,9 +1575,9 @@
         if (sessionId === sendingSessionId) {
           messages = stopped;
           inputText = text;
-          // Phones: show the stop notice above the text box. When the restored question then
-          // grows the box, the chat keeps its bottom in view (see the chat-area resize effect).
-          if (isFullscreen) scrollToBottom({ instant: true });
+          // Phones: glide to the stop notice above the text box, once the restored question
+          // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
+          if (isFullscreen) pinChatToBottom();
         }
         track('assistant_response_stopped');
       } else {
@@ -1630,10 +1630,9 @@
               inputRef?.setSelectionRange(text.length, text.length);
             }
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
-            // Reveal the notice after the restored composer has its final size: smoothly on
-            // desktop; on phones at once, once the chat has resized for it (see pinChatToBottom)
-            if (isFullscreen) await pinChatToBottom();
-            else await scrollToBottom();
+            // Smoothly reveal the notice after the restored composer has its final size
+            // (phones already started this in the stop handler above)
+            if (!isFullscreen) await scrollToBottom();
           }
         }
       }
