@@ -1305,6 +1305,19 @@
     applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
+  // Phones: scroll to the end after the chat area has resized (its resize observer runs a frame
+  // later and would cancel a smooth scroll part-way), stopping any momentum scroll first, since
+  // iOS ignores scroll changes made while one is still gliding
+  async function pinChatToBottom() {
+    await tick();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const el = messageListRef;
+    if (!el) return;
+    el.style.overflowY = 'hidden';
+    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+    el.style.overflowY = '';
+  }
+
   async function restoreScroll(top) {
     await tick();
     messageListRef?.scrollTo({ top, behavior: 'instant' });
@@ -1591,8 +1604,10 @@
               inputRef?.setSelectionRange(text.length, text.length);
             }
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
-            // Smoothly reveal the notice after the restored composer has its final size.
-            await scrollToBottom();
+            // Reveal the notice after the restored composer has its final size: smoothly on
+            // desktop; on phones at once, once the chat has resized for it (see pinChatToBottom)
+            if (isFullscreen) await pinChatToBottom();
+            else await scrollToBottom();
           }
         }
       }
