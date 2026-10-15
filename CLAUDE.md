@@ -17,6 +17,7 @@ Ships to millions of users via Sefaria.org.
 
 - Backend: `pytest` (SQLite by default, fast)
 - Frontend: Verify changes manually, build succeeds with `npm run build`
+- Widget behaviour tests: `npm run test:e2e` (Playwright, `e2e/`, Chrome and Safari; first run `npx playwright install chromium webkit`). The chat server is mocked (`e2e/support/mockChatServer.js`, still a stub), and selectors live only in the page object `e2e/pages/assistantPage.js`
 - Run tests before committing
 
 ## Documentation Structure
