@@ -2,7 +2,17 @@
  * API client for chatbot communication
  */
 
-import { generateMessageId } from './session.js';
+import { generateMessageId, getOrCreateAnonId } from './session.js';
+
+/**
+ * The identity fields for a request body: the user token when there is a
+ * user, otherwise the logged-out visitor's anonymous ID.
+ * @param {string} userId - Encrypted user token, or '' when logged out
+ * @returns {{ userId: string } | { anonId: string }}
+ */
+export function identityFields(userId) {
+  return userId ? { userId } : { anonId: getOrCreateAnonId() };
+}
 
 /**
  * @typedef {Object} MessageContext
@@ -106,7 +116,7 @@ async function reportClientStreamEvent(
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        userId,
+        ...identityFields(userId),
         sessionId,
         messageId,
         timestamp,
@@ -133,7 +143,7 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          userId,
+          ...identityFields(userId),
           sessionId,
           messageId
         })
@@ -291,7 +301,7 @@ export async function sendMessageStream(
 
   /** @type {SendMessagePayload} */
   const payload = {
-    userId,
+    ...identityFields(userId),
     sessionId,
     messageId,
     timestamp,
@@ -561,7 +571,7 @@ export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId })
     while (true) {
       const response = await fetch(`${apiBaseUrl}/v2/chat/cancel`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, sessionId, messageId }), signal: timeout.signal
+        body: JSON.stringify({ ...identityFields(userId), sessionId, messageId }), signal: timeout.signal
       });
       if (response.status === 404 && !timeout.signal.aborted) {
         await sleep(100);

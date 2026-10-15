@@ -325,4 +325,20 @@ test.describe('Logged-out use of the assistant', () => {
       await expect(assistant.userMessages.nth(n - 1)).toContainText(`Question ${n}`);
     }
   });
+
+  test("after logging out, the user's conversation is gone", async ({ page, context }) => {
+    await mockChatServer(context);
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    await assistant.open();
+    await assistant.ask('A question while logged in');
+    await assistant.input.fill('An unsent draft');
+
+    await assistant.logOut();
+    await assistant.open();
+
+    await expect(assistant.userMessages).toHaveCount(0);
+    await expect(assistant.answers).toHaveCount(0);
+    await expect(assistant.input).toHaveValue('');
+  });
 });

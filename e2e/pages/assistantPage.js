@@ -18,6 +18,9 @@ const en = JSON.parse(
 );
 
 const ANSWER_TIMEOUT_MS = 10_000;
+// The token the demo page gets after "logging in". The mock chat server
+// accepts any token.
+const LOGGED_IN_USER_ID = 'test-user-token';
 const LOGIN_PROMPT = '[data-testid="la-login-prompt"]';
 
 /** English copy for an i18n key. */
@@ -37,25 +40,28 @@ export class AssistantPage {
 
   /**
    * Open the demo page (index.html, served by `npm run dev`) as a logged-out
-   * visitor.
-   *
-   * NOT IMPLEMENTED YET: how the host page tells the widget the visitor is
-   * logged out is decided with the implementation of sc-47704, together with
-   * the change to the demo page.
+   * visitor: with no ?user-id it mounts the widget without one, the way the
+   * host site shows it to a logged-out visitor.
    */
   async goto() {
-    throw new Error('AssistantPage.goto() not implemented yet — decided with the implementation of sc-47704');
+    await this.page.goto('/');
+    await expect(this.host).toHaveCount(1);
   }
 
   /**
    * Log in (or sign up). On the real site this ends with the page reloading
    * and the widget mounted for the user; the widget can't tell login from
-   * sign-up, so one method covers both.
-   *
-   * NOT IMPLEMENTED YET: decided with the implementation of sc-47704, like goto().
+   * sign-up, so one method covers both. Here: reopen the demo page with
+   * ?user-id=<token>.
    */
   async logIn() {
-    throw new Error('AssistantPage.logIn() not implemented yet — decided with the implementation of sc-47704');
+    await this.page.goto(`/?user-id=${encodeURIComponent(LOGGED_IN_USER_ID)}`);
+    await expect(this.host).toHaveCount(1);
+  }
+
+  /** Log out: on the real site the page reloads without a user-id. */
+  async logOut() {
+    await this.goto();
   }
 
   // Panel

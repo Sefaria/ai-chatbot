@@ -19,6 +19,24 @@ class MessageContextSerializer(serializers.Serializer):
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
 
 
+class IdentitySerializerMixin(serializers.Serializer):
+    """Who is asking: a user token (userId) or a logged-out visitor's anonId.
+
+    Exactly one of the two must be sent.
+    """
+
+    userId = serializers.CharField(max_length=512, required=False)
+    anonId = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        has_user = bool(attrs.get("userId"))
+        has_anon = bool(attrs.get("anonId"))
+        if has_user == has_anon:
+            raise serializers.ValidationError("Send exactly one of userId or anonId.")
+        return attrs
+
+
 class PromptSlugsSerializer(serializers.Serializer):
     """Optional core prompt slug override for Braintrust."""
 
@@ -26,10 +44,9 @@ class PromptSlugsSerializer(serializers.Serializer):
     labs = serializers.BooleanField(required=False, default=False)
 
 
-class ChatRequestSerializer(serializers.Serializer):
+class ChatRequestSerializer(IdentitySerializerMixin):
     """Incoming chat message from client."""
 
-    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
     timestamp = serializers.DateTimeField()
@@ -39,14 +56,13 @@ class ChatRequestSerializer(serializers.Serializer):
     isLoadTest = serializers.BooleanField(required=False, default=False)
 
 
-class FeedbackRequestSerializer(serializers.Serializer):
+class FeedbackRequestSerializer(IdentitySerializerMixin):
     """User feedback payload for Braintrust logging."""
 
     SCORE_CHOICES = [("up", "Thumbs up"), ("down", "Thumbs down")]
 
     traceId = serializers.CharField(max_length=200)
     score = serializers.ChoiceField(choices=SCORE_CHOICES)
-    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
@@ -55,26 +71,23 @@ class FeedbackRequestSerializer(serializers.Serializer):
     feedbackReason = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
-class RecoveryRequestSerializer(serializers.Serializer):
+class RecoveryRequestSerializer(IdentitySerializerMixin):
     """Lookup request for a streamed response that may have been persisted already."""
 
-    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
 
-class CancelRequestSerializer(serializers.Serializer):
+class CancelRequestSerializer(IdentitySerializerMixin):
     """Request to abandon an in-flight turn."""
 
-    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
 
 
-class ClientStreamEventSerializer(serializers.Serializer):
+class ClientStreamEventSerializer(IdentitySerializerMixin):
     """Browser-side telemetry for stream failures and recoveries."""
 
-    userId = serializers.CharField(max_length=512)
     sessionId = serializers.CharField(max_length=100)
     messageId = serializers.CharField(max_length=100)
     timestamp = serializers.DateTimeField()

@@ -14,6 +14,7 @@ class Actor:
     user_id: str
     encrypted_token: str | None = None
     sefaria_user_id: str | None = None
+    is_anonymous: bool = False
 
     @property
     def identity(self) -> str:

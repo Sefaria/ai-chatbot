@@ -31,7 +31,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Visit `http://localhost:5173` for the local widget.
+Visit `http://localhost:5173` for the local widget. It opens logged out; add `?user-id=<encrypted user token>` to open it as that user.
 
 ## Widget Usage
 
@@ -48,7 +48,7 @@ Visit `http://localhost:5173` for the local widget.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | Yes | Unique user identifier |
+| `user-id` | string | No | Encrypted user token. Leave it out for a logged-out visitor: the widget then identifies them with an anonymous ID it keeps in localStorage, and when it loads logged out it deletes any chat a logged-in user left in the browser |
 | `api-base-url` | string | Yes | Base URL for the chat API |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |

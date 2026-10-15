@@ -5,7 +5,7 @@
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
     cancelStream,
@@ -15,7 +15,8 @@
     loadConversationList,
     loadConversation,
     renameConversation,
-    deleteConversation
+    deleteConversation,
+    identityFields
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
@@ -235,7 +236,8 @@
   // Initialize on mount
   $effect(() => {
     // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession();
+    clearLoggedInChatWhenLoggedOut(!!userId);
+    const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
@@ -540,7 +542,7 @@
   function handleNewChat() {
     conversationNavigation += 1;
     conversationDrafts[sessionId] = inputText;
-    const { sessionId: newSessionId } = getOrCreateSession(true);
+    const { sessionId: newSessionId } = getOrCreateSession(true, !!userId);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
     messages = [];
@@ -1041,9 +1043,8 @@
 
   async function handleSend() {
     const text = inputText.trim();
-    const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
-    if (!isConfigured || !isReadyToSend) return;
+    if (!isReadyToSend) return;
     const sendingSessionId = sessionId;
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
@@ -1357,7 +1358,7 @@
         await sendFeedback(apiBaseUrl, {
           traceId: target.traceId,
           score: feedbackType,
-          userId,
+          ...identityFields(userId),
           sessionId,
           messageId: feedbackModalMessageId,
           comment: includeDetails ? feedbackComment : '',

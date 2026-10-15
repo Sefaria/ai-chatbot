@@ -44,6 +44,7 @@ from ..auth import (
     AuthenticationRequired,
     InvalidUserToken,
     UserTokenExpired,
+    anonymous_user_id,
     authenticate_request,
 )
 from ..models import ChatMessage
@@ -1197,7 +1198,7 @@ def chat_feedback_v2(request):
                 "feedback_reason": feedback_reason,
                 "feedback_comment": comment,
                 "session_id": data["sessionId"],
-                "user_id": data["userId"],
+                "user_id": data.get("userId") or anonymous_user_id(data["anonId"]),
                 "message_id": data["messageId"],
             }
             try:

@@ -12,6 +12,7 @@ from ..user_token_service import (
     decrypt_chatbot_user_identity,
 )
 from .actor import Actor
+from .anonymous import anonymous_user_id
 
 logger = logging.getLogger("chat")
 
@@ -52,10 +53,11 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     Authentication is attempted in order:
     1. X-Api-Key header (for Anthropic-compatible endpoints)
     2. userId field in body_data (for streaming endpoint)
+    3. anonId field in body_data, for a logged-out visitor
 
     Args:
         request: Django request object
-        body_data: Optional dict containing userId field for user token auth
+        body_data: Optional dict containing userId or anonId
 
     Returns:
         Actor with user_id set
@@ -73,6 +75,10 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     # Fall back to userId in body (for streaming endpoint)
     if body_data and body_data.get("userId"):
         return _authenticate_user_token(body_data["userId"])
+
+    # A logged-out visitor's anonId in body
+    if body_data and body_data.get("anonId"):
+        return Actor(user_id=anonymous_user_id(body_data["anonId"]), is_anonymous=True)
 
     raise AuthenticationRequired()
 
