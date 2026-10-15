@@ -364,7 +364,7 @@
     const observer = new ResizeObserver(() => {
       const delta = previous - el.clientHeight;
       // A hidden list (sheet closed) measures 0: just remember the new height
-      if (delta && previous && el.clientHeight) {
+      if (delta && previous && el.clientHeight && !scrollingToEnd) {
         el.scrollTo({ top: el.scrollTop + delta, behavior: 'instant' });
       }
       previous = el.clientHeight;
@@ -1317,17 +1317,29 @@
     applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
-  // Phones: scroll to the end after the chat area has resized (its resize observer runs a frame
-  // later and would cancel a smooth scroll part-way), stopping any momentum scroll first, since
-  // iOS ignores scroll changes made while one is still gliding
+  // Phones: smoothly scroll to the end once the chat area has resized (its resize observer runs a
+  // frame later and would cut a smooth scroll short). Any momentum scroll is stopped first, since
+  // iOS ignores scroll changes made while one is still gliding, and the observer stands aside
+  // while the scroll runs (the keyboard closing after Send resizes the chat again).
+  let scrollingToEnd = false;
   async function pinChatToBottom() {
+    scrollingToEnd = true; // from the start: the keyboard closing after Send would pull the chat up
     await tick();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const el = messageListRef;
-    if (!el) return;
+    if (!el) { scrollingToEnd = false; return; }
     el.style.overflowY = 'hidden';
-    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+    void el.offsetHeight; // apply it, which stops the glide
     el.style.overflowY = '';
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    await new Promise(resolve => {
+      const done = () => { clearTimeout(timer); el.removeEventListener('scrollend', done); resolve(); };
+      const timer = setTimeout(done, 1000); // no scrollend if it was already there
+      el.addEventListener('scrollend', done);
+    });
+    scrollingToEnd = false;
+    // The chat grew or shrank under the scroll (e.g. the keyboard closing): finish the last bit
+    if (el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }
 
   async function restoreScroll(top) {
