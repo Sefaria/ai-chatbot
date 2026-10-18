@@ -50,12 +50,20 @@ succeed, metrics are scraped, and `Sefaria/sefaria-mcp` is archived.
 
 ### 1.1 Bring the prior work onto `main`
 
-- [ ] Cherry-pick `de89ee76`, `b67f577b` and `105cdcc8` from `local-agent-thin` and
-      resolve conflicts against current `tool_schemas.py`. `main` has the same 21 tools.
-- [ ] Make `chat/V2/agent/__init__.py` lazy, if that isn't already part of the
-      cherry-picks, so importing the tool layer doesn't pull in `claude_agent_sdk`,
-      `anthropic` or `braintrust`.
-- [ ] `server/chat/tests/test_mcp_server.py` passes under `pytest`.
+- [x] Cherry-picked from `local-agent-thin`: `de89ee76` (surfaces), `b67f577b` (server),
+      `105cdcc8` (link validation), `0780e0ae` (lazy `chat/V2/agent/__init__.py`),
+      `c7ed355c` (MCP tests) and `edf0fbe` (ARCHITECTURE tool inventory). Everything
+      applied cleanly except `edf0fbe`, whose edit to the September spec was dropped
+      because this plan supersedes it.
+- [x] `mcp_server.app` builds 21 tools with no Django, `claude_agent_sdk`, `anthropic`
+      or `braintrust` in `sys.modules`.
+- [x] `test_mcp_server.py` and `test_validate_response_links_tool.py` pass (23 tests).
+      The full suite is unchanged from `main` apart from the new tests: 422 passed vs
+      399, and the same 133 setup errors. Those errors are pre-existing: migrations
+      `0009` and `0012` run raw `IF [NOT] EXISTS` SQL that SQLite rejects, so
+      DB-backed tests can't set up under `test_settings`.
+- Still to do from b67f577b, handled in 1.2 and 1.4: it removed the well-known stubs
+  (D6), pins `fastmcp==3.4.7`, and builds a separate `Dockerfile.mcp` image (D3).
 
 ### 1.2 Bring the server to upstream parity
 
