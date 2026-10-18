@@ -62,6 +62,10 @@
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
 
+  // No user-id means a logged-out visitor: chat history, New chat and the
+  // opt-out link are for logged-in users only.
+  let isLoggedIn = $derived(!!userId);
+
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
     window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
@@ -89,7 +93,7 @@
   let panelHeight = $state(456);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
-  
+
   let appetizerData = $state(null);
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
@@ -950,7 +954,7 @@
 
   async function loadMoreHistory() {
     if (isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
-    
+
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
 
@@ -1406,7 +1410,7 @@
 
     // In docked mode, only allow horizontal resize (e/w)
     const allowHorizontal = edge.includes('w') || edge.includes('e');
-    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked'; 
+    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked';
 
     if (!allowHorizontal && !allowVertical) return;
 
@@ -1748,7 +1752,7 @@
     </button>
   {:else}
     <!-- Chat Panel -->
-    <div 
+    <div
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
@@ -1783,12 +1787,16 @@
           </h2>
         </div>
         <div class="header-actions">
+          <!-- Logged out, history is locked. aria-disabled (not disabled) keeps it
+               focusable and hoverable, so its tooltip and label can say why. With no
+               data-feature-name, a locked click sends no analytics event. -->
           <HeaderButton
             className="history-btn"
-            title={$_('assistant.header.history.tooltip')}
-            onClick={(e) => { e.stopPropagation(); showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
-            aria-expanded={showHistoryPanel}
-            data-feature-name="chat_history_toggle"
+            title={$_(isLoggedIn ? 'assistant.header.history.tooltip' : 'assistant.header.history.login_tooltip')}
+            onClick={(e) => { e.stopPropagation(); if (!isLoggedIn) return; showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
+            aria-expanded={isLoggedIn ? showHistoryPanel : undefined}
+            aria-disabled={isLoggedIn ? undefined : 'true'}
+            data-feature-name={isLoggedIn ? 'chat_history_toggle' : undefined}
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
@@ -1819,7 +1827,7 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={!isLoggedIn || messages.length === 0} role="menuitem">
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
@@ -1835,10 +1843,12 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  {$_('assistant.menu.optout')}
-                </a>
+                {#if isLoggedIn}
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.optout')}
+                  </a>
+                {/if}
               </div>
             {/if}
           </div>
@@ -2463,7 +2473,7 @@
     color: var(--lc-user-text);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size-sm);
-    line-height: 18px; 
+    line-height: 18px;
     letter-spacing: 0.24px;
     max-width: 0;
     overflow: hidden;
@@ -3067,7 +3077,7 @@
       inset-inline-start: auto;
       inset-inline-end: 0;
     }
-  
+
 
   .menu-item {
     display: flex;

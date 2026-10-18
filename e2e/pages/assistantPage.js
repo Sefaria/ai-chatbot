@@ -168,7 +168,7 @@ export class AssistantPage {
   // Chat history
 
   get historyButton() {
-    return this.host.locator('[data-feature-name="chat_history_toggle"]');
+    return this.host.locator('.history-btn');
   }
 
   get historyPanel() {
