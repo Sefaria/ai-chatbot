@@ -96,6 +96,13 @@ class ClientStreamEventSerializer(IdentitySerializerMixin):
     context = MessageContextSerializer(required=False)
 
 
+class AnonClaimRequestSerializer(serializers.Serializer):
+    """After login: move a logged-out visitor's chats to the user."""
+
+    userId = serializers.CharField(max_length=512)
+    anonId = serializers.UUIDField()
+
+
 class AnthropicRequestSerializer(serializers.Serializer):
     """Anthropic Messages API request format."""
 

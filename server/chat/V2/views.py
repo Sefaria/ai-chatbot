@@ -48,8 +48,9 @@ from ..auth import (
     anonymous_user_id,
     authenticate_request,
 )
-from ..models import ChatMessage
+from ..models import ChatMessage, ChatSession
 from ..serializers import (
+    AnonClaimRequestSerializer,
     CancelRequestSerializer,
     ChatRequestSerializer,
     ClientStreamEventSerializer,
@@ -1132,6 +1133,36 @@ def chat_cancel_v2(request):
             ChatMessage.ProcessingState.FAILED: "failed",
         }.get(state, "not_running")
         return Response({"status": outcome, "processingState": state})
+
+
+@api_view(["POST"])
+def anon_claim_v2(request):
+    """
+    After a logged-out visitor logs in or signs up, move their chats to the user.
+
+    POST /api/v2/anon/claim  {userId: <encrypted user token>, anonId: <the visitor's ID>}
+
+    Only a valid user token can claim, so nobody can move chats into someone
+    else's account. Claiming again moves nothing.
+    """
+    serializer = AnonClaimRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Invalid request", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, {"userId": data["userId"]})
+    if isinstance(actor, Response):
+        return actor
+
+    anon_user_id = anonymous_user_id(data["anonId"])
+    with transaction.atomic():
+        claimed = ChatSession.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+        ChatMessage.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+
+    return Response({"claimedSessions": claimed})
 
 
 @api_view(["POST"])

@@ -4,7 +4,7 @@
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
-  import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
+  import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
@@ -16,7 +16,8 @@
     loadConversation,
     renameConversation,
     deleteConversation,
-    identityFields
+    identityFields,
+    claimAnonChats
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
@@ -237,6 +238,10 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Settles once a just-logged-in user's logged-out chats are claimed (see
+  // claimLoggedOutChats). Requests that need the session to be the user's wait for it.
+  let loggedOutChatsClaimed = Promise.resolve();
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -282,7 +287,32 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = withStoppedTurns(savedMessages);
+
+    // A visitor who just logged in: their logged-out chats become the user's.
+    const anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
+    if (userId && anonId && apiBaseUrl) {
+      loggedOutChatsClaimed = claimLoggedOutChats(anonId);
+    }
   });
+
+  /**
+   * Move a just-logged-in user's logged-out chats to them, so they continue the
+   * same conversation and it shows in their history. If the claim fails, the
+   * current session still belongs to the anonymous ID and the server would refuse
+   * the next question in it, so start a fresh conversation (keeping the draft);
+   * the anonymous ID is kept, and the next load tries again.
+   */
+  async function claimLoggedOutChats(anonId) {
+    try {
+      await claimAnonChats(apiBaseUrl, userId, anonId);
+      removeStorage(STORAGE_KEYS.ANON_ID);
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to claim logged-out chats:', e);
+      const draft = inputText;
+      handleNewChat();
+      inputText = draft;
+    }
+  }
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
@@ -657,6 +687,7 @@
   }
 
   async function loadConversationPage({ reset = false, search = submittedHistorySearch } = {}) {
+    await loggedOutChatsClaimed;
     if (!apiBaseUrl || !userId || isLoadingConversations) return;
     if (!reset && !hasMoreConversations) return;
 
@@ -931,6 +962,7 @@
   }
 
   async function syncSessionState() {
+    await loggedOutChatsClaimed;
     if (!userId || !sessionId || !apiBaseUrl) return;
 
     try {
@@ -1046,6 +1078,7 @@
   }
 
   async function handleSend() {
+    await loggedOutChatsClaimed;
     const text = inputText.trim();
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isReadyToSend) return;

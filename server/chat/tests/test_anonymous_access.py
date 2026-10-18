@@ -401,3 +401,160 @@ def test_recover_reports_how_many_answers_are_left(client, no_limit_by_default):
 
     assert response.status_code == 200
     assert response.data["message"]["anonResponsesRemaining"] == limit - 1
+
+
+# ── Claiming a logged-out visitor's chats on login ────────────────────────
+
+LOGGED_IN_USER = "user_claimer"
+
+
+def claim(client, user_token, anon_id=ANON_ID):
+    return client.post(
+        "/api/v2/anon/claim",
+        data={"userId": user_token, "anonId": anon_id},
+        format="json",
+    )
+
+
+@pytest.fixture
+def user_token():
+    return create_test_token(LOGGED_IN_USER, SECRET)
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_claim_moves_the_logged_out_chat_to_the_user(client, user_token):
+    Visitor(client).use_up(2)
+
+    response = claim(client, user_token)
+
+    assert response.status_code == 200
+    assert response.data == {"claimedSessions": 1}
+    assert ChatSession.objects.get(session_id=SESSION_ID).user_id == LOGGED_IN_USER
+    assert set(
+        ChatMessage.objects.filter(session_id=SESSION_ID).values_list("user_id", flat=True)
+    ) == {LOGGED_IN_USER}
+    assert not ChatMessage.objects.filter(user_id=anonymous_user_id(ANON_ID)).exists()
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_claimed_chat_is_in_the_users_history(client, user_token):
+    Visitor(client).use_up(2)
+    assert claim(client, user_token).status_code == 200
+
+    conversations = client.get("/api/history/conversations", {"userId": user_token})
+    messages = client.get("/api/history", {"userId": user_token, "sessionId": SESSION_ID})
+
+    assert [c["sessionId"] for c in conversations.data["conversations"]] == [SESSION_ID]
+    assert len(messages.data["messages"]) == 4  # two questions, two answers
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_claimed_chat_stays_in_history_after_a_new_chat(client, user_token):
+    Visitor(client).use_up(1)
+    assert claim(client, user_token).status_code == 200
+
+    final_message(ask(client, {"userId": user_token}, message_id="msg_new", session_id="sess_new"))
+
+    conversations = client.get("/api/history/conversations", {"userId": user_token})
+    assert {c["sessionId"] for c in conversations.data["conversations"]} == {
+        SESSION_ID,
+        "sess_new",
+    }
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_user_can_keep_asking_in_the_claimed_chat(client, agent, user_token):
+    Visitor(client).use_up(1)
+    assert claim(client, user_token).status_code == 200
+
+    response = ask(client, {"userId": user_token}, message_id="msg_after_login")
+
+    assert final_message(response)["sessionId"] == SESSION_ID
+    assert ChatMessage.objects.get(message_id="msg_after_login").user_id == LOGGED_IN_USER
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_without_a_claim_the_user_cannot_continue_the_logged_out_chat(client, user_token):
+    # The reason the widget claims on login: the session still belongs to the anon ID.
+    Visitor(client).use_up(1)
+
+    with pytest.raises(Exception, match="different user"):
+        ask(client, {"userId": user_token}, message_id="msg_unclaimed")
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize(
+    "bad_token",
+    [
+        pytest.param("not-a-token", id="garbage"),
+        pytest.param(
+            create_test_token(
+                LOGGED_IN_USER, SECRET, expires_at=timezone.now() - timedelta(hours=1)
+            ),
+            id="expired",
+        ),
+        pytest.param(create_test_token(LOGGED_IN_USER, "another-secret"), id="wrong-secret"),
+    ],
+)
+def test_claim_with_a_bad_token_moves_nothing(client, bad_token):
+    Visitor(client).use_up(1)
+
+    response = claim(client, bad_token)
+
+    assert response.status_code == 401
+    assert ChatSession.objects.get(session_id=SESSION_ID).user_id == anonymous_user_id(ANON_ID)
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_claiming_twice_is_harmless(client, user_token):
+    Visitor(client).use_up(1)
+    assert claim(client, user_token).status_code == 200
+
+    second = claim(client, user_token)
+
+    assert second.status_code == 200
+    assert second.data == {"claimedSessions": 0}
+    assert ChatSession.objects.get(session_id=SESSION_ID).user_id == LOGGED_IN_USER
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_claim_moves_only_this_visitors_chats(client, user_token):
+    Visitor(client).use_up(1)
+    Visitor(client, anon_id=OTHER_ANON_ID, session_id="sess_other").use_up(1)
+    ChatSession.objects.create(session_id="sess_someone", user_id="someone_else")
+    ChatMessage.objects.create(
+        message_id="msg_someone",
+        session_id="sess_someone",
+        user_id="someone_else",
+        role=ChatMessage.Role.USER,
+        content="Not yours",
+    )
+
+    assert claim(client, user_token).status_code == 200
+
+    assert ChatSession.objects.get(session_id="sess_other").user_id == anonymous_user_id(
+        OTHER_ANON_ID
+    )
+    assert ChatSession.objects.get(session_id="sess_someone").user_id == "someone_else"
+    assert ChatMessage.objects.get(message_id="msg_someone").user_id == "someone_else"
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param({}, id="no-anon-id"),
+        pytest.param({"anonId": "not-a-uuid"}, id="anon-id-not-a-uuid"),
+    ],
+)
+def test_claim_needs_a_valid_anon_id(client, user_token, body):
+    response = client.post("/api/v2/anon/claim", data={"userId": user_token, **body}, format="json")
+
+    assert response.status_code == 400
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_claim_needs_a_user_token(client):
+    response = client.post("/api/v2/anon/claim", data={"anonId": ANON_ID}, format="json")
+
+    assert response.status_code == 400

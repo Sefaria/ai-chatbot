@@ -324,6 +324,28 @@ test.describe('Logged-out use of the assistant', () => {
     }
   });
 
+  test('after logging in, the visitor keeps their conversation and can keep asking', async ({ page, context }) => {
+    const assistant = await setUp(page, context);
+    await assistant.ask('A question while logged out');
+
+    await assistant.logIn();
+    await assistant.open();
+
+    await expect(assistant.userMessages).toHaveCount(1);
+    await expect(assistant.userMessages.first()).toContainText('A question while logged out');
+    await expect(assistant.answers).toHaveCount(1);
+
+    await assistant.ask('A question after logging in');
+    await expect(assistant.userMessages).toHaveCount(2);
+
+    // Both questions are one conversation in the user's history.
+    await assistant.startNewChat();
+    await assistant.openHistory();
+    await expect(assistant.historyConversations).toHaveCount(1);
+    await assistant.historyConversations.first().click();
+    await expect(assistant.userMessages).toHaveCount(2);
+  });
+
   test("after logging out, the user's conversation is gone", async ({ page, context }) => {
     await mockChatServer(context);
     const assistant = new AssistantPage(page);

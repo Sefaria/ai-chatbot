@@ -658,6 +658,30 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
 }
 
 /**
+ * After a logged-out visitor logs in or signs up: move their chats to the user,
+ * so they continue the same conversation and it shows in their history.
+ * @param {string} apiBaseUrl
+ * @param {string} userId - Encrypted user token
+ * @param {string} anonId - The visitor's anonymous ID
+ * @returns {Promise<{ claimedSessions: number }>}
+ */
+export async function claimAnonChats(apiBaseUrl, userId, anonId) {
+  const response = await fetch(`${apiBaseUrl}/v2/anon/claim`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId, anonId })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Claim failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Load saved conversation summaries for the chat history sidebar.
  * @param {string} apiBaseUrl
  * @param {string} userId
