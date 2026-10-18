@@ -21,6 +21,9 @@ export default defineConfig({
   ],
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,
+    // The demo page counts as a Sefaria host (it gets the login button, for one),
+    // whatever the developer's own .env.local says.
+    env: { VITE_SEFARIA_HOSTNAMES: 'localhost,127.0.0.1,::1' },
     url: `http://localhost:${PORT}/src/main.js`,
     reuseExistingServer: !process.env.CI,
   },

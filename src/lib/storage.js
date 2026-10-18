@@ -74,5 +74,6 @@ export const STORAGE_KEYS = {
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
   HAS_USED: 'has_used',
-  ANON_ID: 'anon_id'
+  ANON_ID: 'anon_id',
+  ANON_LIMIT_REACHED: 'anon_limit_reached'
 };

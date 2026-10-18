@@ -47,7 +47,10 @@ function isSessionExpired(lastActivity) {
 export function getOrCreateSession(forceNew = false, loggedIn = true) {
   const stored = getStorage(STORAGE_KEYS.SESSION, null);
   
-  if (forceNew || !stored || isSessionExpired(stored.lastActivity)) {
+  // A logged-out visitor's conversation never times out: they come back to it,
+  // and to the login prompt, however long ago it was.
+  const expired = stored && stored.loggedIn !== false && isSessionExpired(stored.lastActivity);
+  if (forceNew || !stored || expired) {
     const sessionId = generateSessionId();
     const session = {
       sessionId,

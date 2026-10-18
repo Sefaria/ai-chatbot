@@ -417,7 +417,8 @@ export async function sendMessageStream(
                   toolCalls: data.toolCalls,
                   stats: data.stats,
                   session: data.session,
-                  recovered: data.recovered || false
+                  recovered: data.recovered || false,
+                  anonResponsesRemaining: data.anonResponsesRemaining
                 };
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);

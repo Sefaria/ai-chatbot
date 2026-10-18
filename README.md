@@ -101,7 +101,7 @@ pytest           # Run tests
 | `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
-| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages for local ref detection (defaults include localhost) |
+| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection and the login button of the logged-out login prompt. Empty by default; `.env.example` sets localhost, and the Playwright tests set it themselves |
 
 Create a `.env` file in the `server/` directory with backend API keys. For frontend-only local values, copy root `.env.example` to `.env.local`.
 

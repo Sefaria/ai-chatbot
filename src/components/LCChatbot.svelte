@@ -67,6 +67,13 @@
   // opt-out link are for logged-in users only.
   let isLoggedIn = $derived(!!userId);
 
+  // A logged-out visitor who used up their free answers sees the login prompt
+  // in place of the text box. Kept in localStorage, so a reload, a later visit
+  // or another tab still shows it. Logged-in users never see it.
+  let anonLimitReached = $state(false);
+  let loginRequired = $derived(!isLoggedIn && anonLimitReached);
+  const LOGIN_SOURCE = 'rate_limit_login_button';
+
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
     window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
@@ -288,6 +295,15 @@
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = withStoppedTurns(savedMessages);
 
+    if (userId) {
+      removeStorage(STORAGE_KEYS.ANON_LIMIT_REACHED);
+    } else {
+      anonLimitReached = getStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, false) === true;
+    }
+    // A restored conversation opens at its end. (A no-op when the panel is closed
+    // or the conversation is empty.)
+    scrollToBottom({ instant: true });
+
     // A visitor who just logged in: their logged-out chats become the user's.
     const anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
     if (userId && anonId && apiBaseUrl) {
@@ -468,6 +484,20 @@
     document.dispatchEvent(event);
   }
 
+  function markAnonLimitReached() {
+    anonLimitReached = true;
+    setStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, true);
+  }
+
+  // Logging in is the host's job. Only a Sefaria page has a login flow today: the
+  // widget asks it through an event, and Sefaria opens its login view with this
+  // source for its signup analytics. Another host would get its own branch here.
+  function requestLogin() {
+    if (isOnSefariaPage()) {
+      dispatchEvent('login_requested', { source: LOGIN_SOURCE });
+    }
+  }
+
   function sampleThinkingMessageDelay() {
     return THINKING_MESSAGE_MIN_MS + Math.random() * (THINKING_MESSAGE_MAX_MS - THINKING_MESSAGE_MIN_MS);
   }
@@ -550,6 +580,7 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
+    scrollToBottom({ instant: true });
 
     // Focus input after panel opens
     setTimeout(() => {
@@ -1242,6 +1273,9 @@
       if (response.session && sessionId === sendingSessionId) {
         turnCount = response.session.turnCount ?? 0;
       }
+      if (!userId && response.anonResponsesRemaining === 0) {
+        markAnonLimitReached();
+      }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
         setStorage(STORAGE_KEYS.HAS_USED, true);
@@ -1272,6 +1306,17 @@
           inputText = text;
         }
         track('assistant_response_stopped');
+      } else if (e?.status === 403 && e?.code === 'login_required') {
+        // The free answers were already used up (e.g. in another tab): no error,
+        // just the login prompt. The question goes back to the draft, so it's still
+        // in the text box after logging in. Only a logged-out visitor gets this, and
+        // they can't switch conversations (New chat and history are locked), so the
+        // question is always in the current one.
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        inputText = text;
+        setStorage(STORAGE_KEYS.DRAFT + ':' + sessionId, { text });
+        markAnonLimitReached();
       } else {
         console.error('[lc-chatbot] Send failed:', e);
 
@@ -1621,6 +1666,11 @@
     );
   }
 
+  // Whether the page hosting the widget is a Sefaria page.
+  function isOnSefariaPage() {
+    return isSefariaHostname(window.location.hostname);
+  }
+
   function refToUrlPath(ref) {
     const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
     if (!m) {
@@ -1647,7 +1697,7 @@
    * the ref API be exercised on whatever environment the widget runs in.
    */
   function sefariaBase() {
-    if (isSefariaHostname(window.location.hostname)) {
+    if (isOnSefariaPage()) {
       return window.location.origin;
     }
     return SEFARIA_BASE_URL;
@@ -1739,9 +1789,7 @@
   }
 
   function handleAppetizerClick(topicSlug, topicUrl) {
-    const onSefaria = isSefariaHostname(window.location.hostname);
-
-    if (onSefaria) {
+    if (isOnSefariaPage()) {
       // In-page navigation via ReaderApp's existing event listener
       document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
         detail: { url: `/topics/${topicSlug}` }
@@ -2237,38 +2285,51 @@
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
       {/if}
       <!-- Input Footer -->
-      <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          maxlength={effectiveMaxInputChars}
-          placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
-          aria-label={$_('assistant.input.aria')}
-          rows="1"
-          disabled={isCurrentSessionSending || limitReached}
-        ></textarea>
-        {#if isCurrentSessionSending}
-          <Tooltip text={$_('assistant.stop.tooltip')}>
-            <button type="button" class="stop-btn" onclick={handleStop}
-              disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
-              <img src={stopIcon} alt="" width="18" height="18" />
+      {#if loginRequired}
+        <!-- The free answers are used up: the login prompt replaces the text box.
+             It doesn't take focus. -->
+        <div class="login-prompt" data-testid="la-login-prompt">
+          <p class="login-prompt-text">{$_('assistant.anon.limit_reached')}</p>
+          {#if isOnSefariaPage()}
+            <button type="button" class="login-prompt-button" data-feature-name={LOGIN_SOURCE} onclick={requestLogin}>
+              {$_('assistant.anon.login_button')}
             </button>
-          </Tooltip>
-        {:else}
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
-          aria-label={$_('assistant.input.send.tooltip')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-        {/if}
-      </footer>
+          {/if}
+        </div>
+      {:else}
+        <footer class="lc-chatbot-input">
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            maxlength={effectiveMaxInputChars}
+            placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
+            aria-label={$_('assistant.input.aria')}
+            rows="1"
+            disabled={isCurrentSessionSending || limitReached}
+          ></textarea>
+          {#if isCurrentSessionSending}
+            <Tooltip text={$_('assistant.stop.tooltip')}>
+              <button type="button" class="stop-btn" onclick={handleStop}
+                disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
+                <img src={stopIcon} alt="" width="18" height="18" />
+              </button>
+            </Tooltip>
+          {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+            aria-label={$_('assistant.input.send.tooltip')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+          {/if}
+        </footer>
+      {/if}
       {/if}
       </section>
       </div>
@@ -3533,6 +3594,57 @@
   }
 
   /* Input Footer */
+  /* Shown in place of the text box once a logged-out visitor's free answers are used up. */
+  .login-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-top: 1px solid var(--lc-border-light);
+    animation: loginPromptIn 0.2s ease;
+  }
+
+  .login-prompt-text {
+    margin: 0;
+    color: var(--lc-text-secondary);
+    font-size: var(--lc-font-size-sm);
+    text-align: center;
+  }
+
+  .login-prompt-button {
+    width: 100%;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: var(--lc-primary);
+    color: #fff;
+    font-family: var(--lc-font);
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .login-prompt-button:hover {
+    background: var(--lc-primary-hover);
+  }
+
+  @keyframes loginPromptIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .login-prompt {
+      animation: none;
+    }
+  }
+
   .lc-chatbot-input {
     display: flex;
     align-items: flex-end;

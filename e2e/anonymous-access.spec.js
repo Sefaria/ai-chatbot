@@ -108,6 +108,21 @@ test.describe('Logged-out use of the assistant', () => {
     expect(await assistant.isFocusInsideLoginPrompt()).toBe(false);
   });
 
+  test('the login button asks the host to log in, with source rate_limit_login_button', async ({ page, context }) => {
+    const assistant = await setUp(page, context);
+    await page.evaluate(() => {
+      window.loginRequests = [];
+      document.addEventListener('chatbot:login_requested', (e) => window.loginRequests.push(e.detail));
+    });
+    await reachLimit(assistant);
+    const pageBefore = page.url();
+
+    await assistant.loginButton.click();
+
+    expect(await page.evaluate(() => window.loginRequests)).toEqual([{ source: 'rate_limit_login_button' }]);
+    expect(page.url()).toBe(pageBefore);
+  });
+
   test.describe('the login prompt', () => {
     test('has its colors, alignment and size', async ({ page, context }) => {
       const assistant = await setUp(page, context);
