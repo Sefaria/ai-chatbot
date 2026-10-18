@@ -759,6 +759,13 @@
   // and can pass a question to ask, e.g. from their search box.
   $effect(() => {
     function onOpenRequest(e) {
+      // The page's own link to the relabelled launcher's question (e.g. the no-results text)
+      // acts as a launcher click: the question is asked once, whichever is clicked first
+      const d = e.detail;
+      if (d?.question && launcherOverride?.source === d.source && launcherOverride.question === d.question) {
+        askFromLauncher();
+        return;
+      }
       trackAssistantClick(e.detail?.source || 'host_open');
       if (e.detail?.question) askInNewChat(e.detail.question);
       else if (!isOpen) openPanel();
