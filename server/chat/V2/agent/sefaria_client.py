@@ -33,6 +33,22 @@ from .source_sheet_serializer import prepare_source_sheet_sources, serialize_sou
 
 DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 
+# Sefaria/<service> (<env>) is the format the Sefaria API expects from first-party callers.
+USER_AGENT = "Sefaria/library-assistant"
+
+
+def _user_agent() -> str:
+    """Append ``settings.ENVIRONMENT`` (the value Sentry is tagged with) when it is set.
+
+    Imports settings lazily so this module can be imported before Django is configured.
+    """
+    from django.conf import settings
+
+    env = str(getattr(settings, "ENVIRONMENT", "") or "")
+    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
+    env = env.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
+    return f"{USER_AGENT} ({env})" if env else USER_AGENT
+
 
 def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
@@ -158,7 +174,9 @@ class SefariaClient:
             except Exception:
                 pass
 
-        self._client = httpx.AsyncClient(timeout=self.timeout)
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout, headers={"User-Agent": _user_agent()}
+        )
         self._client_loop = loop
         return self._client
 

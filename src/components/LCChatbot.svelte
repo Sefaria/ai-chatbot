@@ -1,10 +1,14 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
+  import { waitForTurn } from '../lib/turnOutcome.js';
+  import { withStoppedTurns } from '../lib/stoppedTurns.js';
+  import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
   import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
   import {
     sendMessageStream,
+    cancelStream,
     loadHistory,
     fetchPromptDefaults,
     sendFeedback,
@@ -72,8 +76,12 @@
   let isOpen = $state(false);
   let messages = $state([]);
   let inputText = $state('');
-  let isSending = $state(false);
   let sendingSessionIds = $state({});
+  let activeRequests = $state({});
+  let conversationDrafts = $state({});
+  let conversationNavigation = 0;
+  let stopErrors = $state({});
+  let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
   let isLoadingHistory = $state(false);
   let hasMoreHistory = $state(true);
   let sessionId = $state('');
@@ -273,7 +281,7 @@
     }
 
     // Restore draft
-    const savedDraft = getStorage(STORAGE_KEYS.DRAFT, null);
+    const savedDraft = getStorage(STORAGE_KEYS.DRAFT + ':' + sid, null) || getStorage(STORAGE_KEYS.DRAFT, null);
     if (savedDraft?.text) {
       inputText = savedDraft.text;
     }
@@ -290,7 +298,7 @@
 
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
-    messages = savedMessages;
+    messages = withStoppedTurns(savedMessages);
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
@@ -310,10 +318,27 @@
     }
   });
 
+  function sizePrompt(element) {
+    if (!element || !element.clientWidth) return;
+    const styles = getComputedStyle(element);
+    const borders = parseFloat(styles.borderTopWidth) + parseFloat(styles.borderBottomWidth);
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight + borders}px`;
+  }
+
+  // Wait for bound text to reach the DOM before measuring typing or restored drafts.
+  $effect(() => {
+    inputText;
+    const element = inputRef;
+    let cancelled = false;
+    tick().then(() => { if (!cancelled) sizePrompt(element); });
+    return () => { cancelled = true; };
+  });
+
   // Save draft on input change
   $effect(() => {
-    if (inputText) {
-      setStorage(STORAGE_KEYS.DRAFT, { text: inputText });
+    if (sessionId) {
+      setStorage(STORAGE_KEYS.DRAFT + ':' + sessionId, { text: inputText });
     }
   });
 
@@ -659,6 +684,8 @@
   }
 
   function handleNewChat() {
+    conversationNavigation += 1;
+    conversationDrafts[sessionId] = inputText;
     const { sessionId: newSessionId } = getOrCreateSession(true);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
@@ -921,7 +948,7 @@
   }
 
   async function historyMessagesToUiMessages(historyMessages) {
-    return await Promise.all((historyMessages || []).map(async item => ({
+    return withStoppedTurns(await Promise.all((historyMessages || []).map(async item => ({
       messageId: item.messageId,
       sessionId: item.sessionId,
       userId: item.userId,
@@ -929,29 +956,31 @@
       content: item.content || '',
       timestamp: item.timestamp,
       status: item.status || 'sent',
+      processingState: item.processingState || '',
       feedback: null,
       traceId: null,
       toolCalls: item.toolCalls || null,
       appetizerData: item.appetizerData || null,
-      locationRef: item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null,
+      locationRef: item.locationRef || (item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null),
       noEntryAnimation: true
-    })));
+    }))));
   }
 
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
     // Phones show the history list and the chat one at a time.
     if (isFullscreen) showHistoryPanel = false;
+    const navigation = ++conversationNavigation;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
 
     let payload = conversationCache[conversation.sessionId];
+    const cached = !!payload;
     if (!payload) {
       isLoadingHistory = true;
       try {
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
-        conversationCache = { ...conversationCache, [conversation.sessionId]: payload };
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
         historyError = '';
@@ -960,9 +989,18 @@
       }
     }
 
+    const uiMessages = cached ? withStoppedTurns(payload.messages) : await historyMessagesToUiMessages(payload.messages);
+    if (navigation !== conversationNavigation) return;
+    conversationCache = { ...conversationCache, [conversation.sessionId]: {...payload, messages: uiMessages} };
     chatJustRestarted = true; // Skip sync — set before sessionId so the effect sees it on first run
+    conversationDrafts[sessionId] = inputText;
     sessionId = conversation.sessionId;
-    messages = await historyMessagesToUiMessages(payload.messages);
+    inputText = conversationDrafts[sessionId] ?? getStorage(STORAGE_KEYS.DRAFT + ':' + sessionId, {text: ''}).text;
+    updateSessionActivity(sessionId);
+    appetizerData = activeRequests[sessionId]?.appetizerData || null;
+    stopThinkingMessages();
+    if (activeRequests[sessionId] && !activeRequests[sessionId].stopping) startThinkingMessages();
+    messages = uiMessages;
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
     isLoadingHistory = false;
@@ -1046,7 +1084,7 @@
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
-        messages = result.messages.map(m => ({ ...m, noEntryAnimation: true }));
+        messages = withStoppedTurns(result.messages.map(m => ({ ...m, noEntryAnimation: true })));
         hasMoreHistory = result.hasMore;
         saveMessagesToStorage();
         scrollToBottom({ instant: true });
@@ -1065,7 +1103,7 @@
     isLoadingHistory = true;
     try {
       const result = await loadHistory(apiBaseUrl, userId, sessionId, oldestMessage.timestamp, 20);
-      messages = [...result.messages.map(m => ({ ...m, noEntryAnimation: true })), ...messages];
+      messages = withStoppedTurns([...result.messages.map(m => ({ ...m, noEntryAnimation: true })), ...messages]);
       hasMoreHistory = result.hasMore;
       saveMessagesToStorage();
     } catch (e) {
@@ -1155,6 +1193,14 @@
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isConfigured || !isReadyToSend) return;
     const sendingSessionId = sessionId;
+    setSessionSending(sendingSessionId, true);
+    activeRequests[sendingSessionId] = {
+      messageId: generateMessageId(), controller: new AbortController(), text,
+      stopping: false, appetizerData: null
+    };
+    const request = activeRequests[sendingSessionId];
+    delete stopErrors[sendingSessionId];
+    conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
     resetScroll();
     track('assistant_message_sent', { length: text.length });
@@ -1163,9 +1209,10 @@
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
     // Create user message
-    const locationRef = await parseSefariaRef(window.location.href);
+    const pageUrl = window.location.href;
+    const locationRef = null;
     const userMessage = {
-      messageId: generateMessageId(),
+      messageId: request.messageId,
       sessionId: sendingSessionId,
       userId,
       role: 'user',
@@ -1175,12 +1222,9 @@
       locationRef
     };
 
-    messages = [...messages, userMessage];
+    messages = withStoppedTurns([...messages, userMessage]);
     saveMessagesToStorage();
     scrollToBottom();
-
-    setSessionSending(sendingSessionId, true);
-    isSending = Object.keys(sendingSessionIds).length > 0;
 
     appetizerData = null;
     startThinkingMessages();
@@ -1204,8 +1248,22 @@
     };
 
     try {
-      const response = await sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
+      // Resolve location independently; Stop and chat switching remain responsive.
+      parseSefariaRef(pageUrl).then(location => {
+        userMessage.locationRef = location;
+        const cached = conversationCache[sendingSessionId];
+        if (cached) cached.messages = cached.messages.map(m => m.messageId === request.messageId ? {...m, locationRef: location} : m);
+        if (sessionId === sendingSessionId) {
+          messages = messages.map(m => m.messageId === request.messageId ? {...m, locationRef: location} : m);
+          saveMessagesToStorage();
+        }
+      }).catch(() => {});
+      const response = await waitForTurn(sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
+          if (request.stopping) return;
+          if (progress?.type === 'appetizer' && progress.appetizerData) {
+            request.appetizerData = progress.appetizerData;
+          }
           if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
@@ -1234,7 +1292,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang);
+      }, interfaceLang, { signal: request.controller.signal }), request.controller.signal);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
@@ -1259,7 +1317,7 @@
         feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: appetizerData ? {...appetizerData} : null
+        appetizerData: request.appetizerData ? {...request.appetizerData} : null
       };
 
       const completedMessages = [...sentMessages, assistantMessage];
@@ -1291,7 +1349,7 @@
       }
 
       // Update turn count from server response
-      if (response.session) {
+      if (response.session && sessionId === sendingSessionId) {
         turnCount = response.session.turnCount ?? 0;
       }
       if (isFirstTimeUser) {
@@ -1310,44 +1368,101 @@
       });
 
     } catch (e) {
-      console.error('[lc-chatbot] Send failed:', e);
-
-      // Mark message as failed for other errors
-      const cachedPayload = conversationCache[sendingSessionId];
-      const baseMessages = sessionId === sendingSessionId
-        ? messages
-        : (cachedPayload?.messages || [userMessage]);
-      const failedMessages = baseMessages.map(m =>
-        m.messageId === userMessage.messageId
-          ? { ...m, status: STATUS_FAILED }
-          : m
-      );
-      if (sessionId === sendingSessionId) {
-        messages = failedMessages;
-        saveMessagesToStorage();
-      } else {
-        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, failedMessages);
-      }
-      conversationCache = {
-        ...conversationCache,
-        [sendingSessionId]: {
-          conversation: cachedPayload?.conversation || provisionalConversation,
-          messages: failedMessages
+      if (e?.code === 'stream_cancelled') {
+        const cached = conversationCache[sendingSessionId];
+        const base = sessionId === sendingSessionId ? messages : (cached?.messages || [userMessage]);
+        const stopped = withStoppedTurns(base.map(m => m.messageId === request.messageId
+          ? {...m, status: 'sent', processingState: 'cancelled', appetizerData: request.appetizerData} : m));
+        conversationCache[sendingSessionId] = {...cached, messages: stopped};
+        setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, stopped);
+        conversationDrafts[sendingSessionId] = text;
+        setStorage(STORAGE_KEYS.DRAFT + ':' + sendingSessionId, {text});
+        if (sessionId === sendingSessionId) {
+          messages = stopped;
+          inputText = text;
         }
-      };
+        track('assistant_response_stopped');
+      } else {
+        console.error('[lc-chatbot] Send failed:', e);
 
-      dispatchEvent('error', {
-        type: 'send_failed',
-        messageId: userMessage.messageId,
-        error: e.message
-      });
+        // Mark message as failed for other errors
+        const cachedPayload = conversationCache[sendingSessionId];
+        const baseMessages = sessionId === sendingSessionId
+          ? messages
+          : (cachedPayload?.messages || [userMessage]);
+        const failedMessages = baseMessages.map(m =>
+          m.messageId === userMessage.messageId
+            ? { ...m, status: STATUS_FAILED }
+            : m
+        );
+        if (sessionId === sendingSessionId) {
+          messages = failedMessages;
+          saveMessagesToStorage();
+        } else {
+          setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, failedMessages);
+        }
+        conversationCache = {
+          ...conversationCache,
+          [sendingSessionId]: {
+            conversation: cachedPayload?.conversation || provisionalConversation,
+            messages: failedMessages
+          }
+        };
+
+        dispatchEvent('error', {
+          type: 'send_failed',
+          messageId: userMessage.messageId,
+          error: e.message
+        });
+      }
     } finally {
+      delete activeRequests[sendingSessionId];
+      delete stopErrors[sendingSessionId];
       setSessionSending(sendingSessionId, false);
-      isSending = Object.keys(sendingSessionIds).length > 0;
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
         appetizerData = null;
+        if (conversationDrafts[sendingSessionId] === text) {
+          await tick();
+          if (sessionId === sendingSessionId) {
+            sizePrompt(inputRef);
+            inputRef?.focus({ preventScroll: true });
+            inputRef?.setSelectionRange(text.length, text.length);
+            if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
+            // Smoothly reveal the notice after the restored composer has its final size.
+            await scrollToBottom();
+          }
+        }
       }
+    }
+  }
+
+  async function handleStop() {
+    const targetSessionId = sessionId;
+    const request = activeRequests[targetSessionId];
+    if (!request || request.stopping) return;
+    request.stopping = true;
+    stopThinkingMessages();
+    delete stopErrors[targetSessionId];
+    try {
+      const outcome = await cancelStream(apiBaseUrl, {
+        userId, sessionId: targetSessionId, messageId: request.messageId
+      });
+      if (activeRequests[targetSessionId] !== request) return;
+      // Only a durable server stop may unlock the composer before the stream ends.
+      if (outcome.status === 'cancelled') {
+        const error = new Error('Turn cancelled');
+        error.name = 'AbortError';
+        error.code = 'stream_cancelled';
+        request.controller.abort(error);
+      }
+      // Older servers may still return cancelling; completion keeps its normal path.
+      if (!['cancelling', 'cancelled', 'complete'].includes(outcome.status)) throw new Error('Cancel not accepted');
+    } catch {
+      if (activeRequests[targetSessionId] !== request) return;
+      request.stopping = false;
+      stopErrors[targetSessionId] = true;
+      if (sessionId === targetSessionId) startThinkingMessages();
     }
   }
 
@@ -2157,7 +2272,16 @@
         {/if}
 
         {#each messages as item (item.messageId)}
-          {#if item.role === 'assistant'}
+          {#if item.role === 'stopped'}
+            {#if item.appetizerData || item.showNotice}
+              <div class="message assistant no-entry-animation stopped-message">
+                {#if item.appetizerData}
+                  <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                {/if}
+                {#if item.showNotice}<p class="stop-notice">{$_('assistant.stop.message')}</p>{/if}
+              </div>
+            {/if}
+          {:else if item.role === 'assistant'}
             <div class="lc-response-package">
               {#if item.appetizerData}
                 <Accordion kind="topics"
@@ -2173,19 +2297,21 @@
               <div class="message-content">
                 <p>{item.content}</p>
               </div>
-              <div class="message-meta">
-                {#if item.status === STATUS_FAILED}
-                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
-                    {$_('assistant.messages.retry')}
-                  </button>
-                {/if}
-                <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
-              </div>
-              {#if item.locationRef}
-                <div class="message-location-tag">
-                  <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+              <div class="message-meta-row">
+                <div class="message-meta">
+                  {#if item.status === STATUS_FAILED}
+                    <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(item.messageId)}>
+                      {$_('assistant.messages.retry')}
+                    </button>
+                  {/if}
+                  <span class="message-timestamp">{formatMessageTimestamp(item.timestamp)}</span>
                 </div>
-              {/if}
+                {#if item.locationRef}
+                  <div class="message-location-tag">
+                    <LocationTag label={item.locationRef.label} href={item.locationRef.url} onActivate={handleLocationClick} />
+                  </div>
+                {/if}
+              </div>
             </div>
           {/if}
         {/each}
@@ -2196,7 +2322,7 @@
               {#if appetizerData}
                 <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
               {/if}
-              <div class="lc-thinking-block">
+              {#if !isCurrentSessionStopping}<div class="lc-thinking-block">
                 <div class="lc-thinking-step">
                   <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                   <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
@@ -2204,6 +2330,7 @@
                   </span>
                 </div>
               </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -2222,6 +2349,9 @@
         {/if}
       </div>
 
+      {#if stopErrors[sessionId]}
+        <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
+      {/if}
       <!-- Input Footer -->
       <footer class="lc-chatbot-input">
         <textarea
@@ -2229,12 +2359,20 @@
           bind:value={inputText}
           onkeydown={handleKeydown}
           maxlength={effectiveMaxInputChars}
-          placeholder={limitReached ? "" : $_('assistant.input.placeholder')}
+          placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
           enterkeyhint="send"
           rows="1"
           disabled={isCurrentSessionSending || limitReached}
         ></textarea>
+        {#if isCurrentSessionSending}
+          <Tooltip text={$_('assistant.stop.tooltip')}>
+            <button type="button" class="stop-btn" onclick={handleStop}
+              disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
+              <img src={stopIcon} alt="" width="18" height="18" />
+            </button>
+          </Tooltip>
+        {:else}
         <button
           class="send-btn"
           onclick={handleSend}
@@ -2246,6 +2384,7 @@
             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
         </button>
+        {/if}
       </footer>
       {/if}
       </section>
@@ -3764,6 +3903,17 @@
     cursor: pointer;
   }
 
+  /* .message-meta (timestamp/retry row) and .message-location-tag (pin) share
+     this wrapper's single fit-content column, so a left-aligned retry button
+     lines up with the pin's own left edge (right on RTL) instead of the
+     message column's full width — see .message-meta's :has(.retry-btn) rule. */
+  .message-meta-row {
+    display: grid;
+    grid-template-columns: fit-content(min(560px, 100%));
+    justify-content: end;
+    width: 100%;
+  }
+
   .message-meta {
     display: flex;
     align-items: flex-start;
@@ -3772,16 +3922,25 @@
     padding: 0 var(--spacing-xsmall);
   }
 
-  /* height:0 + overflow:visible lets the user's hover timestamp paint below
-     this box without the box contributing to the flex column's height — so
-     the reserved timestamp space doesn't leave a permanent gap between the
+  /* height:0 + overflow:visible lets the timestamp paint below this box
+     without the box itself contributing to the grid row's height — so the
+     reserved timestamp space doesn't leave a permanent gap between the
      bubble and whatever comes next (see .message-location-tag below).
-     User messages only: the assistant meta holds feedback buttons and the
-     "thanks" note, which must take real space or the next message overlaps them. */
+     Scoped to user messages only: assistant's .message-meta holds the
+     retry button / feedback thumbs, which are never hover-only, so it
+     keeps its real (auto) height and reserves space for them normally —
+     otherwise they'd float, unreserved, into the next message below. A
+     user message's retry button is just as permanent, so it gets the same
+     real-height treatment via the :has() rule below. */
   .message.user .message-meta {
     justify-content: flex-end;
     height: 0;
     overflow: visible;
+  }
+
+  .message.user .message-meta:has(.retry-btn) {
+    height: auto;
+    justify-content: space-between;
   }
 
   .message-timestamp {
@@ -3793,15 +3952,23 @@
     transition: opacity 0.15s ease;
   }
 
-  .message.user:hover .message-timestamp,
-  .message.user:focus-within .message-timestamp {
+  /* Hover is scoped to the prompt bubble itself, and :focus-within to the
+     retry/timestamp row specifically (not the whole message) — neither the
+     pin nor its link should be a trigger. Focusing the pin to click or tab
+     to it would otherwise also reveal the timestamp AND (below) shift the
+     pin itself out from under the cursor mid-click, turning one click into
+     two. */
+  .message-content:hover ~ .message-meta-row .message-timestamp,
+  .message-meta:focus-within .message-timestamp {
     opacity: 1;
   }
 
   /* Bubble and pin sit flush by default (no reserved timestamp gap). On
      hover the pin transforms down to make room for the timestamp fading in
      above it — a transform doesn't affect layout, so nothing below this
-     message (the next one in the list) ever shifts. */
+     message (the next one in the list) ever shifts. Skipped when a retry
+     button is present: that row already reserves real height above, so the
+     pin's natural (untransformed) position already sits below it. */
   .message-location-tag {
     display: flex;
     justify-content: flex-end;
@@ -3811,7 +3978,11 @@
     /* Figma: max width = chat bubble width (560px), but never exceed the
        available message column so long refs truncate instead of overflowing. */
     max-width: min(560px, 100%);
-    align-self: flex-end;
+  }
+
+  .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
+  .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
+    transform: translateY(18px);
   }
 
   .message.user:hover .message-location-tag,
@@ -4013,7 +4184,9 @@
   .lc-chatbot-input textarea {
     flex: 1;
     min-height: var(--global-dimension-400);
-    max-height: 120px;
+    /* Three text lines, plus the existing vertical padding and borders. */
+    max-height: calc(4.2em + 2 * var(--spacing-medium) + 2 * var(--border-width-thin));
+    overflow-y: auto;
     padding: var(--spacing-medium) var(--spacing-medium);
     border: var(--border-width-thin) solid var(--lc-border);
     border-radius: var(--lc-radius-sm);
@@ -4596,5 +4769,23 @@
     color: var(--semantic-text-link);
     opacity: 0.6;
   }
+
+
+  .stop-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0;
+    background: var(--lc-bg); color: var(--lc-icon-primary);
+    border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
+    cursor: pointer; flex-shrink: 0;
+  }
+  @media (hover: hover) {
+    .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
+  }
+  .stop-btn:active:not(:disabled) { background: var(--lc-bg-hover); transform: scale(0.95); }
+  .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
+  .stop-btn:disabled { cursor: default; }
+  .message.assistant.stopped-message { align-self: stretch; }
+  .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
+  .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
 
 </style>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -9,6 +11,8 @@ from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+
+from .contracts import CancelCheck, TurnCancelled
 
 
 @dataclass
@@ -37,6 +41,32 @@ class ClaudeSDKRunner:
         self.result_message_cls = result_message_cls
         self.stream_event_cls = stream_event_cls
 
+    async def _receive(self, client, should_cancel):
+        iterator = client.receive_response().__aiter__()
+        while True:
+            pending = asyncio.ensure_future(anext(iterator))
+            try:
+                while not pending.done():
+                    await asyncio.wait({pending}, timeout=0.05)
+                    if not pending.done() and should_cancel and should_cancel():
+                        raise TurnCancelled()
+                try:
+                    message = pending.result()
+                except StopAsyncIteration:
+                    return
+                if (
+                    should_cancel
+                    and should_cancel()
+                    and not isinstance(message, self.result_message_cls)
+                ):
+                    raise TurnCancelled()
+                yield message
+            finally:
+                if not pending.done():
+                    pending.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await pending
+
     async def run(
         self,
         *,
@@ -44,6 +74,7 @@ class ClaudeSDKRunner:
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
         trace_id = None
@@ -64,9 +95,19 @@ class ClaudeSDKRunner:
             first_final_text_delta_notified = True
             on_first_final_text_delta()
 
+        # Checked before the client is opened, not just per streamed message:
+        # entering the context manager spawns the agent subprocess and query()
+        # submits a billable request, both of which happen before the in-loop
+        # check below would ever run. run() is entered more than once per turn
+        # — the link-repair pass in turn_orchestrator.py is a second call — so
+        # a stop that landed during link validation would otherwise still buy a
+        # full repair query.
+        if should_cancel and should_cancel():
+            raise TurnCancelled()
+
         async with self.client_cls(options=options) as client:
             await client.query(prompt_text)
-            async for message in client.receive_response():
+            async for message in self._receive(client, should_cancel):
                 if isinstance(message, self.assistant_message_cls):
                     llm_call_count += 1
                 if isinstance(message, self.result_message_cls):
