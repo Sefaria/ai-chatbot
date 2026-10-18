@@ -4773,19 +4773,19 @@
 
   .stop-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 40px; height: 40px; padding: 0;
+    width: var(--global-dimension-400); height: var(--global-dimension-400); padding: 0;
     background: var(--lc-bg); color: var(--lc-icon-primary);
-    border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
+    border: var(--border-width-thin) solid var(--lc-border-focus); border-radius: var(--lc-radius-sm);
     cursor: pointer; flex-shrink: 0;
   }
   @media (hover: hover) {
     .stop-btn:hover:not(:disabled) { background: var(--lc-bg-hover); }
   }
   .stop-btn:active:not(:disabled) { background: var(--lc-bg-hover); transform: scale(0.95); }
-  .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
+  .stop-btn:focus-visible { outline: var(--border-width-thick) solid var(--lc-primary); outline-offset: var(--global-dimension-25); }
   .stop-btn:disabled { cursor: default; }
   .message.assistant.stopped-message { align-self: stretch; }
-  .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
-  .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
+  .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--spacing-large) 0 0; }
+  .stop-error { color: var(--lc-text-secondary); margin: var(--spacing-xsmall) var(--spacing-large); font-size: var(--lc-font-size-sm); }
 
 </style>
