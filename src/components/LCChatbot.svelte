@@ -17,7 +17,7 @@
     renameConversation,
     deleteConversation
   } from '../lib/api.js';
-  import { tick, untrack } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
   import HeaderButton from './HeaderButton.svelte';
@@ -247,6 +247,8 @@
   let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   let viewportBox = $state(null);
+  // Phones: the on-screen keyboard's height, once seen
+  let keyboardHeight = 0;
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
   // The pill's label for each host source that relabels it (chatbot:launcher)
@@ -255,6 +257,8 @@
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
   let pendingNavigation = null;
+  // Where the chat was scrolled, so reopening the assistant returns there
+  let lastScroll = null;
 
   // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
   const SHEET_CLOSE_DISTANCE = 120;
@@ -349,6 +353,24 @@
     let cancelled = false;
     tick().then(() => { if (!cancelled) sizePrompt(element); });
     return () => { cancelled = true; };
+  });
+
+  // Phones: when the chat area changes height (the keyboard opens or closes, the text box grows),
+  // keep what was just above the text box in place instead of letting it slide under it
+  $effect(() => {
+    const el = messageListRef;
+    if (!el || !isFullscreen) return;
+    let previous = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const delta = previous - el.clientHeight;
+      // A hidden list (sheet closed) measures 0: just remember the new height
+      if (delta && previous && el.clientHeight && !scrollingToEnd) {
+        el.scrollTo({ top: el.scrollTop + delta, behavior: 'instant' });
+      }
+      previous = el.clientHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   });
 
   // Save draft on input change
@@ -549,6 +571,11 @@
   });
 
   function openPanel() {
+    // The chat is rebuilt on open, at its top: land on the answer that arrived while closed,
+    // else where the reader left this chat, else its end
+    if (responseReady) scrollToResponseStart({ instant: true });
+    else if (lastScroll?.sessionId === sessionId) restoreScroll(lastScroll.top);
+    else scrollToBottom({ instant: true });
     isOpen = true;
     responseReady = false;
     showSettings = false;
@@ -568,6 +595,7 @@
   }
 
   function closePanel() {
+    if (messageListRef) lastScroll = { sessionId, top: messageListRef.scrollTop };
     isOpen = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
@@ -649,21 +677,71 @@
     const vv = window.visualViewport;
     const sync = () => {
       const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (typing) viewportBox = { top: vv.offsetTop, height: vv.height };
+      if (typing) {
+        viewportBox = { top: vv.offsetTop, height: vv.height };
+        if (vv.height < window.innerHeight) keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+      }
       else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+    };
+    // iOS reports the keyboard closing only ~0.5s after the text box loses focus, so the sheet
+    // sat above the empty space. Give it the full height as soon as typing stops; when a tap
+    // ended it (e.g. on Send), only once that tap's click has landed, since iOS fires the click
+    // after the blur and moving Send first would lose it.
+    const shadow = inputRef?.getRootNode();
+    let lastTouchEnd = -Infinity;
+    let stopTimer;
+    const noteTouchEnd = (e) => { lastTouchEnd = e.timeStamp; };
+    const grow = () => {
+      clearTimeout(stopTimer);
+      shadow?.removeEventListener('click', grow);
+      if (inputRef?.getRootNode().activeElement?.matches('input, textarea')) return;
+      viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
+    };
+    const stopTyping = (e) => {
+      if (e.relatedTarget?.matches?.('input, textarea')) return;
+      clearTimeout(stopTimer);
+      if (e.timeStamp - lastTouchEnd < 300) {
+        shadow?.addEventListener('click', grow, { once: true });
+        stopTimer = setTimeout(grow, 400); // the tap may have been a drag, with no click
+      } else stopTimer = setTimeout(grow);
     };
     if (vv) {
       sync();
       vv.addEventListener('resize', sync);
       vv.addEventListener('scroll', sync);
+      shadow?.addEventListener('focusout', stopTyping);
+      shadow?.addEventListener('touchend', noteTouchEnd, { capture: true });
     }
     return () => {
       root.style.overflow = overflow;
       vv?.removeEventListener('resize', sync);
       vv?.removeEventListener('scroll', sync);
+      shadow?.removeEventListener('focusout', stopTyping);
+      shadow?.removeEventListener('touchend', noteTouchEnd, { capture: true });
+      shadow?.removeEventListener('click', grow);
+      clearTimeout(stopTimer);
       viewportBox = null;
     };
   });
+
+  // Phones: iOS scrolls the page to keep a focused field above the keyboard, and animates that
+  // scroll after it has already reported the final viewport, so the sheet dropped and climbed back.
+  // Making room before the keyboard opens leaves iOS nothing to scroll.
+  let inputTouchY = 0;
+  function makeRoomForKeyboard(e) {
+    const vv = window.visualViewport;
+    if (!isFullscreen || !vv || inputRef.disabled || inputRef.getRootNode().activeElement === inputRef) return;
+    if (Math.abs(e.changedTouches[0].clientY - inputTouchY) > 10) return; // a drag, not a tap
+    e.preventDefault(); // we focus it ourselves, once the sheet is out of the keyboard's way
+    const room = keyboardHeight || Math.round(window.innerHeight / 2);
+    viewportBox = { top: 0, height: window.innerHeight - room };
+    flushSync();
+    inputRef.focus({ preventScroll: true });
+    // No on-screen keyboard came (e.g. a hardware keyboard): give the room back
+    setTimeout(() => {
+      if (isOpen && vv.height >= window.innerHeight) viewportBox = { top: vv.offsetTop, height: vv.height };
+    }, 600);
+  }
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
@@ -1220,14 +1298,15 @@
     return messageListRef.scrollTop + elRect.top - containerRect.top;
   }
 
-  async function scrollToResponseStart() {
+  async function scrollToResponseStart({ instant = false } = {}) {
     await tick();
-    if (!messageListRef || !autoScrollEnabled) return;
+    if (!messageListRef || (!autoScrollEnabled && !instant)) return;
+    const behavior = instant ? 'instant' : 'smooth';
     // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top.
     // querySelectorAll returns a NodeList (no Array.at), so spread before indexing.
     const pkgEl = [...messageListRef.querySelectorAll('.lc-response-package')].at(-1);
     if (pkgEl) {
-      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
+      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET, behavior);
       return;
     }
 
@@ -1235,11 +1314,41 @@
     const contents = [...messageListRef.querySelectorAll('.message.assistant .message-content')];
     const lastResponse = contents.at(-1)?.closest('.message.assistant');
     if (!lastResponse) return;
-    applyAutoScroll(getScrollTopForElement(lastResponse));
+    applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
-  function applyAutoScroll(top) {
-    messageListRef.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  // Phones: smoothly scroll to the end once the chat area has resized (its resize observer runs a
+  // frame later and would cut a smooth scroll short). Any momentum scroll is stopped first, since
+  // iOS ignores scroll changes made while one is still gliding, and the observer stands aside
+  // while the scroll runs (the keyboard closing after Send resizes the chat again).
+  let scrollingToEnd = false;
+  async function pinChatToBottom() {
+    scrollingToEnd = true; // from the start: the keyboard closing after Send would pull the chat up
+    await tick();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const el = messageListRef;
+    if (!el) { scrollingToEnd = false; return; }
+    el.style.overflowY = 'hidden';
+    void el.offsetHeight; // apply it, which stops the glide
+    el.style.overflowY = '';
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    await new Promise(resolve => {
+      const done = () => { clearTimeout(timer); el.removeEventListener('scrollend', done); resolve(); };
+      const timer = setTimeout(done, 1000); // no scrollend if it was already there
+      el.addEventListener('scrollend', done);
+    });
+    scrollingToEnd = false;
+    // The chat grew or shrank under the scroll (e.g. the keyboard closing): finish the last bit
+    if (el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }
+
+  async function restoreScroll(top) {
+    await tick();
+    messageListRef?.scrollTo({ top, behavior: 'instant' });
+  }
+
+  function applyAutoScroll(top, behavior = 'smooth') {
+    messageListRef.scrollTo({ top: Math.max(0, top), behavior });
   }
 
   function resetScroll() {
@@ -1307,7 +1416,9 @@
 
     messages = withStoppedTurns([...messages, userMessage]);
     saveMessagesToStorage();
-    scrollToBottom();
+    // Phones: the emptied text box shrinks right after, which would cut a smooth scroll short
+    if (isFullscreen) pinChatToBottom();
+    else scrollToBottom();
 
     appetizerData = null;
     startThinkingMessages();
@@ -1464,6 +1575,9 @@
         if (sessionId === sendingSessionId) {
           messages = stopped;
           inputText = text;
+          // Phones: glide to the stop notice above the text box, once the restored question
+          // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
+          if (isFullscreen) pinChatToBottom();
         }
         track('assistant_response_stopped');
       } else {
@@ -1516,8 +1630,9 @@
               inputRef?.setSelectionRange(text.length, text.length);
             }
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
-            // Smoothly reveal the notice after the restored composer has its final size.
-            await scrollToBottom();
+            // Smoothly reveal the notice after the restored composer has its final size
+            // (phones already started this in the stop handler above)
+            if (!isFullscreen) await scrollToBottom();
           }
         }
       }
@@ -2458,6 +2573,8 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
+          ontouchstart={(e) => { inputTouchY = e.touches[0].clientY; }}
+          ontouchend={makeRoomForKeyboard}
           maxlength={effectiveMaxInputChars}
           placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
