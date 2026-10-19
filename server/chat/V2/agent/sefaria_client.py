@@ -37,17 +37,29 @@ DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 USER_AGENT = "Sefaria/library-assistant"
 
 
+def _sanitize(value: str) -> str:
+    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
+    return value.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
+
+
 def _user_agent() -> str:
     """Append ``settings.ENVIRONMENT`` (the value Sentry is tagged with) when it is set.
 
-    Imports settings lazily so this module can be imported before Django is configured.
+    ``SEFARIA_USER_AGENT_SERVICE`` replaces the service name, so the public MCP server
+    can identify itself as ``Sefaria/mcp``. The MCP process runs without Django
+    settings, so ``ENVIRONMENT`` is then read from the environment directly. Settings
+    are imported lazily so this module can be imported before Django is configured.
     """
     from django.conf import settings
 
-    env = str(getattr(settings, "ENVIRONMENT", "") or "")
-    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
-    env = env.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
-    return f"{USER_AGENT} ({env})" if env else USER_AGENT
+    service = _sanitize(os.environ.get("SEFARIA_USER_AGENT_SERVICE", ""))
+    base = f"Sefaria/{service}" if service else USER_AGENT
+    if settings.configured:
+        env = str(getattr(settings, "ENVIRONMENT", "") or "")
+    else:
+        env = os.environ.get("ENVIRONMENT", "")
+    env = _sanitize(env)
+    return f"{base} ({env})" if env else base
 
 
 def _get_default_sefaria_base_url() -> str:

@@ -885,3 +885,24 @@ class TestUserAgent:
 
         with override_settings(ENVIRONMENT="  (pr\nod)  "):
             assert _user_agent() == "Sefaria/library-assistant (prod)"
+
+    def test_service_name_can_be_overridden(self, monkeypatch):
+        from django.test import override_settings
+
+        from chat.V2.agent.sefaria_client import _user_agent
+
+        monkeypatch.setenv("SEFARIA_USER_AGENT_SERVICE", "m(cp)\r\n")
+        with override_settings(ENVIRONMENT="prod"):
+            assert _user_agent() == "Sefaria/mcp (prod)"
+
+    def test_works_without_django_settings(self, monkeypatch):
+        """The public MCP server runs the tool layer without configuring Django."""
+        from django.conf import settings
+
+        from chat.V2.agent.sefaria_client import _user_agent
+
+        monkeypatch.setattr(type(settings), "configured", property(lambda self: False))
+        monkeypatch.setenv("ENVIRONMENT", "dev")
+        assert _user_agent() == "Sefaria/library-assistant (dev)"
+        monkeypatch.delenv("ENVIRONMENT")
+        assert _user_agent() == "Sefaria/library-assistant"
