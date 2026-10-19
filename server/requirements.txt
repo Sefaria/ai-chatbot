@@ -28,3 +28,9 @@ pytest-django>=4.8,<4.13
 pytest-asyncio>=1.0
 ruff>=0.4.0
 cryptography
+
+# Public MCP server (mcp_server). Pinned on purpose: the old standalone server left
+# fastmcp unpinned and prod and dev drifted onto different versions.
+fastmcp==3.4.7
+uvicorn>=0.30
+prometheus-client>=0.20
