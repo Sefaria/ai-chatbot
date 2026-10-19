@@ -1,6 +1,6 @@
-# MCP Consolidation: serve the public Sefaria MCP from ai-chatbot, then add user auth
+# MCP Consolidation: a new Sefaria MCP at chat.sefaria.org/mcp, then user auth
 
-**Date:** 2026-10-18
+**Date:** 2026-10-18 (revised 2026-10-19: run side by side instead of an in-place cutover)
 **Status:** Proposed
 **Branch:** `feat/mcp-consolidation` (off `main`)
 **Supersedes:** `docs/superpowers/specs/2026-09-03-mcp-consolidation-design.md` on the
@@ -9,44 +9,47 @@ differs from it, the reason is given.
 
 ## Goal
 
-1. **Phase 1, migration.** `mcp.sefaria.org` and `devmcp.sefaria.org` are served from
-   this repo, by the same `SefariaToolExecutor` the Library Assistant uses. After that,
-   `Sefaria/sefaria-mcp` can be archived. No authentication yet, and existing connector
-   URLs keep working.
-2. **Phase 2, auth.** Users can sign in to the MCP with their Sefaria account (OAuth,
-   per the MCP authorization spec). The server then holds a Sefaria token for that user
-   and exposes the source-sheet tools.
+1. **Phase 1, new endpoint.** `https://chat.sefaria.org/mcp` (dev:
+   `chat-dev.sefaria.org/mcp`) serves a public, authless MCP from this repo. It uses the
+   same `SefariaToolExecutor` the Library Assistant uses.
+2. **Phase 2, auth.** `https://chat.sefaria.org/mcp/user` requires Sefaria login (OAuth,
+   per the MCP authorization spec) and adds the source-sheet tools.
+3. **Later, deprecation.** Once clients have moved, `mcp.sefaria.org` /
+   `devmcp.sefaria.org` and `Sefaria/sefaria-mcp` are retired.
+
+**The old MCP is not touched by this work.** The `mcp` HelmRelease, its routes and
+hosts, and the sefaria-mcp repo and image (`container/sefaria-mcp`) keep running as
+they are until the deprecation step. Because nothing switches over in place, the new
+endpoint only has to be good, not identical to the old one.
 
 ## Where things stand
 
 | | Today |
 |---|---|
-| Public MCP | `Sefaria/sefaria-mcp`, a FastMCP app with a single replica on the AI cluster. HelmRelease `mcp` lives in `AppliedAI-Infrastructure/sefaria-ai/cluster-1/{dev,prod}/mcp.yaml`, with Service `sefaria-mcp` on port 8088 and metrics on 9090. Hosts: `devmcp.sefaria.org` / `mcp.sefaria.org`. |
-| Its transports | Upstream `main` serves `/mcp` (Streamable HTTP, `stateless_http=True`, Host/Origin allowlist) **and** `/sse`, plus `/healthz` and the empty OAuth well-known stubs. |
-| Its tools | 14 tools: `get_text`, `text_search`, `get_current_calendar`, `get_links_between_texts`, `search_in_book`, `search_in_dictionaries`, `get_english_translations`, `get_topic_details`, `clarify_name_argument`, `clarify_search_path_filter`, `get_text_or_category_shape`, `get_text_catalogue_info`, `get_available_manuscripts`, `get_manuscript_image`. Prod is older and still exposes the broken `english_semantic_search`. |
-| Chatbot | Django, WSGI (`gunicorn gthread`), 3 replicas in prod. HelmRelease `chatbot` with Service `chatbot` on 8080 and hosts `chat-dev` / `chat.sefaria.org`. No ServiceMonitor. |
+| Old public MCP | `Sefaria/sefaria-mcp`, a FastMCP app with a single replica on the AI cluster. HelmRelease `mcp` lives in `AppliedAI-Infrastructure/sefaria-ai/cluster-1/{dev,prod}/mcp.yaml`, with Service `sefaria-mcp` on port 8088 and metrics on 9090. Hosts: `devmcp.sefaria.org` / `mcp.sefaria.org`. It serves `/mcp` (stateless Streamable HTTP) and `/sse`, plus the empty OAuth well-known stubs. It has 14 tools; prod is older and also has a broken `english_semantic_search`. |
+| Chatbot | Django, WSGI (`gunicorn gthread`), 3 replicas in prod. HelmRelease `chatbot` with Service `chatbot` on 8080. Hosts: `chat-dev` / `chat.sefaria.org`, with Gateway `chatbot` and HTTPRoute `chatbot/httproute.yaml` (`/` → 8080; `.*/stream` with `0s` timeouts; a websocket rule). No ServiceMonitor. |
 | Chatbot tools | `chat/V2/agent/tool_schemas.py`, `tool_executor.py`, `sefaria_client.py` (httpx, Django-free). Source-sheet tools (`search_user_source_sheets`, `get_source_sheet`, `create_source_sheet`) are Labs-only. They authenticate to Sefaria by sending the user's encrypted chatbot token as `X-Session-ID`. |
-| Prior work | `local-agent-thin` has `de89ee76` (`surfaces` marker), `b67f577b` (`server/mcp_server/`, `Dockerfile.mcp`, release job, tests) and `105cdcc8` (`validate_response_links`, `validate_refs` on MCP). None of it is on `main`. |
 
 ## Decisions
 
 | # | Decision | Choice | Why |
 |---|---|---|---|
-| D1 | Hosting | **One repo and one codebase, deployed as its own Deployment.** The existing `mcp` HelmRelease is repointed at an image built from this repo. | This keeps public MCP traffic off the chatbot's capacity and failure path (the chatbot ships to every Sefaria user), and the chatbot stays WSGI. The "route on the chatbot server" is an HTTPRoute (below), not shared pods. |
-| D2 | Routes | Keep `mcp.sefaria.org` and `devmcp.sefaria.org` routed to the MCP Deployment. Optionally also route `chat[-dev].sefaria.org/mcp` to the same Service. | Existing connectors must not have to reconfigure. The chat-host route is a cheap alias if we want one canonical Sefaria AI host. |
-| D3 | Image | **Same image as the chatbot, different command** (`python -m mcp_server`), replacing b67f577b's separate `Dockerfile.mcp`. | Phase 2 needs Django settings and secrets in the MCP process (D9). A second slim image saves memory but doubles release plumbing. If image size becomes a problem, revisit. |
+| D1 | Hosting | **One repo and one codebase, deployed as its own Deployment** (new HelmRelease `chatbot-mcp`). | This keeps public MCP traffic off the chatbot's capacity and failure path (the chatbot ships to every Sefaria user), and the chatbot stays WSGI. "Serving MCP from the chatbot server" means the same host and codebase, not the same pods. |
+| D2 | Host | **`chat[-dev].sefaria.org/mcp`**, path-routed on the existing `chatbot` HTTPRoute to the `chatbot-mcp` Service. | No new DNS, certificate or Gateway listener. It also sits on the same host as the Phase 2 authorization server (D9). A separate hostname was considered and rejected: it adds infrastructure and is one more host to retire later. |
+| D3 | Image | **The chatbot image, run with a different command** (`python -m mcp_server`). The separate `Dockerfile.mcp` and its `build_mcp` release job from b67f577b were removed. | That job pushed to `container/sefaria-mcp`, the **old server's image repo**, with `latest=true`, so it would have disturbed the MCP we are leaving alone. Phase 2 also needs Django settings and secrets in the MCP process (D9). |
 | D4 | Tool selection | The `surfaces` marker on each schema (from `de89ee76`). Agent-only is the default. | This extends the `LABS_TOOL_NAMES` pattern, and forgetting the marker can't leak a tool. |
-| D5 | Tool names | LA names, no aliases (`text_search` becomes `specific_keyword_search`). | Kept from the September decision. Connector setup is the contract, and tool names are not, because the model adapts to whatever names it sees. |
-| D6 | OAuth well-known (Phase 1) | **Keep the empty 200 stubs.** This reverses b67f577b. | b67f577b removed them on the premise that stubs break claude.ai. That premise did not reproduce: on 2026-08-17 the 404 build broke the claude.ai settings **Connect** button and the stubs connected cleanly (sefaria-mcp PRs #25 → #28; wiki `repos/sefaria-mcp/oauth-discovery`). Phase 1 aims for parity, so the stubs stay. Phase 2 replaces them on the authed endpoint with populated documents. |
-| D7 | Transport state | `/mcp` stateless (`stateless_http=True`) plus `/sse` for legacy clients. Host/Origin protection is ported from upstream `main`. | Stateless `/mcp` survives rollouts and can scale out. `/sse` keeps session state in pod memory, so the Deployment **stays at 1 replica** until SSE traffic is gone, or until we add consistent-hash on `session_id` for `/messages`. |
-| D8 | Auth topology | **Two endpoints.** `/mcp` and `/sse` stay public and authless. **`/mcp/user`** requires OAuth and serves the public tools plus the sheet tools. | MCP clients only start OAuth when they get a 401, so optional auth on one endpoint would never prompt a login. A separate authenticated endpoint keeps anonymous use frictionless. |
-| D9 | Authorization server | **The Django chatbot app is the OAuth authorization server.** It gets Sefaria identity through a login handoff on sefaria.org. The MCP process is a resource server that validates the access tokens. | Sefaria is not an OAuth server: it is only an allauth client of Google and Apple, and it has no authorize, token or well-known endpoints. Our Postgres already holds users and can store clients, codes and tokens. Building an AS into Sefaria-Project is a much larger change. |
+| D5 | Tool names | LA names, no aliases (`text_search` becomes `specific_keyword_search`). | It's a new endpoint, so there is no name contract to keep. |
+| D6 | OAuth discovery (Phase 1) | **Measure, then decide.** On dev, test claude.ai's settings **Connect**, Claude Desktop and MCP Inspector against two variants: (a) no discovery documents at all, the spec-correct choice, and (b) an empty stub at `/.well-known/oauth-protected-resource/mcp`. Ship whichever connects everywhere. | On 2026-08-17, 404s broke claude.ai Connect on the old server and stubs worked (sefaria-mcp PRs #25 → #28; wiki `repos/sefaria-mcp/oauth-discovery`). b67f577b assumed the opposite. A fresh endpoint lets us test this without risk. Note that `chat.sefaria.org/.well-known/oauth-*` at the root is answered by Django (404 today, and the Phase 2 AS metadata later), so only the path-specific document is ours to vary. |
+| D7 | Transport | **Streamable HTTP only, `stateless_http=True`. No SSE.** Host/Origin protection is ported from sefaria-mcp `main`. | SSE clients stay on the old server until it's deprecated. Without SSE there is no in-memory session state, so the Deployment can run 2+ replicas and survive rollouts. |
+| D8 | Auth topology | **Two endpoints.** `/mcp` is public and authless. **`/mcp/user`** requires OAuth and serves the public tools plus the sheet tools. | MCP clients only start OAuth when they get a 401, so optional auth on one endpoint would never prompt a login. A separate authenticated endpoint keeps anonymous use frictionless. |
+| D9 | Authorization server | **The Django chatbot app on `chat.sefaria.org` is the OAuth authorization server.** It gets Sefaria identity through a login handoff on sefaria.org. The MCP process is a resource server that validates the access tokens. | Sefaria is not an OAuth server: it is only an allauth client of Google and Apple, and it has no authorize, token or well-known endpoints. Our Postgres already holds users and can store clients, codes and tokens. Building an AS into Sefaria-Project is a much larger change. |
 | D10 | Sefaria credential | Sefaria mints a **new `aud: "mcp"` token** for the user, scoped to the sheet APIs and with a longer TTL. Django stores it encrypted, and MCP sends it as `X-Session-ID`. The chatbot never mints Sefaria tokens itself. | This mirrors the existing admin MCP token (`AdminMCPTokenView`, `SessionIDAuthMiddleware` audience check). If the chatbot minted tokens from the shared secret, it would hold impersonate-anyone power for long-lived sessions. |
 
-## Phase 1: migrate the public MCP (no auth)
+## Phase 1: public MCP at `chat.sefaria.org/mcp`
 
-Done means: `mcp.sefaria.org/sse` and `/mcp` are served by this repo's image, tool calls
-succeed, metrics are scraped, and `Sefaria/sefaria-mcp` is archived.
+Done means: `https://chat.sefaria.org/mcp` connects from claude.ai, Claude Desktop and
+MCP Inspector, every tool call succeeds, and metrics are scraped. The old MCP is
+unchanged.
 
 ### 1.1 Bring the prior work onto `main`
 
@@ -58,41 +61,39 @@ succeed, metrics are scraped, and `Sefaria/sefaria-mcp` is archived.
 - [x] `mcp_server.app` builds 21 tools with no Django, `claude_agent_sdk`, `anthropic`
       or `braintrust` in `sys.modules`.
 - [x] `test_mcp_server.py` and `test_validate_response_links_tool.py` pass (23 tests).
-      The full suite is unchanged from `main` apart from the new tests: 422 passed vs
-      399, and the same 133 setup errors. Those errors are pre-existing: migrations
-      `0009` and `0012` run raw `IF [NOT] EXISTS` SQL that SQLite rejects, so
-      DB-backed tests can't set up under `test_settings`.
-- Still to do from b67f577b, handled in 1.2 and 1.4: it removed the well-known stubs
-  (D6), pins `fastmcp==3.4.7`, and builds a separate `Dockerfile.mcp` image (D3).
+      The full suite is unchanged from `main` apart from the new tests. Its 133 SQLite
+      setup errors are pre-existing; the fix is on the separate branch
+      `fix/sqlite-safe-migrations`.
+- [x] D3: removed `Dockerfile.mcp`, `requirements-mcp.txt` and the `build_mcp` job. The
+      MCP dependencies (`fastmcp`, `uvicorn`, `prometheus-client`) are now in
+      `server/requirements.txt`.
 
-### 1.2 Bring the server to upstream parity
+### 1.2 Server changes
 
-These come from sefaria-mcp `main`. b67f577b predates them.
-
-- [ ] `stateless_http=True` on `/mcp`.
-- [ ] Host/Origin protection with `SEFARIA_MCP_ALLOWED_HOSTS` / `SEFARIA_MCP_ALLOWED_ORIGINS`.
-      The defaults are both public hosts, plus `chat[-dev].sefaria.org` if D2's alias is
-      used. Also add the `SEFARIA_MCP_HOST_PROTECTION=off` escape hatch. Empty lists fall
-      back to defaults: an empty allowlist makes `/mcp` loopback-only.
-- [ ] Restore the four well-known stubs (D6), with `resource` set per environment from
-      `SEFARIA_MCP_PUBLIC_URL`, not hardcoded to devmcp. Prod currently advertises the
-      dev host.
-- [ ] `/healthz`.
-- [ ] Port the transport tests from sefaria-mcp `tests/test_transports.py`: routing,
-      the Host/Origin guard, and `/sse` not redirecting to `/sse/`.
+- [ ] Drop the `/sse` transport (D7). Serve `/mcp` only, with `stateless_http=True`.
+- [ ] Host/Origin protection with `SEFARIA_MCP_ALLOWED_HOSTS` / `SEFARIA_MCP_ALLOWED_ORIGINS`,
+      defaulting to `chat.sefaria.org` and `chat-dev.sefaria.org`. Port the
+      `SEFARIA_MCP_HOST_PROTECTION=off` escape hatch, and make empty lists fall back to
+      the defaults (an empty allowlist makes `/mcp` loopback-only).
+- [ ] D6 discovery variants behind a setting (`SEFARIA_MCP_DISCOVERY=none|stub`), so dev
+      can be measured both ways without a code change. `resource` comes from
+      `SEFARIA_MCP_PUBLIC_URL`.
+- [ ] `/mcp/healthz` (the probe path must be under `/mcp`, the only prefix routed to us).
+- [ ] Bump `fastmcp` to the 4.x line upstream already uses (`>=4.0.3,<5`) and re-run the
+      tests.
+- [ ] Port the transport tests from sefaria-mcp `tests/test_transports.py` (routing and
+      the Host/Origin guard), and update `test_mcp_server.py` for no-SSE and D6.
 - [ ] Sefaria User-Agent on outbound requests. Check whether `main` already has it
-      (PR #213, `feat/sefaria-user-agent`).
-- [ ] Pin `fastmcp` to the 4.x line upstream already uses (`>=4.0.3,<5`). b67f577b pinned
-      `3.4.7`.
+      (PR #213).
 
 ### 1.3 Public tool list
 
-The `mcp` surface (19 tools, plus 2 for review):
+The `mcp` surface:
 
 | Tool | Notes |
 |---|---|
 | `get_text` | |
-| `specific_keyword_search` | was `text_search` |
+| `specific_keyword_search` | |
 | `semantic_search` | calls `www.sefaria.org/api/knn-search` and needs `SEMANTIC_SEARCH_API_TOKEN`. **Decision needed:** whether to spend that token on anonymous traffic. If not, leave the tool off the surface. |
 | `get_current_calendar` | |
 | `get_links_between_texts` | |
@@ -100,75 +101,93 @@ The `mcp` surface (19 tools, plus 2 for review):
 | `get_english_translations` | |
 | `get_topic_details` | |
 | `clarify_name_argument`, `clarify_search_path_filter` | |
-| `catalog_get_node`, `catalog_get_children`, `catalog_search`, `catalog_query` | new on the public surface |
-| `get_text_or_category_shape`, `get_text_catalogue_info` | `mcp`-only legacy schemas, kept for parity. Retire later in favour of `catalog_*`. |
+| `catalog_get_node`, `catalog_get_children`, `catalog_search`, `catalog_query` | |
 | `get_available_manuscripts`, `get_manuscript_image` | |
-| `validate_refs`, `validate_response_links` | added by `105cdcc8`. Confirm we want them public. |
+| `validate_refs`, `validate_response_links` | confirm we want them public |
+
+- [ ] Drop `get_text_or_category_shape` and `get_text_catalogue_info` from the surface,
+      and delete their schemas and dead client methods. Parity no longer matters and
+      `catalog_*` replaces them. Update `latency/scripts/plot_latency_partition.py` only
+      if it breaks; it uses the names, not the methods.
 
 Not public: `search_user_source_sheets`, `get_source_sheet`, `create_source_sheet`.
 They go on `/mcp/user` in Phase 2.
 
-### 1.4 Packaging and release
+### 1.4 Run and observe
 
-- [ ] Drop `Dockerfile.mcp` and the separate `build_mcp` job (D3). The chatbot image
-      gains `fastmcp`, `uvicorn` and `prometheus-client` in `requirements.txt`.
 - [ ] `python -m mcp_server` runs uvicorn on `SEFARIA_MCP_PORT` (8088) and exposes
-      metrics on `SEFARIA_MCP_METRICS_PORT` (9090). Metric names stay the same as today:
-      `mcp_tool_calls_total`, `mcp_tool_duration_seconds`, `mcp_tool_payload_bytes`,
-      `mcp_errors_total`.
-- [ ] `SEFARIA_MCP_VERSION` is set from the release tag, so `serverInfo.version` reports
-      our release.
+      metrics on `SEFARIA_MCP_METRICS_PORT` (9090). Metric names are kept
+      (`mcp_tool_calls_total`, etc.), with a `server="chatbot-mcp"` const label so they
+      don't merge with the old server's series in Prometheus.
+- [ ] `SEFARIA_MCP_VERSION` is set from the image tag in the HelmRelease, so
+      `serverInfo.version` reports our release.
 
 ### 1.5 Infrastructure (AppliedAI-Infrastructure)
 
-- [ ] `sefaria-ai/cluster-1/{dev,prod}/mcp.yaml`: change the image to
-      `us-docker.pkg.dev/sefaria-ai/container/ai-chatbot-server`, add command
-      `python -m mcp_server`, and keep ports 8088/9090, the ServiceMonitor, and
-      `replicas: 1` (D7).
-- [ ] `mcp-config.yaml` / `mcp-secret.sops.yaml`: add `SEFARIA_MCP_PUBLIC_URL`, the
-      allowlist vars, and `SEMANTIC_SEARCH_API_TOKEN` if that decision is yes.
-- [ ] `mcp-httproute.yaml`: keep the `/sse` and `/messages` rules with `0s` timeouts, and
-      add an explicit `/mcp` rule (PathPrefix; this also covers `/mcp/user` later).
-- [ ] Optional D2 alias: add a PathPrefix `/mcp` rule to `chatbot/httproute.yaml`
-      pointing at backend `sefaria-mcp:8088` (cross-Service backendRef, same namespace).
-- [ ] Deploy wiring: either `chatbot-deploy.yml` also bumps `mcp.yaml`'s tag, or
-      `release.yaml` dispatches `mcp-deploy.yml` with the chatbot version. Pick one, so
-      the two Deployments never run different tool code for long.
+Nothing under `mcp.yaml`, `mcp-config.yaml`, `mcp-httproute.yaml` or the `mcp` Gateway
+changes.
 
-### 1.6 Cutover
+- [ ] New `sefaria-ai/cluster-1/{dev,prod}/chatbot/mcp.yaml`: HelmRelease `chatbot-mcp`,
+      `stakater/application`, image `us-docker.pkg.dev/sefaria-ai/container/ai-chatbot-server`
+      (same tag as `chatbot.yaml`), command `python -m mcp_server`, ports 8088/9090,
+      ServiceMonitor on, `replicas: 2` in prod, probes on `/mcp/healthz`. Env from a new
+      ConfigMap (`SEFARIA_MCP_PUBLIC_URL`, the allowlists, `SEFARIA_API_BASE_URL`) and,
+      if `semantic_search` is public, a secret.
+- [ ] `chatbot/httproute.yaml`: add a PathPrefix `/mcp` rule → `chatbot-mcp:8088` above
+      the `/` catch-all, plus `/.well-known/oauth-protected-resource/mcp` (PathPrefix, so
+      `/mcp/user` is covered in Phase 2) → `chatbot-mcp:8088`. Streamable HTTP responses
+      can stream, so give the `/mcp` rule `0s` timeouts like `.*/stream`.
+- [ ] Add the file to `chatbot/kustomization.yaml`.
+- [ ] Deploy wiring: `chatbot-deploy.yml` bumps the tag in both `chatbot.yaml` and
+      `mcp.yaml` in the same commit, so the chatbot and the MCP never run different tool
+      code.
 
-1. Deploy to dev and verify: `curl /healthz`; claude.ai custom connector **Connect** with
-   `https://devmcp.sefaria.org/sse` and with `/mcp`; Claude Desktop; one call to each
-   tool; metrics visible in Prometheus.
-2. Warn the team that each rollout drops live SSE sessions (single replica, in-memory).
-3. Promote to prod, then repeat the checks on `mcp.sefaria.org`.
-4. Archive `Sefaria/sefaria-mcp`. Update the wiki pages (`repos/sefaria-mcp/*`) and
-   `docs/ARCHITECTURE.md`.
+### 1.6 Roll out
+
+1. Deploy to dev and run the D6 measurement: Connect from claude.ai (settings and chat
+   connector flow), Claude Desktop, and MCP Inspector against
+   `https://chat-dev.sefaria.org/mcp`, with discovery set to `none` and then to `stub`.
+   Record the result in the plan and the wiki (`repos/sefaria-mcp/oauth-discovery`).
+2. Call each tool once and check metrics in Prometheus.
+3. Promote to prod and repeat the checks on `chat.sefaria.org/mcp`.
+4. Update `docs/ARCHITECTURE.md` and the wiki with the new endpoint.
 
 ## Phase 2: Sefaria login on `/mcp/user`
 
-Done means: a user adds `https://mcp.sefaria.org/mcp/user` in claude.ai, signs in with
-Sefaria, and can list, read and create their own source sheets. `/mcp` and `/sse` are
-unchanged.
+Done means: a user adds `https://chat.sefaria.org/mcp/user` in claude.ai, signs in with
+Sefaria, and can list, read and create their own source sheets. `/mcp` is unchanged.
 
 ### Flow
 
+Everything is on `chat.sefaria.org`. The gateway routes `/mcp*` and
+`/.well-known/oauth-protected-resource/mcp*` to `chatbot-mcp`; everything else goes to
+Django.
+
 ```
-MCP client ──POST /mcp/user──► MCP server ──401 + WWW-Authenticate (resource_metadata=…)
+MCP client ──POST /mcp/user──► chatbot-mcp ──401 + WWW-Authenticate (resource_metadata=…)
    │
-   ├─GET mcp.sefaria.org/.well-known/oauth-protected-resource/mcp/user
-   │     → { resource: …/mcp/user, authorization_servers: ["https://chat.sefaria.org"] }
-   ├─GET chat.sefaria.org/.well-known/oauth-authorization-server   (RFC 8414)
-   ├─POST chat.sefaria.org/oauth/register                          (RFC 7591 DCR)
-   ├─browser → chat.sefaria.org/oauth/authorize (PKCE S256)
-   │     └─302 → www.sefaria.org/api/mcp/authorize?state=…        (login_required)
+   ├─GET /.well-known/oauth-protected-resource/mcp/user        (chatbot-mcp)
+   │     → { resource: https://chat.sefaria.org/mcp/user,
+   │         authorization_servers: ["https://chat.sefaria.org"] }
+   ├─GET /.well-known/oauth-authorization-server               (Django, RFC 8414)
+   ├─POST /oauth/register                                      (Django, RFC 7591 DCR)
+   ├─browser → /oauth/authorize (PKCE S256)                    (Django)
+   │     └─302 → www.sefaria.org/api/mcp/authorize?state=…    (login_required)
    │            └─ user logs in (session / Google / Apple) and consents
-   │            └─ auto-POST form → chat.sefaria.org/oauth/sefaria/callback
+   │            └─ auto-POST form → /oauth/sefaria/callback   (Django)
    │                  { state, mcp_token }   ← aud:"mcp" token (D10)
    │     └─302 → client redirect_uri?code=…
-   ├─POST chat.sefaria.org/oauth/token  → { access_token, refresh_token }
+   ├─POST /oauth/token  → { access_token, refresh_token }      (Django)
    └─POST /mcp/user  Authorization: Bearer …  → tools run with the user's Sefaria token
 ```
+
+### 2.0 Prototype discovery first
+
+- [ ] Before building the AS, deploy a dev-only `/mcp/user` that returns 401 with a
+      populated path-specific protected-resource document pointing at a stub AS
+      metadata document. Confirm that claude.ai, Claude Desktop and MCP Inspector all
+      start an OAuth flow, i.e. none of them stops at the root discovery document. This
+      is the riskiest assumption in Phase 2.
 
 ### 2.1 Sefaria-Project changes (separate PR, Sefaria team)
 
@@ -198,22 +217,21 @@ MCP client ──POST /mcp/user──► MCP server ──401 + WWW-Authenticate
       `/oauth/authorize`, `/oauth/sefaria/callback`, `/oauth/token` (`authorization_code`
       and `refresh_token` grants) and `/oauth/revoke`. PKCE S256 is required. Redirect
       URIs are exact-match. Each `state` is bound to a server-side record.
-- [ ] Access tokens are short-lived JWTs (15 min, `aud=https://mcp.sefaria.org/mcp/user`,
+- [ ] Access tokens are short-lived JWTs (15 min, `aud=https://chat.sefaria.org/mcp/user`,
       `sub=grant id`), signed with a key held by both processes. The refresh token is
       opaque and rotated. Refresh fails once the Sefaria token has expired, which sends
       the client back through login.
 - [ ] Check whether a library (e.g. django-oauth-toolkit) can cover the AS. Use it only
       if it handles DCR and PKCE without much glue code; otherwise keep the hand-rolled
       version minimal.
-- [ ] HTTPRoute: `chat[-dev].sefaria.org` already routes `/` to Django, so no infra
-      change is needed for the AS.
+- [ ] Routing: the `/`, `/oauth/*` and root `/.well-known/oauth-authorization-server`
+      paths already go to Django, so no infra change is needed beyond 1.5.
 
 ### 2.3 Resource server in the MCP process
 
 - [ ] Mount a second FastMCP app at `/mcp/user` (stateless) with a JWT verifier
       (`fastmcp` auth provider), and serve the populated
-      `/.well-known/oauth-protected-resource/mcp/user`. The public stubs stay as they are
-      for `/mcp` and `/sse`.
+      `/.well-known/oauth-protected-resource/mcp/user`.
 - [ ] Tools: `get_tools_for_surface("mcp")` plus a new `mcp_user` surface for the three
       sheet tools.
 - [ ] Per request, resolve the grant (with Django ORM, since D3 gives the process Django
@@ -231,13 +249,20 @@ MCP client ──POST /mcp/user──► MCP server ──401 + WWW-Authenticate
       concurrent users never see each other's token).
 - [ ] End-to-end on dev with claude.ai's connector flow and with MCP Inspector.
 
+## Deprecating the old MCP (after Phase 1 is proven)
+
+- [ ] Announce `chat.sefaria.org/mcp` as the Sefaria MCP URL (docs, developer pages,
+      README of sefaria-mcp).
+- [ ] Watch old-server traffic in Prometheus (`mcp_tool_calls_total` without
+      `server="chatbot-mcp"`) until it's low enough to retire.
+- [ ] Then choose: 301 `mcp.sefaria.org` to the new endpoint (this covers Streamable
+      HTTP clients only; SSE clients must reconfigure) or switch it off. Remove the `mcp`
+      HelmRelease and routes, and archive `Sefaria/sefaria-mcp`.
+
 ## Open questions
 
 1. Should `semantic_search` be public, given that it spends a Sefaria token on anonymous
    traffic?
 2. Should `validate_refs` and `validate_response_links` be public?
-3. Should we add the D2 alias (`chat.sefaria.org/mcp`), or keep mcp.sefaria.org as the
-   only MCP host?
-4. Sefaria team: the `aud: "mcp"` token, its TTL, and revocation (2.1).
-5. When can `/sse` be retired so the Deployment can scale beyond one replica? Check
-   traffic split in Prometheus (`http_requests_total` by handler) after cutover.
+3. Sefaria team: the `aud: "mcp"` token, its TTL, and revocation (2.1).
+4. Deprecation: redirect `mcp.sefaria.org` or turn it off, and on what timeline?
