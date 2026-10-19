@@ -59,11 +59,38 @@ def test_unmarked_tools_default_to_agent_only():
     assert not tool_schemas.has_surface({"name": "x"}, "mcp")
 
 
+PUBLIC_TOOLS = {
+    "get_text",
+    "specific_keyword_search",
+    "semantic_search",
+    "get_current_calendar",
+    "get_links_between_texts",
+    "search_in_book",
+    "search_in_dictionaries",
+    "get_english_translations",
+    "get_topic_details",
+    "clarify_name_argument",
+    "clarify_search_path_filter",
+    "catalog_get_node",
+    "catalog_get_children",
+    "catalog_search",
+    "catalog_query",
+    "get_available_manuscripts",
+    "get_manuscript_image",
+    "validate_refs",
+    "validate_response_links",
+}
+
+
+def test_public_surface_is_exactly_the_reviewed_set():
+    """Adding or removing a public tool should be a deliberate, reviewed change."""
+    assert _mcp_names() == PUBLIC_TOOLS
+
+
 def test_agent_surface_is_unchanged_by_mcp_only_tools():
     """MCP-only tools must not reach the agent."""
     agent_names = {t["name"] for t in tool_schemas.get_tools_for_labs(labs=True)}
-    assert "get_text_or_category_shape" not in agent_names
-    assert "get_text_catalogue_info" not in agent_names
+    assert "validate_response_links" not in agent_names
     assert len(tool_schemas.get_all_tools()) == 18
 
 
@@ -76,8 +103,6 @@ def test_agent_surface_is_unchanged_by_mcp_only_tools():
 def executor():
     client = MagicMock()
     client.get_text = AsyncMock(return_value={"versions": [{"text": "In the beginning"}]})
-    client.get_text_or_category_shape = AsyncMock(return_value=[{"title": "Genesis"}])
-    client.get_text_catalogue_info = AsyncMock(return_value={"title": "Genesis"})
     return SefariaToolExecutor(client=client)
 
 
@@ -97,15 +122,6 @@ async def test_tool_call_round_trips(executor):
     async with Client(build_server(executor)) as client:
         result = await client.call_tool("get_text", {"reference": "Genesis 1:1"})
     assert "In the beginning" in result.content[0].text
-
-
-async def test_mcp_only_tools_are_callable(executor):
-    """The two legacy catalogue tools are served from the shared client."""
-    async with Client(build_server(executor)) as client:
-        shape = await client.call_tool("get_text_or_category_shape", {"name": "Genesis"})
-        info = await client.call_tool("get_text_catalogue_info", {"title": "Genesis"})
-    assert json.loads(shape.content[0].text) == [{"title": "Genesis"}]
-    assert json.loads(info.content[0].text) == {"title": "Genesis"}
 
 
 async def test_tool_errors_surface_as_mcp_errors(executor):
@@ -255,7 +271,9 @@ async def test_no_sse_transport(executor):
 
 async def test_mcp_does_not_redirect_trailing_slash(executor):
     async with http_client(executor) as client:
-        r = await client.post("/mcp/", json=INIT, headers={**MCP_HEADERS, "Host": "chat.sefaria.org"})
+        r = await client.post(
+            "/mcp/", json=INIT, headers={**MCP_HEADERS, "Host": "chat.sefaria.org"}
+        )
     assert r.status_code == 404
 
 
@@ -300,7 +318,10 @@ async def test_invalid_discovery_mode_falls_back_to_stub(executor, monkeypatch):
 async def test_host_root_discovery_is_not_ours(executor):
     """On the chat host the root /.well-known/* paths belong to Django."""
     async with http_client(executor) as client:
-        for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server"):
+        for path in (
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-authorization-server",
+        ):
             assert (await client.get(path)).status_code == 404
 
 

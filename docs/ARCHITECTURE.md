@@ -162,11 +162,10 @@ Agent tools (18, plus 3 Labs-gated):
 Labs-gated (`LABS_TOOL_NAMES`, require a user token): `search_user_source_sheets`,
 `get_source_sheet`, `create_source_sheet`.
 
-MCP-only: `get_text_or_category_shape` and `get_text_catalogue_info`. The cached
-`catalog_*` tools superseded these for the agent in `1a087d6a`, but they remain part
-of the public MCP server's contract.
-`validate_response_links` is also MCP-only: it checks a client's draft response for
-unsafe or unresolvable links.
+MCP-only: `validate_response_links`, which checks a client's draft response for
+unsafe or unresolvable links. The public MCP server (`chat.sefaria.org/mcp`) serves
+every agent tool except the Labs-gated ones, plus this one; `test_mcp_server.py`
+pins the exact list.
 
 Tool runtime behavior:
 

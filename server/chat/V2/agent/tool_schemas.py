@@ -413,47 +413,6 @@ TOOL_CREATE_SOURCE_SHEET = {
     },
 }
 
-# ----------------------------------------------------------------------------
-# MCP-only tools
-#
-# These two predate the cached ``catalog_*`` tools, which superseded them for the
-# agent in 1a087d6a. They remain part of the public MCP server's contract, so they
-# are marked for the "mcp" surface only and never reach the agent.
-# ----------------------------------------------------------------------------
-
-TOOL_GET_TEXT_OR_CATEGORY_SHAPE = {
-    "name": "get_text_or_category_shape",
-    "surfaces": ("mcp",),
-    "description": "Retrieves the hierarchical structure and organization of texts or categories.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string",
-                "description": "Text title or category name (e.g. 'Genesis', 'Talmud').",
-            },
-        },
-        "required": ["name"],
-    },
-}
-
-TOOL_GET_TEXT_CATALOGUE_INFO = {
-    "name": "get_text_catalogue_info",
-    "surfaces": ("mcp",),
-    "description": "Retrieves the bibliographic and structural information (index) for a text or work.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "Title of the text or work (e.g. 'Genesis', 'Mishnah Berakhot').",
-            },
-        },
-        "required": ["title"],
-    },
-}
-
-
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -482,8 +441,6 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_user_source_sheets": TOOL_SEARCH_USER_SOURCE_SHEETS,
     "get_source_sheet": TOOL_GET_SOURCE_SHEET,
     "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
-    "get_text_or_category_shape": TOOL_GET_TEXT_OR_CATEGORY_SHAPE,
-    "get_text_catalogue_info": TOOL_GET_TEXT_CATALOGUE_INFO,
 }
 
 LABS_TOOL_NAMES = {

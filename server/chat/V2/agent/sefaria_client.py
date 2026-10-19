@@ -524,17 +524,6 @@ class SefariaClient:
         except Exception:
             return None
 
-    async def get_text_or_category_shape(self, name: str) -> dict[str, Any]:
-        """Get hierarchical structure of texts or categories."""
-        encoded_name = quote(name)
-        return await self._get_json(f"api/shape/{encoded_name}")
-
-    async def get_text_catalogue_info(self, title: str) -> dict[str, Any]:
-        """Get bibliographic information for a text."""
-        encoded_title = quote(title)
-        data = await self._get_json(f"api/v2/raw/index/{encoded_title}")
-        return self._optimize_index_response(data)
-
     async def get_available_manuscripts(self, reference: str) -> dict[str, Any]:
         """Get manuscript metadata for a text passage."""
         encoded_ref = quote(reference)
@@ -867,30 +856,6 @@ class SefariaClient:
             optimized["refs_note"] = f"Showing first 10 of {len(data['refs'])} total refs"
 
         return optimized
-
-    def _optimize_index_response(self, data: Any) -> dict[str, Any]:
-        """Optimize index response."""
-        if not isinstance(data, dict):
-            return data
-
-        essential_fields = {
-            "title",
-            "heTitle",
-            "titleVariants",
-            "schema",
-            "categories",
-            "sectionNames",
-            "addressTypes",
-            "length",
-            "lengths",
-            "textDepth",
-            "primaryTitle",
-            "compDate",
-            "era",
-            "authors",
-        }
-
-        return {k: v for k, v in data.items() if k in essential_fields}
 
     def _optimize_source_sheet_response(self, data: Any) -> dict[str, Any]:
         """Keep the parts of a source sheet that are useful for the model."""
