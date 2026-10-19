@@ -70,21 +70,36 @@ unchanged.
 
 ### 1.2 Server changes
 
-- [ ] Drop the `/sse` transport (D7). Serve `/mcp` only, with `stateless_http=True`.
-- [ ] Host/Origin protection with `SEFARIA_MCP_ALLOWED_HOSTS` / `SEFARIA_MCP_ALLOWED_ORIGINS`,
-      defaulting to `chat.sefaria.org` and `chat-dev.sefaria.org`. Port the
-      `SEFARIA_MCP_HOST_PROTECTION=off` escape hatch, and make empty lists fall back to
-      the defaults (an empty allowlist makes `/mcp` loopback-only).
-- [ ] D6 discovery variants behind a setting (`SEFARIA_MCP_DISCOVERY=none|stub`), so dev
-      can be measured both ways without a code change. `resource` comes from
-      `SEFARIA_MCP_PUBLIC_URL`.
-- [ ] `/mcp/healthz` (the probe path must be under `/mcp`, the only prefix routed to us).
-- [ ] Bump `fastmcp` to the 4.x line upstream already uses (`>=4.0.3,<5`) and re-run the
-      tests.
-- [ ] Port the transport tests from sefaria-mcp `tests/test_transports.py` (routing and
-      the Host/Origin guard), and update `test_mcp_server.py` for no-SSE and D6.
-- [ ] Sefaria User-Agent on outbound requests. Check whether `main` already has it
-      (PR #213).
+- [x] Dropped the `/sse` transport (D7). `/mcp` only, `stateless_http=True`, no
+      `mcp-session-id` issued.
+- [x] Host/Origin guard with `SEFARIA_MCP_ALLOWED_HOSTS` / `SEFARIA_MCP_ALLOWED_ORIGINS`
+      (defaults: `chat.sefaria.org`, `chat-dev.sefaria.org` and their https origins;
+      loopback is always admitted by FastMCP), plus `SEFARIA_MCP_HOST_PROTECTION=off`.
+      Blank values fall back to the defaults. Unlisted Host gets 421, unlisted Origin
+      gets 403.
+- [x] `SEFARIA_MCP_DISCOVERY=stub|none` (default `stub`, the version proven on
+      claude.ai) controls `/.well-known/oauth-protected-resource/mcp`. `resource` comes
+      from `SEFARIA_MCP_PUBLIC_URL` (default `https://chat.sefaria.org/mcp`). The
+      host-root `/.well-known/*` paths are left to Django.
+- [x] `/mcp/healthz`, outside the guard: kubelet probes send the pod IP as Host, which
+      the guard would reject with 421.
+- [x] `fastmcp>=4.0.3,<5` (4.1.1 installed, which brings `mcp` 2.x). `pip check` is
+      clean next to `claude-agent-sdk`.
+- [x] Transport tests ported from sefaria-mcp (`test_mcp_server.py`): allowed and
+      unlisted Host/Origin, env-driven allowlists, the escape hatch, statelessness,
+      405-not-404 for GET/PUT/PATCH, no SSE routes, healthz, both discovery modes, and
+      env parsing.
+- [x] Fixed: every live tool call failed with "settings are not configured". The
+      User-Agent helper on `main` (`580b0a01`) reads `settings.ENVIRONMENT`, and the MCP
+      process doesn't configure Django. The unit tests missed it because the suite
+      always configures Django and mocks the HTTP client. `_user_agent()` now reads
+      `ENVIRONMENT` from the environment when settings aren't configured, and
+      `SEFARIA_USER_AGENT_SERVICE=mcp` makes MCP traffic send `Sefaria/mcp (<env>)`.
+      Guarded by `test_tools_run_without_django_settings`, a subprocess test without
+      `DJANGO_SETTINGS_MODULE` (confirmed to fail without the fix).
+- [x] Live smoke test of `python -m mcp_server`: initialize, `tools/list` (21),
+      real calls to `get_text`, `specific_keyword_search`, `get_current_calendar` and
+      `catalog_search`, the discovery document, and Prometheus counters.
 
 ### 1.3 Public tool list
 
@@ -131,7 +146,8 @@ changes.
       `stakater/application`, image `us-docker.pkg.dev/sefaria-ai/container/ai-chatbot-server`
       (same tag as `chatbot.yaml`), command `python -m mcp_server`, ports 8088/9090,
       ServiceMonitor on, `replicas: 2` in prod, probes on `/mcp/healthz`. Env from a new
-      ConfigMap (`SEFARIA_MCP_PUBLIC_URL`, the allowlists, `SEFARIA_API_BASE_URL`) and,
+      ConfigMap (`SEFARIA_MCP_PUBLIC_URL`, the allowlists, `SEFARIA_API_BASE_URL`,
+      `ENVIRONMENT`, `SEFARIA_USER_AGENT_SERVICE=mcp`, `SEFARIA_MCP_DISCOVERY`) and,
       if `semantic_search` is public, a secret.
 - [ ] `chatbot/httproute.yaml`: add a PathPrefix `/mcp` rule → `chatbot-mcp:8088` above
       the `/` catch-all, plus `/.well-known/oauth-protected-resource/mcp` (PathPrefix, so
