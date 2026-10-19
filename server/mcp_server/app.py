@@ -139,7 +139,9 @@ def build_app(executor: SefariaToolExecutor | None = None) -> Starlette:
         path=HTTP_PATH,
         stateless_http=True,
         host_origin_protection=protect,
-        allowed_hosts=_env_list("SEFARIA_MCP_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS) if protect else None,
+        allowed_hosts=(
+            _env_list("SEFARIA_MCP_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS) if protect else None
+        ),
         allowed_origins=(
             _env_list("SEFARIA_MCP_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS) if protect else None
         ),
