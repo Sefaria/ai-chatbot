@@ -120,10 +120,15 @@ The `mcp` surface:
 | `get_available_manuscripts`, `get_manuscript_image` | |
 | `validate_refs`, `validate_response_links` | confirm we want them public |
 
-- [ ] Drop `get_text_or_category_shape` and `get_text_catalogue_info` from the surface,
-      and delete their schemas and dead client methods. Parity no longer matters and
-      `catalog_*` replaces them. Update `latency/scripts/plot_latency_partition.py` only
-      if it breaks; it uses the names, not the methods.
+- [x] Dropped `get_text_or_category_shape` and `get_text_catalogue_info`: their schemas,
+      dispatch branches, the `SefariaClient` methods and the now-unused
+      `_optimize_index_response`. `catalog_*` covers them.
+      `latency/scripts/plot_latency_partition.py` keeps the names, which classify
+      historical traces.
+- [x] `test_public_surface_is_exactly_the_reviewed_set` pins the 19 public tools, so
+      adding or removing one is a deliberate change.
+- `semantic_search`, `validate_refs` and `validate_response_links` stay public for now
+  (open questions 1 and 2).
 
 Not public: `search_user_source_sheets`, `get_source_sheet`, `create_source_sheet`.
 They go on `/mcp/user` in Phase 2.
