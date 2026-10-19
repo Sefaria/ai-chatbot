@@ -135,12 +135,17 @@ They go on `/mcp/user` in Phase 2.
 
 ### 1.4 Run and observe
 
-- [ ] `python -m mcp_server` runs uvicorn on `SEFARIA_MCP_PORT` (8088) and exposes
-      metrics on `SEFARIA_MCP_METRICS_PORT` (9090). Metric names are kept
-      (`mcp_tool_calls_total`, etc.), with a `server="chatbot-mcp"` const label so they
-      don't merge with the old server's series in Prometheus.
-- [ ] `SEFARIA_MCP_VERSION` is set from the image tag in the HelmRelease, so
-      `serverInfo.version` reports our release.
+- [x] `python -m mcp_server` runs uvicorn on `SEFARIA_MCP_PORT` (8088) and exposes
+      metrics on `SEFARIA_MCP_METRICS_PORT` (9090). Metric names and buckets match the old
+      server (`mcp_tool_calls_total`, `mcp_tool_duration_seconds`, `mcp_tool_payload_bytes`,
+      `mcp_errors_total`). Every series carries `server="chatbot-mcp"`. prometheus_client
+      has no const labels, so `server` is an ordinary label that `metrics.labels()`
+      fills in. The old server's series have no `server` label. The scrape's
+      `job`/`service` target labels also differ, but the explicit label survives
+      queries that aggregate those away.
+- [x] `serverInfo.version` reports `SEFARIA_MCP_VERSION` (default `0.0.0-dev`).
+      Checked on the wire by a test and against a live server. The HelmRelease must set
+      it from the image tag (1.5).
 
 ### 1.5 Infrastructure (AppliedAI-Infrastructure)
 
@@ -149,7 +154,9 @@ changes.
 
 - [ ] New `sefaria-ai/cluster-1/{dev,prod}/chatbot/mcp.yaml`: HelmRelease `chatbot-mcp`,
       `stakater/application`, image `us-docker.pkg.dev/sefaria-ai/container/ai-chatbot-server`
-      (same tag as `chatbot.yaml`), command `python -m mcp_server`, ports 8088/9090,
+      (same tag as `chatbot.yaml`), command `python -m mcp_server`,
+      `SEFARIA_MCP_VERSION` set from the image tag (the way `SENTRY_RELEASE` is in
+      `chatbot.yaml`, without its `.tagi` typo), ports 8088/9090,
       ServiceMonitor on, `replicas: 2` in prod, probes on `/mcp/healthz`. Env from a new
       ConfigMap (`SEFARIA_MCP_PUBLIC_URL`, the allowlists, `SEFARIA_API_BASE_URL`,
       `ENVIRONMENT`, `SEFARIA_USER_AGENT_SERVICE=mcp`, `SEFARIA_MCP_DISCOVERY`) and,
