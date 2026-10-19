@@ -73,9 +73,10 @@ class SefariaTool(Tool):
         error_type: str | None = None,
         payload_bytes: int | None = None,
     ) -> None:
-        metrics.tool_duration_seconds.labels(tool_name=self.name).observe(time.time() - started)
-        metrics.tool_calls_total.labels(tool_name=self.name, status=status).inc()
+        labels = metrics.labels
+        labels(metrics.tool_duration_seconds, tool_name=self.name).observe(time.time() - started)
+        labels(metrics.tool_calls_total, tool_name=self.name, status=status).inc()
         if error_type is not None:
-            metrics.errors_total.labels(tool_name=self.name, error_type=error_type).inc()
+            labels(metrics.errors_total, tool_name=self.name, error_type=error_type).inc()
         if payload_bytes is not None:
-            metrics.tool_payload_bytes.labels(tool_name=self.name).observe(payload_bytes)
+            labels(metrics.tool_payload_bytes, tool_name=self.name).observe(payload_bytes)

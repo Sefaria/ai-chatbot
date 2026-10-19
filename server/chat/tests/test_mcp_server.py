@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
+from prometheus_client import REGISTRY
 
 from chat.V2.agent import tool_schemas
 from chat.V2.agent.tool_executor import SefariaToolExecutor
@@ -131,6 +133,46 @@ async def test_tool_errors_surface_as_mcp_errors(executor):
             await client.call_tool("get_text", {"reference": "Genesis 1:1"})
 
 
+def _sample(name, **labels):
+    return REGISTRY.get_sample_value(name, {"server": "chatbot-mcp", **labels}) or 0.0
+
+
+async def test_tool_metrics_carry_the_server_label(executor):
+    """Distinguishes this server's series from the old sefaria-mcp's during deprecation."""
+    calls = ("mcp_tool_calls_total", {"tool_name": "get_text", "status": "success"})
+    durations = ("mcp_tool_duration_seconds_count", {"tool_name": "get_text"})
+    payloads = ("mcp_tool_payload_bytes_count", {"tool_name": "get_text"})
+    before = [_sample(n, **lbl) for n, lbl in (calls, durations, payloads)]
+
+    async with Client(build_server(executor)) as client:
+        await client.call_tool("get_text", {"reference": "Genesis 1:1"})
+
+    after = [_sample(n, **lbl) for n, lbl in (calls, durations, payloads)]
+    assert [a - b for a, b in zip(after, before, strict=True)] == [1, 1, 1]
+
+
+async def test_tool_error_metrics_carry_the_server_label(executor):
+    executor.client.get_text = AsyncMock(side_effect=RuntimeError("upstream is down"))
+    errors = ("mcp_errors_total", {"tool_name": "get_text", "error_type": "ToolError"})
+    calls = ("mcp_tool_calls_total", {"tool_name": "get_text", "status": "error"})
+    before = [_sample(n, **lbl) for n, lbl in (errors, calls)]
+
+    async with Client(build_server(executor)) as client:
+        with pytest.raises(ToolError, match="upstream is down"):
+            await client.call_tool("get_text", {"reference": "Genesis 1:1"})
+
+    after = [_sample(n, **lbl) for n, lbl in (errors, calls)]
+    assert [a - b for a, b in zip(after, before, strict=True)] == [1, 1]
+
+
+async def test_server_info_reports_the_release_tag(executor, monkeypatch):
+    """The old server reported FastMCP's library version, so the wire never said what was live."""
+    monkeypatch.setenv("SEFARIA_MCP_VERSION", "1.9.0-dev.3")
+    r = await _initialize(executor, Host="chat.sefaria.org")
+    data = next(line[len("data:") :] for line in r.text.splitlines() if line.startswith("data:"))
+    assert json.loads(data)["result"]["serverInfo"]["version"] == "1.9.0-dev.3"
+
+
 # Runs in a subprocess because the test suite always configures Django, which
 # hides tool-layer code that reads settings. The MCP process never configures it.
 _STANDALONE_SCRIPT = r"""
@@ -146,6 +188,8 @@ def handler(request):
 httpx.AsyncClient = functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(handler))
 
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
+from prometheus_client import REGISTRY
 from mcp_server.app import build_server
 
 async def main():
