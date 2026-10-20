@@ -222,6 +222,9 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+  let panelRef = $state(null);
+  // Phones: what had focus when the sheet opened (the pill, or the host's own button)
+  let sheetOpener = null;
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
@@ -566,7 +569,13 @@
 
     if (isFullscreen) {
       pushSheetEntry(onSheetPopped);
-      return; // no autofocus: the keyboard would cover the conversation
+      // Focus the sheet, not the text box (the keyboard would cover the conversation), so focus
+      // and screen readers move off the page it covers
+      sheetOpener = document.activeElement;
+      setTimeout(() => {
+        panelRef?.focus({ preventScroll: true });
+      }, 100);
+      return;
     }
 
     // Focus input after panel opens
@@ -578,6 +587,16 @@
 
   function closePanel() {
     if (messageListRef) lastScroll = { sessionId, top: messageListRef.scrollTop };
+    // Phones: focus in the sheet goes back to what opened it: the pill (redrawn on close), or
+    // the host's button
+    const root = panelRef?.getRootNode();
+    if (isFullscreen && panelRef?.contains(root.activeElement)) {
+      const opener = sheetOpener;
+      tick().then(() => {
+        if (opener === $host()) root.querySelector('.lc-chatbot-ask')?.focus();
+        else if (opener?.isConnected) opener.focus();
+      });
+    }
     isOpen = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
@@ -1906,12 +1925,15 @@
   {:else}
     <!-- Chat Panel -->
     <div 
+      bind:this={panelRef}
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
       class:sheet-lifted={sheetOffset > 0 || sheetSettling}
       style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
+      aria-modal={isFullscreen ? 'true' : undefined}
+      tabindex="-1"
       aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
@@ -3052,6 +3074,11 @@
   }
 
   /* Chat Panel */
+  /* Focused only by code, to move focus into the sheet; its contents show their own focus */
+  .lc-chatbot-panel:focus {
+    outline: none;
+  }
+
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;

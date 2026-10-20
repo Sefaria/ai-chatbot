@@ -25,3 +25,4 @@ Logged-in phone users get the assistant. Before this, Sefaria hid it below its M
 
 - If the NG mobile reader (Sefaria-Project `ng-mobile`, separate React tree) ships, it must render `<lc-chatbot>` too.
 - The logged-out promo banner stays desktop-only (product call).
+- Keep Tab inside the open sheet (a focus trap). Opening focuses the sheet and `aria-modal` confines screen readers, but a hardware keyboard can still Tab to the page behind.
