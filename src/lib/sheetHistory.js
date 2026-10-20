@@ -11,16 +11,22 @@
 let isSheetEntryCurrent = false;
 // Runs once the pop has left the sheet's entry
 let onSheetEntryPopped = null;
+// The page the sheet opened over, which a plain Back returns to
+let sheetEntryUrl = null;
 
 window.addEventListener('popstate', (e) => {
   if (!isSheetEntryCurrent) return;
   isSheetEntryCurrent = false;
-  e.stopImmediatePropagation();
+  // Back to the page the sheet opened over only closes the sheet: the host needn't know. A jump
+  // further (picked from Back's long-press menu, or history.go(-2)) lands on another page, which
+  // the host must show, so it gets that pop; the sheet still closes.
+  if (location.href === sheetEntryUrl) e.stopImmediatePropagation();
   onSheetEntryPopped?.();
 });
 
 export function pushSheetEntry(callback) {
   if (isSheetEntryCurrent) return;
+  sheetEntryUrl = location.href;
   history.pushState(history.state, '');
   isSheetEntryCurrent = true;
   onSheetEntryPopped = callback;
