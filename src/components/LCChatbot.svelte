@@ -972,6 +972,8 @@
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
+        // Another chat was picked meanwhile: what shows is now up to that one
+        if (navigation !== conversationNavigation) return;
         historyError = '';
         isOpeningConversation = false;
         isLoadingHistory = false;
