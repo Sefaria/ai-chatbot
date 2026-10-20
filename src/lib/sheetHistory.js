@@ -7,28 +7,30 @@
  * sheet's pop. A host that loads it later sees a pop back to its own current state.
  */
 
-let hasEntry = false;
-let onPop = null;
+// The sheet's entry is the one the browser is on: the next pop leaves it
+let isSheetEntryCurrent = false;
+// Runs once the pop has left the sheet's entry
+let onSheetEntryPopped = null;
 
 window.addEventListener('popstate', (e) => {
-  if (!hasEntry) return;
-  hasEntry = false;
+  if (!isSheetEntryCurrent) return;
+  isSheetEntryCurrent = false;
   e.stopImmediatePropagation();
-  onPop?.();
+  onSheetEntryPopped?.();
 });
 
 export function pushSheetEntry(callback) {
-  if (hasEntry) return;
+  if (isSheetEntryCurrent) return;
   history.pushState(history.state, '');
-  hasEntry = true;
-  onPop = callback;
+  isSheetEntryCurrent = true;
+  onSheetEntryPopped = callback;
 }
 
 /** Leave the entry from the UI; `callback` still runs once the pop lands. */
 export function popSheetEntry() {
-  if (hasEntry) history.back();
+  if (isSheetEntryCurrent) history.back();
 }
 
 export function hasSheetEntry() {
-  return hasEntry;
+  return isSheetEntryCurrent;
 }
