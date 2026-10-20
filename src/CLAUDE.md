@@ -8,7 +8,8 @@ Web component widget for embedding the chatbot.
 src/
 ├── main.js                      # Entry point, registers web component
 ├── components/
-│   └── LCChatbot.svelte         # Main widget (single-file component)
+│   ├── LCChatbot.svelte         # Main widget: state, panel, conversations
+│   └── AskLauncher.svelte       # The closed "✦ Ask" pill
 ├── i18n/
 │   ├── index.js                 # svelte-i18n setup and locale store wiring
 │   └── locales/
@@ -18,7 +19,12 @@ src/
     ├── api.js                   # HTTP client, SSE streaming
     ├── session.js               # Session management
     ├── storage.js               # localStorage persistence
-    └── markdown.js              # Markdown rendering
+    ├── markdown.js              # Markdown rendering
+    ├── hostEvents.js            # chatbot:open / chatbot:launcher listeners
+    ├── sheetHistory.js          # Phones: the sheet's Back-button history entry
+    ├── sheetDrag.js             # Phones: drag the header down to close (action)
+    ├── keyboardViewport.svelte.js # Phones: keep the sheet above the keyboard, lock page scroll
+    └── chatScroll.js            # Phones: keep your place on resize, scroll to the end
 ```
 
 ## Commands
@@ -31,7 +37,7 @@ npm run build    # Build bundle to dist/
 ## Patterns
 
 - **Svelte 5** with runes (`$state`, `$derived`, `$effect`)
-- **Single-file component** - all widget logic in LCChatbot.svelte
+- **One main component** - LCChatbot.svelte holds the widget's state and wires the pieces in `lib/` and `AskLauncher.svelte` together; each piece takes only the few values it needs
 - **Web Component** - registered as `<lc-chatbot>` custom element
 - **SSE streaming** - real-time responses via Server-Sent Events
 
@@ -71,7 +77,7 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 
 ## Launcher
 
-The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-container`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. The chat is rebuilt on every open, so opening lands on the start of an answer that arrived while closed, otherwise where the reader left that chat (recorded on close, so not after a reload), otherwise at the bottom (its latest message). A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height at its mobile widths (up to 842px, where the banner is full width) until the banner is dismissed. The move always slides (0.2s), reduced motion included.
+The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-ask` in `AskLauncher.svelte`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. The chat is rebuilt on every open, so opening lands on the start of an answer that arrived while closed, otherwise where the reader left that chat (recorded on close, so not after a reload), otherwise at the bottom (its latest message). A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height at its mobile widths (up to 842px, where the banner is full width) until the banner is dismissed. The move always slides (0.2s), reduced motion included.
 
 ## Phones
 

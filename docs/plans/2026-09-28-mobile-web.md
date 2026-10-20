@@ -19,6 +19,7 @@ Logged-in phone users get the assistant. Before this, Sefaria hid it below its M
 - **Closed button on touch screens opens in one tap.** The "✦ Ask" pill always shows its label, and its hover colour is limited to hover-capable pointers (`@media (hover: hover)`); on touch the hover state would stick after the tap, and iOS can spend the first tap on it.
 - **Drag down to close.** A grabber bar tops the header, and the whole header (not its buttons) drags the sheet. Release past 120px, or flick down faster than 0.5px/ms, and it slides away and closes; otherwise it springs back. While dragged it gets rounded top corners and an upward shadow (not a border, which vanishes on light pages), so it stands off the page behind it. The close button remains the accessible way to close.
 - **Host entry point:** a `chatbot:open` document event, used by Sefaria's mobile menu.
+- **Code split out of `LCChatbot.svelte`** (review request on PR #251): keyboard handling (`lib/keyboardViewport.svelte.js`), drag to close (`lib/sheetDrag.js`), phone scrolling (`lib/chatScroll.js`), host events (`lib/hostEvents.js`) and the launcher (`components/AskLauncher.svelte`). A move only; behavior unchanged. The screen-reader "answer ready" text stays in `LCChatbot.svelte`, so it's in the page whether the assistant is open or closed, as before.
 
 ## Follow-ups
 
