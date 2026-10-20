@@ -94,3 +94,42 @@ class TestValidation:
 
         # Failing open here would let unverified links through as "safe".
         assert report["safe_to_send"] is False
+
+
+class TestBounds:
+    """Each distinct link can cost a Sefaria API call, and the draft comes from anyone."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_too_many_links_without_resolving_them(self):
+        from chat.V2.agent.tool_executor import MAX_VALIDATED_LINKS
+
+        executor = _executor()
+        links = "".join(
+            f'<a href="https://www.sefaria.org/Genesis.1.{i}">x</a>'
+            for i in range(MAX_VALIDATED_LINKS + 1)
+        )
+        result = await executor.execute(TOOL, {"response": links})
+        assert result.is_error
+        assert "more than" in result.content[0]["text"]
+        executor.client.strict_resolve_ref.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_accepts_exactly_the_limit(self):
+        from chat.V2.agent.tool_executor import MAX_VALIDATED_LINKS
+
+        links = "".join(
+            f'<a href="https://www.sefaria.org/Genesis.1.{i}">x</a>'
+            for i in range(MAX_VALIDATED_LINKS)
+        )
+        report = await _validate(_executor(), links)
+        assert report["safe_to_send"] is True
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_drafts(self):
+        from chat.V2.agent.tool_executor import MAX_VALIDATED_RESPONSE_CHARS
+
+        result = await _executor().execute(
+            TOOL, {"response": "a" * (MAX_VALIDATED_RESPONSE_CHARS + 1)}
+        )
+        assert result.is_error
+        assert "too long" in result.content[0]["text"]

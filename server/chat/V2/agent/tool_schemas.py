@@ -19,6 +19,11 @@ from typing import Any
 # Individual Tool Schemas
 # ============================================================================
 
+# Upper bound on every size/limit argument. The public MCP server takes these from
+# anonymous callers, and each result is fetched from and paid for by the Sefaria API.
+# tool_executor clamps to the same bound for callers that skip schema validation.
+MAX_RESULTS = 100
+
 TOOL_GET_TEXT = {
     "name": "get_text",
     "surfaces": ("agent", "mcp"),
@@ -48,7 +53,7 @@ TOOL_TEXT_SEARCH = {
                 "items": {"type": "string"},
                 "description": "Sefaria path-based scope filters (e.g. 'Tanakh/Torah/Genesis'). Use clarify_search_path_filter to resolve a book name to its correct path before passing it here.",
             },
-            "size": {"type": "number", "default": 10},
+            "size": {"type": "number", "default": 10, "minimum": 1, "maximum": MAX_RESULTS},
         },
         "required": ["query"],
     },
@@ -101,7 +106,7 @@ TOOL_SEARCH_IN_BOOK = {
         "properties": {
             "query": {"type": "string"},
             "book_name": {"type": "string"},
-            "size": {"type": "number", "default": 10},
+            "size": {"type": "number", "default": 10, "minimum": 1, "maximum": MAX_RESULTS},
         },
         "required": ["query", "book_name"],
     },
@@ -195,7 +200,7 @@ TOOL_CLARIFY_NAME_ARGUMENT = {
         "type": "object",
         "properties": {
             "name": {"type": "string"},
-            "limit": {"type": "number"},
+            "limit": {"type": "number", "minimum": 1, "maximum": MAX_RESULTS},
             "type_filter": {"type": "string"},
         },
         "required": ["name"],
@@ -248,8 +253,8 @@ TOOL_CATALOG_GET_CHILDREN = {
                 "enum": ["all", "category", "book"],
                 "default": "all",
             },
-            "limit": {"type": "number", "default": 50},
-            "offset": {"type": "number", "default": 0},
+            "limit": {"type": "number", "default": 50, "minimum": 1, "maximum": MAX_RESULTS},
+            "offset": {"type": "number", "default": 0, "minimum": 0},
         },
         "required": ["path"],
     },
@@ -269,7 +274,7 @@ TOOL_CATALOG_SEARCH = {
                 "default": "any",
             },
             "category_path": {"type": "string"},
-            "limit": {"type": "number", "default": 10},
+            "limit": {"type": "number", "default": 10, "minimum": 1, "maximum": MAX_RESULTS},
         },
         "required": ["query"],
     },
@@ -315,8 +320,8 @@ TOOL_CATALOG_QUERY = {
                 },
             },
             "select": {"type": "array", "items": {"type": "string"}},
-            "limit": {"type": "number", "default": 20},
-            "offset": {"type": "number", "default": 0},
+            "limit": {"type": "number", "default": 20, "minimum": 1, "maximum": MAX_RESULTS},
+            "offset": {"type": "number", "default": 0, "minimum": 0},
         },
     },
 }
@@ -357,6 +362,8 @@ TOOL_SEARCH_USER_SOURCE_SHEETS = {
             "limit": {
                 "type": "integer",
                 "default": 10,
+                "minimum": 1,
+                "maximum": MAX_RESULTS,
                 "description": "Maximum number of matching sheets to return.",
             },
         },
