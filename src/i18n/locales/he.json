@@ -142,5 +142,8 @@
     "assistant.anon.limit_reached": "כדי להמשיך לשאול, התחברו או הירשמו בחינם.",
     "assistant.menu.restart.login_tooltip": "התחברו כדי להתחיל שיחה חדשה",
     "assistant.floating_button.search_label": "חיפוש עם עוזר הספרייה",
-    "assistant.floating_button.label": "שאלו אותי"
+    "assistant.floating_button.label": "שאלו אותי",
+    "assistant.anon.google.aria": "המשך עם גוגל",
+    "assistant.anon.apple.aria": "המשך עם אפל",
+    "assistant.anon.email.aria": "המשך עם דוא״ל"
 }
