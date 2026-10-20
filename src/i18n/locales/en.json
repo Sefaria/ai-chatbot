@@ -143,5 +143,8 @@
     "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready",
     "assistant.floating_button.label": "Ask",
     "assistant.menu.restart.login_tooltip": "Log in to start a new chat",
-    "assistant.floating_button.search_label": "Search with Library Assistant"
+    "assistant.floating_button.search_label": "Search with Library Assistant",
+    "assistant.anon.google.aria": "Continue with Google",
+    "assistant.anon.apple.aria": "Continue with Apple",
+    "assistant.anon.email.aria": "Continue with Email"
 }
