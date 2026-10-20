@@ -7,6 +7,10 @@ Served at ``https://chat.sefaria.org/mcp`` alongside the old standalone server o
 - ``/mcp``  Streamable HTTP, stateless. No SSE: SSE clients stay on the old server.
 - ``/mcp/healthz``  liveness/readiness probe.
 - ``/.well-known/oauth-protected-resource/mcp``  only when ``SEFARIA_MCP_DISCOVERY=stub``.
+- ``/mcp/user``  the same tools plus the user's source sheets, behind OAuth (Phase 2). Only
+  served when ``MCP_TOKEN_SECRET`` and ``MCP_OAUTH_SIGNING_KEY`` are set. Its access tokens are
+  issued by the Django app (``mcp_auth``) on the same host and checked here statelessly.
+- ``/.well-known/oauth-protected-resource/mcp/user``  its RFC 9728 metadata.
 
 The gateway routes only ``/mcp*`` and ``/.well-known/oauth-protected-resource/mcp*`` on
 the chat host to this server; everything else on that host is the Django app.
@@ -17,8 +21,11 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+from urllib.parse import urlsplit
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import RemoteAuthProvider
+from fastmcp.server.auth.providers.jwt import JWTVerifier
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -26,13 +33,17 @@ from starlette.routing import Route
 
 from chat.V2.agent.tool_executor import SefariaToolExecutor
 from chat.V2.agent.tool_schemas import get_tools_for_surface
+from mcp_auth import access_tokens
 
-from .tool import SefariaTool
+from .tool import SefariaTool, UserSefariaTool
 
 logger = logging.getLogger("mcp_server")
 
 SURFACE = "mcp"
+USER_SURFACE = "mcp_user"
 HTTP_PATH = "/mcp"
+USER_HTTP_PATH = "/mcp/user"
+USER_PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource/mcp/user"
 HEALTH_PATH = "/mcp/healthz"
 PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource/mcp"
 SERVER_NAME = "Sefaria MCP 📚"
@@ -101,6 +112,25 @@ def host_protection_enabled() -> bool:
     return os.environ.get("SEFARIA_MCP_HOST_PROTECTION", "on").strip().lower() != "off"
 
 
+def user_auth_settings() -> dict[str, str] | None:
+    """Settings for /mcp/user, or None when sign-in is not configured.
+
+    The names match the Django app's settings, which issue the tokens checked here.
+    """
+    token_secret = os.environ.get("MCP_TOKEN_SECRET")
+    signing_key = os.environ.get("MCP_OAUTH_SIGNING_KEY")
+    if not token_secret or not signing_key:
+        return None
+    issuer = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org").rstrip("/")
+    resource = os.environ.get("MCP_USER_RESOURCE_URL", f"{issuer}{USER_HTTP_PATH}").rstrip("/")
+    return {
+        "token_secret": token_secret,
+        "signing_key": signing_key,
+        "issuer": issuer,
+        "resource": resource,
+    }
+
+
 def port() -> int:
     return _env_int("SEFARIA_MCP_PORT", DEFAULT_PORT)
 
@@ -113,6 +143,34 @@ def build_server(executor: SefariaToolExecutor | None = None) -> FastMCP:
     for schema in get_tools_for_surface(SURFACE):
         mcp.add_tool(SefariaTool.from_schema(schema, executor))
 
+    return mcp
+
+
+def build_user_server(executor: SefariaToolExecutor, auth_settings: dict[str, str]) -> FastMCP:
+    """The signed-in server: public tools on the shared executor, sheet tools per user."""
+    resource = auth_settings["resource"]
+    parts = urlsplit(resource)
+    verifier = JWTVerifier(
+        public_key=auth_settings["signing_key"],
+        algorithm=access_tokens.ALGORITHM,
+        issuer=auth_settings["issuer"],
+        audience=resource,
+        required_scopes=[access_tokens.SCOPE],
+    )
+    auth = RemoteAuthProvider(
+        token_verifier=verifier,
+        authorization_servers=[auth_settings["issuer"]],
+        base_url=f"{parts.scheme}://{parts.netloc}",
+        scopes_supported=[access_tokens.SCOPE],
+        resource_name="Sefaria (your account)",
+    )
+    mcp = FastMCP(SERVER_NAME, version=server_version(), auth=auth)
+    for schema in get_tools_for_surface(SURFACE):
+        mcp.add_tool(SefariaTool.from_schema(schema, executor))
+    for schema in get_tools_for_surface(USER_SURFACE):
+        mcp.add_tool(
+            UserSefariaTool.from_schema(schema, token_secret=auth_settings["token_secret"])
+        )
     return mcp
 
 
@@ -134,18 +192,20 @@ def build_app(executor: SefariaToolExecutor | None = None) -> Starlette:
     #
     # Stateless: no session state in pod memory, so rollouts drop nothing and the
     # Deployment can run several replicas. /mcp serves POST and DELETE only.
-    mcp_app = build_server(executor).http_app(
-        transport="http",
-        path=HTTP_PATH,
-        stateless_http=True,
-        host_origin_protection=protect,
-        allowed_hosts=(
+    transport_options = {
+        "transport": "http",
+        "stateless_http": True,
+        "host_origin_protection": protect,
+        "allowed_hosts": (
             _env_list("SEFARIA_MCP_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS) if protect else None
         ),
-        allowed_origins=(
+        "allowed_origins": (
             _env_list("SEFARIA_MCP_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS) if protect else None
         ),
-    )
+    }
+    executor = executor or SefariaToolExecutor()
+    mcp_app = build_server(executor).http_app(path=HTTP_PATH, **transport_options)
+    sub_apps = [mcp_app]
 
     # Only the protected-resource document at our own path is ours to vary: the
     # host-root /.well-known/* paths on the chat host belong to Django.
@@ -166,11 +226,25 @@ def build_app(executor: SefariaToolExecutor | None = None) -> Starlette:
     # (whose Host is the pod IP) and the discovery document unguarded.
     routes.append(Route(HTTP_PATH, endpoint=mcp_app))
 
+    auth_settings = user_auth_settings()
+    if auth_settings:
+        user_app = build_user_server(executor, auth_settings).http_app(
+            path=USER_HTTP_PATH, **transport_options
+        )
+        sub_apps.append(user_app)
+        # The sub-app serves both paths itself, behind its own auth and Host/Origin guard.
+        routes.append(Route(USER_HTTP_PATH, endpoint=user_app))
+        routes.append(Route(USER_PROTECTED_RESOURCE_PATH, endpoint=user_app))
+    else:
+        logger.info("MCP sign-in is not configured; /mcp/user is not served")
+
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette):
         # Starlette does not run sub-app lifespans, and the Streamable HTTP app
         # builds its session manager in its own.
-        async with mcp_app.lifespan(app):
+        async with contextlib.AsyncExitStack() as stack:
+            for sub_app in sub_apps:
+                await stack.enter_async_context(sub_app.lifespan(app))
             yield
 
     app = Starlette(routes=routes, lifespan=lifespan)

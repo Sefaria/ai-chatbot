@@ -350,7 +350,8 @@ TOOL_GET_MANUSCRIPT_IMAGE = {
 
 TOOL_SEARCH_USER_SOURCE_SHEETS = {
     "name": "search_user_source_sheets",
-    "surfaces": ("agent",),
+    # mcp_user: the signed-in /mcp/user endpoint, never the anonymous one.
+    "surfaces": ("agent", "mcp_user"),
     "description": "Searches the authenticated user's own Sefaria source sheets by title, summary, tags, and topics. Use this when the user refers to 'my source sheet', 'my sheets', or wants to reuse an idea or workflow from one of their sheets. This tool automatically uses the authenticated user's stored session token; never ask the user for a user ID or token.",
     "input_schema": {
         "type": "object",
@@ -372,7 +373,8 @@ TOOL_SEARCH_USER_SOURCE_SHEETS = {
 
 TOOL_GET_SOURCE_SHEET = {
     "name": "get_source_sheet",
-    "surfaces": ("agent",),
+    # mcp_user: the signed-in /mcp/user endpoint, never the anonymous one.
+    "surfaces": ("agent", "mcp_user"),
     "description": "Retrieves the contents of a Sefaria source sheet by sheet ID. Use this after identifying a relevant sheet, especially when the user refers to one of their own sheets. This tool automatically includes the retained session token when available so unlisted user sheets can be read.",
     "input_schema": {
         "type": "object",
@@ -388,7 +390,8 @@ TOOL_GET_SOURCE_SHEET = {
 
 TOOL_CREATE_SOURCE_SHEET = {
     "name": "create_source_sheet",
-    "surfaces": ("agent",),
+    # mcp_user: the signed-in /mcp/user endpoint, never the anonymous one.
+    "surfaces": ("agent", "mcp_user"),
     "description": "Creates a new authenticated Sefaria source sheet. Provide the sheet title, summary, and an ordered list of sources. Ref sources should include both ref and heRef; the tool will fetch the English and Hebrew text and serialize the final sheet payload automatically.",
     "input_schema": {
         "type": "object",
