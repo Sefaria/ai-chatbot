@@ -1405,14 +1405,18 @@
     setStorage(STORAGE_KEYS.ANON_LOGIN_REQUIRED, true);
   }
 
+  // Logged-out limit: Google, Apple and email sign-in. Google and Apple start the host's
+  // allauth redirect flow; email opens its email log-in form.
   // Built at click time: the host navigates client-side, so the page can change under us.
   // A real page load, so the message list's in-page link routing must not see this click.
   // The assistant stays closed on the login page and reopens here once they're back.
-  function goToLogin(e) {
+  const SIGN_IN_PATHS = { google: '/accounts/google/login/', apple: '/accounts/apple/login/', email: '/login' };
+  function goToSignIn(e, method) {
     e.stopPropagation();
     const here = window.location.pathname + window.location.search + window.location.hash;
-    const separator = loginUrl.includes('?') ? '&' : '?';
-    e.currentTarget.href = `${loginUrl}${separator}next=${encodeURIComponent(here)}`;
+    const origin = new URL(loginUrl, window.location.href).origin;
+    const process = method === 'email' ? 'method=email&' : 'process=login&';
+    e.currentTarget.href = `${origin}${SIGN_IN_PATHS[method]}?${process}next=${encodeURIComponent(here)}`;
     setStorage(STORAGE_KEYS.RESUME_AFTER_LOGIN, { sessionId, at: Date.now() });
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
   }
@@ -2555,7 +2559,17 @@
         <!-- Logged out and the free answers are used up: the input gives way to logging in -->
         <footer class="lc-chatbot-input anon-login-footer" role="status" data-element-shown-name="anon_login_prompt">
           <p class="anon-login-footer-text">{$_('assistant.anon.limit_reached')}</p>
-          <a class="anon-login-footer-button" href={loginUrl} onclick={goToLogin} data-feature-name="anon_login_link">{$_('assistant.anon.login_button')}</a>
+          <div class="anon-sign-in-options">
+            <a class="anon-sign-in-option" href={loginUrl} onclick={(e) => goToSignIn(e, 'google')} aria-label={$_('assistant.anon.google.aria', { default: 'Continue with Google' })} data-feature-name="anon_login_google">
+              <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+            </a>
+            <a class="anon-sign-in-option" href={loginUrl} onclick={(e) => goToSignIn(e, 'apple')} aria-label={$_('assistant.anon.apple.aria', { default: 'Continue with Apple' })} data-feature-name="anon_login_apple">
+              <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="#000000" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+            </a>
+            <a class="anon-sign-in-option" href={loginUrl} onclick={(e) => goToSignIn(e, 'email')} aria-label={$_('assistant.anon.email.aria', { default: 'Continue with Email' })} data-feature-name="anon_login_email">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            </a>
+          </div>
         </footer>
       {:else}
       <footer class="lc-chatbot-input">
@@ -2671,6 +2685,7 @@
     --spacing-spacing-medium: 12px;
     --semantic-action-primary: #18345D;
     --semantic-text-link: #18345D;
+    --semantic-text-primary: #121212;
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
@@ -4418,7 +4433,7 @@
 
   .anon-login-footer-text {
     margin: 0;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-primary);
     font-family: Roboto, Arial, sans-serif;
     font-size: var(--lc-font-size);
     line-height: var(--global-dimension-250);
@@ -4428,29 +4443,45 @@
     font-family: Heebo, Arial, sans-serif;
   }
 
-  /* The same height as the send button it replaces (40px; 44px on phones) */
-  .anon-login-footer-button {
+  /* Three round sign-in buttons (Google, Apple, email) */
+  .anon-sign-in-options {
+    /* With the footer's 8px gap, 16px below the sentence */
+    margin-top: var(--global-dimension-100);
+    display: flex;
+    justify-content: center;
+    gap: var(--global-dimension-300);
+  }
+
+  .anon-sign-in-option {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: var(--lc-send-size);
-    padding: 0 var(--global-dimension-200);
-    background: var(--brand-sefaria-blue);
-    color: var(--lc-on-primary);
-    border-radius: var(--lc-radius-sm);
-    font-family: Roboto, Arial, sans-serif;
-    font-size: var(--lc-font-size);
-    font-weight: 600;
-    text-decoration: none;
+    width: 48px;
+    height: 48px;
+    border: 1px solid #B8D3F0; /* No lighter blue token yet */
+    border-radius: 50%;
+    background: var(--core-base-white);
+    color: var(--brand-sefaria-blue);
   }
 
-  .interface-hebrew .anon-login-footer-button {
-    font-family: Heebo, Arial, sans-serif;
-    font-weight: 700;
+  .anon-sign-in-option:hover {
+    background: var(--core-blue-tbr-100);
   }
 
-  .anon-login-footer-button:hover {
-    background: var(--lc-primary-hover);
+  /* Smaller on desktop (40px, like the send button); phones keep 48px */
+  .lc-chatbot-container:not(.mode-fullscreen) .anon-sign-in-option {
+    width: 40px;
+    height: 40px;
+  }
+
+  .lc-chatbot-container:not(.mode-fullscreen) .anon-sign-in-option svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .lc-chatbot-container:not(.mode-fullscreen) .anon-sign-in-option[data-feature-name="anon_login_apple"] svg {
+    width: 17px;
+    height: 17px;
   }
 
   @keyframes lc-anon-banner-in {
