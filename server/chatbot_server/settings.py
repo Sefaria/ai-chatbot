@@ -48,6 +48,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # Which Sefaria this request talks to, from its Origin (chat/sefaria_base_url.py).
+    "chat.sefaria_base_url.SefariaBaseUrlMiddleware",
 ]
 
 if _WHITENOISE_AVAILABLE:
@@ -262,6 +264,9 @@ LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 # Sefaria API Configuration (optional)
 # ============================================================================
 # - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)
+# - CHATBOT_ALLOWED_SEFARIA_HOSTS (default: none): Sefaria hosts a request may use
+#   instead, taken from its Origin, e.g. "*.cauldron.sefaria.org" on a dev deployment
+#   (see chat/sefaria_base_url.py)
 # - SEFARIA_AI_TOKEN (for authenticated semantic search requests)
 
 # Logging configuration

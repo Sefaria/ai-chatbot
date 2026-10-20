@@ -2,8 +2,8 @@
 The free-answer limit for logged-out (anonymous) visitors.
 
 An admin sets the number in Sefaria's Django admin, as the remote config entry
-`feature.chatbot.anonymous_free_answers`. This server reads it from Sefaria's
-public /api/remote-config. There is no default here: if the key isn't in
+`feature.chatbot.anonymous_free_answers`. This server reads it from the request's
+Sefaria's public /api/remote-config (see sefaria_base_url.py). There is no default here: if the key isn't in
 Sefaria's config (for example when this server runs without Sefaria), there is
 no limit.
 """
@@ -25,19 +25,24 @@ REQUEST_TIMEOUT_SECONDS = 3
 
 
 def get_anon_answer_limit() -> int | None:
-    """How many answers a logged-out visitor gets, or None for no limit."""
-    cached = cache.get(CACHE_KEY)
+    """How many answers a logged-out visitor gets, or None for no limit.
+
+    Read from the current request's Sefaria, cached per Sefaria.
+    """
+    base_url = _get_default_sefaria_base_url().rstrip("/")
+    cache_key = f"{CACHE_KEY}:{base_url}"
+    cached = cache.get(cache_key)
     if cached is not None:
         return cached["limit"]
 
-    limit = _fetch_limit()
+    limit = _fetch_limit(base_url)
     # Cache "no limit" too, so an unreachable Sefaria isn't asked on every question.
-    cache.set(CACHE_KEY, {"limit": limit}, CACHE_SECONDS)
+    cache.set(cache_key, {"limit": limit}, CACHE_SECONDS)
     return limit
 
 
-def _fetch_limit() -> int | None:
-    url = f"{_get_default_sefaria_base_url().rstrip('/')}/api/remote-config"
+def _fetch_limit(base_url: str) -> int | None:
+    url = f"{base_url}/api/remote-config"
     try:
         response = httpx.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()

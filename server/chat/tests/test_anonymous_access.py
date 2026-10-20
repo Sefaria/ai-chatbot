@@ -558,3 +558,107 @@ def test_claim_needs_a_user_token(client):
     response = client.post("/api/v2/anon/claim", data={"anonId": ANON_ID}, format="json")
 
     assert response.status_code == 400
+
+
+# ── Which Sefaria a request uses: its Origin, set once per request ────────
+
+CAULDRON = "https://la-anon.cauldron.sefaria.org"
+
+
+@pytest.fixture
+def allowed_cauldrons(monkeypatch):
+    monkeypatch.setenv("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
+    monkeypatch.setenv("CHATBOT_ALLOWED_SEFARIA_HOSTS", "*.cauldron.sefaria.org")
+
+
+def ask_with_origin(client, origin):
+    return client.post(
+        "/api/v2/chat/stream",
+        data={
+            "anonId": ANON_ID,
+            "sessionId": SESSION_ID,
+            "messageId": MESSAGE_ID,
+            "timestamp": timezone.now().isoformat(),
+            "text": "A question",
+        },
+        format="json",
+        HTTP_ORIGIN=origin,
+    )
+
+
+def seen_sefaria(no_limit_by_default, agent):
+    """Record which Sefaria the limit check and the agent (on its thread) talk to."""
+    from chat.V2.agent.sefaria_client import _get_default_sefaria_base_url
+
+    seen = {"limit": [], "agent": []}
+
+    def limit():
+        seen["limit"].append(_get_default_sefaria_base_url())
+        return 2
+
+    async def answer(**kwargs):
+        seen["agent"].append(_get_default_sefaria_base_url())
+        return AgentResponse(content="An answer", tool_calls=[], latency_ms=10)
+
+    no_limit_by_default.side_effect = limit
+    agent.send_message = AsyncMock(side_effect=answer)
+    return seen
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.usefixtures("allowed_cauldrons")
+def test_a_request_from_an_allowed_sefaria_uses_it_for_the_limit_and_the_agent(
+    client, agent, no_limit_by_default
+):
+    seen = seen_sefaria(no_limit_by_default, agent)
+
+    final_message(ask_with_origin(client, CAULDRON))
+
+    assert set(seen["limit"]) == {CAULDRON}
+    assert seen["agent"] == [CAULDRON]
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.usefixtures("allowed_cauldrons")
+def test_a_request_from_elsewhere_uses_the_default_sefaria(client, agent, no_limit_by_default):
+    seen = seen_sefaria(no_limit_by_default, agent)
+
+    final_message(ask_with_origin(client, "https://evil.example.com"))
+
+    assert set(seen["limit"]) == {"https://www.sefaria.org"}
+    assert seen["agent"] == ["https://www.sefaria.org"]
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.usefixtures("allowed_cauldrons")
+def test_the_next_request_does_not_inherit_a_cauldrons_sefaria(client, agent, no_limit_by_default):
+    from chat.sefaria_base_url import request_sefaria_base_url
+
+    seen = seen_sefaria(no_limit_by_default, agent)
+    final_message(ask_with_origin(client, CAULDRON))
+
+    # Nothing is left set once the streamed answer is done.
+    assert request_sefaria_base_url() is None
+
+    final_message(ask(client, {"anonId": ANON_ID}, message_id="msg_without_origin"))
+
+    assert seen["agent"] == [CAULDRON, "https://www.sefaria.org"]
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.usefixtures("allowed_cauldrons")
+def test_recover_uses_the_requests_sefaria(client, agent, no_limit_by_default):
+    seen = seen_sefaria(no_limit_by_default, agent)
+    final_message(ask_with_origin(client, CAULDRON))
+    seen["limit"].clear()
+
+    response = client.post(
+        "/api/v2/chat/recover",
+        data={"anonId": ANON_ID, "sessionId": SESSION_ID, "messageId": MESSAGE_ID},
+        format="json",
+        HTTP_ORIGIN=CAULDRON,
+    )
+
+    assert response.status_code == 200
+    assert response.data["message"]["anonResponsesRemaining"] == 1
+    assert set(seen["limit"]) == {CAULDRON}

@@ -71,3 +71,24 @@ def test_no_limit_is_cached_too():
         get_anon_answer_limit()
 
     assert get.call_count == 1
+
+
+def test_the_limit_comes_from_the_requests_sefaria_cached_per_sefaria():
+    from chat import sefaria_base_url
+
+    def limit_for(base_url):
+        token = sefaria_base_url._request_sefaria_base_url.set(base_url)
+        try:
+            return get_anon_answer_limit()
+        finally:
+            sefaria_base_url._request_sefaria_base_url.reset(token)
+
+    with sefaria_returns({REMOTE_CONFIG_KEY: 3}) as get:
+        limit_for("https://a.cauldron.sefaria.org")
+        limit_for("https://b.cauldron.sefaria.org")
+        limit_for("https://a.cauldron.sefaria.org")
+
+    assert [call.args[0] for call in get.call_args_list] == [
+        "https://a.cauldron.sefaria.org/api/remote-config",
+        "https://b.cauldron.sefaria.org/api/remote-config",
+    ]
