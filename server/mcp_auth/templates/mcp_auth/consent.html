@@ -1,0 +1,19 @@
+{% extends "mcp_auth/base.html" %}
+{% block title %}Allow access to your Sefaria account{% endblock %}
+{% block content %}
+<h1>Allow {{ client_name }} to use your Sefaria account?</h1>
+<p>It will be able to:</p>
+<ul>
+  <li>List and read your source sheets</li>
+  <li>Create new source sheets in your account</li>
+</ul>
+<p>After you approve, you'll return to <strong>{{ redirect_host }}</strong>. Only approve if you started this from an app you trust.</p>
+<form method="post" action="/oauth/consent">
+  <input type="hidden" name="request" value="{{ request_id }}">
+  <input type="hidden" name="consent_token" value="{{ consent_token }}">
+  <div class="actions">
+    <button type="submit" name="decision" value="deny">Cancel</button>
+    <button type="submit" name="decision" value="allow" class="primary">Allow</button>
+  </div>
+</form>
+{% endblock %}
