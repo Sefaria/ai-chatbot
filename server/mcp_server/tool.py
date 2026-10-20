@@ -13,6 +13,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.base import Tool, ToolResult
+from jsonschema import Draft202012Validator
 from mcp.types import TextContent
 
 from . import metrics
@@ -36,20 +37,43 @@ class SefariaTool(Tool):
     KEY_PREFIX = "tool"
 
     executor: Any = None
+    validator: Any = None
 
     @classmethod
     def from_schema(cls, schema: dict[str, Any], executor: Any) -> SefariaTool:
+        parameters = schema.get("input_schema", {"type": "object", "properties": {}})
         return cls(
             name=schema["name"],
             description=schema.get("description", ""),
-            parameters=schema.get("input_schema", {"type": "object", "properties": {}}),
+            parameters=parameters,
             executor=executor,
+            validator=Draft202012Validator(parameters),
         )
+
+    def _argument_errors(self, arguments: dict[str, Any]) -> str | None:
+        """Describe schema violations, or None if the arguments are valid.
+
+        FastMCP does not validate a raw ``parameters`` schema, and the executor reads
+        arguments by key, so without this a missing or mistyped argument surfaces as a
+        bare Python error (``'reference'``) instead of something a caller can act on.
+        """
+        errors = sorted(self.validator.iter_errors(arguments), key=lambda e: list(e.path))
+        if not errors:
+            return None
+        messages = [
+            (f"{'.'.join(map(str, e.path))}: " if e.path else "") + e.message for e in errors[:3]
+        ]
+        return f"Invalid arguments for {self.name}: " + "; ".join(messages)
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         started = time.time()
+        arguments = arguments or {}
+        invalid = self._argument_errors(arguments)
+        if invalid:
+            self._record(started, status="error", error_type="InvalidArguments")
+            raise ToolError(invalid)
         try:
-            result = await self.executor.execute(self.name, arguments or {})
+            result = await self.executor.execute(self.name, arguments)
         except Exception as exc:
             self._record(started, status="error", error_type=type(exc).__name__)
             raise ToolError(str(exc)) from exc

@@ -34,3 +34,4 @@ cryptography
 fastmcp>=4.0.3,<5
 uvicorn>=0.30
 prometheus-client>=0.20
+jsonschema>=4.20

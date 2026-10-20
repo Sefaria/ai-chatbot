@@ -133,6 +133,43 @@ async def test_tool_errors_surface_as_mcp_errors(executor):
             await client.call_tool("get_text", {"reference": "Genesis 1:1"})
 
 
+def test_every_public_schema_is_a_valid_json_schema():
+    from jsonschema import Draft202012Validator
+
+    for schema in tool_schemas.get_tools_for_surface("mcp"):
+        Draft202012Validator.check_schema(schema["input_schema"])
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "message"),
+    [
+        ("get_text", {}, "'reference' is a required property"),
+        ("get_text", {"reference": 5}, "reference: 5 is not of type 'string'"),
+        (
+            "specific_keyword_search",
+            {"query": "x", "size": 10_000},
+            "size: 10000 is greater than the maximum of 100",
+        ),
+    ],
+)
+async def test_invalid_arguments_get_clean_errors(executor, tool, arguments, message):
+    """Without validation these surfaced as bare Python errors such as "'reference'"."""
+    async with Client(build_server(executor)) as client:
+        with pytest.raises(ToolError) as excinfo:
+            await client.call_tool(tool, arguments)
+    assert str(excinfo.value) == f"Invalid arguments for {tool}: {message}"
+    executor.client.get_text.assert_not_awaited()
+
+
+async def test_invalid_arguments_are_counted(executor):
+    key = ("mcp_errors_total", {"tool_name": "get_text", "error_type": "InvalidArguments"})
+    before = _sample(key[0], **key[1])
+    async with Client(build_server(executor)) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool("get_text", {})
+    assert _sample(key[0], **key[1]) - before == 1
+
+
 def _sample(name, **labels):
     return REGISTRY.get_sample_value(name, {"server": "chatbot-mcp", **labels}) or 0.0
 
