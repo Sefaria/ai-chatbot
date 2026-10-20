@@ -315,6 +315,30 @@ def test_a_refused_question_does_not_use_up_a_free_answer(client, agent, no_limi
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_refused_question_is_not_a_turn_of_the_conversation(client, agent):
+    # Stored and returned counts must agree, so a reload doesn't count refusals
+    # toward the conversation's max-prompts.
+    agent.send_message.side_effect = [
+        AgentResponse(content="An answer", tool_calls=[], latency_ms=10, trace_id="t1"),
+        AgentResponse(
+            content="I can only help with Jewish texts.",
+            tool_calls=[],
+            latency_ms=10,
+            trace_id="t2",
+            refused=True,
+        ),
+    ]
+    visitor = Visitor(client)
+    answered_turn = final_message(visitor.ask())
+
+    refused_turn = final_message(visitor.ask())
+
+    assert answered_turn["session"]["turnCount"] == 1
+    assert refused_turn["session"]["turnCount"] == 1
+    assert ChatSession.objects.get(session_id=SESSION_ID).turn_count == 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
 def test_a_failed_turn_does_not_use_up_a_free_answer(client, agent, no_limit_by_default):
     limit = no_limit_by_default.return_value = 2
     agent.send_message.side_effect = [
@@ -515,6 +539,55 @@ def test_claiming_twice_is_harmless(client, user_token):
     assert second.status_code == 200
     assert second.data == {"claimedSessions": 0}
     assert ChatSession.objects.get(session_id=SESSION_ID).user_id == LOGGED_IN_USER
+
+
+def claimed_while_answering():
+    """A logged-out visitor's question, then a claim (e.g. they logged in in another
+    tab) before its answer is saved. Returns the question as loaded before the claim."""
+    ChatSession.objects.create(session_id=SESSION_ID, user_id=anonymous_user_id(ANON_ID))
+    question = ChatMessage.objects.create(
+        message_id="msg_question",
+        session_id=SESSION_ID,
+        user_id=anonymous_user_id(ANON_ID),
+        turn_id="turn_question",
+        role=ChatMessage.Role.USER,
+        content="A question",
+    )
+    ChatSession.objects.filter(session_id=SESSION_ID).update(user_id=LOGGED_IN_USER)
+    ChatMessage.objects.filter(session_id=SESSION_ID).update(user_id=LOGGED_IN_USER)
+    return question
+
+
+def test_an_answer_finished_after_a_claim_goes_to_the_user():
+    from chat.V2.logging.turn_logging_service import get_turn_logging_service
+
+    question = claimed_while_answering()
+
+    result = get_turn_logging_service().persist_assistant_response(
+        user_message=question,
+        agent_response=AgentResponse(content="An answer", tool_calls=[], latency_ms=10),
+        latency_ms=10,
+        model_name="test-model",
+    )
+
+    assert result.response_message.user_id == LOGGED_IN_USER
+
+
+def test_an_error_reply_after_a_claim_goes_to_the_user():
+    from chat.auth import Actor
+    from chat.V2.logging.turn_logging_service import get_turn_logging_service
+
+    claimed_while_answering()
+
+    error = get_turn_logging_service().record_error_message(
+        session_id=SESSION_ID,
+        actor=Actor(user_id=anonymous_user_id(ANON_ID), is_anonymous=True),
+        turn_id="turn_question",
+        latency_ms=10,
+        error_text="Something went wrong",
+    )
+
+    assert error.user_id == LOGGED_IN_USER
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)

@@ -36,6 +36,13 @@ class TurnLoggingService:
         latency_ms: int,
         error_text: str,
     ) -> ChatMessage:
+        # The session's current owner, not the actor's: a logged-out visitor's chats
+        # may have been claimed by their account while this turn ran.
+        owner = (
+            ChatSession.objects.filter(session_id=session_id)
+            .values_list("user_id", flat=True)
+            .first()
+        )
         return ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
             session_id=session_id,
@@ -44,7 +51,7 @@ class TurnLoggingService:
             content=error_text,
             status=ChatMessage.Status.FAILED,
             latency_ms=latency_ms,
-            **actor.to_db_fields(),
+            **{**actor.to_db_fields(), **({"user_id": owner} if owner else {})},
         )
 
     def persist_assistant_response(
@@ -55,6 +62,9 @@ class TurnLoggingService:
         latency_ms: int,
         model_name: str,
     ) -> TurnLoggingResult:
+        # The question's current owner: a logged-out visitor's chats may have been
+        # claimed by their account while this answer was generated.
+        user_message.refresh_from_db(fields=["user_id"])
         response_message = ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
             session_id=user_message.session_id,
@@ -105,7 +115,10 @@ class TurnLoggingService:
         session.message_count = ChatMessage.objects.filter(
             session_id=user_message.session_id
         ).count()
-        session.turn_count = (session.turn_count or 0) + 1
+        # A refused question isn't a turn (as in _compute_turn_count), so it doesn't
+        # count toward the conversation's max-prompts.
+        if not agent_response.refused:
+            session.turn_count = (session.turn_count or 0) + 1
         session.total_tool_calls = (session.total_tool_calls or 0) + len(agent_response.tool_calls)
         if agent_response.input_tokens is not None:
             total_prompt = (

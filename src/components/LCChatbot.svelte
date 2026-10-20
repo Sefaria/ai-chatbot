@@ -1254,7 +1254,8 @@
         sessionId: sendingSessionId,
         title: (cachedPayload?.conversation?.title || provisionalConversation.title || completedMessages.find(m => m.role === 'user')?.content?.slice(0, HISTORY_TITLE_MAX_LENGTH) || ''),
         lastActivity: assistantMessage.timestamp,
-        turnCount: (cachedPayload?.conversation?.turnCount || turnCount || 0) + 1,
+        // The server's count (refusals don't count); +1 only if it didn't send one.
+        turnCount: response.session?.turnCount ?? ((cachedPayload?.conversation?.turnCount || turnCount || 0) + 1),
         messageCount: completedMessages.length
       };
       conversationCache = {
