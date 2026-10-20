@@ -88,6 +88,9 @@
   let stopErrors = $state({});
   let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
   let isLoadingHistory = $state(false);
+  // A chat picked in History is loading: the open one hides meanwhile (see openConversation)
+  let isOpeningConversation = $state(false);
+  let visibleMessages = $derived(isOpeningConversation ? [] : messages);
   // Only the server can say a session has older messages, so assume none until it does
   // (a new chat, a logged-out visitor, or messages carried over after logging in)
   let hasMoreHistory = $state(false);
@@ -671,6 +674,7 @@
     sessionId = newSessionId;
     messages = [];
     inputText = '';
+    isOpeningConversation = false;
     isLoadingHistory = false;
     hasMoreHistory = false;
 
@@ -960,16 +964,16 @@
     let payload = conversationCache[conversation.sessionId];
     const cached = !!payload;
     if (!payload) {
-      // The open chat clears while the picked one loads, so it doesn't show in its place
-      const previousMessages = messages;
-      messages = [];
+      // The open chat hides while the picked one loads, so it doesn't show in its place. Its
+      // messages stay put until the switch: a reply still arriving for it is saved onto them.
+      isOpeningConversation = true;
       isLoadingHistory = true;
       try {
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
         historyError = '';
-        messages = previousMessages;
+        isOpeningConversation = false;
         isLoadingHistory = false;
         return;
       }
@@ -987,6 +991,7 @@
     stopThinkingMessages();
     if (activeRequests[sessionId] && !activeRequests[sessionId].stopping) startThinkingMessages();
     messages = uiMessages;
+    isOpeningConversation = false;
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
     isLoadingHistory = false;
@@ -2267,20 +2272,20 @@
         {#if isLoadingHistory}
           <!-- Lucide loader-circle, spinning as on lucide-animated.com: centered in an empty
                chat, at the top while older messages load above the open one -->
-          <div class="loading-indicator" class:centered={messages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
+          <div class="loading-indicator" class:centered={visibleMessages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
             <svg class="loading-spinner" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
           </div>
         {/if}
 
-        {#if messages.length === 0 && !isLoadingHistory}
+        {#if visibleMessages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
             {@render assistantBubble(getEmptyStateMessage(), false, null)}
           </div>
         {/if}
 
-        {#each messages as item (item.messageId)}
+        {#each visibleMessages as item (item.messageId)}
           {#if item.role === 'stopped'}
             {#if item.appetizerData || item.showNotice}
               <div class="message assistant no-entry-animation stopped-message">
