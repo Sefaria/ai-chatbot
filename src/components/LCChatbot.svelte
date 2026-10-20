@@ -2799,8 +2799,10 @@
     line-height: 18px;
   }
 
-  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it */
-  .mode-fullscreen .message.user:is(:hover, :focus-within) .message-location-tag {
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it.
+     Same triggers as the desktop rule further down: not the pin itself, nor with Retry. */
+  .mode-fullscreen .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
+  .mode-fullscreen .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
     transform: translateY(22px);
   }
 
@@ -3883,11 +3885,6 @@
 
   .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
   .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
-    transform: translateY(18px);
-  }
-
-  .message.user:hover .message-location-tag,
-  .message.user:focus-within .message-location-tag {
     transform: translateY(18px);
   }
 
