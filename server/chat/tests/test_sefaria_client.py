@@ -906,3 +906,95 @@ class TestUserAgent:
         assert _user_agent() == "Sefaria/library-assistant (dev)"
         monkeypatch.delenv("ENVIRONMENT")
         assert _user_agent() == "Sefaria/library-assistant"
+
+
+class TestManuscriptImageFetch:
+    """get_manuscript_image fetches a caller-supplied URL, so it must not be an open proxy."""
+
+    GOOD_URL = "https://manuscripts.sefaria.org/leningrad-color/BIB_LENCDX_F001B.jpg"
+
+    async def _fetch(self, client, url, handler):
+        import functools
+
+        import httpx
+
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        seen: list[str] = []
+
+        def recording(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return handler(request)
+
+        real_async_client = httpx.AsyncClient
+        with patch.object(
+            sefaria_client_module.httpx,
+            "AsyncClient",
+            functools.partial(real_async_client, transport=httpx.MockTransport(recording)),
+        ):
+            try:
+                return await client.get_manuscript_image(url), seen
+            finally:
+                await client.close()
+
+    @staticmethod
+    def _image(request, body=b"\xff\xd8jpeg", **headers):
+        import httpx
+
+        return httpx.Response(200, content=body, headers={"content-type": "image/jpeg", **headers})
+
+    async def test_fetches_sefaria_manuscript_images(self, client):
+        result, seen = await self._fetch(client, self.GOOD_URL, self._image)
+        assert seen == [self.GOOD_URL]
+        assert result["mime_type"] == "image/jpeg"
+        assert result["size"] == 6
+        assert result["filename"] == "BIB_LENCDX_F001B.jpg"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://manuscripts.sefaria.org/a.jpg",  # not https
+            "https://www.sefaria.org/a.jpg",  # another Sefaria host
+            "https://manuscripts.sefaria.org.evil.example/a.jpg",
+            "https://evil.example/a.jpg",
+            "https://manuscripts.sefaria.org:8443/a.jpg",
+            "https://user@manuscripts.sefaria.org/a.jpg",
+            "http://127.0.0.1:9090/",
+            "http://169.254.169.254/computeMetadata/v1/",
+            "file:///etc/passwd",
+        ],
+    )
+    async def test_rejects_other_urls_without_fetching(self, client, url):
+        with pytest.raises(ValueError, match="manuscripts.sefaria.org"):
+            await self._fetch(client, url, self._image)
+
+    async def test_does_not_follow_redirects(self, client):
+        import httpx
+
+        def redirect(request):
+            return httpx.Response(302, headers={"location": "http://127.0.0.1:9090/"})
+
+        with pytest.raises(ValueError, match="HTTP 302"):
+            await self._fetch(client, self.GOOD_URL, redirect)
+
+    async def test_rejects_non_image_content(self, client):
+        import httpx
+
+        def text(request):
+            return httpx.Response(200, text="secret", headers={"content-type": "text/plain"})
+
+        with pytest.raises(ValueError, match="did not return an image"):
+            await self._fetch(client, self.GOOD_URL, text)
+
+    async def test_rejects_oversized_images_by_header_and_by_body(self, client):
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        with patch.object(sefaria_client_module, "MAX_MANUSCRIPT_IMAGE_BYTES", 4):
+            with pytest.raises(ValueError, match="larger than"):
+                await self._fetch(client, self.GOOD_URL, self._image)
+
+            def lying(request):
+                return self._image(request, body=b"0123456789", **{"content-length": "1"})
+
+            with pytest.raises(ValueError, match="larger than"):
+                await self._fetch(client, self.GOOD_URL, lying)

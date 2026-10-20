@@ -20,7 +20,7 @@ import os
 import re
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 
@@ -82,6 +82,12 @@ LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 # refs are cached, new refs are still resolved but no longer stored, so the cache
 # of a long-lived client cannot grow without bound.
 REF_CACHE_MAX_SIZE = 512
+
+# get_manuscript_image fetches a caller-supplied URL, so it is limited to the host
+# /api/manuscripts returns image URLs on, and to a size that covers its full-resolution
+# scans (observed up to ~6 MB).
+MANUSCRIPT_IMAGE_HOSTS = frozenset({"manuscripts.sefaria.org"})
+MAX_MANUSCRIPT_IMAGE_BYTES = 10_000_000
 
 # Minimum number of completions to request from the name API in search_topics.
 # The API returns ref/text completions first for book-name queries, which we drop
@@ -532,23 +538,59 @@ class SefariaClient:
     async def get_manuscript_image(
         self, image_url: str, manuscript_title: str | None = None
     ) -> dict[str, Any]:
-        """Download a manuscript image."""
+        """Download a manuscript image.
+
+        ``image_url`` comes from the caller, and on the public MCP server that is anyone,
+        so only Sefaria's manuscript host is fetched: no other hosts, no redirects, image
+        content only, and at most ``MAX_MANUSCRIPT_IMAGE_BYTES``. Anything looser lets a
+        caller make this server fetch internal URLs and read back the response.
+        """
+        parsed = urlsplit(image_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in MANUSCRIPT_IMAGE_HOSTS
+            or parsed.port is not None
+            or parsed.username is not None
+        ):
+            raise ValueError(
+                "image_url must be a manuscript image URL on "
+                + ", ".join(f"https://{host}" for host in sorted(MANUSCRIPT_IMAGE_HOSTS))
+                + ", as returned by get_available_manuscripts"
+            )
+
         client = await self._get_client()
-        response = await client.get(image_url)
-        response.raise_for_status()
+        async with client.stream("GET", image_url, follow_redirects=False) as response:
+            if response.status_code != 200:
+                raise ValueError(
+                    f"Manuscript image request failed with HTTP {response.status_code}"
+                )
 
-        content_type = response.headers.get("content-type", "image/jpeg")
-        image_data = base64.b64encode(response.content).decode("utf-8")
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith("image/"):
+                raise ValueError("Manuscript URL did not return an image")
 
-        filename = image_url.split("/")[-1] or "manuscript.jpg"
+            too_large = ValueError(
+                f"Manuscript image is larger than {MAX_MANUSCRIPT_IMAGE_BYTES // 1_000_000} MB"
+            )
+            if int(response.headers.get("content-length") or 0) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                raise too_large
+            content = bytearray()
+            async for chunk in response.aiter_bytes():
+                content.extend(chunk)
+                if len(content) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                    raise too_large
+
+        image_data = base64.b64encode(content).decode("utf-8")
+
+        filename = parsed.path.split("/")[-1] or "manuscript.jpg"
         title = manuscript_title or f"Manuscript: {filename}"
 
         return {
             "success": True,
             "image_data": image_data,
             "mime_type": content_type,
-            "size": len(response.content),
-            "original_size": len(response.content),
+            "size": len(content),
+            "original_size": len(content),
             "was_resized": False,
             "filename": filename,
             "title": title,
