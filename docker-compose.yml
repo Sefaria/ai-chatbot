@@ -5,3 +5,12 @@ services:
   app:
     build: .
     restart: unless-stopped
+
+  # Public MCP server (/mcp) and, when MCP_TOKEN_SECRET and MCP_OAUTH_SIGNING_KEY are
+  # set, the signed-in /mcp/user. Same image, different process; see server/mcp_server.
+  mcp:
+    build: .
+    restart: unless-stopped
+    entrypoint: ["python", "-m", "mcp_server"]
+    expose:
+      - "8088"
