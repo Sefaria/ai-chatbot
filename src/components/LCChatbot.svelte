@@ -622,6 +622,8 @@
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
   async function askInNewChat(question) {
     question = question.trim();
+    // Phones: History covers the chat, and would hide the question and its answer
+    if (question && isFullscreen) showHistoryPanel = false;
     if (question && messages.length > 0) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
