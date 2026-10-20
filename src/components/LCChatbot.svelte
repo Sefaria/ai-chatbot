@@ -317,6 +317,10 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = withStoppedTurns(savedMessages);
+
+    // Opening by itself skips openPanel, so land on the latest message here (the chat
+    // would otherwise start at its top)
+    if (untrack(() => isOpen)) scrollToBottom({ instant: true });
   });
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
