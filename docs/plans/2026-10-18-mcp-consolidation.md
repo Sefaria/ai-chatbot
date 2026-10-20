@@ -147,6 +147,31 @@ They go on `/mcp/user` in Phase 2.
       Checked on the wire by a test and against a live server. The HelmRelease must set
       it from the image tag (1.5).
 
+### 1.4b Hardening (self-review of PR #255)
+
+- [x] **SSRF in `get_manuscript_image`.** It fetched any caller-supplied URL and
+      returned the body base64-encoded, so an anonymous caller could read in-cluster
+      URLs (shown live against the pod's own metrics port). It now accepts only
+      `https://manuscripts.sefaria.org` (the only host `/api/manuscripts` returns),
+      with no redirects, `image/*` content only, and a 10 MB streamed cap. The old
+      server on `mcp.sefaria.org` has the same unvalidated fetch; that's left for its
+      maintainers or its deprecation.
+- [x] Arguments are validated against each tool's JSON schema before execution
+      (`jsonschema`, Draft 2020-12), with clean errors (`Invalid arguments for get_text:
+      'reference' is a required property`) and `mcp_errors_total{error_type="InvalidArguments"}`.
+- [x] Every `size`/`limit` is bounded to 1..`MAX_RESULTS` (100) in the schemas, and
+      clamped in the executor for callers that skip validation. `validate_response_links`
+      rejects drafts over 100k characters or with more than 50 distinct links (MCP tool
+      path only; the hosted agent's own validation is unchanged).
+- [x] `test_agent_sdk_mcp.py`: the agent's real SDK tool server round-trips
+      initialize, list and call through `claude-agent-sdk`'s bridge on the installed
+      `mcp` 2.x, which the fastmcp 4 bump brought into the chatbot image.
+- [ ] Not yet done: manuscript images aren't resized (a full scan returns ~7.5M
+      characters of base64; the old server downscaled with Pillow); there's no rate or
+      concurrency limit on the anonymous endpoint, and its traffic carries a
+      first-party `Sefaria/mcp` User-Agent; executor errors still pass raw exception
+      text to callers.
+
 ### 1.5 Infrastructure (AppliedAI-Infrastructure)
 
 Nothing under `mcp.yaml`, `mcp-config.yaml`, `mcp-httproute.yaml` or the `mcp` Gateway
