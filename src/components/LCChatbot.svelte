@@ -610,7 +610,11 @@
 
   $effect(() => {
     const query = window.matchMedia(FULLSCREEN_QUERY);
-    const sync = () => { isFullscreen = query.matches; };
+    const sync = () => {
+      isFullscreen = query.matches;
+      // An open panel that becomes the sheet gets its history entry too, so Back closes it
+      if (isFullscreen && isOpen) pushSheetEntry(onSheetPopped);
+    };
     query.addEventListener('change', sync);
     return () => query.removeEventListener('change', sync);
   });
