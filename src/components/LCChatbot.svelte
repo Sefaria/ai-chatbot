@@ -1406,11 +1406,11 @@
   }
 
   // Logged-out limit: Google, Apple and email sign-in. Google and Apple start the host's
-  // allauth redirect flow; email opens its email log-in form.
+  // allauth redirect flow; email opens its email sign-up form.
   // Built at click time: the host navigates client-side, so the page can change under us.
   // A real page load, so the message list's in-page link routing must not see this click.
   // The assistant stays closed on the login page and reopens here once they're back.
-  const SIGN_IN_PATHS = { google: '/accounts/google/login/', apple: '/accounts/apple/login/', email: '/login' };
+  const SIGN_IN_PATHS = { google: '/accounts/google/login/', apple: '/accounts/apple/login/', email: '/register' };
   function goToSignIn(e, method) {
     e.stopPropagation();
     const here = window.location.pathname + window.location.search + window.location.hash;
