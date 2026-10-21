@@ -19,7 +19,7 @@ from chat.V2.agent import sefaria_client as sefaria_client_module
 from chat.V2.agent import tool_schemas
 from chat.V2.agent.tool_executor import SefariaToolExecutor
 from mcp_auth import access_tokens, sefaria_tokens
-from mcp_server.app import build_app
+from mcp_server.app import build_app, user_auth_settings
 
 ISSUER = "https://chat.test"
 RESOURCE = f"{ISSUER}/mcp/user"
@@ -303,3 +303,10 @@ async def test_a_version_conflict_shows_the_current_version(executor, sefaria):
     assert result["result"]["isError"]
     error = json.loads(result["result"]["content"][0]["text"])["error"]
     assert "HTTP 409" in error and '"version": "v2"' in error
+
+
+def test_admin_resource_defaults_beside_the_user_resource(monkeypatch):
+    # The MCP host can differ from the issuer (as on the Coolify test app).
+    monkeypatch.setenv("MCP_USER_RESOURCE_URL", "https://mcp.test/mcp/user")
+    monkeypatch.delenv("MCP_ADMIN_RESOURCE_URL", raising=False)
+    assert user_auth_settings()["admin_resource"] == "https://mcp.test/mcp/admin"

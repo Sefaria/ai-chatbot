@@ -136,9 +136,10 @@ def user_auth_settings() -> dict[str, str] | None:
         return None
     issuer = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org").rstrip("/")
     resource = os.environ.get("MCP_USER_RESOURCE_URL", f"{issuer}{USER_HTTP_PATH}").rstrip("/")
-    admin_resource = os.environ.get("MCP_ADMIN_RESOURCE_URL", f"{issuer}{ADMIN_HTTP_PATH}").rstrip(
-        "/"
-    )
+    # Beside /mcp/user by default: this process may be on another host than the issuer.
+    admin_resource = os.environ.get(
+        "MCP_ADMIN_RESOURCE_URL", f"{resource.rsplit('/', 1)[0]}/admin"
+    ).rstrip("/")
     return {
         "token_secret": token_secret,
         "signing_key": signing_key,

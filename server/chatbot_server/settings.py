@@ -229,7 +229,10 @@ MCP_TOKEN_SECRET = os.environ.get("MCP_TOKEN_SECRET") or None
 MCP_OAUTH_SIGNING_KEY = os.environ.get("MCP_OAUTH_SIGNING_KEY") or None
 MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org")
 MCP_USER_RESOURCE_URL = os.environ.get("MCP_USER_RESOURCE_URL", f"{MCP_OAUTH_ISSUER}/mcp/user")
-MCP_ADMIN_RESOURCE_URL = os.environ.get("MCP_ADMIN_RESOURCE_URL", f"{MCP_OAUTH_ISSUER}/mcp/admin")
+# Beside /mcp/user by default: the MCP process may be on another host than the issuer.
+MCP_ADMIN_RESOURCE_URL = os.environ.get(
+    "MCP_ADMIN_RESOURCE_URL", f"{MCP_USER_RESOURCE_URL.rstrip('/').rsplit('/', 1)[0]}/admin"
+)
 SEFARIA_MCP_AUTHORIZE_URL = os.environ.get(
     "SEFARIA_MCP_AUTHORIZE_URL", "https://www.sefaria.org/api/mcp/authorize"
 )

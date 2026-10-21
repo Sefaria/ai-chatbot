@@ -84,7 +84,7 @@ pytest                                    # Run tests
 | `MCP_OAUTH_SIGNING_KEY` | No | Signs `/mcp/user` and `/mcp/admin` access-token JWTs; shared by Django and the MCP process |
 | `MCP_OAUTH_ISSUER` | No | OAuth issuer / chat host (default `https://chat.sefaria.org`) |
 | `MCP_USER_RESOURCE_URL` | No | Default `<issuer>/mcp/user` |
-| `MCP_ADMIN_RESOURCE_URL` | No | Staff topic-prompt tools; default `<issuer>/mcp/admin` |
+| `MCP_ADMIN_RESOURCE_URL` | No | Staff topic-prompt tools; default beside `MCP_USER_RESOURCE_URL` (`.../mcp/admin`) |
 | `SEFARIA_MCP_AUTHORIZE_URL` | No | Sefaria sign-in handoff (default `https://www.sefaria.org/api/mcp/authorize`) |
 
 ## Load Testing
