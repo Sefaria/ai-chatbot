@@ -4,8 +4,12 @@
 <h1>Allow {{ client_name }} to use your Sefaria account?</h1>
 <p>It will be able to:</p>
 <ul>
+  {% if staff_tools %}
+  <li>List and edit topic prompts (the source descriptions on topic pages) as you, if you are Sefaria staff</li>
+  {% else %}
   <li>List and read your source sheets</li>
   <li>Create new source sheets in your account</li>
+  {% endif %}
 </ul>
 <p>After you approve, you'll return to <strong>{{ redirect_host }}</strong>. Only approve if you started this from an app you trust.</p>
 <form method="post" action="/oauth/consent">

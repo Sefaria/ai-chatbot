@@ -334,6 +334,16 @@ An external review of #256 and #3840 found six issues. The three high-severity o
 - [x] Also found: pytest only collected `chat/`, so CI never ran the `mcp_auth` tests. `testpaths` now lists `mcp_auth`.
 - Deferred: the handoff token is not bound to `state` (reusable within 5 minutes); `create_source_sheet` has no source-count bound and fans out reference fetches; Sefaria errors returned as HTTP 200 become successful tool results; a grant-management page; separate read and write scopes.
 
+### 2.7 Staff tools on `/mcp/admin` (2026-10-21)
+
+The topic-prompt tools move here from the stdio `sefaria-admin-mcp` server, and the separate admin token flow is retired. There is one sign-in flow for every signed-in endpoint.
+
+- [x] `list_topic_prompts` and `update_topic_prompt` are chatbot tool schemas on a new `mcp_admin` surface. They call Sefaria's `/api/admin/topic-prompts` API as the signed-in user, with the same per-call 5-minute `mcp` token as the sheet tools. Sefaria's error message is kept, and a 409 includes the current version.
+- [x] `/mcp/admin` serves only those two tools, with tool annotations and server instructions carried over from the stdio server. It is its own OAuth resource: the authorization server issues the `admin` scope only for `/mcp/admin` (`MCP_ADMIN_RESOURCE_URL`) and `sheets` only for `/mcp/user`, with matching token audiences, so a token is never accepted at the other endpoint. The consent page names what is being approved.
+- [x] **Decision: staff access is enforced by Sefaria, not here.** Anyone can sign in to `/mcp/admin`; Sefaria accepts `mcp` tokens on the two topic-prompt routes only for `is_staff` users, and the views check again. Grants follow the normal lifetimes (90 days at most) instead of the old 12-hour token; that was accepted on purpose.
+- [x] Sefaria (#3840's branch): removed the `/api/admin/mcp-token` minting page, `ADMIN_MCP_TOKEN_SECRET` and the `admin-mcp` audience. Audit records now say `via: "mcp"` or `"session"`.
+- Not done: the stdio server's `review_topic_prompts` MCP prompt was not ported. The `Sefaria/sefaria-admin-mcp` repo is now unused and can be archived. Deployments that set `MCP_USER_RESOURCE_URL` explicitly (the Coolify test app) also need `MCP_ADMIN_RESOURCE_URL`, on both the Django and MCP processes.
+
 ## Deprecating the old MCP (after Phase 1 is proven)
 
 - [ ] Announce `chat.sefaria.org/mcp` as the Sefaria MCP URL (docs, developer pages,

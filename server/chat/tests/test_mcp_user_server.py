@@ -23,6 +23,7 @@ from mcp_server.app import build_app
 
 ISSUER = "https://chat.test"
 RESOURCE = f"{ISSUER}/mcp/user"
+ADMIN_RESOURCE = f"{ISSUER}/mcp/admin"
 TOKEN_SECRET = "test-mcp-token-secret"
 SIGNING_KEY = "test-signing-key-" + "x" * 32
 HEADERS = {
@@ -57,6 +58,14 @@ def sefaria(monkeypatch):
         seen.append(request)
         if request.url.path.startswith("/api/sheets/user/"):
             return httpx.Response(200, json={"sheets": [{"id": 1, "title": "Mine"}]})
+        if request.url.path == "/api/admin/topic-prompts":
+            return httpx.Response(200, json={"results": [{"id": "p1"}], "next_cursor": None})
+        if request.url.path == "/api/admin/topic-prompts/stale":
+            return httpx.Response(
+                409, json={"error": "Version conflict.", "current": {"version": "v2"}}
+            )
+        if request.url.path.startswith("/api/admin/topic-prompts/"):
+            return httpx.Response(200, json={"result": {"id": "p1"}, "dry_run": False})
         return httpx.Response(200, json={})
 
     monkeypatch.setattr(
@@ -215,3 +224,82 @@ async def test_concurrent_users_never_share_a_session(executor, sefaria):
         )
         assert path_user == token_user
     assert len({r.url.path for r in sefaria}) == 8
+
+
+ADMIN_TOOLS = {"list_topic_prompts", "update_topic_prompt"}
+
+
+def admin_token(user_id: int = 42) -> str:
+    return access_token(user_id=user_id, audience=ADMIN_RESOURCE, scope=access_tokens.ADMIN_SCOPE)
+
+
+async def test_admin_endpoint_serves_only_the_topic_prompt_tools(executor):
+    async with http(executor) as client:
+        _, admin_tools = await rpc(client, "tools/list", {}, token=admin_token(), path="/mcp/admin")
+        _, user_tools = await rpc(client, "tools/list", {}, token=access_token())
+        metadata = await client.get(
+            "/.well-known/oauth-protected-resource/mcp/admin", headers={"Host": "chat.test"}
+        )
+    tools = {t["name"]: t for t in admin_tools["result"]["tools"]}
+    assert set(tools) == ADMIN_TOOLS
+    assert tools["list_topic_prompts"]["annotations"]["readOnlyHint"] is True
+    assert not ADMIN_TOOLS & {t["name"] for t in user_tools["result"]["tools"]}
+    assert metadata.json()["resource"] == ADMIN_RESOURCE
+    assert metadata.json()["scopes_supported"] == ["admin"]
+
+
+async def test_tokens_only_work_on_their_own_endpoint(executor):
+    async with http(executor) as client:
+        user_at_admin, _ = await rpc(
+            client, "initialize", INIT, token=access_token(), path="/mcp/admin"
+        )
+        admin_at_user, _ = await rpc(client, "initialize", INIT, token=admin_token())
+    assert user_at_admin.status_code in (401, 403)
+    assert admin_at_user.status_code in (401, 403)
+
+
+async def test_admin_tools_call_sefaria_as_the_signed_in_user(executor, sefaria):
+    async with http(executor) as client:
+        _, listed = await rpc(
+            client,
+            "tools/call",
+            {"name": "list_topic_prompts", "arguments": {"topic": "shabbat", "published": False}},
+            token=admin_token(user_id=7),
+            path="/mcp/admin",
+        )
+        _, updated = await rpc(
+            client,
+            "tools/call",
+            {
+                "name": "update_topic_prompt",
+                "arguments": {"id": "p1", "lang": "en", "base_version": "v1", "prompt": "New"},
+            },
+            token=admin_token(user_id=7),
+            path="/mcp/admin",
+        )
+    assert not listed["result"].get("isError") and not updated["result"].get("isError")
+    get, patch = sefaria
+    assert get.method == "GET" and get.url.path == "/api/admin/topic-prompts"
+    assert get.url.params.get("topic") == "shabbat" and get.url.params.get("published") == "false"
+    assert patch.method == "PATCH" and patch.url.path == "/api/admin/topic-prompts/p1"
+    assert json.loads(patch.content) == {"lang": "en", "base_version": "v1", "prompt": "New"}
+    for request in sefaria:
+        sent = request.headers["X-Session-ID"]
+        assert sefaria_tokens.user_id_from(sent, TOKEN_SECRET, aud=sefaria_tokens.API_AUDIENCE) == 7
+
+
+async def test_a_version_conflict_shows_the_current_version(executor, sefaria):
+    async with http(executor) as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {
+                "name": "update_topic_prompt",
+                "arguments": {"id": "stale", "lang": "en", "base_version": "v1", "prompt": "x"},
+            },
+            token=admin_token(),
+            path="/mcp/admin",
+        )
+    assert result["result"]["isError"]
+    error = json.loads(result["result"]["content"][0]["text"])["error"]
+    assert "HTTP 409" in error and '"version": "v2"' in error

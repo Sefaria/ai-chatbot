@@ -661,6 +661,71 @@ class SefariaClient:
         )
         return self._optimize_source_sheet_response(data)
 
+    async def list_topic_prompts(
+        self,
+        *,
+        topic: str | list[str] | None = None,
+        lang: str = "en",
+        review_state: str | None = None,
+        published: bool | None = None,
+        ai_generated: bool | None = None,
+        ref: str | None = None,
+        query: str | None = None,
+        id: str | None = None,
+        limit: int = 25,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List topic prompts through Sefaria's staff API (GET /api/admin/topic-prompts)."""
+        params: list[tuple[str, str]] = [("lang", lang), ("limit", str(limit))]
+        topics = [topic] if isinstance(topic, str) else topic or []
+        params += [("topic", t) for t in topics if t]
+        for key, value in (
+            ("id", id),
+            ("review_state", review_state),
+            ("ref", ref),
+            ("q", query),
+            ("cursor", cursor),
+        ):
+            if value:
+                params.append((key, value))
+        for key, flag in (("published", published), ("ai_generated", ai_generated)):
+            if flag is not None:
+                params.append((key, "true" if flag else "false"))
+        return await self._staff_request("GET", "api/admin/topic-prompts", params=params)
+
+    async def update_topic_prompt(self, id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """Edit one topic prompt (PATCH /api/admin/topic-prompts/<id>)."""
+        return await self._staff_request(
+            "PATCH", f"api/admin/topic-prompts/{quote(id, safe='')}", json=fields
+        )
+
+    async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
+        """Call a Sefaria staff API as the signed-in user, keeping its error message.
+
+        A 409 includes the current version, which the caller must see to resolve the conflict.
+        """
+        _, session_token = self._require_user_session(endpoint)
+        client = await self._get_client()
+        response = await client.request(
+            method,
+            f"{self.base_url}/{endpoint}",
+            headers={"Accept": "application/json", "X-Session-ID": session_token},
+            **kwargs,
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        if response.is_success and isinstance(data, dict):
+            return data
+        error = data.get("error") if isinstance(data, dict) else None
+        message = f"Sefaria returned HTTP {response.status_code}: {error or response.reason_phrase}"
+        if response.status_code in (401, 403):
+            message += ". Topic prompt tools need a Sefaria staff account; sign in as staff."
+        if response.status_code == 409 and isinstance(data, dict):
+            message += f"\nCurrent version: {json.dumps(data.get('current'), ensure_ascii=False)}"
+        raise RuntimeError(message)
+
     async def resolve_ref(self, tref: str) -> dict | None:
         """Resolve a tref into {is_ref, url_ref, en, he}, or None.
 

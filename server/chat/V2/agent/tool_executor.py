@@ -217,6 +217,16 @@ class SefariaToolExecutor:
                 input_data["sources"],
             )
 
+        elif tool_name == "list_topic_prompts":
+            filters = {k: v for k, v in input_data.items() if k != "limit"}
+            return await self.client.list_topic_prompts(
+                **filters, limit=_bounded(input_data, "limit", 25)
+            )
+
+        elif tool_name == "update_topic_prompt":
+            fields = {k: v for k, v in input_data.items() if k != "id"}
+            return await self.client.update_topic_prompt(input_data["id"], fields)
+
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -329,6 +339,8 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         ),
         "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
         "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
+        "list_topic_prompts": lambda: "Listing topic prompts",
+        "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",
     }
 
     if tool_name in descriptions:

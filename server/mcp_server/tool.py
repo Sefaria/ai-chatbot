@@ -15,7 +15,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools.base import Tool, ToolResult
 from jsonschema import Draft202012Validator
-from mcp.types import TextContent
+from mcp.types import TextContent, ToolAnnotations
 
 from chat.V2.agent.contracts import MessageContext
 from chat.V2.agent.sefaria_client import SefariaClient
@@ -48,10 +48,12 @@ class SefariaTool(Tool):
     @classmethod
     def from_schema(cls, schema: dict[str, Any], executor: Any) -> SefariaTool:
         parameters = schema.get("input_schema", {"type": "object", "properties": {}})
+        annotations = schema.get("annotations")
         return cls(
             name=schema["name"],
             description=schema.get("description", ""),
             parameters=parameters,
+            annotations=ToolAnnotations(**annotations) if annotations else None,
             executor=executor,
             validator=Draft202012Validator(parameters),
         )
@@ -116,7 +118,7 @@ class SefariaTool(Tool):
 
 
 class UserSefariaTool(SefariaTool):
-    """A tool that acts as the signed-in user on /mcp/user.
+    """A tool that acts as the signed-in user on /mcp/user and /mcp/admin.
 
     Each call gets its own ``SefariaClient``, so concurrent users never share session
     state, and a freshly minted 5-minute ``mcp`` token for the user named in the

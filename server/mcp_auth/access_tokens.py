@@ -1,4 +1,4 @@
-"""Access tokens for /mcp/user: short-lived HS256 JWTs.
+"""Access tokens for /mcp/user and /mcp/admin: short-lived HS256 JWTs.
 
 Issued by the Django authorization server and verified statelessly by the MCP process
 (fastmcp's ``JWTVerifier``), which has no database. Both hold ``MCP_OAUTH_SIGNING_KEY``.
@@ -14,7 +14,8 @@ import jwt
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
-SCOPE = "sheets"
+SCOPE = "sheets"  # /mcp/user
+ADMIN_SCOPE = "admin"  # /mcp/admin
 
 
 def issue(

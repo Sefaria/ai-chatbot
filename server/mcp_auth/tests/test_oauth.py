@@ -22,6 +22,7 @@ from mcp_auth.models import AuthorizationRequest, Grant
 
 ISSUER = "https://chat.test"
 RESOURCE = f"{ISSUER}/mcp/user"
+ADMIN_RESOURCE = f"{ISSUER}/mcp/admin"
 TOKEN_SECRET = "test-mcp-token-secret"
 SIGNING_KEY = "test-signing-key-" + "x" * 32
 SEFARIA_AUTHORIZE = "https://sefaria.test/api/mcp/authorize"
@@ -42,6 +43,7 @@ def mcp_settings():
         MCP_OAUTH_SIGNING_KEY=SIGNING_KEY,
         MCP_OAUTH_ISSUER=ISSUER,
         MCP_USER_RESOURCE_URL=RESOURCE,
+        MCP_ADMIN_RESOURCE_URL=ADMIN_RESOURCE,
         SEFARIA_MCP_AUTHORIZE_URL=SEFARIA_AUTHORIZE,
     ):
         yield
@@ -238,6 +240,32 @@ def test_full_flow_issues_tokens_for_the_signed_in_user():
     assert body["refresh_token"] not in grant.refresh_token_hash
 
 
+def test_admin_resource_gets_its_own_audience_and_consent_text():
+    api, browser = Client(), Client()
+    cid = client_id(api)
+    state = sefaria_state(authorize(browser, cid, resource=ADMIN_RESOURCE, scope=None))
+    assert sefaria_posts_back(browser, state).status_code == 302
+    page = browser.get("/oauth/consent", {"request": state}).content.decode()
+    assert "topic prompts" in page and "source sheets" not in page
+    code = code_from(approve(browser, state))
+    body = exchange(api, cid, code).json()
+
+    assert body["scope"] == "admin"
+    claims = jwt.decode(
+        body["access_token"], SIGNING_KEY, algorithms=["HS256"], audience=ADMIN_RESOURCE
+    )
+    assert claims["scope"] == "admin"
+    with pytest.raises(jwt.InvalidAudienceError):
+        jwt.decode(body["access_token"], SIGNING_KEY, algorithms=["HS256"], audience=RESOURCE)
+    refreshed = refresh(api, cid, body["refresh_token"]).json()
+    assert (
+        jwt.decode(
+            refreshed["access_token"], SIGNING_KEY, algorithms=["HS256"], audience=ADMIN_RESOURCE
+        )["scope"]
+        == "admin"
+    )
+
+
 def test_unknown_client_or_redirect_gets_an_error_page_not_a_redirect():
     cid = client_id(Client())
     assert authorize(Client(), "nope").status_code == 400
@@ -259,6 +287,8 @@ def test_loopback_redirect_may_change_port():
         ({"code_challenge": None}, "invalid_request"),
         ({"response_type": "token"}, "unsupported_response_type"),
         ({"scope": "sheets admin"}, "invalid_scope"),
+        ({"scope": "admin"}, "invalid_scope"),
+        ({"resource": ADMIN_RESOURCE}, "invalid_scope"),
         ({"resource": "https://chat.test/mcp"}, "invalid_target"),
     ],
 )

@@ -38,7 +38,7 @@ from .models import (
     secret_matches,
 )
 
-SUPPORTED_SCOPES = {access_tokens.SCOPE}
+SUPPORTED_SCOPES = {access_tokens.SCOPE, access_tokens.ADMIN_SCOPE}
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 MAX_REDIRECT_URIS = 10
@@ -63,6 +63,17 @@ def issuer() -> str:
 
 def resource_url() -> str:
     return settings.MCP_USER_RESOURCE_URL.rstrip("/")
+
+
+def resource_for_scope() -> dict[str, str]:
+    """Each scope is issued for exactly one MCP resource, its access tokens' audience.
+
+    A token for /mcp/user is therefore never accepted at /mcp/admin, and the other way round.
+    """
+    return {
+        access_tokens.SCOPE: resource_url(),
+        access_tokens.ADMIN_SCOPE: settings.MCP_ADMIN_RESOURCE_URL.rstrip("/"),
+    }
 
 
 def callback_url() -> str:
@@ -251,7 +262,7 @@ def register(request: HttpRequest) -> JsonResponse:
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
             "token_endpoint_auth_method": "none",
-            "scope": access_tokens.SCOPE,
+            "scope": " ".join(sorted(SUPPORTED_SCOPES)),
         },
         status=201,
     )
@@ -288,12 +299,17 @@ def authorize(request: HttpRequest) -> HttpResponse:
     challenge = params.get("code_challenge", "")
     if params.get("code_challenge_method") != "S256" or not 43 <= len(challenge) <= 128:
         return fail("invalid_request", "PKCE with code_challenge_method=S256 is required.")
-    scope = params.get("scope") or access_tokens.SCOPE
-    if not set(scope.split()) <= SUPPORTED_SCOPES:
-        return fail("invalid_scope", f"Supported scopes: {' '.join(sorted(SUPPORTED_SCOPES))}.")
-    resource = params.get("resource")
-    if resource and resource.rstrip("/") != resource_url():
-        return fail("invalid_target", f"This server only issues tokens for {resource_url()}.")
+    resources = resource_for_scope()
+    resource = (params.get("resource") or resource_url()).rstrip("/")
+    resource_scope = next((s for s, r in resources.items() if r == resource), None)
+    if resource_scope is None:
+        return fail(
+            "invalid_target",
+            f"This server only issues tokens for {' and '.join(sorted(resources.values()))}.",
+        )
+    scope = params.get("scope") or resource_scope
+    if scope.split() != [resource_scope]:
+        return fail("invalid_scope", f"{resource} takes the scope {resource_scope!r}.")
 
     now = timezone.now()
     AuthorizationRequest.objects.filter(
@@ -375,6 +391,7 @@ def consent(request: HttpRequest) -> HttpResponse:
             "consent.html",
             {
                 "client_name": auth_request.client.client_name or "An application",
+                "staff_tools": auth_request.scope == access_tokens.ADMIN_SCOPE,
                 "redirect_host": urlsplit(auth_request.redirect_uri).hostname,
                 "request_id": auth_request.id,
                 "consent_token": consent_token,
@@ -417,7 +434,7 @@ def _token_response(grant: Grant, refresh_token: str) -> JsonResponse:
     access_token = access_tokens.issue(
         signing_key=settings.MCP_OAUTH_SIGNING_KEY,
         issuer=issuer(),
-        audience=resource_url(),
+        audience=resource_for_scope()[grant.scope],
         grant_id=str(grant.id),
         sefaria_user_id=grant.sefaria_user_id,
         client_id=grant.client.client_id,
