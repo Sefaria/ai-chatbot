@@ -78,7 +78,9 @@ pytest                                    # Run tests
 | `AGENT_MODEL` | No | Model for normal requests (default: claude-sonnet-4-6) |
 | `APPETIZER_MODEL` | No | Model for the topic appetizer (default: same as `AGENT_MODEL`) |
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
-| `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
+| `CHATBOT_USER_TOKEN_SECRET` | Outside debug | AES-GCM key for userId tokens (default `secret` only when `DJANGO_DEBUG=True`; startup fails with the default or empty value otherwise) |
+| `DJANGO_DEBUG` | No | Default `False`; set `True` for local development |
+| `DJANGO_SECRET_KEY` | Outside debug | Django secret; startup fails with the dev placeholder otherwise |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
 
 ## Load Testing
@@ -101,8 +103,9 @@ thread-local flag — load-test threads run inside `suppress_tracing()` so every
 Run the load test script against Docker Compose:
 
 ```bash
-# Start the stack (reads ANTHROPIC_API_KEY from server/.env)
-docker compose up --build
+# Start the local stack (docker-compose.local.yml sets DJANGO_DEBUG=true for the dev secret fallbacks;
+# any other compose file must supply DJANGO_SECRET_KEY and CHATBOT_USER_TOKEN_SECRET)
+docker compose -f docker-compose.local.yml up --build
 
 # Run 5 concurrent users, 20 total requests
 cd server
@@ -116,4 +119,4 @@ python -m loadtest.load_test --url http://localhost:8001 --users 1 --requests 1 
 python -m loadtest.load_test --url http://localhost:8001 --users 1 --requests 1 --no-load-test --timeout 300
 ```
 
-The script auto-generates valid encrypted user tokens using `CHATBOT_USER_TOKEN_SECRET` (defaults to `secret`, matching the Docker Compose default).
+The script auto-generates valid encrypted user tokens using `CHATBOT_USER_TOKEN_SECRET`. The server reads it from settings, so with debug off the value must be set to a real secret, and the load test must use the same value.

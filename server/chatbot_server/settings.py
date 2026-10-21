@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
+from django.core.exceptions import ImproperlyConfigured
 
 try:
     import whitenoise  # noqa: F401
@@ -28,11 +29,16 @@ try:
 except ImportError:
     pass
 
+# Development-only fallbacks. Outside DEBUG the checks after CHATBOT_USER_TOKEN_SECRET refuse them.
+_DEV_SECRET_KEY = "django-insecure-dev-key-change-in-production"
+_DEV_TOKEN_SECRET = "secret"
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
+# Off unless DJANGO_DEBUG=true, so a deployment that omits the variable fails closed.
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
 ALLOWED_HOSTS = ["*"]
 
@@ -217,7 +223,24 @@ RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "res
 # Chat User Token Configuration
 # ============================================================================
 # Token secret used to decrypt incoming userId values for chat requests.
-CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", _DEV_TOKEN_SECRET)
+
+# Refuse to start with missing or placeholder secrets outside DEBUG. An empty token secret would
+# otherwise silently skip decryption, so it is rejected too. Values wrapped in <...> are the
+# template text from .env.example.
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set to a real secret when DJANGO_DEBUG is off."
+        )
+    if (
+        not CHATBOT_USER_TOKEN_SECRET
+        or CHATBOT_USER_TOKEN_SECRET == _DEV_TOKEN_SECRET
+        or CHATBOT_USER_TOKEN_SECRET.startswith("<")
+    ):
+        raise ImproperlyConfigured(
+            "CHATBOT_USER_TOKEN_SECRET must be set to a real secret when DJANGO_DEBUG is off."
+        )
 
 # ============================================================================
 # Anthropic API Configuration
