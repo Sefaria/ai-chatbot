@@ -315,6 +315,16 @@ step, and receive a grant for the victim's account.
 - Later: a page where users can see and revoke their grants; rate limits on
   `/oauth/register` and `/oauth/token`; deleting expired grants.
 
+### 2.6 Review fixes (external review, 2026-10-21)
+
+An external review of #256 and #3840 found six issues. The three high-severity ones are fixed; the rest are deferred, by choice, to keep the change small.
+
+- [x] **The `mcp` token was not create-only.** `POST /api/sheets/` also updates sheets (payload `id`) and publishes them (`status`). For `auth_via == "mcp"`, Sefaria now refuses an `id`, forces `status: unlisted` and drops `displayedCollection` (#3840).
+- [x] **Replay detection forgot older refresh tokens.** Only the previous hash was kept. Every rotated-out token is now recorded (`ConsumedRefreshToken`); a replay or revoke of any of them revokes the grant (RFC 9700 4.14.2); and the token is re-checked under the row lock.
+- [x] **Anonymous registration grew the DB without limit.** Registration bodies are capped at 8 KB and redirect URIs at 2,000 characters; there are global ceilings of 500 new clients an hour and 2,000 sign-ins in progress (429); clients a day old with no completed sign-in are deleted. Per-IP limits are left to the gateway.
+- [x] Also found: pytest only collected `chat/`, so CI never ran the `mcp_auth` tests. `testpaths` now lists `mcp_auth`.
+- Deferred: the handoff token is not bound to `state` (reusable within 5 minutes); `create_source_sheet` has no source-count bound and fans out reference fetches; Sefaria errors returned as HTTP 200 become successful tool results; a grant-management page; separate read and write scopes.
+
 ## Deprecating the old MCP (after Phase 1 is proven)
 
 - [ ] Announce `chat.sefaria.org/mcp` as the Sefaria MCP URL (docs, developer pages,
