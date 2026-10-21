@@ -18,7 +18,7 @@ from typing import Any
 from .catalog_service import CatalogService
 from .contracts import MessageContext
 from .sefaria_client import SefariaClient
-from .tool_schemas import MAX_RESULTS
+from .tool_schemas import MAX_REFS_PER_VALIDATION, MAX_RESULTS
 
 logger = logging.getLogger("chat.agent")
 
@@ -136,7 +136,10 @@ class SefariaToolExecutor:
             return await self.client.get_english_translations(input_data["reference"])
 
         elif tool_name == "validate_refs":
-            return await self.client.validate_refs(input_data["refs"])
+            # Duplicates cost a call each for no answer; clamp for callers that skip
+            # schema validation.
+            refs = list(dict.fromkeys(input_data["refs"]))[:MAX_REFS_PER_VALIDATION]
+            return await self.client.validate_refs(refs)
 
         elif tool_name == "validate_response_links":
             return await self._validate_response_links(input_data["response"])

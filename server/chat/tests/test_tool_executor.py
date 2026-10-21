@@ -440,3 +440,21 @@ class TestResultBounds:
                 if prop is not None:
                     assert prop.get("maximum") == MAX_RESULTS, (name, key)
                     assert prop.get("minimum") == 1, (name, key)
+
+
+class TestValidateRefsBounds:
+    async def test_duplicates_are_dropped_and_the_list_is_clamped(self, executor, mock_client):
+        from chat.V2.agent.tool_schemas import MAX_REFS_PER_VALIDATION
+
+        refs = ["Genesis 1:1"] * 1200 + [f"Genesis 1:{i}" for i in range(2, 200)]
+        await executor.execute("validate_refs", {"refs": refs})
+        sent = mock_client.validate_refs.await_args.args[0]
+        assert sent[0] == "Genesis 1:1"
+        assert len(sent) == MAX_REFS_PER_VALIDATION
+        assert len(set(sent)) == len(sent)
+
+    def test_schema_bounds_the_list(self):
+        from chat.V2.agent.tool_schemas import ALL_TOOLS, MAX_REFS_PER_VALIDATION
+
+        refs = ALL_TOOLS["validate_refs"]["input_schema"]["properties"]["refs"]
+        assert refs["maxItems"] == MAX_REFS_PER_VALIDATION
