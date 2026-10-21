@@ -15,12 +15,13 @@ from API responses before they're sent back to Claude, keeping token usage low.
 import asyncio
 import base64
 import html
+import ipaddress
 import json
 import os
 import re
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urljoin, urlsplit
 
 import httpx
 
@@ -127,6 +128,59 @@ def _fallback_ref(tref: str) -> dict | None:
         "en": _fallback_ref_label(tref),
         "he": "",
     }
+
+
+# Manuscript images are only fetched from these hosts (the Sefaria manuscript CDN
+# that get_available_manuscripts returns image_url values from).
+MANUSCRIPT_IMAGE_ALLOWED_HOSTS = frozenset({"manuscripts.sefaria.org"})
+MAX_MANUSCRIPT_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_MANUSCRIPT_REDIRECTS = 5
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+
+
+async def _resolve_host_addresses(hostname: str) -> list[str]:
+    """Resolve a hostname to its IP addresses (separate function so tests can stub DNS)."""
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(hostname, 443, type=0)
+    return [str(info[4][0]) for info in infos]
+
+
+async def _validate_manuscript_url(url: str) -> str:
+    """Return a validated public IP for url's host; raise ValueError if url is not allowed.
+
+    url must be https (port 443) on an allowed host whose addresses are all public.
+    The caller connects to the returned address so DNS cannot change after validation.
+    """
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        raise ValueError("Manuscript image URL must use https")
+    try:
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("Manuscript image URL has an invalid port") from exc
+    if port not in (None, 443):
+        raise ValueError("Manuscript image URL must use the default https port")
+    hostname = (parts.hostname or "").lower()
+    if hostname not in MANUSCRIPT_IMAGE_ALLOWED_HOSTS:
+        raise ValueError(f"Manuscript image host not allowed: {hostname or '(none)'}")
+    try:
+        addresses = await _resolve_host_addresses(hostname)
+    except OSError as exc:
+        raise ValueError(f"Could not resolve manuscript image host: {hostname}") from exc
+    if not addresses:
+        raise ValueError(f"Could not resolve manuscript image host: {hostname}")
+    for address in addresses:
+        ip = ipaddress.ip_address(address.split("%")[0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError("Manuscript image host resolves to a non-public address")
+    return addresses[0].split("%")[0]
 
 
 class SefariaClient:
@@ -531,13 +585,52 @@ class SefariaClient:
     async def get_manuscript_image(
         self, image_url: str, manuscript_title: str | None = None
     ) -> dict[str, Any]:
-        """Download a manuscript image."""
-        client = await self._get_client()
-        response = await client.get(image_url)
-        response.raise_for_status()
+        """Download a manuscript image.
 
-        content_type = response.headers.get("content-type", "image/jpeg")
-        image_data = base64.b64encode(response.content).decode("utf-8")
+        Only https URLs on MANUSCRIPT_IMAGE_ALLOWED_HOSTS are fetched. Redirects are
+        followed manually so every hop is validated and connected by validated IP, and the
+        body is streamed with a size cap.
+        """
+        client = await self._get_client()
+        current_url = image_url
+        body = None
+        content_type = "image/jpeg"
+        for _ in range(MAX_MANUSCRIPT_REDIRECTS + 1):
+            address = await _validate_manuscript_url(current_url)
+            parts = urlsplit(current_url)
+            # Connect to the validated address, keeping the hostname for Host and TLS SNI/verification.
+            host = f"[{address}]" if ":" in address else address
+            pinned_url = parts._replace(netloc=host).geturl()
+            async with client.stream(
+                "GET",
+                pinned_url,
+                headers={"Host": parts.hostname},
+                extensions={"sni_hostname": parts.hostname},
+            ) as response:
+                if response.status_code in _REDIRECT_STATUS_CODES:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise ValueError("Manuscript image redirect has no Location header")
+                    current_url = urljoin(current_url, location)
+                    continue
+                response.raise_for_status()
+                declared = response.headers.get("content-length", "")
+                if declared.isdigit() and int(declared) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                    raise ValueError("Manuscript image exceeds size limit")
+                chunks = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > MAX_MANUSCRIPT_IMAGE_BYTES:
+                        raise ValueError("Manuscript image exceeds size limit")
+                    chunks.append(chunk)
+                body = b"".join(chunks)
+                content_type = response.headers.get("content-type", "image/jpeg")
+                break
+        else:
+            raise ValueError("Too many redirects fetching manuscript image")
+
+        image_data = base64.b64encode(body).decode("utf-8")
 
         filename = image_url.split("/")[-1] or "manuscript.jpg"
         title = manuscript_title or f"Manuscript: {filename}"
@@ -546,8 +639,8 @@ class SefariaClient:
             "success": True,
             "image_data": image_data,
             "mime_type": content_type,
-            "size": len(response.content),
-            "original_size": len(response.content),
+            "size": len(body),
+            "original_size": len(body),
             "was_resized": False,
             "filename": filename,
             "title": title,
