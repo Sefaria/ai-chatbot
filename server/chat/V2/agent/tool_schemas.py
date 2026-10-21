@@ -23,6 +23,8 @@ from typing import Any
 # anonymous callers, and each result is fetched from and paid for by the Sefaria API.
 # tool_executor clamps to the same bound for callers that skip schema validation.
 MAX_RESULTS = 100
+# Each ref costs one Sefaria API call, made in turn.
+MAX_REFS_PER_VALIDATION = 50
 
 TOOL_GET_TEXT = {
     "name": "get_text",
@@ -169,7 +171,8 @@ TOOL_VALIDATE_REFS = {
         "properties": {
             "refs": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {"type": "string", "maxLength": 300},
+                "maxItems": MAX_REFS_PER_VALIDATION,
                 "description": 'Text references to validate, e.g. ["Genesis 1:1", "Nahum 2", "The War of the Jews 1:4:1"]',
             },
         },

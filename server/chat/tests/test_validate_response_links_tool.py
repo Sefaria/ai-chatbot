@@ -133,3 +133,43 @@ class TestBounds:
         )
         assert result.is_error
         assert "too long" in result.content[0]["text"]
+
+
+class TestLinkForms:
+    """The MCP tool sees every link form a markdown client renders, not only ours."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "draft",
+        [
+            "![chart](https://evil.example/a.png)",
+            "<https://evil.example/b>",
+            "See [the source][1].\n\n[1]: https://evil.example/c",
+            "More at https://evil.example/d.",
+        ],
+    )
+    async def test_external_links_in_any_markdown_form_are_flagged(self, draft):
+        report = await _validate(_executor(), draft)
+        assert report["safe_to_send"] is False
+        assert report["links_checked"] == 1
+
+    def test_hosted_extraction_is_unchanged(self):
+        from chat.V2.agent.response_link_validator import extract_hrefs
+
+        draft = "![x](https://evil.example/a.png) [ok](https://www.sefaria.org/Genesis.1.1) https://evil.example/d"
+        assert extract_hrefs(draft) == ["https://www.sefaria.org/Genesis.1.1"]
+
+
+class TestWorstCaseTime:
+    """Extraction must stay linear: the old pattern took seconds on "[" * 100_000."""
+
+    @pytest.mark.parametrize("unit", ["[", "](", "![", "[a](", "[a]:", "http://", "<"])
+    def test_adversarial_input_is_fast(self, unit):
+        import time
+
+        from chat.V2.agent.response_link_validator import extract_hrefs
+
+        text = unit * (100_000 // len(unit))
+        started = time.perf_counter()
+        extract_hrefs(text, all_forms=True)
+        assert time.perf_counter() - started < 0.5

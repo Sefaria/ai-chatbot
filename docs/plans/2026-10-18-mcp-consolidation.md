@@ -172,6 +172,15 @@ They go on `/mcp/user` in Phase 2.
       first-party `Sefaria/mcp` User-Agent; executor errors still pass raw exception
       text to callers.
 
+### 1.4c Review fixes (external review of #255, 2026-10-21)
+
+- [x] **`validate_response_links` could stall the event loop.** The markdown link pattern was quadratic: "[" * 100,000 took 3.7 s. All patterns are now linear, so worst-case drafts take milliseconds, with a test for each.
+- [x] **"Safe to send" missed common link forms.** The MCP tool now also extracts images, autolinks, reference definitions and bare URLs, parses the draft once, and reports `links_checked`. The hosted agent's own check keeps its narrower extraction.
+- [x] **`validate_refs` was unbounded.** It is now capped at 50 distinct refs (schema and executor).
+- [x] **The SDK floor allowed a broken combination.** `claude-agent-sdk>=0.2.152`, the version tested with `mcp` 2.x.
+- [x] CI runs on every pull request, so stacked PRs get checks.
+- Not done: manuscript images are still returned as base64 text rather than MCP image content (see 1.4b). Findings about #3801's admin API (concurrent writers, versions that ignore the source ref, uncertain writes audited as failures, editorial review policy) are for that PR's author.
+
 ### 1.5 Infrastructure (AppliedAI-Infrastructure)
 
 Nothing under `mcp.yaml`, `mcp-config.yaml`, `mcp-httproute.yaml` or the `mcp` Gateway
