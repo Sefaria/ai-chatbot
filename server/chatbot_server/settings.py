@@ -40,7 +40,14 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 # Off unless DJANGO_DEBUG=true, so a deployment that omits the variable fails closed.
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+
+def _read_env_list(name: str, default: str) -> list[str]:
+    """Read a comma-separated environment variable into a list of non-empty items."""
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
+# Hosts this server answers for. Comma-separated; the "*" default keeps the previous any-host behavior.
+ALLOWED_HOSTS = _read_env_list("DJANGO_ALLOWED_HOSTS", "*")
 
 # Application definition
 INSTALLED_APPS = [
@@ -110,11 +117,10 @@ if _WHITENOISE_AVAILABLE:
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS settings - allow all origins in development
-# Set to True to allow any origin (for local development)
-CORS_ALLOW_ALL_ORIGINS = True
-
-# Fallback list if CORS_ALLOW_ALL_ORIGINS is False
+# CORS settings. Comma-separated CHATBOT_CORS_ALLOWED_ORIGINS restricts browser access to the listed
+# origins. Unset keeps the allow-all behavior for development and existing embeds.
+CORS_ALLOWED_ORIGINS = _read_env_list("CHATBOT_CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
 # Allow all methods
 CORS_ALLOW_METHODS = [
@@ -134,8 +140,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 ]
 
 
-# Allow credentials for CORS
-CORS_ALLOW_CREDENTIALS = True
+# Credentials are not sent cross-origin; requests authenticate in the request body, not with cookies.
+CORS_ALLOW_CREDENTIALS = False
 
 # Expose headers needed for SSE
 CORS_EXPOSE_HEADERS = [
