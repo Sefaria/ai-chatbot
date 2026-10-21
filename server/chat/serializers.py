@@ -83,13 +83,48 @@ class ClientStreamEventSerializer(serializers.Serializer):
     context = MessageContextSerializer(required=False)
 
 
+# Generous ceilings on the Anthropic-format endpoint: bound the work per request
+# without constraining real conversations.
+MAX_ANTHROPIC_MESSAGES = 200
+MAX_ANTHROPIC_TEXT_CHARS = 200_000
+
+
+def _message_text_length(content) -> int:
+    """Length of the text carried by one message's content (string or text blocks)."""
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if isinstance(block, str):
+                total += len(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str):
+                    total += len(text)
+        return total
+    return 0
+
+
 class AnthropicRequestSerializer(serializers.Serializer):
     """Anthropic Messages API request format."""
 
     model = serializers.CharField(max_length=100, required=False)
     max_tokens = serializers.IntegerField(required=False)
-    messages = serializers.ListField(child=serializers.DictField(), min_length=1)
+    messages = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        max_length=MAX_ANTHROPIC_MESSAGES,
+    )
     metadata = serializers.DictField(required=False)
+
+    def validate_messages(self, messages):
+        total_chars = sum(_message_text_length(msg.get("content")) for msg in messages)
+        if total_chars > MAX_ANTHROPIC_TEXT_CHARS:
+            raise serializers.ValidationError(
+                f"Total message text exceeds {MAX_ANTHROPIC_TEXT_CHARS} characters."
+            )
+        return messages
 
 
 class ChatResponseSerializer(serializers.Serializer):
