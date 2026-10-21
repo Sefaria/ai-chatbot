@@ -23,6 +23,7 @@
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
+  import { tooltip } from '../lib/tooltip.js';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -1633,6 +1634,7 @@
   });
 
   function handleRestartConvo() {
+    if (!isLoggedIn) return; // locked for logged-out visitors (one conversation only)
     closeMenu();
     isRestarted = true;
     handleNewChat();
@@ -1909,7 +1911,18 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={!isLoggedIn || messages.length === 0} role="menuitem">
+                <!-- Logged out, New chat is locked with a login tooltip: aria-disabled (not
+                     disabled) so the tooltip can show, and no data-feature-name while locked. -->
+                <button
+                  class="menu-item"
+                  aria-label={$_('assistant.menu.restart.aria')}
+                  data-feature-name={isLoggedIn ? 'new_chat_button' : undefined}
+                  onclick={handleRestartConvo}
+                  disabled={isLoggedIn && messages.length === 0}
+                  aria-disabled={isLoggedIn ? undefined : 'true'}
+                  use:tooltip={isLoggedIn ? '' : $_('assistant.menu.restart.login_tooltip')}
+                  role="menuitem"
+                >
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
@@ -3196,9 +3209,14 @@
     background: var(--lc-bg-tertiary);
   }
 
-  .menu-item:disabled {
+  .menu-item:disabled,
+  .menu-item[aria-disabled='true'] {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .menu-item[aria-disabled='true']:hover {
+    background: transparent;
   }
 
   .menu-item svg {
@@ -3596,19 +3614,22 @@
 
   /* Input Footer */
   /* Shown in place of the text box once a logged-out visitor's free answers are used up. */
+  /* Same frame as the input footer it replaces (.lc-chatbot-input). */
   .login-prompt {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 16px;
-    border-top: 1px solid var(--lc-border-light);
+    padding: 16px 16px 16px 18px;
+    border-top: 1px solid var(--lc-border);
     animation: loginPromptIn 0.2s ease;
   }
 
   .login-prompt-text {
     margin: 0;
     color: var(--lc-text-secondary);
-    font-size: var(--lc-font-size-sm);
+    /* Font family is inherited: the widget's font in English, Heebo in Hebrew. */
+    font-size: var(--lc-font-size);
+    line-height: var(--global-dimension-250);
     text-align: center;
   }
 

@@ -128,7 +128,13 @@ test.describe('Logged-out use of the assistant', () => {
       const assistant = await setUp(page, context);
       await reachLimit(assistant);
 
+      // The same frame as the text box it replaces: a line on top, the footer's padding.
+      await expect(assistant.loginPrompt).toHaveCSS('border-top', '1px solid rgb(226, 232, 240)');
+      await expect(assistant.loginPrompt).toHaveCSS('padding', '16px 16px 16px 18px');
+
       await expect(assistant.loginPromptText).toHaveCSS('color', 'rgb(87, 87, 87)');
+      await expect(assistant.loginPromptText).toHaveCSS('font-size', '14px');
+      await expect(assistant.loginPromptText).toHaveCSS('line-height', '20px');
       // Centered: measure the text itself, not its (possibly full-width) box.
       const textRun = await assistant.loginPromptText.evaluate((el) => {
         const range = document.createRange();
@@ -260,7 +266,7 @@ test.describe('Logged-out use of the assistant', () => {
     await expect(assistant.historyPanel).toBeHidden();
   });
 
-  test('New chat is disabled for a logged-out visitor', async ({ page, context }) => {
+  test('New chat is locked for a logged-out visitor, with a login tooltip', async ({ page, context }) => {
     const assistant = await setUp(page, context);
     await expect(assistant.userMessages).toHaveCount(0);
 
@@ -269,6 +275,8 @@ test.describe('Logged-out use of the assistant', () => {
     await expect(assistant.newChatMenuItem).toBeVisible();
     await expect(assistant.newChatMenuItem).toHaveText(t('assistant.history.header.new.tooltip'));
     await expect(assistant.newChatMenuItem).toBeDisabled();
+    await assistant.newChatMenuItem.hover();
+    await expect(assistant.tooltip).toHaveText(t('assistant.menu.restart.login_tooltip'));
   });
 
   test('the menu has no Disable in settings item', async ({ page, context }) => {

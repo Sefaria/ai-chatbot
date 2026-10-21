@@ -195,7 +195,8 @@ export class AssistantPage {
   }
 
   get newChatMenuItem() {
-    return this.menu.locator('[data-feature-name="new_chat_button"]');
+    // By role and name: its click label (data-feature-name) is absent while locked.
+    return this.menu.getByRole('menuitem', { name: t('assistant.menu.restart.aria') });
   }
 
   async openMoreOptions() {
