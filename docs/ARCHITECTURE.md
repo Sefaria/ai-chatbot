@@ -133,23 +133,28 @@ Tool call stack:
 tool_runtime.py -> tool_executor.py -> sefaria_client.py -> Sefaria HTTP APIs
 ```
 
-The agent currently exposes 15 tools (from `tool_schemas.py`):
+The agent exposes 18 tools to all users (from `tool_schemas.py`, `get_all_tools()`):
 
 1. `get_text`
-2. `text_search`
+2. `specific_keyword_search`
 3. `get_current_calendar`
-4. `english_semantic_search`
+4. `semantic_search`
 5. `get_links_between_texts`
 6. `search_in_book`
 7. `search_in_dictionaries`
 8. `get_english_translations`
-9. `get_topic_details`
-10. `clarify_name_argument`
-11. `clarify_search_path_filter`
-12. `get_text_or_category_shape`
-13. `get_text_catalogue_info`
-14. `get_available_manuscripts`
-15. `get_manuscript_image`
+9. `validate_refs`
+10. `get_topic_details`
+11. `clarify_name_argument`
+12. `clarify_search_path_filter`
+13. `catalog_get_node`
+14. `catalog_get_children`
+15. `catalog_search`
+16. `catalog_query`
+17. `get_available_manuscripts`
+18. `get_manuscript_image`
+
+Labs-only tools (`LABS_TOOL_NAMES`, added by `get_tools_for_labs(True)`): `search_user_source_sheets`, `get_source_sheet`, `create_source_sheet`.
 
 Tool runtime behavior:
 
