@@ -72,19 +72,23 @@ class SefariaToolExecutor:
         from .response_link_validator import ResponseLinkValidator, extract_hrefs
 
         # Each distinct link can cost a Sefaria API call, and on the public MCP server
-        # the draft comes from anyone, so bound both the input and the fan-out.
+        # the draft comes from anyone, so bound both the input and the fan-out. The
+        # draft is parsed once, in linear time, with every link form a client might
+        # render (not only the ones our own widget does).
         if len(response_text) > MAX_VALIDATED_RESPONSE_CHARS:
             raise ValueError(
                 f"Response is too long to check (over {MAX_VALIDATED_RESPONSE_CHARS:,} characters)"
             )
-        if len(extract_hrefs(response_text)) > MAX_VALIDATED_LINKS:
+        hrefs = extract_hrefs(response_text, all_forms=True)
+        if len(hrefs) > MAX_VALIDATED_LINKS:
             raise ValueError(
                 f"Response has more than {MAX_VALIDATED_LINKS} distinct links; check it in parts"
             )
 
-        result = await ResponseLinkValidator(self.client).validate_response(response_text)
+        result = await ResponseLinkValidator(self.client).validate_hrefs(hrefs)
         return {
             "safe_to_send": result.is_valid,
+            "links_checked": len(hrefs),
             "issues": [{"link": issue.href, "problem": issue.reason} for issue in result.issues],
         }
 
