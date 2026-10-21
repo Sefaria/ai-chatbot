@@ -84,17 +84,6 @@ test.describe('Logged-out use of the assistant', () => {
     await expect(assistant.input).toBeHidden();
     await expect(assistant.sendButton).toBeHidden();
 
-    // A full-width "Log in or sign up" button sits under the text.
-    await expect(assistant.loginButton).toBeVisible();
-    const textBox = await assistant.loginPromptText.boundingBox();
-    const buttonBox = await assistant.loginButton.boundingBox();
-    expect(buttonBox.y).toBeGreaterThanOrEqual(textBox.y + textBox.height - 1);
-    const promptContentWidth = await assistant.loginPrompt.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-    });
-    expect(Math.abs(buttonBox.width - promptContentWidth)).toBeLessThanOrEqual(1);
-
     // The whole last answer can still be scrolled to and read: once the list is
     // scrolled to its end, the end of the answer is visible and not under the prompt.
     await assistant.scrollMessagesToEnd();
@@ -108,19 +97,44 @@ test.describe('Logged-out use of the assistant', () => {
     expect(await assistant.isFocusInsideLoginPrompt()).toBe(false);
   });
 
-  test('the login button asks the host to log in, with source rate_limit_login_button', async ({ page, context }) => {
+  test("the login prompt shows the host page's sign-up options under its text", async ({ page, context }) => {
     const assistant = await setUp(page, context);
-    await page.evaluate(() => {
-      window.loginRequests = [];
-      document.addEventListener('chatbot:login_requested', (e) => window.loginRequests.push(e.detail));
-    });
+    // The host adds its options after the widget is on the page.
+    await assistant.addHostSignupOptions();
+    await askQuestions(assistant, limit - 1);
+    await expect(assistant.hostSignupOptions).toBeHidden();
+
+    await assistant.ask('The last free question');
+
+    await expect(assistant.hostSignupOptions).toBeVisible();
+    // Under the text, 16px below it, centred, inside the prompt.
+    const textBox = await assistant.loginPromptText.boundingBox();
+    const optionsBox = await assistant.hostSignupOptions.boundingBox();
+    const promptBox = await assistant.loginPrompt.boundingBox();
+    expect(Math.abs(optionsBox.y - (textBox.y + textBox.height) - 16)).toBeLessThanOrEqual(1);
+    expect(optionsBox.y + optionsBox.height).toBeLessThanOrEqual(promptBox.y + promptBox.height);
+    const optionsCenter = optionsBox.x + optionsBox.width / 2;
+    const promptCenter = promptBox.x + promptBox.width / 2;
+    expect(Math.abs(optionsCenter - promptCenter)).toBeLessThanOrEqual(2);
+    // The widget adds no button of its own.
+    await expect(assistant.loginPromptControls).toHaveCount(0);
+
+    await assistant.hostSignupOptions.getByRole('button').click();
+
+    expect(await assistant.hostSignupClicks()).toBe(1);
+  });
+
+  test('with no sign-up options from the host page, the prompt shows only its text', async ({ page, context }) => {
+    const assistant = await setUp(page, context);
+
     await reachLimit(assistant);
-    const pageBefore = page.url();
 
-    await assistant.loginButton.click();
-
-    expect(await page.evaluate(() => window.loginRequests)).toEqual([{ source: 'rate_limit_login_button' }]);
-    expect(page.url()).toBe(pageBefore);
+    await expect(assistant.loginPromptText).toBeVisible();
+    await expect(assistant.loginPromptControls).toHaveCount(0);
+    // No empty space is kept for options: the prompt is its padding around the text.
+    const textBox = await assistant.loginPromptText.boundingBox();
+    const promptBox = await assistant.loginPrompt.boundingBox();
+    expect(Math.abs(promptBox.height - (textBox.height + 16 + 16 + 1))).toBeLessThanOrEqual(1);
   });
 
   test.describe('the login prompt', () => {
@@ -146,21 +160,6 @@ test.describe('Logged-out use of the assistant', () => {
       const textCenter = textRun.x + textRun.width / 2;
       const promptCenter = promptBox.x + promptBox.width / 2;
       expect(Math.abs(textCenter - promptCenter)).toBeLessThanOrEqual(2);
-
-      await expect(assistant.loginButton).toHaveCSS('background-color', 'rgb(24, 52, 93)');
-      await expect(assistant.loginButton).toHaveCSS('color', 'rgb(255, 255, 255)');
-      await expect(assistant.loginButton).toHaveCSS('border-radius', '8px');
-      const buttonBox = await assistant.loginButton.boundingBox();
-      expect(Math.abs(buttonBox.height - 40)).toBeLessThanOrEqual(0.5);
-    });
-
-    test('button changes color on hover', async ({ page, context }) => {
-      const assistant = await setUp(page, context);
-      await reachLimit(assistant);
-
-      await assistant.loginButton.hover();
-
-      await expect(assistant.loginButton).toHaveCSS('background-color', 'rgb(70, 93, 125)');
     });
 
     test('fades in, rising 6px, over 200ms', async ({ page, context, browserName }) => {
@@ -317,7 +316,6 @@ test.describe('Logged-out use of the assistant', () => {
 
     // The login prompt appears, the same as when reaching the limit, with no error.
     await expect(thisTab.loginPromptText).toBeVisible();
-    await expect(thisTab.loginButton).toBeVisible();
     await expect(thisTab.input).toBeHidden();
     await expect(thisTab.alerts).toHaveCount(0);
     await expect(thisTab.retryButtons).toHaveCount(0);

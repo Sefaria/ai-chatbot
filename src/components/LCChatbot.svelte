@@ -73,7 +73,6 @@
   // or another tab still shows it. Logged-in users never see it.
   let anonLimitReached = $state(false);
   let loginRequired = $derived(!isLoggedIn && anonLimitReached);
-  const LOGIN_SOURCE = 'rate_limit_login_button';
 
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
@@ -490,13 +489,15 @@
     setStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, true);
   }
 
-  // Logging in is the host's job. Only a Sefaria page has a login flow today: the
-  // widget asks it through an event, and Sefaria opens its login view with this
-  // source for its signup analytics. Another host would get its own branch here.
-  function requestLogin() {
-    if (isOnSefariaPage()) {
-      dispatchEvent('login_requested', { source: LOGIN_SOURCE });
-    }
+  // Signing up is the host's job: the host page puts its own sign-up options in
+  // the prompt as children of <lc-chatbot> with slot="signup-options". This adds
+  // a native <slot> rather than Svelte's <slot>, which is only created when the
+  // host's children are already there as the element connects.
+  function hostSlot(node, name) {
+    const slot = document.createElement('slot');
+    slot.name = name;
+    node.append(slot);
+    return { destroy: () => slot.remove() };
   }
 
   function sampleThinkingMessageDelay() {
@@ -2301,14 +2302,9 @@
       <!-- Input Footer -->
       {#if loginRequired}
         <!-- The free answers are used up: the login prompt replaces the text box.
-             It doesn't take focus. -->
-        <div class="login-prompt" data-testid="la-login-prompt">
+             It doesn't take focus. The host's sign-up options follow the text. -->
+        <div class="login-prompt" data-testid="la-login-prompt" use:hostSlot={'signup-options'}>
           <p class="login-prompt-text">{$_('assistant.anon.limit_reached')}</p>
-          {#if isOnSefariaPage()}
-            <button type="button" class="login-prompt-button" data-feature-name={LOGIN_SOURCE} onclick={requestLogin}>
-              {$_('assistant.anon.login_button')}
-            </button>
-          {/if}
         </div>
       {:else}
         <footer class="lc-chatbot-input">
@@ -3633,21 +3629,12 @@
     text-align: center;
   }
 
-  .login-prompt-button {
-    width: 100%;
-    height: 40px;
-    border: none;
-    border-radius: 8px;
-    background: var(--lc-primary);
-    color: #fff;
-    font-family: var(--lc-font);
-    font-size: var(--lc-font-size-sm);
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .login-prompt-button:hover {
-    background: var(--lc-primary-hover);
+  /* The host's sign-up options: 16px under the text (with the 12px gap), centred.
+     Only when there are any, so an empty slot takes no space. Global, because the
+     slot is created in code (hostSlot) and has no Svelte scoping class. */
+  :global(.login-prompt > slot[name='signup-options']::slotted(*)) {
+    margin-top: 4px;
+    align-self: center;
   }
 
   @keyframes loginPromptIn {

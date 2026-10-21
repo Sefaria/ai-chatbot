@@ -149,9 +149,35 @@ export class AssistantPage {
     return this.loginPrompt.getByText(t('assistant.anon.limit_reached'), { exact: true });
   }
 
-  /** "Log in or sign up"; it may be a link or a button. */
-  get loginButton() {
-    return this.loginPrompt.locator('a, button').filter({ hasText: t('assistant.anon.login_button') });
+  /** Links or buttons of the widget's own inside the prompt (not the host's options). */
+  get loginPromptControls() {
+    return this.loginPrompt.locator('a, button');
+  }
+
+  /**
+   * The host page's sign-up options for the prompt: its own elements, children
+   * of <lc-chatbot> in the `signup-options` slot, not inside the shadow root.
+   */
+  get hostSignupOptions() {
+    return this.page.locator('lc-chatbot > [slot="signup-options"]');
+  }
+
+  /** Act as the host page: put a sign-up button in the prompt's slot. */
+  async addHostSignupOptions() {
+    await this.host.evaluate((host) => {
+      const options = document.createElement('div');
+      options.slot = 'signup-options';
+      options.innerHTML = '<button type="button">Sign up</button>';
+      options.querySelector('button').addEventListener('click', () => {
+        window.hostSignupClicks = (window.hostSignupClicks || 0) + 1;
+      });
+      host.append(options);
+    });
+  }
+
+  /** How many times the host's sign-up button was clicked. */
+  async hostSignupClicks() {
+    return this.page.evaluate(() => window.hostSignupClicks || 0);
   }
 
   /** Whether keyboard focus (followed into shadow roots) is inside the login prompt. */

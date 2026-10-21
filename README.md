@@ -53,6 +53,12 @@ Visit `http://localhost:5173` for the local widget. It opens logged out; add `?u
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
 
+### Slots
+
+| Slot | Description |
+|------|-------------|
+| `signup-options` | The host page's sign-up options, shown under the text of the login prompt (a logged-out visitor who used up their free answers), centred. Put them in a child element: `<lc-chatbot><div slot="signup-options">…</div></lc-chatbot>`. They stay in the host page's DOM, so its own styles and scripts apply. With no such child, the prompt shows its text only |
+
 Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
 
 ## API
@@ -101,7 +107,7 @@ pytest           # Run tests
 | `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
-| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection and the login button of the logged-out login prompt. Empty by default; `.env.example` sets localhost, and the Playwright tests set it themselves |
+| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection. Empty by default; `.env.example` sets localhost |
 
 Create a `.env` file in the `server/` directory with backend API keys. For frontend-only local values, copy root `.env.example` to `.env.local`.
 
