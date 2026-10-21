@@ -20,6 +20,11 @@
   import { flushSync, tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
+  import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
+  import { sheetDrag } from '../lib/sheetDrag.js';
+  import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
+  import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
+  import AskLauncher from './AskLauncher.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import TopicAppetizer from './TopicAppetizer.svelte';
@@ -83,6 +88,9 @@
   let stopErrors = $state({});
   let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
   let isLoadingHistory = $state(false);
+  // A chat picked in History is loading: the open one hides meanwhile (see openConversation)
+  let isOpeningConversation = $state(false);
+  let visibleMessages = $derived(isOpeningConversation ? [] : messages);
   // Only the server can say a session has older messages, so assume none until it does
   // (a new chat, a logged-out visitor, or messages carried over after logging in)
   let hasMoreHistory = $state(false);
@@ -214,6 +222,9 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+  let panelRef = $state(null);
+  // Phones: what had focus when the sheet opened (the pill, or the host's own button)
+  let sheetOpener = null;
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
@@ -246,13 +257,8 @@
   const FULLSCREEN_QUERY = '(max-width: 600px), (max-height: 500px)';
   let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
-  let viewportBox = $state(null);
-  // Phones: the on-screen keyboard's height, once seen
-  let keyboardHeight = 0;
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
-  // The pill's label for each host source that relabels it (chatbot:launcher)
-  const LAUNCHER_LABELS = { search_no_results: 'assistant.floating_button.search_label' };
   let launcherLabel = $derived(launcherOverride ? $_(LAUNCHER_LABELS[launcherOverride.source]) : '');
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
@@ -260,15 +266,12 @@
   // Where the chat was scrolled, so reopening the assistant returns there
   let lastScroll = null;
 
-  // Phones: drag the sheet down by its header to close it. A long drag or a quick flick closes.
-  const SHEET_CLOSE_DISTANCE = 120;
-  const SHEET_CLOSE_VELOCITY = 0.5; // px/ms
+  // Phones: how far the sheet is dragged down by its header (lib/sheetDrag.js)
   let sheetOffset = $state(0);
   let sheetSettling = $state(false);
-  let sheetDrag = null;
   // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
   let sheetStyle = $derived(
-    (viewportBox ? `top: ${viewportBox.top}px; height: ${viewportBox.height}px;` : '') +
+    (keyboard.box ? `top: ${keyboard.box.top}px; height: ${keyboard.box.height}px;` : '') +
     (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
   );
 
@@ -357,24 +360,6 @@
     let cancelled = false;
     tick().then(() => { if (!cancelled) sizePrompt(element); });
     return () => { cancelled = true; };
-  });
-
-  // Phones: when the chat area changes height (the keyboard opens or closes, the text box grows),
-  // keep what was just above the text box in place instead of letting it slide under it
-  $effect(() => {
-    const el = messageListRef;
-    if (!el || !isFullscreen) return;
-    let previous = el.clientHeight;
-    const observer = new ResizeObserver(() => {
-      const delta = previous - el.clientHeight;
-      // A hidden list (sheet closed) measures 0: just remember the new height
-      if (delta && previous && el.clientHeight && !scrollingToEnd) {
-        el.scrollTo({ top: el.scrollTop + delta, behavior: 'instant' });
-      }
-      previous = el.clientHeight;
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
   });
 
   // Save draft on input change
@@ -588,7 +573,13 @@
 
     if (isFullscreen) {
       pushSheetEntry(onSheetPopped);
-      return; // no autofocus: the keyboard would cover the conversation
+      // Focus the sheet, not the text box (the keyboard would cover the conversation), so focus
+      // and screen readers move off the page it covers
+      sheetOpener = document.activeElement;
+      setTimeout(() => {
+        panelRef?.focus({ preventScroll: true });
+      }, 100);
+      return;
     }
 
     // Focus input after panel opens
@@ -600,43 +591,21 @@
 
   function closePanel() {
     if (messageListRef) lastScroll = { sessionId, top: messageListRef.scrollTop };
+    // Phones: focus in the sheet goes back to what opened it: the pill (redrawn on close), or
+    // the host's button
+    const root = panelRef?.getRootNode();
+    if (isFullscreen && panelRef?.contains(root.activeElement)) {
+      const opener = sheetOpener;
+      tick().then(() => {
+        if (opener === $host()) root.querySelector('.lc-chatbot-ask')?.focus();
+        else if (opener?.isConnected) opener.focus();
+      });
+    }
     isOpen = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
     popSheetEntry();
-  }
-
-  function startSheetDrag(e) {
-    if (!isFullscreen || e.button > 0 || e.target.closest('button, a, input')) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    sheetDrag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
-    sheetSettling = false;
-  }
-
-  function moveSheetDrag(e) {
-    if (!sheetDrag) return;
-    const dt = e.timeStamp - sheetDrag.lastT;
-    if (dt > 0) sheetDrag.velocity = (e.clientY - sheetDrag.lastY) / dt;
-    sheetDrag.lastY = e.clientY;
-    sheetDrag.lastT = e.timeStamp;
-    sheetOffset = Math.max(0, e.clientY - sheetDrag.startY);
-  }
-
-  function endSheetDrag(e) {
-    if (!sheetDrag) return;
-    // A flick counts only if the finger was still moving when it lifted
-    const moving = e.timeStamp - sheetDrag.lastT < 100;
-    const flicked = moving && sheetOffset > 20 && sheetDrag.velocity > SHEET_CLOSE_VELOCITY;
-    const shouldClose = sheetOffset > SHEET_CLOSE_DISTANCE || flicked;
-    sheetDrag = null;
-    sheetSettling = true;
-    sheetOffset = shouldClose ? window.innerHeight : 0;
-    setTimeout(() => {
-      if (shouldClose) closePanel();
-      sheetOffset = 0;
-      sheetSettling = false;
-    }, 200);
   }
 
   // Back pressed, or the UI closed the sheet and its pop has landed.
@@ -664,93 +633,24 @@
 
   $effect(() => {
     const query = window.matchMedia(FULLSCREEN_QUERY);
-    const sync = () => { isFullscreen = query.matches; };
+    const sync = () => {
+      isFullscreen = query.matches;
+      // An open panel that becomes the sheet gets its history entry too, so Back closes it
+      if (isFullscreen && isOpen) pushSheetEntry(onSheetPopped);
+    };
     query.addEventListener('change', sync);
     return () => query.removeEventListener('change', sync);
   });
 
-  // While the sheet is open, lock the page behind it and track the visual viewport, so
-  // a focused field stays above the on-screen keyboard. Only a field in the sheet counts:
-  // opening from a host search box leaves that keyboard closing, and sizing the sheet to
-  // it would leave the sheet stuck part-way up the screen.
-  $effect(() => {
-    if (!isFullscreen || !isOpen) return;
-    const root = document.documentElement;
-    const overflow = root.style.overflow;
-    root.style.overflow = 'hidden';
-    const vv = window.visualViewport;
-    const sync = () => {
-      const typing = inputRef?.getRootNode().activeElement?.matches('input, textarea');
-      if (typing) {
-        viewportBox = { top: vv.offsetTop, height: vv.height };
-        if (vv.height < window.innerHeight) keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
-      }
-      else viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
-    };
-    // iOS reports the keyboard closing only ~0.5s after the text box loses focus, so the sheet
-    // sat above the empty space. Give it the full height as soon as typing stops; when a tap
-    // ended it (e.g. on Send), only once that tap's click has landed, since iOS fires the click
-    // after the blur and moving Send first would lose it.
-    const shadow = inputRef?.getRootNode();
-    let lastTouchEnd = -Infinity;
-    let stopTimer;
-    const noteTouchEnd = (e) => { lastTouchEnd = e.timeStamp; };
-    const grow = () => {
-      clearTimeout(stopTimer);
-      shadow?.removeEventListener('click', grow);
-      if (inputRef?.getRootNode().activeElement?.matches('input, textarea')) return;
-      viewportBox = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
-    };
-    const stopTyping = (e) => {
-      if (e.relatedTarget?.matches?.('input, textarea')) return;
-      clearTimeout(stopTimer);
-      if (e.timeStamp - lastTouchEnd < 300) {
-        shadow?.addEventListener('click', grow, { once: true });
-        stopTimer = setTimeout(grow, 400); // the tap may have been a drag, with no click
-      } else stopTimer = setTimeout(grow);
-    };
-    if (vv) {
-      sync();
-      vv.addEventListener('resize', sync);
-      vv.addEventListener('scroll', sync);
-      shadow?.addEventListener('focusout', stopTyping);
-      shadow?.addEventListener('touchend', noteTouchEnd, { capture: true });
-    }
-    return () => {
-      root.style.overflow = overflow;
-      vv?.removeEventListener('resize', sync);
-      vv?.removeEventListener('scroll', sync);
-      shadow?.removeEventListener('focusout', stopTyping);
-      shadow?.removeEventListener('touchend', noteTouchEnd, { capture: true });
-      shadow?.removeEventListener('click', grow);
-      clearTimeout(stopTimer);
-      viewportBox = null;
-    };
-  });
-
-  // Phones: iOS scrolls the page to keep a focused field above the keyboard, and animates that
-  // scroll after it has already reported the final viewport, so the sheet dropped and climbed back.
-  // Making room before the keyboard opens leaves iOS nothing to scroll.
-  let inputTouchY = 0;
-  function makeRoomForKeyboard(e) {
-    const vv = window.visualViewport;
-    if (!isFullscreen || !vv || inputRef.disabled || inputRef.getRootNode().activeElement === inputRef) return;
-    if (Math.abs(e.changedTouches[0].clientY - inputTouchY) > 10) return; // a drag, not a tap
-    e.preventDefault(); // we focus it ourselves, once the sheet is out of the keyboard's way
-    const room = keyboardHeight || Math.round(window.innerHeight / 2);
-    viewportBox = { top: 0, height: window.innerHeight - room };
-    flushSync();
-    inputRef.focus({ preventScroll: true });
-    // No on-screen keyboard came (e.g. a hardware keyboard): give the room back
-    setTimeout(() => {
-      if (isOpen && vv.height >= window.innerHeight) viewportBox = { top: vv.offsetTop, height: vv.height };
-    }, 600);
-  }
+  // Phones: lock the page behind the sheet, and keep the sheet above the keyboard
+  const keyboard = keyboardViewport(() => inputRef, () => isFullscreen && isOpen);
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
   async function askInNewChat(question) {
     question = question.trim();
+    // Phones: History covers the chat, and would hide the question and its answer
+    if (question && isFullscreen) showHistoryPanel = false;
     if (question && messages.length > 0) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
@@ -759,24 +659,22 @@
     handleSend();
   }
 
-  // Hosts can open the assistant from their own UI, e.g. Sefaria's mobile menu,
-  // and can pass a question to ask, e.g. from their search box.
-  $effect(() => {
-    function onOpenRequest(e) {
+  // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
+  $effect(() => listenToHost({
+    onOpen(detail) {
       // The page's own link to the relabelled launcher's question (e.g. the no-results text)
       // acts as a launcher click: the question is asked once, whichever is clicked first
-      const d = e.detail;
-      if (d?.question && launcherOverride?.source === d.source && launcherOverride.question === d.question) {
+      if (detail?.question && launcherOverride?.source === detail.source && launcherOverride.question === detail.question) {
         askFromLauncher();
         return;
       }
-      trackAssistantClick(e.detail?.source || 'host_open');
-      if (e.detail?.question) askInNewChat(e.detail.question);
+      trackAssistantClick(detail?.source || 'host_open');
+      if (detail?.question) askInNewChat(detail.question);
       else if (!isOpen) openPanel();
-    }
-    document.addEventListener('chatbot:open', onOpenRequest);
-    return () => document.removeEventListener('chatbot:open', onOpenRequest);
-  });
+    },
+    getLauncher: () => launcherOverride,
+    setLauncher: (launcher) => { launcherOverride = launcher; }
+  }));
 
   // The host's question is asked once per page: closing and reopening from the same pill
   // goes back to that chat instead of asking it again
@@ -795,33 +693,6 @@
     }
   }
 
-  // A host page can turn the closed launcher into a page-specific action, e.g. Sefaria's
-  // search no-results page: "✦ Search with Library Assistant", asking about the search.
-  // detail = { source, question }, or null to go back to the "✦ Ask" pill. The widget owns the
-  // label (so it's translated with the rest of the assistant): known sources map to one below.
-  $effect(() => {
-    // Going back to "✦ Ask" waits a moment: moving between two no-results tabs, the old page
-    // resets the pill just before the new one relabels it, and the pill shouldn't flicker
-    let resetTimer;
-    function onLauncher(e) {
-      const d = e.detail;
-      clearTimeout(resetTimer);
-      if (d?.source && LAUNCHER_LABELS[d.source]) {
-        const question = d.question || '';
-        // Same page again (e.g. another empty tab of the same search): keep whether it was asked
-        const asked = launcherOverride?.source === d.source && launcherOverride.question === question && launcherOverride.asked;
-        launcherOverride = { source: d.source, question, asked };
-      } else {
-        resetTimer = setTimeout(() => { launcherOverride = null; }, 50);
-      }
-    }
-    document.addEventListener('chatbot:launcher', onLauncher);
-    return () => {
-      clearTimeout(resetTimer);
-      document.removeEventListener('chatbot:launcher', onLauncher);
-    };
-  });
-
   function toggleMode() {
     const newMode = mode === 'floating' ? 'docked' : 'floating';
     mode = newMode;
@@ -838,6 +709,7 @@
     sessionId = newSessionId;
     messages = [];
     inputText = '';
+    isOpeningConversation = false;
     isLoadingHistory = false;
     hasMoreHistory = false;
 
@@ -1004,23 +876,6 @@
   }
 
   /** Svelte action: focus the input and place the cursor/scroll at the end of its text. */
-  // When the pill's label changes (Ask ↔ a host label), it grows or shrinks to the new width
-  // over 200ms instead of jumping. No motion with reduced motion.
-  function animateWidth(node) {
-    let width = node.offsetWidth;
-    return {
-      async update() {
-        const from = width;
-        await tick(); // measure once the new label is in place
-        width = node.offsetWidth;
-        if (!from || from === width || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-        node.style.overflow = 'hidden';
-        node.animate([{ width: `${from}px` }, { width: `${width}px` }], { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)' })
-          .finished.finally(() => { node.style.overflow = ''; });
-      }
-    };
-  }
-
   function focusEnd(node) {
     node.focus();
     const end = node.value.length;
@@ -1144,16 +999,18 @@
     let payload = conversationCache[conversation.sessionId];
     const cached = !!payload;
     if (!payload) {
-      // The open chat clears while the picked one loads, so it doesn't show in its place
-      const previousMessages = messages;
-      messages = [];
+      // The open chat hides while the picked one loads, so it doesn't show in its place. Its
+      // messages stay put until the switch: a reply still arriving for it is saved onto them.
+      isOpeningConversation = true;
       isLoadingHistory = true;
       try {
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
+        // Another chat was picked meanwhile: what shows is now up to that one
+        if (navigation !== conversationNavigation) return;
         historyError = '';
-        messages = previousMessages;
+        isOpeningConversation = false;
         isLoadingHistory = false;
         return;
       }
@@ -1171,6 +1028,7 @@
     stopThinkingMessages();
     if (activeRequests[sessionId] && !activeRequests[sessionId].stopping) startThinkingMessages();
     messages = uiMessages;
+    isOpeningConversation = false;
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
     isLoadingHistory = false;
@@ -1328,31 +1186,6 @@
     applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
-  // Phones: smoothly scroll to the end once the chat area has resized (its resize observer runs a
-  // frame later and would cut a smooth scroll short). Any momentum scroll is stopped first, since
-  // iOS ignores scroll changes made while one is still gliding, and the observer stands aside
-  // while the scroll runs (the keyboard closing after Send resizes the chat again).
-  let scrollingToEnd = false;
-  async function pinChatToBottom() {
-    scrollingToEnd = true; // from the start: the keyboard closing after Send would pull the chat up
-    await tick();
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const el = messageListRef;
-    if (!el) { scrollingToEnd = false; return; }
-    el.style.overflowY = 'hidden';
-    void el.offsetHeight; // apply it, which stops the glide
-    el.style.overflowY = '';
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    await new Promise(resolve => {
-      const done = () => { clearTimeout(timer); el.removeEventListener('scrollend', done); resolve(); };
-      const timer = setTimeout(done, 1000); // no scrollend if it was already there
-      el.addEventListener('scrollend', done);
-    });
-    scrollingToEnd = false;
-    // The chat grew or shrank under the scroll (e.g. the keyboard closing): finish the last bit
-    if (el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }
-
   async function restoreScroll(top) {
     await tick();
     messageListRef?.scrollTo({ top, behavior: 'instant' });
@@ -1428,7 +1261,7 @@
     messages = withStoppedTurns([...messages, userMessage]);
     saveMessagesToStorage();
     // Phones: the emptied text box shrinks right after, which would cut a smooth scroll short
-    if (isFullscreen) pinChatToBottom();
+    if (isFullscreen) pinChatToBottom(() => messageListRef);
     else scrollToBottom();
 
     appetizerData = null;
@@ -1588,7 +1421,7 @@
           inputText = text;
           // Phones: glide to the stop notice above the text box, once the restored question
           // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
-          if (isFullscreen) pinChatToBottom();
+          if (isFullscreen) pinChatToBottom(() => messageListRef);
         }
         track('assistant_response_stopped');
       } else {
@@ -2098,27 +1931,19 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    <!-- Launcher: a "✦ Ask" pill in the corner -->
-    <button aria-label={launcherLabel && !responseReady ? launcherLabel : $_(responseReady ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
-            class="lc-chatbot-ask" class:response-ready={responseReady}
-            use:animateWidth={launcherLabel}
-            onclick={() => askFromLauncher()}>
-      <!-- ✦ drawn as a shape: as text, its size depends on the host page's font -->
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
-      </svg>
-      <span>{launcherLabel || $_('assistant.floating_button.label')}</span>
-      {#if responseReady}<span class="trigger-badge" aria-hidden="true"></span>{/if}
-    </button>
+    <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
   {:else}
     <!-- Chat Panel -->
     <div 
+      bind:this={panelRef}
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
       class:sheet-lifted={sheetOffset > 0 || sheetSettling}
       style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
       role="dialog"
+      aria-modal={isFullscreen ? 'true' : undefined}
+      tabindex="-1"
       aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
@@ -2145,10 +1970,12 @@
       <header
         class="lc-chatbot-header"
         role="banner"
-        onpointerdown={startSheetDrag}
-        onpointermove={moveSheetDrag}
-        onpointerup={endSheetDrag}
-        onpointercancel={endSheetDrag}
+        use:sheetDrag={{
+          enabled: isFullscreen,
+          onMove: (offset) => { sheetOffset = offset; },
+          onSettle: (settling) => { sheetSettling = settling; },
+          onClose: closePanel
+        }}
       >
         {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
@@ -2433,6 +2260,7 @@
         class="lc-chatbot-messages"
         class:clearing={isClearing}
         bind:this={messageListRef}
+        use:keepAnchorOnResize={isFullscreen}
         onscroll={handleScroll}
         onwheel={handleWheel}
         ontouchmove={handleTouchMove}
@@ -2484,20 +2312,20 @@
         {#if isLoadingHistory}
           <!-- Lucide loader-circle, spinning as on lucide-animated.com: centered in an empty
                chat, at the top while older messages load above the open one -->
-          <div class="loading-indicator" class:centered={messages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
+          <div class="loading-indicator" class:centered={visibleMessages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
             <svg class="loading-spinner" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
           </div>
         {/if}
 
-        {#if messages.length === 0 && !isLoadingHistory}
+        {#if visibleMessages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
             {@render assistantBubble(getEmptyStateMessage(), false, null)}
           </div>
         {/if}
 
-        {#each messages as item (item.messageId)}
+        {#each visibleMessages as item (item.messageId)}
           {#if item.role === 'stopped'}
             {#if item.appetizerData || item.showNotice}
               <div class="message assistant no-entry-animation stopped-message">
@@ -2584,8 +2412,8 @@
           bind:this={inputRef}
           bind:value={inputText}
           onkeydown={handleKeydown}
-          ontouchstart={(e) => { inputTouchY = e.touches[0].clientY; }}
-          ontouchend={makeRoomForKeyboard}
+          ontouchstart={keyboard.onTouchStart}
+          ontouchend={keyboard.onTouchEnd}
           maxlength={effectiveMaxInputChars}
           placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
           aria-label={$_('assistant.input.aria')}
@@ -3007,8 +2835,10 @@
     line-height: 18px;
   }
 
-  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it */
-  .mode-fullscreen .message.user:is(:hover, :focus-within) .message-location-tag {
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it.
+     Same triggers as the desktop rule further down: not the pin itself, nor with Retry. */
+  .mode-fullscreen .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
+  .mode-fullscreen .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
     transform: translateY(22px);
   }
 
@@ -3244,93 +3074,6 @@
     border-radius: 0;
   }
 
-  /* Launcher color: purple, for the closed button only. Once open, the assistant keeps
-     the Sefaria blue theme (sefaria-design-foundations Core Brand/Purple scale). */
-  .lc-chatbot-container {
-    --purple-700: var(--mussar-purple, #7C416F); /* Sefaria-Project's --mussar-purple */
-    --purple-800: #653259;
-    --lc-entry-bg: var(--purple-700);
-    /* Hover and pressed share the darker step, like Sefaria's header Library Assistant pill */
-    --lc-entry-bg-hover: var(--purple-800);
-    --lc-entry-bg-pressed: var(--purple-800);
-  }
-
-  /* Launcher */
-  .lc-chatbot-ask {
-    display: flex;
-    align-items: center;
-    gap: var(--global-dimension-100);
-    height: 56px;
-    white-space: nowrap;
-    padding-inline: var(--global-dimension-250) var(--global-dimension-300);
-    background: var(--lc-entry-bg);
-    color: var(--core-base-white);
-    border: none;
-    border-radius: 9999px;
-    box-shadow: var(--lc-shadow);
-    font-family: var(--lc-font);
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  /* Hover only where it exists: on touch screens it would stick after the tap */
-  @media (hover: hover) {
-    .lc-chatbot-ask:hover {
-      background: var(--lc-entry-bg-hover);
-    }
-  }
-
-  .lc-chatbot-ask:active {
-    background: var(--lc-entry-bg-pressed);
-  }
-
-  /* A reply arrived while closed: a badge sits on the launcher, which nudges twice to
-     draw the eye. The badge pings with each nudge, then stays put, still. */
-  .response-ready {
-    position: relative;
-    animation: trigger-nudge 0.6s ease 2;
-  }
-
-  .trigger-badge {
-    position: absolute;
-    top: -2px;
-    inset-inline-start: -2px;
-    width: var(--global-dimension-150);
-    height: var(--global-dimension-150);
-    border-radius: 50%;
-    background: var(--lc-danger);
-    box-shadow: 0 0 0 2px var(--lc-bg);
-  }
-
-  .trigger-badge::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: var(--lc-danger);
-    animation: badge-ping 0.6s ease-out 2;
-  }
-
-  @keyframes trigger-nudge {
-    0%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-6px); }
-    70% { transform: translateY(0); }
-    85% { transform: translateY(-2px); }
-  }
-
-  @keyframes badge-ping {
-    0% { transform: scale(1); opacity: 0.6; }
-    100% { transform: scale(2.4); opacity: 0; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .response-ready,
-    .trigger-badge::after {
-      animation: none;
-    }
-  }
-
   .sr-only {
     position: absolute;
     width: 1px;
@@ -3341,6 +3084,11 @@
   }
 
   /* Chat Panel */
+  /* Focused only by code, to move focus into the sheet; its contents show their own focus */
+  .lc-chatbot-panel:focus {
+    outline: none;
+  }
+
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;
@@ -4178,11 +3926,6 @@
 
   .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
   .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
-    transform: translateY(18px);
-  }
-
-  .message.user:hover .message-location-tag,
-  .message.user:focus-within .message-location-tag {
     transform: translateY(18px);
   }
 
