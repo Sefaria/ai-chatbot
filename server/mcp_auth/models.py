@@ -72,7 +72,6 @@ class Grant(models.Model):
     sefaria_user_id = models.BigIntegerField(db_index=True)
     scope = models.CharField(max_length=200)
     refresh_token_hash = models.CharField(max_length=64, unique=True)
-    previous_refresh_token_hash = models.CharField(max_length=64, blank=True, db_index=True)
     refresh_expires_at = models.DateTimeField()
     absolute_expires_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True)
@@ -88,11 +87,29 @@ class Grant(models.Model):
             and now < self.absolute_expires_at
         )
 
+    @classmethod
+    def for_refresh_token(cls, token: str) -> tuple["Grant | None", bool]:
+        """The grant a refresh token belongs to, and whether it is the current one.
+
+        A rotated-out token still identifies its grant (RFC 9700 4.14.2), so its
+        replay or revocation can end the whole family.
+        """
+        token_hash = hash_secret(token or "-")
+        grant = cls.objects.select_related("client").filter(refresh_token_hash=token_hash).first()
+        if grant is not None:
+            return grant, True
+        consumed = (
+            ConsumedRefreshToken.objects.select_related("grant")
+            .filter(token_hash=token_hash)
+            .first()
+        )
+        return (consumed.grant, False) if consumed else (None, False)
+
     def rotate_refresh_token(self) -> str:
-        """Issue a new refresh token, keeping the old hash to detect its reuse."""
+        """Issue a new refresh token, recording the old one to detect its reuse."""
         token = new_secret()
         now = timezone.now()
-        self.previous_refresh_token_hash = self.refresh_token_hash
+        ConsumedRefreshToken.objects.create(grant=self, token_hash=self.refresh_token_hash)
         self.refresh_token_hash = hash_secret(token)
         self.refresh_expires_at = min(now + REFRESH_TOKEN_IDLE_TTL, self.absolute_expires_at)
         self.last_used_at = now
@@ -102,3 +119,10 @@ class Grant(models.Model):
         if self.revoked_at is None:
             self.revoked_at = timezone.now()
             self.save(update_fields=["revoked_at"])
+
+
+class ConsumedRefreshToken(models.Model):
+    """A refresh token already rotated out of its grant. Presenting one again revokes the grant."""
+
+    grant = models.ForeignKey(Grant, on_delete=models.CASCADE, related_name="consumed_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)

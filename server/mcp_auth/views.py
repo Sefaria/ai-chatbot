@@ -449,19 +449,18 @@ def _exchange_code(params) -> JsonResponse:
 
 
 def _refresh(params) -> JsonResponse:
-    token_hash = hash_secret(params.get("refresh_token", "") or "-")
     with transaction.atomic():
-        grant = (
-            Grant.objects.select_for_update()
-            .select_related("client")
-            .filter(refresh_token_hash=token_hash)
-            .first()
-        )
+        grant, current = Grant.for_refresh_token(params.get("refresh_token", ""))
         if grant is None:
-            reused = Grant.objects.filter(previous_refresh_token_hash=token_hash).first()
-            if reused is not None:
-                # An already-rotated refresh token came back: assume it was stolen.
-                reused.revoke()
+            return _token_error("invalid_grant", "Unknown refresh token.")
+        if not current:
+            # A rotated-out token came back: assume the family was stolen and end it.
+            grant.revoke()
+            return _token_error("invalid_grant", "Unknown refresh token.")
+        grant = Grant.objects.select_for_update().select_related("client").get(pk=grant.pk)
+        if grant.refresh_token_hash != hash_secret(params.get("refresh_token", "")):
+            # Another request rotated this token while we waited for the lock: a replay.
+            grant.revoke()
             return _token_error("invalid_grant", "Unknown refresh token.")
         if not grant.active:
             return _token_error("invalid_grant", "This sign-in has expired or was revoked.")
@@ -487,9 +486,7 @@ def token(request: HttpRequest) -> JsonResponse:
 @require_POST
 def revoke(request: HttpRequest) -> HttpResponse:
     """RFC 7009. Revokes the grant behind a refresh token; always 200, as the RFC requires."""
-    value = request.POST.get("token", "")
-    if value:
-        grant = Grant.objects.filter(refresh_token_hash=hash_secret(value)).first()
-        if grant is not None:
-            grant.revoke()
+    grant, _ = Grant.for_refresh_token(request.POST.get("token", ""))
+    if grant is not None:
+        grant.revoke()
     return HttpResponse(status=200)

@@ -406,6 +406,25 @@ def test_refresh_rotates_and_detects_reuse():
     assert refresh(api, cid, second["refresh_token"]).json()["error"] == "invalid_grant"
 
 
+def test_replaying_any_older_token_revokes_the_family():
+    """RFC 9700 4.14.2: rotation history is kept for the grant's life, not just one step."""
+    cid, r0 = full_flow()
+    api = Client()
+    r1 = refresh(api, cid, r0["refresh_token"]).json()
+    r2 = refresh(api, cid, r1["refresh_token"]).json()
+
+    assert refresh(api, cid, r0["refresh_token"]).json()["error"] == "invalid_grant"
+    assert refresh(api, cid, r2["refresh_token"]).json()["error"] == "invalid_grant"
+
+
+def test_revoking_a_rotated_token_revokes_its_descendants():
+    cid, r0 = full_flow()
+    api = Client()
+    r1 = refresh(api, cid, r0["refresh_token"]).json()
+    assert api.post("/oauth/revoke", {"token": r0["refresh_token"]}).status_code == 200
+    assert refresh(api, cid, r1["refresh_token"]).json()["error"] == "invalid_grant"
+
+
 def test_refresh_requires_the_same_client():
     cid, first = full_flow()
     other = client_id(Client())
