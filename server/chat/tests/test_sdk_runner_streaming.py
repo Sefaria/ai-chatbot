@@ -118,9 +118,91 @@ def test_first_final_text_delta_uses_last_text_message_before_result(monkeypatch
 
     result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
 
-    assert result.final_text == "Let me checkI will searchFinal answer"
+    # "Let me check" precedes no tool call, so it would be the final answer if
+    # nothing followed -- but "I will search" is itself followed by a tool_use
+    # block, so it (and everything before it) gets discarded once that's seen.
+    # Only text after the *last* tool call -- "Final answer" -- survives.
+    assert result.final_text == "Final answer"
     assert result.llm_call_count == 3
     assert result.first_final_text_delta_elapsed_s == 10.0
+
+
+def test_final_text_discards_a_complete_sounding_answer_before_a_later_tool_call():
+    """Regression test for a real production bug: the model can write what reads
+    as a whole, complete answer, then decide to call *another* tool and write a
+    second, different complete answer. Naively concatenating every message's
+    text (the old behavior) produced both answers glued together. Only the
+    text after the last tool call is the real final answer.
+    """
+
+    class TwoToolRoundsClient(FakeClient):
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Let me check the calendar."},
+                    {"type": "tool_use", "name": "get_current_calendar", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33. It concerns blemishes.",
+                    },
+                    {"type": "tool_use", "name": "semantic_search", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33, with linked sources.",
+                    }
+                ]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TwoToolRoundsClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.final_text == "Today's Daf Yomi is Bekhorot 33, with linked sources."
+
+
+def test_final_text_still_concatenates_a_final_answer_split_across_messages():
+    """Not every tool-less message after the last tool call is narration -- a
+    long final answer can legitimately arrive split across multiple messages
+    (e.g. the SDK continuing past a length limit) with no tool call in
+    between. Those must still be concatenated, not overwritten.
+    """
+
+    class SplitFinalAnswerClient(FakeClient):
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Searching."},
+                    {"type": "tool_use", "name": "semantic_search", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(content=[{"type": "text", "text": "Part one. "}])
+            yield FakeAssistantMessage(content=[{"type": "text", "text": "Part two."}])
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=SplitFinalAnswerClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.final_text == "Part one. Part two."
 
 
 def test_first_final_text_delta_callback_waits_for_final_text():
