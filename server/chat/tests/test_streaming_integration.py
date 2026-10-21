@@ -1169,6 +1169,103 @@ class TestChatClientEventV2:
 
 
 @pytest.mark.django_db
+class TestChatFeedbackV2:
+    """Feedback is authenticated and only accepted for sessions the actor owns."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def feedback_payload(self):
+        def build(user_token, session_id):
+            return {
+                "traceId": "trace_fb_1",
+                "score": "up",
+                "userId": user_token,
+                "sessionId": session_id,
+                "messageId": "msg_fb_1",
+                "comment": "",
+                "feedbackReason": "",
+            }
+
+        return build
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_invalid_token_returns_401_and_skips_logging(
+        self, mock_get_bt_logger, client, feedback_payload
+    ):
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload("not-a-valid-token", "sess_fb_invalid"),
+            format="json",
+        )
+
+        assert response.status_code == 401
+        assert response.data["error"] == "invalid_userId"
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_other_users_session_returns_403_and_skips_logging(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        ChatSession.objects.create(session_id="sess_fb_other", user_id="user_fb_other")
+
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_other"),
+            format="json",
+        )
+
+        assert response.status_code == 403
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_unknown_session_returns_403(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_missing"),
+            format="json",
+        )
+
+        assert response.status_code == 403
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_own_session_is_logged_with_authenticated_user_id(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        ChatSession.objects.create(session_id="sess_fb_own", user_id="user_fb_owner")
+        bt_logger = MagicMock()
+        mock_get_bt_logger.return_value = bt_logger
+
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_own"),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data == {"success": True}
+        bt_logger.update_span.assert_called_once()
+        assert bt_logger.update_span.call_args.kwargs["id"] == "trace_fb_1"
+        metadata = bt_logger.update_span.call_args.kwargs["metadata"]
+        assert metadata["user_id"] == "user_fb_owner"
+        assert metadata["session_id"] == "sess_fb_own"
+        assert metadata["feedback"] == "up"
+
+
+@pytest.mark.django_db
 class TestComputeTurnCount:
     """Tests for _compute_turn_count and turn_number derivation."""
 
