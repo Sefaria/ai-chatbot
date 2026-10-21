@@ -42,6 +42,13 @@ SUPPORTED_SCOPES = {access_tokens.SCOPE}
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 MAX_REDIRECT_URIS = 10
+MAX_REDIRECT_URI_LENGTH = 2000
+MAX_REGISTRATION_BYTES = 8000
+# Registration and authorization are anonymous, and each writes a row. These global
+# ceilings bound how fast the tables can grow without trusting any client address.
+MAX_NEW_CLIENTS_PER_HOUR = 500
+MAX_PENDING_AUTHORIZATIONS = 2000
+UNUSED_CLIENT_TTL = timedelta(days=1)
 BINDING_COOKIE_PREFIX = "mcp_oauth_"
 
 
@@ -77,6 +84,8 @@ def _disabled_response() -> JsonResponse:
 
 def valid_redirect_uri(uri: str) -> bool:
     """https anywhere, or http on a loopback host for desktop clients (RFC 8252)."""
+    if len(uri) > MAX_REDIRECT_URI_LENGTH:
+        return False
     try:
         parts = urlsplit(uri)
     except ValueError:
@@ -130,6 +139,12 @@ def _page(request: HttpRequest, template: str, context: dict, status: int = 200)
 
 def _error_page(request: HttpRequest, message: str, status: int = 400) -> HttpResponse:
     return _page(request, "error.html", {"message": message}, status=status)
+
+
+def _too_busy() -> JsonResponse:
+    response = JsonResponse({"error": "temporarily_unavailable"}, status=429)
+    response["Retry-After"] = "60"
+    return response
 
 
 def _token_error(error: str, description: str = "", status: int = 400) -> JsonResponse:
@@ -192,6 +207,8 @@ def register(request: HttpRequest) -> JsonResponse:
     """RFC 7591 dynamic client registration, for public clients only."""
     if not _enabled():
         return _disabled_response()
+    if len(request.body) > MAX_REGISTRATION_BYTES:
+        return _token_error("invalid_client_metadata", "Registration body is too large.")
     try:
         body = json.loads(request.body or b"{}")
     except ValueError:
@@ -212,6 +229,15 @@ def register(request: HttpRequest) -> JsonResponse:
         return _token_error(
             "invalid_client_metadata", "Only public clients are supported (auth method 'none')."
         )
+
+    now = timezone.now()
+    # Clients that never completed a sign-in are dead weight once a day old.
+    OAuthClient.objects.filter(created_at__lt=now - UNUSED_CLIENT_TTL, grant__isnull=True).delete()
+    if (
+        OAuthClient.objects.filter(created_at__gte=now - timedelta(hours=1)).count()
+        >= MAX_NEW_CLIENTS_PER_HOUR
+    ):
+        return _too_busy()
 
     client = OAuthClient.objects.create(
         client_name=str(body.get("client_name") or "")[:200], redirect_uris=redirect_uris
@@ -269,9 +295,15 @@ def authorize(request: HttpRequest) -> HttpResponse:
     if resource and resource.rstrip("/") != resource_url():
         return fail("invalid_target", f"This server only issues tokens for {resource_url()}.")
 
+    now = timezone.now()
     AuthorizationRequest.objects.filter(
-        created_at__lt=timezone.now() - AUTHORIZATION_REQUEST_TTL - timedelta(days=1)
+        created_at__lt=now - AUTHORIZATION_REQUEST_TTL - timedelta(days=1)
     ).delete()
+    if (
+        AuthorizationRequest.objects.filter(created_at__gte=now - AUTHORIZATION_REQUEST_TTL).count()
+        >= MAX_PENDING_AUTHORIZATIONS
+    ):
+        return _error_page(request, "Sign-in is busy right now. Try again in a minute.", status=429)
 
     binding = new_secret()
     auth_request = AuthorizationRequest.objects.create(

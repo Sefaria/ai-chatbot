@@ -32,7 +32,7 @@ class OAuthClient(models.Model):
     client_id = models.CharField(max_length=64, unique=True, default=new_secret)
     client_name = models.CharField(max_length=200, blank=True)
     redirect_uris = models.JSONField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self) -> str:
         return self.client_name or self.client_id
@@ -57,7 +57,7 @@ class AuthorizationRequest(models.Model):
     code_hash = models.CharField(max_length=64, null=True, unique=True)
     code_expires_at = models.DateTimeField(null=True)
     grant = models.ForeignKey("Grant", null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     @property
     def expired(self) -> bool:

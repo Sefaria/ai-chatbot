@@ -454,3 +454,48 @@ def test_revoke_ends_the_grant():
 def test_unsupported_grant_type():
     response = Client().post("/oauth/token", {"grant_type": "password"})
     assert response.json()["error"] == "unsupported_grant_type"
+
+
+# ---------------------------------------------------------------------------
+# Bounds on anonymous writes
+# ---------------------------------------------------------------------------
+
+
+def test_registration_rejects_oversized_metadata():
+    assert register(Client(), client_name="x" * 9000).status_code == 400
+    long_uri = "https://claude.ai/" + "a" * 2100
+    assert register(Client(), redirect_uris=[long_uri]).json()["error"] == "invalid_redirect_uri"
+
+
+def test_registration_has_a_global_hourly_ceiling(monkeypatch):
+    from mcp_auth import views
+
+    monkeypatch.setattr(views, "MAX_NEW_CLIENTS_PER_HOUR", 2)
+    assert register(Client()).status_code == 201
+    assert register(Client()).status_code == 201
+    busy = register(Client())
+    assert busy.status_code == 429
+    assert busy["Retry-After"] == "60"
+
+
+def test_registration_clears_clients_that_never_signed_in():
+    from mcp_auth.models import OAuthClient
+
+    stale = client_id(Client())
+    cid, _ = full_flow()  # completed a sign-in, so it has a grant
+    OAuthClient.objects.update(created_at=timezone.now() - timedelta(days=2))
+
+    client_id(Client())
+
+    ids = set(OAuthClient.objects.values_list("client_id", flat=True))
+    assert stale not in ids
+    assert cid in ids
+
+
+def test_pending_authorizations_have_a_global_ceiling(monkeypatch):
+    from mcp_auth import views
+
+    monkeypatch.setattr(views, "MAX_PENDING_AUTHORIZATIONS", 1)
+    cid = client_id(Client())
+    assert authorize(Client(), cid).status_code == 302
+    assert authorize(Client(), cid).status_code == 429
