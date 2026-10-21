@@ -42,5 +42,8 @@ export const STORAGE_KEYS = {
   MESSAGES: 'messages',
   PROMPT_SLUGS: 'prompt_slugs',
   BOT_VERSION: 'bot_version',
-  HAS_USED: 'has_used'
+  HAS_USED: 'has_used',
+  // Whether the signed-in user had saved chats last time history loaded, so its search
+  // button starts out enabled or disabled before the list arrives
+  HAS_CONVERSATIONS: 'has_conversations'
 };
