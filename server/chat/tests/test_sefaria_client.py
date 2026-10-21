@@ -885,3 +885,206 @@ class TestUserAgent:
 
         with override_settings(ENVIRONMENT="  (pr\nod)  "):
             assert _user_agent() == "Sefaria/library-assistant (prod)"
+
+
+class TestGetManuscriptImageUrlValidation:
+    """get_manuscript_image must only fetch manuscript images from allowed hosts."""
+
+    ALLOWED_URL = "https://manuscripts.sefaria.org/leningrad-color/BIB_LENCDX_F001B.jpg"
+    MAX_BYTES = 20 * 1024 * 1024
+
+    @pytest.fixture(autouse=True)
+    def _stub_dns(self):
+        """Resolve the allowed host to a public address so tests never touch the network."""
+        with patch(
+            "chat.V2.agent.sefaria_client._resolve_host_addresses",
+            AsyncMock(return_value=["93.184.216.34"]),
+        ) as stub:
+            self.resolve = stub
+            yield stub
+
+    @pytest.mark.asyncio
+    async def test_rejects_allowed_host_resolving_to_private_address(self, client):
+        self.resolve.return_value = ["10.1.2.3"]
+        mock_client = self._client_with()
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
+        mock_client.stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_unresolvable_allowed_host(self, client):
+        self.resolve.side_effect = OSError("no such host")
+        mock_client = self._client_with()
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
+        mock_client.stream.assert_not_called()
+
+    @staticmethod
+    def _response(status_code=200, content=b"img", headers=None):
+        response = Mock()
+        response.status_code = status_code
+        response.headers = headers or {"content-type": "image/jpeg"}
+        response.raise_for_status = Mock()
+
+        async def aiter_bytes():
+            yield content
+
+        response.aiter_bytes = aiter_bytes
+        return response
+
+    @staticmethod
+    def _client_with(*responses):
+        """A client whose stream() yields the given responses in order (as async context managers)."""
+        contexts = []
+        for response in responses:
+            ctx = AsyncMock()
+            ctx.__aenter__.return_value = response
+            ctx.__aexit__.return_value = False
+            contexts.append(ctx)
+        mock_client = Mock()
+        mock_client.stream = Mock(side_effect=contexts)
+        return mock_client
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.5/internal.jpg",
+            "http://192.168.1.10/internal.jpg",
+            "http://127.0.0.1:8000/admin",
+            "http://[::1]/admin",
+            "https://manuscripts.sefaria.org.evil.example/a.jpg",
+            "https://evil.example/a.jpg",
+            "http://manuscripts.sefaria.org/leningrad-color/a.jpg",
+            "file:///etc/passwd",
+        ],
+    )
+    async def test_rejects_disallowed_urls_without_fetching(self, client, url):
+        mock_client = self._client_with()
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(url)
+        mock_client.stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_redirect_to_internal_address(self, client):
+        redirect = self._response(
+            status_code=302,
+            content=b"",
+            headers={"location": "http://169.254.169.254/latest/meta-data/"},
+        )
+        mock_client = self._client_with(redirect)
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
+        assert mock_client.stream.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_follows_redirect_to_allowed_host(self, client):
+        redirect = self._response(
+            status_code=301,
+            content=b"",
+            headers={"location": "https://manuscripts.sefaria.org/leningrad-color/other.jpg"},
+        )
+        final = self._response(content=b"pixels")
+        mock_client = self._client_with(redirect, final)
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            result = await client.get_manuscript_image(self.ALLOWED_URL)
+        assert result["success"] is True
+        assert result["size"] == len(b"pixels")
+        for call in mock_client.stream.call_args_list:
+            assert "follow_redirects" not in call.kwargs
+
+    @pytest.mark.asyncio
+    async def test_rejects_too_many_redirects(self, client):
+        responses = [
+            self._response(
+                status_code=302,
+                content=b"",
+                headers={"location": "https://manuscripts.sefaria.org/loop.jpg"},
+            )
+            for _ in range(20)
+        ]
+        mock_client = self._client_with(*responses)
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_image(self, client):
+        big = self._response(content=b"x" * (self.MAX_BYTES + 1))
+        mock_client = self._client_with(big)
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
+
+    @pytest.mark.asyncio
+    async def test_allowed_host_passes(self, client):
+        mock_client = self._client_with(self._response(content=b"pixels"))
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            result = await client.get_manuscript_image(self.ALLOWED_URL, "Leningrad Codex")
+        assert result["success"] is True
+        assert result["source_url"] == self.ALLOWED_URL
+        assert result["title"] == "Leningrad Codex"
+        call = mock_client.stream.call_args
+        assert call.args[1] == "https://93.184.216.34/leningrad-color/BIB_LENCDX_F001B.jpg"
+        assert call.kwargs["headers"]["Host"] == "manuscripts.sefaria.org"
+        assert call.kwargs["extensions"]["sni_hostname"] == "manuscripts.sefaria.org"
+
+    @pytest.mark.asyncio
+    async def test_connects_to_validated_address_not_rebound_dns(self, client):
+        """DNS answers after validation must not matter: the request targets the validated IP."""
+        answers = iter([["93.184.216.34"], ["10.0.0.5"]])
+        self.resolve.side_effect = lambda host: next(answers)
+        mock_client = self._client_with(self._response(content=b"pixels"))
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            await client.get_manuscript_image(self.ALLOWED_URL)
+        assert "10.0.0.5" not in mock_client.stream.call_args.args[1]
+        assert self.resolve.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_default_port(self, client):
+        mock_client = self._client_with()
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image("https://manuscripts.sefaria.org:8443/a.jpg")
+        mock_client.stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_oversized_stream_stops_being_consumed(self, client):
+        """Transport level: an endless body is abandoned shortly after the cap, not buffered."""
+        import httpx
+
+        chunk = b"x" * (1024 * 1024)
+        produced = 0
+
+        async def endless():
+            nonlocal produced
+            while True:
+                produced += 1
+                yield chunk
+
+        def handler(request):
+            return httpx.Response(200, content=endless(), headers={"content-type": "image/jpeg"})
+
+        real_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with patch.object(client, "_get_client", AsyncMock(return_value=real_client)):
+                with pytest.raises(ValueError):
+                    await client.get_manuscript_image(self.ALLOWED_URL)
+        finally:
+            await real_client.aclose()
+        assert produced <= self.MAX_BYTES // len(chunk) + 2
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_content_length_without_reading_body(self, client):
+        big = self._response(
+            headers={"content-type": "image/jpeg", "content-length": str(self.MAX_BYTES + 1)}
+        )
+        mock_client = self._client_with(big)
+        with patch.object(client, "_get_client", AsyncMock(return_value=mock_client)):
+            with pytest.raises(ValueError):
+                await client.get_manuscript_image(self.ALLOWED_URL)
