@@ -368,6 +368,27 @@ test.describe('Logged-out use of the assistant', () => {
     await expect(assistant.userMessages).toHaveCount(2);
   });
 
+  test('if keeping the conversation fails at login, the user starts fresh with their draft, and it is kept on the next visit', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { failedClaims: 1 });
+    await assistant.ask('A question while logged out');
+    await assistant.input.fill('A draft');
+
+    await assistant.logIn();
+    await assistant.open();
+
+    // A fresh conversation, not someone else's: the logged-out one wasn't moved yet.
+    await expect(assistant.userMessages).toHaveCount(0);
+    await expect(assistant.input).toHaveValue('A draft');
+
+    // The next visit tries again, and the logged-out conversation joins the history.
+    await assistant.logIn();
+    await assistant.open();
+    await assistant.openHistory();
+    await expect(assistant.historyConversations).toHaveCount(1);
+    await assistant.historyConversations.first().click();
+    await expect(assistant.userMessages.first()).toContainText('A question while logged out');
+  });
+
   test("after logging out, the user's conversation is gone", async ({ page, context }) => {
     await mockChatServer(context);
     const assistant = new AssistantPage(page);

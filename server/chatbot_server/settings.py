@@ -264,8 +264,11 @@ LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 # Sefaria API Configuration (optional)
 # ============================================================================
 # - SEFARIA_API_BASE_URL (default: https://www.sefaria.org)
-# - CHATBOT_ALLOWED_SEFARIA_HOSTS (default: none): Sefaria hosts a request may use
-#   instead, taken from its Origin, e.g. "*.cauldron.sefaria.org" on a dev deployment
+# - CHATBOT_ALLOWED_SEFARIA_HOSTS (default: none): the Sefaria pages this deployment
+#   serves, matched against a request's Origin: such a request uses that Sefaria, and
+#   only such requests may come from logged-out visitors (anonId). Production needs
+#   "www.sefaria.org,www.sefaria.org.il"; a dev deployment can add
+#   "*.cauldron.sefaria.org". Unset means no logged-out visitors at all
 #   (see chat/sefaria_base_url.py)
 # - SEFARIA_AI_TOKEN (for authenticated semantic search requests)
 

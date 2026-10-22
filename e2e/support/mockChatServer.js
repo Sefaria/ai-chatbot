@@ -33,7 +33,9 @@ const LONG_ANSWER_PARAGRAPHS = 30;
  * @param {import('@playwright/test').BrowserContext} context
  * @param {{ longAnswers?: boolean }} [options]
  */
-export async function mockChatServer(context, { longAnswers = false } = {}) {
+export async function mockChatServer(context, { longAnswers = false, failedClaims = 0 } = {}) {
+  // failedClaims: how many claims fail (500) before claims work again.
+  let claimsToFail = failedClaims;
   const limit = getFreeAnswerLimit();
   let answersGiven = 0;
   /** sessionId → { owner, messages } — owner is the anonId or the user token. */
@@ -122,6 +124,10 @@ export async function mockChatServer(context, { longAnswers = false } = {}) {
   }
 
   function claim(route, body) {
+    if (claimsToFail > 0) {
+      claimsToFail -= 1;
+      return route.fulfill({ status: 500, body: 'Claim failed' });
+    }
     const claimed = sessionsOwnedBy(body.anonId);
     claimed.forEach(([, session]) => {
       session.owner = body.userId;

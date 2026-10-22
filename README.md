@@ -101,6 +101,7 @@ pytest           # Run tests
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Yes | PostgreSQL connection for Django |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
 | `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens |
+| `CHATBOT_ALLOWED_SEFARIA_HOSTS` | For logged-out visitors | Comma-separated Sefaria hosts this deployment serves (`*.` matches subdomains), checked against the request's `Origin`. A request from one uses that Sefaria, and logged-out visitors (`anonId`) are accepted only from these. Production: `www.sefaria.org,www.sefaria.org.il`; unset means no logged-out visitors |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `SENTRY_DSN` | No | Enable Sentry error monitoring for Django + agent errors |

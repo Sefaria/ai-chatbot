@@ -26,6 +26,9 @@ SESSION_ID = "sess_anon"
 MESSAGE_ID = "msg_anon"
 
 LIMIT_FUNCTION = "chat.anon_access.get_anon_answer_limit"
+# Logged-out visitors are accepted only from a Sefaria page this deployment allows.
+SEFARIA = "https://www.sefaria.org"
+EXAMPLE_CAULDRON = "https://feature.cauldron.sefaria.org"
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("agent", "no_limit_by_default")]
 
@@ -38,9 +41,16 @@ def no_limit_by_default():
         yield limit
 
 
+@pytest.fixture(autouse=True)
+def allowed_sefaria_pages(monkeypatch):
+    monkeypatch.setenv("SEFARIA_API_BASE_URL", SEFARIA)
+    monkeypatch.setenv("CHATBOT_ALLOWED_SEFARIA_HOSTS", "www.sefaria.org,*.cauldron.sefaria.org")
+
+
 @pytest.fixture
 def client():
-    return APIClient()
+    """Requests from a Sefaria page, as the widget sends them."""
+    return APIClient(HTTP_ORIGIN=SEFARIA)
 
 
 @pytest.fixture
@@ -662,14 +672,6 @@ def test_claim_needs_a_user_token(client):
 
 # ── Which Sefaria a request uses: its Origin, set once per request ────────
 
-CAULDRON = "https://la-anon.cauldron.sefaria.org"
-
-
-@pytest.fixture
-def allowed_cauldrons(monkeypatch):
-    monkeypatch.setenv("SEFARIA_API_BASE_URL", "https://www.sefaria.org")
-    monkeypatch.setenv("CHATBOT_ALLOWED_SEFARIA_HOSTS", "*.cauldron.sefaria.org")
-
 
 def ask_with_origin(client, origin):
     return client.post(
@@ -706,59 +708,211 @@ def seen_sefaria(no_limit_by_default, agent):
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-@pytest.mark.usefixtures("allowed_cauldrons")
 def test_a_request_from_an_allowed_sefaria_uses_it_for_the_limit_and_the_agent(
     client, agent, no_limit_by_default
 ):
     seen = seen_sefaria(no_limit_by_default, agent)
 
-    final_message(ask_with_origin(client, CAULDRON))
+    final_message(ask_with_origin(client, EXAMPLE_CAULDRON))
 
-    assert set(seen["limit"]) == {CAULDRON}
-    assert seen["agent"] == [CAULDRON]
+    assert set(seen["limit"]) == {EXAMPLE_CAULDRON}
+    assert seen["agent"] == [EXAMPLE_CAULDRON]
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-@pytest.mark.usefixtures("allowed_cauldrons")
-def test_a_request_from_elsewhere_uses_the_default_sefaria(client, agent, no_limit_by_default):
+def test_a_request_from_elsewhere_uses_the_default_sefaria(agent, no_limit_by_default):
+    # Logged in: a logged-out visitor isn't accepted from elsewhere at all.
     seen = seen_sefaria(no_limit_by_default, agent)
+    elsewhere = APIClient(HTTP_ORIGIN="https://evil.example.com")
 
-    final_message(ask_with_origin(client, "https://evil.example.com"))
+    answered(ask(elsewhere, {"userId": create_test_token("user_elsewhere", SECRET)}))
 
-    assert set(seen["limit"]) == {"https://www.sefaria.org"}
-    assert seen["agent"] == ["https://www.sefaria.org"]
+    assert seen["agent"] == [SEFARIA]
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-@pytest.mark.usefixtures("allowed_cauldrons")
 def test_the_next_request_does_not_inherit_a_cauldrons_sefaria(client, agent, no_limit_by_default):
     from chat.sefaria_base_url import request_sefaria_base_url
 
     seen = seen_sefaria(no_limit_by_default, agent)
-    final_message(ask_with_origin(client, CAULDRON))
+    final_message(ask_with_origin(client, EXAMPLE_CAULDRON))
 
     # Nothing is left set once the streamed answer is done.
     assert request_sefaria_base_url() is None
 
-    final_message(ask(client, {"anonId": ANON_ID}, message_id="msg_without_origin"))
+    # The next request has no Origin (logged in, so it's accepted).
+    no_origin = APIClient()
+    answered(
+        ask(
+            no_origin,
+            {"userId": create_test_token("user_no_origin", SECRET)},
+            message_id="msg_without_origin",
+            session_id="sess_user",
+        )
+    )
 
-    assert seen["agent"] == [CAULDRON, "https://www.sefaria.org"]
+    assert seen["agent"] == [EXAMPLE_CAULDRON, SEFARIA]
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-@pytest.mark.usefixtures("allowed_cauldrons")
 def test_recover_uses_the_requests_sefaria(client, agent, no_limit_by_default):
     seen = seen_sefaria(no_limit_by_default, agent)
-    final_message(ask_with_origin(client, CAULDRON))
+    final_message(ask_with_origin(client, EXAMPLE_CAULDRON))
     seen["limit"].clear()
 
     response = client.post(
         "/api/v2/chat/recover",
         data={"anonId": ANON_ID, "sessionId": SESSION_ID, "messageId": MESSAGE_ID},
         format="json",
-        HTTP_ORIGIN=CAULDRON,
+        HTTP_ORIGIN=EXAMPLE_CAULDRON,
     )
 
     assert response.status_code == 200
     assert response.data["message"]["anonResponsesRemaining"] == 1
-    assert set(seen["limit"]) == {CAULDRON}
+    assert set(seen["limit"]) == {EXAMPLE_CAULDRON}
+
+
+# ── Logged-out visitors only from a Sefaria page ──────────────────────────
+
+ANON_REQUESTS = {
+    "stream": (
+        "/api/v2/chat/stream",
+        lambda: {
+            "anonId": ANON_ID,
+            "sessionId": SESSION_ID,
+            "messageId": MESSAGE_ID,
+            "timestamp": timezone.now().isoformat(),
+            "text": "A question",
+        },
+    ),
+    "recover": (
+        "/api/v2/chat/recover",
+        lambda: {"anonId": ANON_ID, "sessionId": SESSION_ID, "messageId": MESSAGE_ID},
+    ),
+    "cancel": (
+        "/api/v2/chat/cancel",
+        lambda: {"anonId": ANON_ID, "sessionId": SESSION_ID, "messageId": MESSAGE_ID},
+    ),
+    "client-event": (
+        "/api/v2/chat/client-event",
+        lambda: {
+            "anonId": ANON_ID,
+            "sessionId": SESSION_ID,
+            "messageId": MESSAGE_ID,
+            "timestamp": timezone.now().isoformat(),
+            "event": "stream_missing_final_message",
+        },
+    ),
+}
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param(None, id="no-origin"),
+        pytest.param("https://evil.example.com", id="another-site"),
+        pytest.param("https://www.sefaria.org.evil.com", id="look-alike"),
+        pytest.param("null", id="null-origin"),
+    ],
+)
+@pytest.mark.parametrize("endpoint", list(ANON_REQUESTS))
+def test_a_logged_out_request_not_from_a_sefaria_page_is_refused(agent, endpoint, origin):
+    client = APIClient() if origin is None else APIClient(HTTP_ORIGIN=origin)
+    path, body = ANON_REQUESTS[endpoint]
+
+    response = client.post(path, data=body(), format="json")
+
+    assert response.status_code == 401
+    agent.send_message.assert_not_called()
+    assert not ChatMessage.objects.exists()
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_logged_out_visitors_are_refused_where_no_sefaria_is_allowed(monkeypatch, agent):
+    monkeypatch.delenv("CHATBOT_ALLOWED_SEFARIA_HOSTS")
+
+    response = ask(APIClient(HTTP_ORIGIN=SEFARIA), {"anonId": ANON_ID})
+
+    assert response.status_code == 401
+    agent.send_message.assert_not_called()
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize("origin", [None, "https://evil.example.com"])
+def test_a_logged_in_question_is_answered_from_anywhere(origin):
+    client = APIClient() if origin is None else APIClient(HTTP_ORIGIN=origin)
+
+    content = answered(ask(client, {"userId": create_test_token("user_anywhere", SECRET)}))
+
+    assert "An answer" in content
+
+
+# ── Load tests ────────────────────────────────────────────────────────────
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_logged_out_visitor_cannot_run_a_load_test(client, agent):
+    # A load test uses another model and turns tracing off; a logged-out
+    # visitor's questions must stay traced.
+    with patch("chat.V2.views.get_agent_service", return_value=agent) as get_agent:
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "anonId": ANON_ID,
+                "sessionId": SESSION_ID,
+                "messageId": MESSAGE_ID,
+                "timestamp": timezone.now().isoformat(),
+                "text": "A question",
+                "isLoadTest": True,
+            },
+            format="json",
+        )
+        answered(response)
+
+    get_agent.assert_called_once_with(is_load_test=False)
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_logged_in_user_can_still_run_a_load_test(client, agent):
+    with patch("chat.V2.views.get_agent_service", return_value=agent) as get_agent:
+        response = client.post(
+            "/api/v2/chat/stream",
+            data={
+                "userId": create_test_token("user_load_test", SECRET),
+                "sessionId": SESSION_ID,
+                "messageId": MESSAGE_ID,
+                "timestamp": timezone.now().isoformat(),
+                "text": "A question",
+                "isLoadTest": True,
+            },
+            format="json",
+        )
+        answered(response)
+
+    get_agent.assert_called_once_with(is_load_test=True)
+
+
+# ── Feedback ──────────────────────────────────────────────────────────────
+
+
+def test_feedback_from_a_logged_out_visitor_is_recorded_under_the_hashed_id(client):
+    bt_logger = MagicMock()
+    with patch("chat.V2.views._get_bt_logger", return_value=bt_logger):
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data={
+                "anonId": ANON_ID,
+                "traceId": "trace_anon",
+                "score": "up",
+                "sessionId": SESSION_ID,
+                "messageId": MESSAGE_ID,
+            },
+            format="json",
+        )
+
+    assert response.status_code == 200
+    metadata = bt_logger.update_span.call_args.kwargs["metadata"]
+    assert bt_logger.update_span.call_args.kwargs["id"] == "trace_anon"
+    assert metadata["user_id"] == anonymous_user_id(ANON_ID)
+    assert ANON_ID not in json.dumps(metadata)

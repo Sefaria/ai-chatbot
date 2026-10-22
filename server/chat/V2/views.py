@@ -444,7 +444,9 @@ def chat_stream_v2(request):
             appetizer_metrics["error"] = True
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
-    is_load_test = data.get("isLoadTest", False)
+    # A load test uses another model and turns tracing off: not for logged-out
+    # visitors, whose questions must stay traced.
+    is_load_test = data.get("isLoadTest", False) and not actor.is_anonymous
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}

@@ -11,6 +11,9 @@ in sefaria_client.py. Otherwise, and when the variable is unset, the request use
 
 Production allows only its own Sefaria; a development deployment can allow cauldrons,
 so a preview follows the cauldron that loads it.
+
+The same list decides where logged-out visitors (anonId) are accepted from: only
+requests from an allowed Sefaria page (see auth_service.authenticate_request).
 """
 
 import contextvars
