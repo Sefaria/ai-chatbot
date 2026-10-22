@@ -342,10 +342,9 @@
     }
   });
 
-  // Loads when the assistant opens, not only when History does, so History's search button
-  // is already right (enabled only if there are chats) the moment History appears
+  // Until it loads, History's search button goes by hasConversationsToSearch
   $effect(() => {
-    if ((showHistoryPanel || (isOpen && userId)) && !hasLoadedConversations && !isLoadingConversations) {
+    if (showHistoryPanel && !hasLoadedConversations && !isLoadingConversations) {
       loadConversationPage({ reset: true });
     }
   });
