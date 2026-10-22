@@ -568,3 +568,19 @@ def test_grants_past_their_absolute_expiry_are_deleted():
     full_flow()
     assert not Grant.objects.filter(pk=old_grant.pk).exists()
     assert not ConsumedRefreshToken.objects.filter(grant_id=old_grant.pk).exists()
+
+
+def test_binding_cookie_survives_a_cross_site_return_over_https():
+    """Sefaria may be on another site (staging: sefariastaging.org), so Lax would be dropped."""
+    response = authorize(Client(), client_id(Client()))
+    cookie = next(c for name, c in response.cookies.items() if name.startswith("mcp_oauth_"))
+    assert cookie["samesite"] == "None"
+    assert cookie["secure"] and cookie["httponly"]
+
+
+def test_binding_cookie_is_lax_over_plain_http():
+    with override_settings(MCP_OAUTH_ISSUER="http://localhost:8001"):
+        response = authorize(Client(), client_id(Client()))
+    cookie = next(c for name, c in response.cookies.items() if name.startswith("mcp_oauth_"))
+    assert cookie["samesite"] == "Lax"
+    assert not cookie["secure"]
