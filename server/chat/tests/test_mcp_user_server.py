@@ -117,7 +117,12 @@ INIT = {
     "capabilities": {},
     "clientInfo": {"name": "test", "version": "1"},
 }
-SHEET_TOOLS = {"search_user_source_sheets", "get_source_sheet", "create_source_sheet"}
+SHEET_TOOLS = {
+    "search_user_source_sheets",
+    "get_source_sheet",
+    "create_source_sheet",
+    "update_source_sheet",
+}
 
 
 async def test_not_served_without_sign_in_configured(executor, monkeypatch):

@@ -114,3 +114,71 @@ def serialize_source_sheet_payload(
         "tags": [],
         "displayedCollection": "",
     }
+
+
+def merge_source_sheet_sources(
+    existing_sources: list[dict[str, Any]], changes: list[dict[str, Any]], next_node: int
+) -> tuple[list[dict[str, Any]], int]:
+    """Apply an update's source list to a sheet's existing sources.
+
+    ``changes`` is the sheet's new source list, in order. Each item is one of:
+    ``{"node": n}`` keeps existing source n as it is; ``{"node": n, "outsideText": ...}``
+    replaces the text of an existing outside-text source; ``{"node": n, "ref", "heRef"}``
+    replaces existing source n with that ref; an item without ``node`` adds a new source
+    (``outsideText``, or ``ref`` plus ``heRef``). Existing sources left out are removed,
+    except media sources: Sefaria deletes an image's file when its source is removed, so
+    those must be kept. New and replaced ref sources come back without ``text``, to be
+    filled in by the caller. Returns the new sources and the sheet's next free node.
+    """
+    if not isinstance(changes, list) or not changes:
+        raise ValueError("update_source_sheet needs at least one source; omit sources to keep them")
+
+    by_node = {
+        source.get("node"): source for source in existing_sources if isinstance(source, dict)
+    }
+    merged: list[dict[str, Any]] = []
+    seen: set[int] = set()
+
+    for change in changes:
+        if not isinstance(change, dict):
+            raise ValueError("Each source must be an object")
+        node = change.get("node")
+        if node is None:
+            new_source = prepare_source_sheet_sources([change])[0]
+            new_source["node"] = next_node
+            next_node += 1
+            merged.append(new_source)
+            continue
+
+        if node not in by_node:
+            raise ValueError(f"The sheet has no source with node {node}")
+        if node in seen:
+            raise ValueError(f"Source node {node} is listed twice")
+        seen.add(node)
+        existing = by_node[node]
+
+        if "ref" in change:
+            if "media" in existing:
+                raise ValueError(f"Source {node} is an image or media source and can't be replaced")
+            replacement = prepare_source_sheet_sources([{**change, "node": node}])[0]
+            replacement.pop("text", None)
+            merged.append(replacement)
+        elif "outsideText" in change:
+            if "outsideText" not in existing:
+                raise ValueError(
+                    f"Source {node} isn't an outside-text source; replace it with a ref instead"
+                )
+            text = change["outsideText"]
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("outsideText must be a non-empty string")
+            merged.append({**deepcopy(existing), "outsideText": text})
+        else:
+            merged.append(deepcopy(existing))
+
+    removed_media = [n for n, source in by_node.items() if n not in seen and "media" in source]
+    if removed_media:
+        raise ValueError(
+            "Image and media sources can't be removed (Sefaria would delete the uploaded file): "
+            f"keep node(s) {', '.join(map(str, sorted(removed_media)))} in the list"
+        )
+    return merged, next_node

@@ -373,3 +373,15 @@ A code review of #256 and #3840 before merging found these; all but one are fixe
 2. Should `validate_refs` and `validate_response_links` be public?
 3. Sefaria team: the `aud: "mcp"` token, its TTL, and revocation (2.1).
 4. Deprecation: redirect `mcp.sefaria.org` or turn it off, and on what timeline?
+
+
+### 2.9 Updating sheets (2026-10-22)
+
+`create_source_sheet` was create-only by design (2.6). `update_source_sheet` now edits a sheet, within limits the user chose:
+
+- [x] **Only sheets the signed-in user owns.** Collaborator sheets stay read-only to Claude. Sefaria enforces this for `mcp` tokens (403), and the tool checks it too.
+- [x] **Edit, reorder, add and remove text sources; never remove media.** Removing a media source makes Sefaria delete the uploaded file, so neither side allows it. The tool takes the sheet's complete new source list: `{"node": n}` keeps a source, `outsideText` or `ref`+`heRef` with a node rewrites it, and an item without a node adds one.
+- [x] **Publishing status never changes**, and `displayedCollection` is never set.
+- [x] **No lost edits.** The tool reads the sheet and sends its `dateModified` as `lastModified`, so Sefaria's existing check refuses the save if the sheet changed in between; the tool reports that rather than retrying.
+- [x] On sheets whose summary ends with "Created with Claude.", a rewritten summary keeps that note.
+- Needs Sefaria-Project's matching change (MCP tokens used to be refused on any update).

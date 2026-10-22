@@ -6,6 +6,7 @@ SOURCE_SHEET_TOOL_NAMES = {
     "search_user_source_sheets",
     "get_source_sheet",
     "create_source_sheet",
+    "update_source_sheet",
 }
 
 

@@ -217,6 +217,14 @@ class SefariaToolExecutor:
                 input_data["sources"],
             )
 
+        elif tool_name == "update_source_sheet":
+            return await self.client.update_source_sheet(
+                input_data["sheet_id"],
+                title=input_data.get("title"),
+                summary=input_data.get("summary"),
+                sources=input_data.get("sources"),
+            )
+
         elif tool_name == "list_topic_prompts":
             filters = {k: v for k, v in input_data.items() if k != "limit"}
             return await self.client.list_topic_prompts(
@@ -339,6 +347,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         ),
         "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
         "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
+        "update_source_sheet": lambda: f"Updating source sheet {q(tool_input.get('sheet_id'))}",
         "list_topic_prompts": lambda: "Listing topic prompts",
         "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",
     }

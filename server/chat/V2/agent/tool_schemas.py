@@ -426,6 +426,47 @@ TOOL_CREATE_SOURCE_SHEET = {
     },
 }
 
+TOOL_UPDATE_SOURCE_SHEET = {
+    "name": "update_source_sheet",
+    # mcp_user: the signed-in /mcp/user endpoint, never the anonymous one.
+    "surfaces": ("agent", "mcp_user"),
+    "description": (
+        "Updates one of the authenticated user's own Sefaria source sheets: its title, summary, "
+        "or sources. Call get_source_sheet first to see the sheet's sources and their node "
+        "numbers. To change sources, pass the sheet's complete new source list in order: "
+        '{"node": n} keeps source n unchanged, {"node": n, "outsideText": "..."} rewrites an '
+        'outside-text source, {"node": n, "ref": "...", "heRef": "..."} replaces source n with '
+        "a ref, and an item without a node adds a new source (outsideText, or ref plus heRef; "
+        "the tool fetches the Hebrew and English). Sources left out are removed, except image "
+        "and media sources, which must be kept. Omit sources to leave them as they are. The "
+        "sheet's publishing status never changes. Confirm with the user before removing sources."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sheet_id": {"type": "integer", "description": "The numeric Sefaria sheet ID."},
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "sources": {
+                "type": "array",
+                "description": "The sheet's complete new source list, in order (see the description).",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "node": {"type": "integer"},
+                        "outsideText": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "heRef": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["sheet_id"],
+        "additionalProperties": False,
+    },
+}
+
 # Staff tools for topic prompts (the source descriptions on topic pages), served only on the
 # signed-in /mcp/admin endpoint. Sefaria enforces staff access; see
 # Sefaria-Project docs/arch_docs/topic_prompts_admin_mcp.md.
@@ -562,6 +603,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "search_user_source_sheets": TOOL_SEARCH_USER_SOURCE_SHEETS,
     "get_source_sheet": TOOL_GET_SOURCE_SHEET,
     "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
+    "update_source_sheet": TOOL_UPDATE_SOURCE_SHEET,
     "list_topic_prompts": TOOL_LIST_TOPIC_PROMPTS,
     "update_topic_prompt": TOOL_UPDATE_TOPIC_PROMPT,
 }
@@ -570,6 +612,7 @@ LABS_TOOL_NAMES = {
     "search_user_source_sheets",
     "get_source_sheet",
     "create_source_sheet",
+    "update_source_sheet",
 }
 
 # ============================================================================
