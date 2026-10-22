@@ -10,14 +10,30 @@ const SHEET_CLOSE_VELOCITY = 0.5; // px/ms
 export function sheetDrag(node, params) {
   let drag = null;
   let offset = 0;
+  // The slide home or away after a release, until it finishes: { closing, timer }
+  let settling = null;
 
   function setOffset(value) {
     offset = value;
     params.onMove(value);
   }
 
+  function finishSettling() {
+    if (!settling) return;
+    clearTimeout(settling.timer);
+    const { closing } = settling;
+    settling = null;
+    if (closing) params.onClose();
+    setOffset(0);
+    params.onSettle(false);
+  }
+
   function start(e) {
     if (!params.enabled || e.button > 0 || e.target.closest('button, a, input')) return;
+    // Grabbed again while sliding: finish the slide now, or its timer would snap the sheet mid-drag
+    const closing = settling?.closing;
+    finishSettling();
+    if (closing) return;
     node.setPointerCapture(e.pointerId);
     drag = { startY: e.clientY, lastY: e.clientY, lastT: e.timeStamp, velocity: 0 };
     params.onSettle(false);
@@ -42,11 +58,7 @@ export function sheetDrag(node, params) {
     params.onSettle(true);
     setOffset(shouldClose ? window.innerHeight : 0);
     // Not cancelled on destroy: closing removes this header, and the sheet must still settle
-    setTimeout(() => {
-      if (shouldClose) params.onClose();
-      setOffset(0);
-      params.onSettle(false);
-    }, 200);
+    settling = { closing: shouldClose, timer: setTimeout(finishSettling, 200) };
   }
 
   node.addEventListener('pointerdown', start);
