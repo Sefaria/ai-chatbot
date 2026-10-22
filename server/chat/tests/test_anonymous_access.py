@@ -249,6 +249,33 @@ def test_each_answer_reports_how_many_are_left(client, no_limit_by_default):
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_last_free_answer_reports_all_questions_sent_refused_ones_included(
+    client, agent, no_limit_by_default
+):
+    no_limit_by_default.return_value = 2
+    answer = agent.send_message.return_value
+    agent.send_message.return_value = AgentResponse(
+        content="I can only help with Jewish texts.",
+        tool_calls=[],
+        latency_ms=10,
+        trace_id="trace_refused",
+        refused=True,
+    )
+    visitor = Visitor(client)
+    refused = final_message(visitor.ask())
+    agent.send_message.return_value = answer
+
+    first = final_message(visitor.ask())
+    last = final_message(visitor.ask())
+
+    # Only the answer that uses up the limit carries the count (no extra query otherwise).
+    assert "anonMessagesSent" not in refused
+    assert "anonMessagesSent" not in first
+    assert last["anonResponsesRemaining"] == 0
+    assert last["anonMessagesSent"] == 3
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
 def test_send_after_the_last_free_answer_needs_login(client, agent, no_limit_by_default):
     limit = no_limit_by_default.return_value = 2
     visitor = Visitor(client)

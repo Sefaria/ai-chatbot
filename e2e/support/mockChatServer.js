@@ -57,6 +57,16 @@ export async function mockChatServer(context, { longAnswers = false } = {}) {
     return count;
   }
 
+  function questionsSentBy(owner) {
+    let count = 0;
+    for (const session of sessions.values()) {
+      if (session.owner === owner) {
+        count += session.messages.filter((m) => m.role === 'user').length;
+      }
+    }
+    return count;
+  }
+
   function sessionsOwnedBy(owner) {
     return [...sessions.entries()].filter(([, session]) => session.owner === owner);
   }
@@ -92,13 +102,17 @@ export async function mockChatServer(context, { longAnswers = false } = {}) {
       toolCalls: [],
       stats: {},
     };
-    if (remaining !== undefined) {
-      message.anonResponsesRemaining = remaining;
-    }
     session.messages.push(
       { messageId: body.messageId, sessionId: body.sessionId, role: 'user', content: body.text, timestamp, status: 'success' },
       { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' },
     );
+    if (remaining !== undefined) {
+      message.anonResponsesRemaining = remaining;
+      // Like the real server: at the limit, how many questions the visitor sent.
+      if (remaining === 0) {
+        message.anonMessagesSent = questionsSentBy(owner);
+      }
+    }
 
     return route.fulfill({
       status: 200,

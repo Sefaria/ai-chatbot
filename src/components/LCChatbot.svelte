@@ -54,6 +54,9 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
+    // The host's free-answer limit for logged-out visitors, for analytics only:
+    // the chat server enforces the limit.
+    'anon-free-answers': anonFreeAnswersAttr = null,
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
@@ -73,6 +76,22 @@
   // or another tab still shows it. Logged-in users never see it.
   let anonLimitReached = $state(false);
   let loginRequired = $derived(!isLoggedIn && anonLimitReached);
+
+  // The host's free-answer limit, or undefined when it passes none. An attribute is text.
+  function hostFreeAnswers() {
+    return anonFreeAnswersAttr == null ? undefined : Number(anonFreeAnswersAttr);
+  }
+
+  // For analytics: free answers a logged-out visitor has left before a send.
+  // The last answer's count (kept in localStorage, so other tabs' answers count),
+  // or the host's limit before any answer. Undefined when logged in or unknown.
+  function promptsLeft() {
+    if (isLoggedIn) return undefined;
+    if (anonLimitReached) return 0;
+    const remaining = getStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING, null);
+    if (typeof remaining === 'number') return remaining;
+    return hostFreeAnswers();
+  }
 
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
@@ -297,6 +316,7 @@
 
     if (userId) {
       removeStorage(STORAGE_KEYS.ANON_LIMIT_REACHED);
+      removeStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING);
     } else {
       anonLimitReached = getStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, false) === true;
     }
@@ -1126,7 +1146,8 @@
     conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
     resetScroll();
-    track('assistant_message_sent', { length: text.length });
+    // gtag drops an undefined prompts_left (logged in, or not known).
+    track('assistant_message_sent', { length: text.length, prompts_left: promptsLeft() });
     // Clear input and draft
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -1275,6 +1296,16 @@
       // Update turn count from server response
       if (response.session && sessionId === sendingSessionId) {
         turnCount = response.session.turnCount ?? 0;
+      }
+      if (!userId && typeof response.anonResponsesRemaining === 'number') {
+        setStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING, response.anonResponsesRemaining);
+        // The answer that used the last free one (a recovered copy of it doesn't count again).
+        if (response.anonResponsesRemaining === 0 && !anonLimitReached) {
+          track('chat_rate_limit_reached', {
+            rate_limit: hostFreeAnswers(),
+            total_messages_sent: response.anonMessagesSent
+          });
+        }
       }
       if (!userId && response.anonResponsesRemaining === 0) {
         markAnonLimitReached();

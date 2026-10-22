@@ -195,12 +195,15 @@
   ></lc-chatbot>
 
   <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
-       ?user-id=<encrypted user token> shows it logged in as that user.
+       ?user-id=<encrypted user token> shows it logged in as that user, and
+       ?anon-free-answers=<n> passes the host's free-answer limit.
        Runs before the widget module below, which loads deferred. -->
   <script>
-    const userId = new URLSearchParams(window.location.search).get('user-id');
-    if (userId) {
-      document.querySelector('lc-chatbot').setAttribute('user-id', userId);
+    const params = new URLSearchParams(window.location.search);
+    for (const attribute of ['user-id', 'anon-free-answers']) {
+      if (params.get(attribute)) {
+        document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
+      }
     }
   </script>
 

@@ -418,7 +418,8 @@ export async function sendMessageStream(
                   stats: data.stats,
                   session: data.session,
                   recovered: data.recovered || false,
-                  anonResponsesRemaining: data.anonResponsesRemaining
+                  anonResponsesRemaining: data.anonResponsesRemaining,
+                  anonMessagesSent: data.anonMessagesSent
                 };
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);

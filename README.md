@@ -52,6 +52,7 @@ Visit `http://localhost:5173` for the local widget. It opens logged out; add `?u
 | `api-base-url` | string | Yes | Base URL for the chat API |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
+| `anon-free-answers` | number | No | The host's free-answer limit for logged-out visitors. Only for analytics (`prompts_left` on a new visitor's first question, `rate_limit` when they reach it); the chat server enforces the limit |
 
 ### Slots
 

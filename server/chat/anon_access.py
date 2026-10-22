@@ -73,6 +73,14 @@ def count_anon_answers(user_id: str) -> int:
     ).count()
 
 
+def count_anon_messages(user_id: str) -> int:
+    """Questions a logged-out visitor sent that reached the chat, across all their
+    sessions: answered, refused, failed or cancelled. (Sends refused for the limit
+    aren't stored, so they aren't counted.) For analytics.
+    """
+    return ChatMessage.objects.filter(user_id=user_id, role=ChatMessage.Role.USER).count()
+
+
 def anon_answers_remaining(user_id: str) -> int | None:
     """Answers this logged-out visitor has left, or None when there's no limit."""
     limit = get_anon_answer_limit()

@@ -43,8 +43,10 @@ export class AssistantPage {
    * visitor: with no ?user-id it mounts the widget without one, the way the
    * host site shows it to a logged-out visitor.
    */
-  async goto() {
-    await this.page.goto('/');
+  async goto({ hostFreeAnswers } = {}) {
+    // hostFreeAnswers: the free-answer limit the host page passes (anon-free-answers).
+    const query = hostFreeAnswers === undefined ? '' : `?anon-free-answers=${hostFreeAnswers}`;
+    await this.page.goto(`/${query}`);
     await expect(this.host).toHaveCount(1);
   }
 
@@ -170,16 +172,17 @@ export class AssistantPage {
   }
 
   /** Act as the host page: put a sign-up button in the prompt's slot. */
-  async addHostSignupOptions() {
-    await this.host.evaluate((host) => {
+  async addHostSignupOptions({ featureName } = {}) {
+    await this.host.evaluate((host, name) => {
       const options = document.createElement('div');
       options.slot = 'signup-options';
       options.innerHTML = '<button type="button">Sign up</button>';
+      if (name) options.querySelector('button').dataset.featureName = name;
       options.querySelector('button').addEventListener('click', () => {
         window.hostSignupClicks = (window.hostSignupClicks || 0) + 1;
       });
       host.append(options);
-    });
+    }, featureName);
   }
 
   /** How many times the host's sign-up button was clicked. */

@@ -236,11 +236,18 @@ def _build_response_payload(
 
 
 def _anon_payload_fields(actor) -> dict:
-    """For a logged-out visitor under a limit: how many free answers are left."""
+    """For a logged-out visitor under a limit: how many free answers are left. At the
+    limit, also how many questions they sent (for analytics; only then, so other
+    answers don't pay for the query)."""
     if not actor.is_anonymous:
         return {}
     remaining = anon_access.anon_answers_remaining(actor.user_id)
-    return {} if remaining is None else {"anonResponsesRemaining": remaining}
+    if remaining is None:
+        return {}
+    fields = {"anonResponsesRemaining": remaining}
+    if remaining == 0:
+        fields["anonMessagesSent"] = anon_access.count_anon_messages(actor.user_id)
+    return fields
 
 
 def _build_appetizer_payload(result) -> dict:
