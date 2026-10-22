@@ -395,7 +395,7 @@ TOOL_CREATE_SOURCE_SHEET = {
     "name": "create_source_sheet",
     # mcp_user: the signed-in /mcp/user endpoint, never the anonymous one.
     "surfaces": ("agent", "mcp_user"),
-    "description": "Creates a new authenticated Sefaria source sheet. Provide the sheet title, summary, and an ordered list of sources. Ref sources should include both ref and heRef; the tool will fetch the English and Hebrew text and serialize the final sheet payload automatically.",
+    "description": 'Creates a new authenticated Sefaria source sheet. Provide the sheet title, summary, and an ordered list of sources. Ref sources should include both ref and heRef; the tool will fetch the English and Hebrew text and serialize the final sheet payload automatically. The summary automatically ends with "Created with Claude.", so don\'t add that yourself.',
     "input_schema": {
         "type": "object",
         "properties": {

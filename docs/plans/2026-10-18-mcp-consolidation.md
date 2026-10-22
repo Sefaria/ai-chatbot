@@ -354,6 +354,7 @@ A code review of #256 and #3840 before merging found these; all but one are fixe
 - [x] The topic-prompt tool schemas reject unknown arguments (they used to crash with a `TypeError`), and `topic` is a plain list of strings instead of a string-or-list type some clients mishandle.
 - [x] Sefaria: `POST /api/sheets/` with a non-object JSON body is a 400, not a 500.
 - [x] **Cross-site return (2026-10-22).** The browser-binding cookie was `SameSite=Lax`, which browsers drop from Sefaria's cross-site auto-POST when Sefaria is on another site than the chat host. Staging is exactly that (`chat-dev.sefaria.org` with `sefariastaging.org`), so every staging sign-in would fail with "Finish signing in from the same browser". Over https the cookie is now `SameSite=None; Secure`; that is safe because the cookie only proves which browser started the flow, and an attacker's flow is bound to the attacker's own cookie. Plain-http local development keeps `Lax`.
+- [x] **Sheets saved "..." as every source's English (found in staging use, 2026-10-22).** Sheet sources were filled from `/api/v3/texts/<ref>` with no `version`, which returns only the primary (Hebrew) version. They now request `version=source&version=english` with `return_format=strip_only_footnotes`. The unit test had mocked a response with both languages, which the real API never returns, so it hid the bug. Sheets the tool creates now end their summary with "Created with Claude."
 
 ## Deprecating the old MCP (after Phase 1 is proven)
 

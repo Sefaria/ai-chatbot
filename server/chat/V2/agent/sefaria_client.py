@@ -1033,13 +1033,29 @@ class SefariaClient:
             return normalized_sources
 
         ref_payloads = await asyncio.gather(
-            *[self.get_text(normalized_sources[index]["ref"]) for index in ref_indices]
+            *[
+                self._get_sheet_source_text(normalized_sources[index]["ref"])
+                for index in ref_indices
+            ]
         )
 
         for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
             normalized_sources[index]["text"] = self._build_sheet_text_block(ref_payload)
 
         return normalized_sources
+
+    async def _get_sheet_source_text(self, reference: str) -> dict[str, Any]:
+        """Fetch the Hebrew and English of a ref for a sheet source.
+
+        Without a ``version`` parameter /api/v3/texts returns only the primary (usually Hebrew)
+        version, which left every sheet source's English as the "..." placeholder. Footnotes are
+        stripped because a sheet source shows the text alone.
+        """
+        data = await self._get_json(
+            f"api/v3/texts/{quote(reference)}",
+            {"version": ["source", "english"], "return_format": "strip_only_footnotes"},
+        )
+        return self._optimize_text_response(data)
 
     def _build_sheet_text_block(self, payload: dict[str, Any]) -> dict[str, str]:
         """Convert a get_text response into the bilingual HTML saved on sheets."""
