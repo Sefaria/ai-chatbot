@@ -4,8 +4,8 @@
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
-  import { getStorage, setStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId } from '../lib/session.js';
+  import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
     cancelStream,
@@ -15,12 +15,15 @@
     loadConversationList,
     loadConversation,
     renameConversation,
-    deleteConversation
+    deleteConversation,
+    identityFields,
+    claimAnonChats
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
+  import { tooltip } from '../lib/tooltip.js';
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
@@ -51,6 +54,9 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
+    // The host's free-answer limit for logged-out visitors, for analytics only:
+    // the chat server enforces the limit.
+    'anon-free-answers': anonFreeAnswersAttr = null,
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
@@ -60,6 +66,32 @@
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
+
+  // No user-id means a logged-out visitor: chat history, New chat and the
+  // opt-out link are for logged-in users only.
+  let isLoggedIn = $derived(!!userId);
+
+  // A logged-out visitor who used up their free answers sees the login prompt
+  // in place of the text box. Kept in localStorage, so a reload, a later visit
+  // or another tab still shows it. Logged-in users never see it.
+  let anonLimitReached = $state(false);
+  let loginRequired = $derived(!isLoggedIn && anonLimitReached);
+
+  // The host's free-answer limit, or undefined when it passes none. An attribute is text.
+  function hostFreeAnswers() {
+    return anonFreeAnswersAttr == null ? undefined : Number(anonFreeAnswersAttr);
+  }
+
+  // For analytics: free answers a logged-out visitor has left before a send.
+  // The last answer's count (kept in localStorage, so other tabs' answers count),
+  // or the host's limit before any answer. Undefined when logged in or unknown.
+  function promptsLeft() {
+    if (isLoggedIn) return undefined;
+    if (anonLimitReached) return 0;
+    const remaining = getStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING, null);
+    if (typeof remaining === 'number') return remaining;
+    return hostFreeAnswers();
+  }
 
   function track(event, params = {}) {
     if (typeof window.gtag !== 'function') return;
@@ -88,7 +120,7 @@
   let panelHeight = $state(456);
   let isResizing = $state(false);
   let resizeEdge = $state(null);
-  
+
   let appetizerData = $state(null);
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
@@ -232,10 +264,15 @@
   const MAX_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
+  // Settles once a just-logged-in user's logged-out chats are claimed (see
+  // claimLoggedOutChats). Requests that need the session to be the user's wait for it.
+  let loggedOutChatsClaimed = Promise.resolve();
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
-    const { sessionId: sid, isNew } = getOrCreateSession();
+    clearLoggedInChatWhenLoggedOut(!!userId);
+    const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
     isFirstTimeUser = !getStorage(STORAGE_KEYS.HAS_USED, false);
@@ -276,7 +313,42 @@
     // Load messages from local storage
     const savedMessages = getStorage(STORAGE_KEYS.MESSAGES + ':' + sid, []);
     messages = withStoppedTurns(savedMessages);
+
+    if (userId) {
+      removeStorage(STORAGE_KEYS.ANON_LIMIT_REACHED);
+      removeStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING);
+    } else {
+      anonLimitReached = getStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, false) === true;
+    }
+    // A restored conversation opens at its end. (A no-op when the panel is closed
+    // or the conversation is empty.)
+    scrollToBottom({ instant: true });
+
+    // A visitor who just logged in: their logged-out chats become the user's.
+    const anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
+    if (userId && anonId && apiBaseUrl) {
+      loggedOutChatsClaimed = claimLoggedOutChats(anonId);
+    }
   });
+
+  /**
+   * Move a just-logged-in user's logged-out chats to them, so they continue the
+   * same conversation and it shows in their history. If the claim fails, the
+   * current session still belongs to the anonymous ID and the server would refuse
+   * the next question in it, so start a fresh conversation (keeping the draft);
+   * the anonymous ID is kept, and the next load tries again.
+   */
+  async function claimLoggedOutChats(anonId) {
+    try {
+      await claimAnonChats(apiBaseUrl, userId, anonId);
+      removeStorage(STORAGE_KEYS.ANON_ID);
+    } catch (e) {
+      console.warn('[lc-chatbot] Failed to claim logged-out chats:', e);
+      const draft = inputText;
+      handleNewChat();
+      inputText = draft;
+    }
+  }
 
   // Sync turn limits from server when panel opens (skip when chat was just restarted)
   $effect(() => {
@@ -432,6 +504,22 @@
     document.dispatchEvent(event);
   }
 
+  function markAnonLimitReached() {
+    anonLimitReached = true;
+    setStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, true);
+  }
+
+  // Signing up is the host's job: the host page puts its own sign-up options in
+  // the prompt as children of <lc-chatbot> with slot="signup-options". This adds
+  // a native <slot> rather than Svelte's <slot>, which is only created when the
+  // host's children are already there as the element connects.
+  function hostSlot(node, name) {
+    const slot = document.createElement('slot');
+    slot.name = name;
+    node.append(slot);
+    return { destroy: () => slot.remove() };
+  }
+
   function sampleThinkingMessageDelay() {
     return THINKING_MESSAGE_MIN_MS + Math.random() * (THINKING_MESSAGE_MAX_MS - THINKING_MESSAGE_MIN_MS);
   }
@@ -514,6 +602,7 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
+    scrollToBottom({ instant: true });
 
     // Focus input after panel opens
     setTimeout(() => {
@@ -540,7 +629,7 @@
   function handleNewChat() {
     conversationNavigation += 1;
     conversationDrafts[sessionId] = inputText;
-    const { sessionId: newSessionId } = getOrCreateSession(true);
+    const { sessionId: newSessionId } = getOrCreateSession(true, !!userId);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
     messages = [];
@@ -651,6 +740,7 @@
   }
 
   async function loadConversationPage({ reset = false, search = submittedHistorySearch } = {}) {
+    await loggedOutChatsClaimed;
     if (!apiBaseUrl || !userId || isLoadingConversations) return;
     if (!reset && !hasMoreConversations) return;
 
@@ -925,6 +1015,7 @@
   }
 
   async function syncSessionState() {
+    await loggedOutChatsClaimed;
     if (!userId || !sessionId || !apiBaseUrl) return;
 
     try {
@@ -948,7 +1039,7 @@
 
   async function loadMoreHistory() {
     if (isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
-    
+
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
 
@@ -1040,10 +1131,10 @@
   }
 
   async function handleSend() {
+    await loggedOutChatsClaimed;
     const text = inputText.trim();
-    const isConfigured = userId && apiBaseUrl;
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
-    if (!isConfigured || !isReadyToSend) return;
+    if (!isReadyToSend) return;
     const sendingSessionId = sessionId;
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
@@ -1055,7 +1146,8 @@
     conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
     resetScroll();
-    track('assistant_message_sent', { length: text.length });
+    // gtag drops an undefined prompts_left (logged in, or not known).
+    track('assistant_message_sent', { length: text.length, prompts_left: promptsLeft() });
     // Clear input and draft
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
@@ -1185,7 +1277,8 @@
         sessionId: sendingSessionId,
         title: (cachedPayload?.conversation?.title || provisionalConversation.title || completedMessages.find(m => m.role === 'user')?.content?.slice(0, HISTORY_TITLE_MAX_LENGTH) || ''),
         lastActivity: assistantMessage.timestamp,
-        turnCount: (cachedPayload?.conversation?.turnCount || turnCount || 0) + 1,
+        // The server's count (refusals don't count); +1 only if it didn't send one.
+        turnCount: response.session?.turnCount ?? ((cachedPayload?.conversation?.turnCount || turnCount || 0) + 1),
         messageCount: completedMessages.length
       };
       conversationCache = {
@@ -1203,6 +1296,19 @@
       // Update turn count from server response
       if (response.session && sessionId === sendingSessionId) {
         turnCount = response.session.turnCount ?? 0;
+      }
+      if (!userId && typeof response.anonResponsesRemaining === 'number') {
+        setStorage(STORAGE_KEYS.ANON_RESPONSES_REMAINING, response.anonResponsesRemaining);
+        // The answer that used the last free one (a recovered copy of it doesn't count again).
+        if (response.anonResponsesRemaining === 0 && !anonLimitReached) {
+          track('chat_rate_limit_reached', {
+            rate_limit: hostFreeAnswers(),
+            total_messages_sent: response.anonMessagesSent
+          });
+        }
+      }
+      if (!userId && response.anonResponsesRemaining === 0) {
+        markAnonLimitReached();
       }
       if (isFirstTimeUser) {
         isFirstTimeUser = false;
@@ -1234,6 +1340,17 @@
           inputText = text;
         }
         track('assistant_response_stopped');
+      } else if (e?.status === 403 && e?.code === 'login_required') {
+        // The free answers were already used up (e.g. in another tab): no error,
+        // just the login prompt. The question goes back to the draft, so it's still
+        // in the text box after logging in. Only a logged-out visitor gets this, and
+        // they can't switch conversations (New chat and history are locked), so the
+        // question is always in the current one.
+        messages = messages.filter(m => m.messageId !== userMessage.messageId);
+        saveMessagesToStorage();
+        inputText = text;
+        setStorage(STORAGE_KEYS.DRAFT + ':' + sessionId, { text });
+        markAnonLimitReached();
       } else {
         console.error('[lc-chatbot] Send failed:', e);
 
@@ -1357,7 +1474,7 @@
         await sendFeedback(apiBaseUrl, {
           traceId: target.traceId,
           score: feedbackType,
-          userId,
+          ...identityFields(userId),
           sessionId,
           messageId: feedbackModalMessageId,
           comment: includeDetails ? feedbackComment : '',
@@ -1405,7 +1522,7 @@
 
     // In docked mode, only allow horizontal resize (e/w)
     const allowHorizontal = edge.includes('w') || edge.includes('e');
-    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked'; 
+    const allowVertical = (edge.includes('n') || edge.includes('s')) && mode !== 'docked';
 
     if (!allowHorizontal && !allowVertical) return;
 
@@ -1549,6 +1666,7 @@
   });
 
   function handleRestartConvo() {
+    if (!isLoggedIn) return; // locked for logged-out visitors (one conversation only)
     closeMenu();
     isRestarted = true;
     handleNewChat();
@@ -1583,6 +1701,11 @@
     );
   }
 
+  // Whether the page hosting the widget is a Sefaria page.
+  function isOnSefariaPage() {
+    return isSefariaHostname(window.location.hostname);
+  }
+
   function refToUrlPath(ref) {
     const m = ref.match(/^(.+?)[\s.](\d[\w:.\-–]*)$/);
     if (!m) {
@@ -1609,7 +1732,7 @@
    * the ref API be exercised on whatever environment the widget runs in.
    */
   function sefariaBase() {
-    if (isSefariaHostname(window.location.hostname)) {
+    if (isOnSefariaPage()) {
       return window.location.origin;
     }
     return SEFARIA_BASE_URL;
@@ -1701,9 +1824,7 @@
   }
 
   function handleAppetizerClick(topicSlug, topicUrl) {
-    const onSefaria = isSefariaHostname(window.location.hostname);
-
-    if (onSefaria) {
+    if (isOnSefariaPage()) {
       // In-page navigation via ReaderApp's existing event listener
       document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
         detail: { url: `/topics/${topicSlug}` }
@@ -1747,7 +1868,7 @@
     </button>
   {:else}
     <!-- Chat Panel -->
-    <div 
+    <div
       class="lc-chatbot-panel"
       class:resizing={isResizing}
       style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
@@ -1782,12 +1903,16 @@
           </h2>
         </div>
         <div class="header-actions">
+          <!-- Logged out, history is locked. aria-disabled (not disabled) keeps it
+               focusable and hoverable, so its tooltip and label can say why. With no
+               data-feature-name, a locked click sends no analytics event. -->
           <HeaderButton
             className="history-btn"
-            title={$_('assistant.header.history.tooltip')}
-            onClick={(e) => { e.stopPropagation(); showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
-            aria-expanded={showHistoryPanel}
-            data-feature-name="chat_history_toggle"
+            title={$_(isLoggedIn ? 'assistant.header.history.tooltip' : 'assistant.header.history.login_tooltip')}
+            onClick={(e) => { e.stopPropagation(); if (!isLoggedIn) return; showHistoryPanel ? closeHistoryPanel('chat_history_toggle') : openHistoryPanel(); }}
+            aria-expanded={isLoggedIn ? showHistoryPanel : undefined}
+            aria-disabled={isLoggedIn ? undefined : 'true'}
+            data-feature-name={isLoggedIn ? 'chat_history_toggle' : undefined}
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
@@ -1818,7 +1943,18 @@
                     {$_('assistant.menu.settings')}
                   </button>
                 {/if}
-                <button class="menu-item" aria-label={$_('assistant.menu.restart.aria')} data-feature-name="new_chat_button" onclick={handleRestartConvo} disabled={messages.length === 0} role="menuitem">
+                <!-- Logged out, New chat is locked with a login tooltip: aria-disabled (not
+                     disabled) so the tooltip can show, and no data-feature-name while locked. -->
+                <button
+                  class="menu-item"
+                  aria-label={$_('assistant.menu.restart.aria')}
+                  data-feature-name={isLoggedIn ? 'new_chat_button' : undefined}
+                  onclick={handleRestartConvo}
+                  disabled={isLoggedIn && messages.length === 0}
+                  aria-disabled={isLoggedIn ? undefined : 'true'}
+                  use:tooltip={isLoggedIn ? '' : $_('assistant.menu.restart.login_tooltip')}
+                  role="menuitem"
+                >
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
@@ -1834,10 +1970,12 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
-                  <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                  {$_('assistant.menu.optout')}
-                </a>
+                {#if isLoggedIn}
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.optout')}
+                  </a>
+                {/if}
               </div>
             {/if}
           </div>
@@ -2193,38 +2331,46 @@
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
       {/if}
       <!-- Input Footer -->
-      <footer class="lc-chatbot-input">
-        <textarea
-          bind:this={inputRef}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          maxlength={effectiveMaxInputChars}
-          placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
-          aria-label={$_('assistant.input.aria')}
-          rows="1"
-          disabled={isCurrentSessionSending || limitReached}
-        ></textarea>
-        {#if isCurrentSessionSending}
-          <Tooltip text={$_('assistant.stop.tooltip')}>
-            <button type="button" class="stop-btn" onclick={handleStop}
-              disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
-              <img src={stopIcon} alt="" width="18" height="18" />
-            </button>
-          </Tooltip>
-        {:else}
-        <button
-          class="send-btn"
-          onclick={handleSend}
-          disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
-          aria-label={$_('assistant.input.send.tooltip')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-        {/if}
-      </footer>
+      {#if loginRequired}
+        <!-- The free answers are used up: the login prompt replaces the text box.
+             It doesn't take focus. The host's sign-up options follow the text. -->
+        <div class="login-prompt" data-testid="la-login-prompt" use:hostSlot={'signup-options'}>
+          <p class="login-prompt-text">{$_('assistant.anon.limit_reached')}</p>
+        </div>
+      {:else}
+        <footer class="lc-chatbot-input">
+          <textarea
+            bind:this={inputRef}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            maxlength={effectiveMaxInputChars}
+            placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
+            aria-label={$_('assistant.input.aria')}
+            rows="1"
+            disabled={isCurrentSessionSending || limitReached}
+          ></textarea>
+          {#if isCurrentSessionSending}
+            <Tooltip text={$_('assistant.stop.tooltip')}>
+              <button type="button" class="stop-btn" onclick={handleStop}
+                disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
+                <img src={stopIcon} alt="" width="18" height="18" />
+              </button>
+            </Tooltip>
+          {:else}
+          <button
+            class="send-btn"
+            onclick={handleSend}
+            disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+            aria-label={$_('assistant.input.send.tooltip')}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+          {/if}
+        </footer>
+      {/if}
       {/if}
       </section>
       </div>
@@ -2311,6 +2457,7 @@
     --spacing-spacing-medium: 12px;
     --semantic-action-primary: #18345D;
     --semantic-text-link: #18345D;
+    --semantic-text-primary: #121212;
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
@@ -2462,7 +2609,7 @@
     color: var(--lc-user-text);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size-sm);
-    line-height: 18px; 
+    line-height: 18px;
     letter-spacing: 0.24px;
     max-width: 0;
     overflow: hidden;
@@ -3066,7 +3213,7 @@
       inset-inline-start: auto;
       inset-inline-end: 0;
     }
-  
+
 
   .menu-item {
     display: flex;
@@ -3090,9 +3237,14 @@
     background: var(--lc-bg-tertiary);
   }
 
-  .menu-item:disabled {
+  .menu-item:disabled,
+  .menu-item[aria-disabled='true'] {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .menu-item[aria-disabled='true']:hover {
+    background: transparent;
   }
 
   .menu-item svg {
@@ -3489,6 +3641,51 @@
   }
 
   /* Input Footer */
+  /* Shown in place of the text box once a logged-out visitor's free answers are used up. */
+  /* Same frame as the input footer it replaces (.lc-chatbot-input). */
+  .login-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 16px 16px 18px;
+    border-top: 1px solid var(--lc-border);
+    animation: loginPromptIn 0.2s ease;
+  }
+
+  .login-prompt-text {
+    margin: 0;
+    color: var(--semantic-text-primary);
+    /* Font family is inherited: the widget's font in English, Heebo in Hebrew. */
+    font-size: var(--lc-font-size);
+    line-height: var(--global-dimension-250);
+    text-align: center;
+  }
+
+  /* The host's sign-up options: 16px under the text (with the 12px gap), centred.
+     Only when there are any, so an empty slot takes no space. Global, because the
+     slot is created in code (hostSlot) and has no Svelte scoping class. */
+  :global(.login-prompt > slot[name='signup-options']::slotted(*)) {
+    margin-top: 4px;
+    align-self: center;
+  }
+
+  @keyframes loginPromptIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .login-prompt {
+      animation: none;
+    }
+  }
+
   .lc-chatbot-input {
     display: flex;
     align-items: flex-end;

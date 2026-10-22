@@ -24,6 +24,7 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from ...sefaria_base_url import request_sefaria_base_url
 from .source_sheet_serializer import prepare_source_sheet_sources, serialize_source_sheet_payload
 
 # ---------------------------------------------------------------------------
@@ -50,8 +51,15 @@ def _user_agent() -> str:
     return f"{USER_AGENT} ({env})" if env else USER_AGENT
 
 
-def _get_default_sefaria_base_url() -> str:
+def _get_configured_sefaria_base_url() -> str:
+    """The deployment's Sefaria: `SEFARIA_API_BASE_URL`, else production."""
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
+
+
+def _get_default_sefaria_base_url() -> str:
+    """The current request's Sefaria when it has an allowed one (see
+    chat/sefaria_base_url.py), else the deployment's."""
+    return request_sefaria_base_url() or _get_configured_sefaria_base_url()
 
 
 # Mapping from Sefaria search filter paths to human-friendly dictionary names.

@@ -50,7 +50,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | Yes | Encrypted user token |
+| `user-id` | string | No | Encrypted user token. Absent = logged-out visitor: requests carry `anonId` instead (`identityFields()` in `lib/api.js`), and a chat left by a logged-in user is deleted on load (`clearLoggedInChatWhenLoggedOut()` in `lib/session.js`) |
 | `api-base-url` | string | Yes | Backend API URL |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
