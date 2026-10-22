@@ -353,7 +353,7 @@ A code review of #256 and #3840 before merging found these; all but one are fixe
 - [x] Grants past their 90-day absolute expiry are deleted (with their consumed refresh tokens) when a new grant is issued, so neither table grows forever.
 - [x] The topic-prompt tool schemas reject unknown arguments (they used to crash with a `TypeError`), and `topic` is a plain list of strings instead of a string-or-list type some clients mishandle.
 - [x] Sefaria: `POST /api/sheets/` with a non-object JSON body is a 400, not a 500.
-- Constraint, not fixed: the browser-binding cookie is `SameSite=Lax`, and Sefaria returns by a cross-origin auto-POST, so the chat host and the Sefaria sign-in host must share a registrable domain (`*.sefaria.org`). Otherwise every sign-in fails with "Finish signing in from the same browser".
+- [x] **Cross-site return (2026-10-22).** The browser-binding cookie was `SameSite=Lax`, which browsers drop from Sefaria's cross-site auto-POST when Sefaria is on another site than the chat host. Staging is exactly that (`chat-dev.sefaria.org` with `sefariastaging.org`), so every staging sign-in would fail with "Finish signing in from the same browser". Over https the cookie is now `SameSite=None; Secure`; that is safe because the cookie only proves which browser started the flow, and an attacker's flow is bound to the attacker's own cookie. Plain-http local development keeps `Lax`.
 
 ## Deprecating the old MCP (after Phase 1 is proven)
 
