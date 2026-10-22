@@ -678,16 +678,11 @@
   // The host's question is asked once per page: closing and reopening from the same pill
   // goes back to that chat instead of asking it again
   function askFromLauncher() {
+    trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
     if (launcherOverride?.question && !launcherOverride.asked) {
-      const { source, question } = launcherOverride;
-      trackAssistantClick(source || 'ask_pill_open');
       launcherOverride.asked = true;
-      askInNewChat(question);
-    } else if (launcherOverride) {
-      trackAssistantClick(launcherOverride.source);
-      openPanel();
+      askInNewChat(launcherOverride.question);
     } else {
-      trackAssistantClick('ask_pill_open');
       openPanel();
     }
   }
