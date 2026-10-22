@@ -60,13 +60,20 @@ export async function pinChatToBottom(getList) {
   void el.offsetHeight; // apply it, which stops the glide
   el.style.overflowY = '';
   el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  // The reader touching the chat stops the glide to read: don't pull them back down after
+  let userScrolled = false;
+  const noteUserScroll = () => { userScrolled = true; };
+  el.addEventListener('touchstart', noteUserScroll, { passive: true });
+  el.addEventListener('wheel', noteUserScroll, { passive: true });
   await new Promise(resolve => {
     const done = () => { clearTimeout(timer); el.removeEventListener('scrollend', done); resolve(); };
     const timer = setTimeout(done, 1000); // no scrollend if it was already there
     el.addEventListener('scrollend', done);
   });
+  el.removeEventListener('touchstart', noteUserScroll);
+  el.removeEventListener('wheel', noteUserScroll);
   if (run !== pinRun) return; // a newer pin owns the flag now
   scrollingToEnd = false;
   // The chat grew or shrank under the scroll (e.g. the keyboard closing): finish the last bit
-  if (el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  if (!userScrolled && el.scrollHeight - el.clientHeight - el.scrollTop > 2) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
 }
