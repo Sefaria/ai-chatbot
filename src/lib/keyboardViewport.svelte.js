@@ -9,8 +9,9 @@ import { flushSync } from 'svelte';
  */
 export function keyboardViewport(input, active) {
   let box = $state(null);
-  // The on-screen keyboard's height, once seen
-  let keyboardHeight = 0;
+  // The on-screen keyboard's height, once seen, per orientation: it's much taller in portrait
+  const keyboardHeights = { portrait: 0, landscape: 0 };
+  const orientation = () => (window.innerWidth > window.innerHeight ? 'landscape' : 'portrait');
   let inputTouchY = 0;
 
   // While the sheet is open, lock the page behind it and track the visual viewport, so
@@ -27,7 +28,7 @@ export function keyboardViewport(input, active) {
       const typing = input()?.getRootNode().activeElement?.matches('input, textarea');
       if (typing) {
         box = { top: vv.offsetTop, height: vv.height };
-        if (vv.height < window.innerHeight) keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+        if (vv.height < window.innerHeight) keyboardHeights[orientation()] = window.innerHeight - vv.height - vv.offsetTop;
       }
       else box = vv.offsetTop ? { top: vv.offsetTop, height: window.innerHeight } : null;
     };
@@ -81,8 +82,9 @@ export function keyboardViewport(input, active) {
     if (!active() || !vv || inputEl.disabled || inputEl.getRootNode().activeElement === inputEl) return;
     if (Math.abs(e.changedTouches[0].clientY - inputTouchY) > 10) return; // a drag, not a tap
     e.preventDefault(); // we focus it ourselves, once the sheet is out of the keyboard's way
-    const room = keyboardHeight || Math.round(window.innerHeight / 2);
-    box = { top: 0, height: window.innerHeight - room };
+    // Capped, so a height measured while pinch-zoomed can't squash the sheet
+    const room = Math.min(keyboardHeights[orientation()] || window.innerHeight / 2, window.innerHeight * 0.6);
+    box = { top: 0, height: Math.round(window.innerHeight - room) };
     flushSync();
     inputEl.focus({ preventScroll: true });
     // No on-screen keyboard came (e.g. a hardware keyboard): give the room back
