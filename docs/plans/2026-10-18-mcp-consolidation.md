@@ -1,7 +1,7 @@
 # MCP Consolidation: a new Sefaria MCP at chat.sefaria.org/mcp, then user auth
 
 **Date:** 2026-10-18 (revised 2026-10-19: run side by side instead of an in-place cutover)
-**Status:** Proposed
+**Status:** Phase 1 server work in PR #255; Phase 2 implemented, pending review and infra
 **Branch:** `feat/mcp-consolidation` (off `main`)
 **Supersedes:** `docs/superpowers/specs/2026-09-03-mcp-consolidation-design.md` on the
 unmerged `local-agent-thin` branch. Phase 1 reuses most of that work. Where this plan
@@ -43,7 +43,7 @@ endpoint only has to be good, not identical to the old one.
 | D7 | Transport | **Streamable HTTP only, `stateless_http=True`. No SSE.** Host/Origin protection is ported from sefaria-mcp `main`. | SSE clients stay on the old server until it's deprecated. Without SSE there is no in-memory session state, so the Deployment can run 2+ replicas and survive rollouts. |
 | D8 | Auth topology | **Two endpoints.** `/mcp` is public and authless. **`/mcp/user`** requires OAuth and serves the public tools plus the sheet tools. | MCP clients only start OAuth when they get a 401, so optional auth on one endpoint would never prompt a login. A separate authenticated endpoint keeps anonymous use frictionless. |
 | D9 | Authorization server | **The Django chatbot app on `chat.sefaria.org` is the OAuth authorization server.** It gets Sefaria identity through a login handoff on sefaria.org. The MCP process is a resource server that validates the access tokens. | Sefaria is not an OAuth server: it is only an allauth client of Google and Apple, and it has no authorize, token or well-known endpoints. Our Postgres already holds users and can store clients, codes and tokens. Building an AS into Sefaria-Project is a much larger change. |
-| D10 | Sefaria credential | Sefaria mints a **new `aud: "mcp"` token** for the user, scoped to the sheet APIs and with a longer TTL. Django stores it encrypted, and MCP sends it as `X-Session-ID`. The chatbot never mints Sefaria tokens itself. | This mirrors the existing admin MCP token (`AdminMCPTokenView`, `SessionIDAuthMiddleware` audience check). If the chatbot minted tokens from the shared secret, it would hold impersonate-anyone power for long-lived sessions. |
+| D10 | Sefaria credential | **Option B (revised 2026-10-20): nothing long-lived reaches Sefaria.** Sefaria proves identity once, at login, with a 5-minute `aud: "mcp-login"` token. For each tool call, the MCP process mints a 5-minute `aud: "mcp"` token itself. Both use a dedicated `MCP_TOKEN_SECRET`, separate from the widget's chatbot secret. Sefaria accepts `aud: "mcp"` only on the three sheet endpoints the tools call, and skips CSRF for it. | The first version of D10 stored a 30-day Sefaria token per user, so a database leak would hand out working Sefaria credentials, and revoking needed a Sefaria-side version bump. The chatbot can already mint widget tokens (AES-GCM is symmetric), so per-call minting adds no trust that doesn't already exist. The dedicated secret and the endpoint allowlist cap what an `mcp` token can do. The long-running credential is our OAuth refresh token, which is rotated, revocable and stored hashed. |
 
 ## Phase 1: public MCP at `chat.sefaria.org/mcp`
 
@@ -216,100 +216,144 @@ changes.
 
 ## Phase 2: Sefaria login on `/mcp/user`
 
-Done means: a user adds `https://chat.sefaria.org/mcp/user` in claude.ai, signs in with
-Sefaria, and can list, read and create their own source sheets. `/mcp` is unchanged.
+Done means: a user adds `https://chat.sefaria.org/mcp/user` in an MCP client, signs in
+with Sefaria, approves access, and can list, read and create their own source sheets.
+`/mcp` is unchanged.
+
+### Token contract (both repos build to this)
+
+| Credential | Issued by | Held by | Format | Lifetime | Accepted where |
+|---|---|---|---|---|---|
+| `mcp-login` token | Sefaria `/api/mcp/authorize` | browser → chatbot callback (auto-POST, never in a URL) | `build_chatbot_user_token` format, `aud: "mcp-login"`, `MCP_TOKEN_SECRET` | 5 min | chatbot `/oauth/sefaria/callback` only |
+| Authorization code | chatbot AS | MCP client | random, stored hashed, single use, PKCE S256 | 60 s | chatbot `/oauth/token` |
+| Access token | chatbot AS | MCP client | JWT HS256 (`MCP_OAUTH_SIGNING_KEY`); `iss` = chat host, `aud` = `…/mcp/user`, `sub` = grant id, `sefaria_user_id`, `scope: "sheets"` | 15 min | MCP `/mcp/user` |
+| Refresh token | chatbot AS | MCP client | random, stored hashed, rotated on use; reusing an old one revokes the grant | 30 days idle, 90 days absolute | chatbot `/oauth/token` |
+| `mcp` token | MCP process, per tool call | MCP process → Sefaria `X-Session-ID` | `build_chatbot_user_token` format, `aud: "mcp"`, `MCP_TOKEN_SECRET` | 5 min | Sefaria: `GET /api/sheets/user/<id>…`, `GET /api/sheets/<id>`, `POST /api/sheets/` (CSRF skipped) |
+
+Revoking a grant stops refreshes immediately. An access token already issued keeps
+working until it expires (at most 15 minutes), because the MCP process checks the JWT
+statelessly and has no database access.
 
 ### Flow
 
-Everything is on `chat.sefaria.org`. The gateway routes `/mcp*` and
-`/.well-known/oauth-protected-resource/mcp*` to `chatbot-mcp`; everything else goes to
-Django.
-
 ```
 MCP client ──POST /mcp/user──► chatbot-mcp ──401 + WWW-Authenticate (resource_metadata=…)
-   │
-   ├─GET /.well-known/oauth-protected-resource/mcp/user        (chatbot-mcp)
-   │     → { resource: https://chat.sefaria.org/mcp/user,
-   │         authorization_servers: ["https://chat.sefaria.org"] }
-   ├─GET /.well-known/oauth-authorization-server               (Django, RFC 8414)
-   ├─POST /oauth/register                                      (Django, RFC 7591 DCR)
-   ├─browser → /oauth/authorize (PKCE S256)                    (Django)
-   │     └─302 → www.sefaria.org/api/mcp/authorize?state=…    (login_required)
-   │            └─ user logs in (session / Google / Apple) and consents
-   │            └─ auto-POST form → /oauth/sefaria/callback   (Django)
-   │                  { state, mcp_token }   ← aud:"mcp" token (D10)
-   │     └─302 → client redirect_uri?code=…
-   ├─POST /oauth/token  → { access_token, refresh_token }      (Django)
-   └─POST /mcp/user  Authorization: Bearer …  → tools run with the user's Sefaria token
+   ├─GET /.well-known/oauth-protected-resource/mcp/user          (chatbot-mcp, fastmcp)
+   ├─GET /.well-known/oauth-authorization-server                 (Django)
+   ├─POST /oauth/register                                        (Django, RFC 7591)
+   ├─browser → GET /oauth/authorize (PKCE S256)                  (Django)
+   │     sets a browser-binding cookie, then 302 →
+   │     www.sefaria.org/api/mcp/authorize?state=…&redirect_uri=<callback>
+   │        └─ login_required; auto-POST {state, token: mcp-login} → /oauth/sefaria/callback
+   │     callback checks state + binding cookie, decrypts token → GET /oauth/consent
+   │     user clicks Allow → 302 client redirect_uri?code=…&state=…
+   ├─POST /oauth/token (code + code_verifier) → access + refresh  (Django)
+   └─POST /mcp/user  Bearer … → tool mints an `mcp` token → Sefaria sheet API
 ```
 
-### 2.0 Prototype discovery first
+The browser-binding cookie and our own consent page stop login CSRF. Without them, an
+attacker could start a flow, get a logged-in victim's browser to complete the Sefaria
+step, and receive a grant for the victim's account.
 
-- [ ] Before building the AS, deploy a dev-only `/mcp/user` that returns 401 with a
-      populated path-specific protected-resource document pointing at a stub AS
-      metadata document. Confirm that claude.ai, Claude Desktop and MCP Inspector all
-      start an OAuth flow, i.e. none of them stops at the root discovery document. This
-      is the riskiest assumption in Phase 2.
+### 2.0 Prototype discovery
 
-### 2.1 Sefaria-Project changes (separate PR, Sefaria team)
+- [x] Checked locally that fastmcp 4's `RemoteAuthProvider` with an HS256 `JWTVerifier`
+      returns 401 with `WWW-Authenticate: Bearer resource_metadata=…/oauth-protected-resource/mcp/user`,
+      serves that document, accepts a valid token (claims reach the tool), and rejects a
+      wrong audience.
+- [ ] On dev: confirm claude.ai, Claude Desktop and MCP Inspector start OAuth from the
+      401 rather than stopping at a root discovery document.
 
-- [ ] `GET /api/mcp/authorize`: `@login_required`, with a consent page ("Allow Sefaria AI
-      to read and create your source sheets"). It mints an `aud: "mcp"` token
-      (`{id, user_id, expiration, aud}`, AES-GCM, same scheme as
-      `sefaria/utils/chatbot.py`) and returns it to an **allowlisted** callback with an
-      auto-submitting POST form. It is never sent in a query string, because query
-      strings get logged.
-- [ ] `SessionIDAuthMiddleware`: accept `aud: "mcp"` only on the sheet endpoints the
-      tools use, skip CSRF for it the way the admin token does, and leave it rejected
-      everywhere else.
-- [ ] Choose the TTL (proposal: 30 days) and decide whether revocation is needed
-      (proposal: a per-user `mcp_token_version` bump).
-- [ ] Sheet endpoint gaps: `GET /api/sheets/<id>` doesn't appear to check privacy, so
-      `get_source_sheet` must enforce ownership or public status itself. `/add` and
-      `/add_ref` are CSRF-protected and owner-only, which matters if we add an
-      "add source to sheet" tool later.
+### 2.1 Sefaria-Project (separate PR, stacked on #3801's `aud` support)
 
-### 2.2 Authorization server in Django (this repo)
+- [x] `MCP_TOKEN_SECRET` setting (env), `MCP_AUTH_CALLBACK_URLS` allowlist (settings, local_settings_example, helm configmap).
+- [x] `GET /api/mcp/authorize` (`api/mcp_auth_views.py`): requires a real browser session (an `X-Session-ID` user is not enough); validates `state` and that
+      `redirect_uri` is allowlisted; responds `no-store` with an auto-submitting POST
+      form carrying `state` and an `mcp-login` token.
+- [x] `SessionIDAuthMiddleware`: accepts `aud: "mcp"` tokens (MCP secret) only on the
+      three sheet routes and methods above, skips CSRF for them, and sets
+      `request.auth_via = "mcp"`.
+- [x] Tests for both (`sefaria/system/tests/test_middleware.py`, `sefaria/tests/mcp_auth_test.py`): 81 pass, alongside the existing middleware tests. Branch `feature/mcp-user-auth`, stacked on #3801.
+- Not in scope: `GET /api/sheets/<id>` doesn't check sheet privacy for any caller.
+  That's a Sefaria issue independent of MCP.
 
-- [ ] New app `server/mcp_auth/` with models `OAuthClient` (DCR), `AuthorizationCode`
-      (PKCE challenge, short TTL, single use), and `MCPGrant` (sefaria user id, the
-      encrypted Sefaria `mcp` token, its expiry, refresh token hash, revoked flag).
-      Tokens are stored hashed.
-- [ ] Endpoints: `/.well-known/oauth-authorization-server`, `/oauth/register`,
-      `/oauth/authorize`, `/oauth/sefaria/callback`, `/oauth/token` (`authorization_code`
-      and `refresh_token` grants) and `/oauth/revoke`. PKCE S256 is required. Redirect
-      URIs are exact-match. Each `state` is bound to a server-side record.
-- [ ] Access tokens are short-lived JWTs (15 min, `aud=https://chat.sefaria.org/mcp/user`,
-      `sub=grant id`), signed with a key held by both processes. The refresh token is
-      opaque and rotated. Refresh fails once the Sefaria token has expired, which sends
-      the client back through login.
-- [ ] Check whether a library (e.g. django-oauth-toolkit) can cover the AS. Use it only
-      if it handles DCR and PKCE without much glue code; otherwise keep the hand-rolled
-      version minimal.
-- [ ] Routing: the `/`, `/oauth/*` and root `/.well-known/oauth-authorization-server`
-      paths already go to Django, so no infra change is needed beyond 1.5.
+### 2.2 Authorization server in Django (this repo, `server/mcp_auth/`)
 
-### 2.3 Resource server in the MCP process
+- [x] Models: `OAuthClient` (DCR), `AuthorizationRequest` (flow state, PKCE challenge,
+      browser binding, Sefaria user, code hash), `Grant` (Sefaria user, refresh token
+      hashes, idle and absolute expiry, revoked).
+- [x] Endpoints: `/.well-known/oauth-authorization-server`, `/oauth/register`,
+      `/oauth/authorize`, `/oauth/sefaria/callback`, `/oauth/consent`, `/oauth/token`
+      (`authorization_code`, `refresh_token`) and `/oauth/revoke`.
+- [x] Redirect URIs must be https, or loopback http for desktop clients, and are matched
+      exactly. PKCE S256 is required. `resource` must be our `/mcp/user` URL if given.
 
-- [ ] Mount a second FastMCP app at `/mcp/user` (stateless) with a JWT verifier
-      (`fastmcp` auth provider), and serve the populated
-      `/.well-known/oauth-protected-resource/mcp/user`.
-- [ ] Tools: `get_tools_for_surface("mcp")` plus a new `mcp_user` surface for the three
-      sheet tools.
-- [ ] Per request, resolve the grant (with Django ORM, since D3 gives the process Django
-      settings), decrypt the Sefaria token, and build a per-call `MessageContext` so
-      `SefariaToolExecutor` calls `client.set_user_session(sefaria_user_id, token)`. The
-      executor is never shared across users.
-- [ ] Logging: never log tokens. Metrics get a `surface` label (`public` / `user`).
+### 2.3 Resource server (`mcp_server`)
+
+- [x] `/mcp/user`: a second stateless FastMCP app with `RemoteAuthProvider` and an
+      HS256 `JWTVerifier`. It serves the public tools plus the `mcp_user` surface
+      (`search_user_source_sheets`, `get_source_sheet`, `create_source_sheet`).
+- [x] Each call builds its own `SefariaClient` with a freshly minted `mcp` token, so
+      concurrent users never share session state.
 
 ### 2.4 Tests
 
-- [ ] AS unit tests: DCR, PKCE mismatch, code reuse, expired code, redirect URI mismatch,
-      refresh rotation, revoked grant.
-- [ ] Resource server: 401 with `WWW-Authenticate` when no token is sent; wrong `aud` is
-      rejected; sheet tools appear only on `/mcp/user`; per-user isolation (two
-      concurrent users never see each other's token).
-- [ ] End-to-end on dev with claude.ai's connector flow and with MCP Inspector.
+- [x] AS (`mcp_auth/tests/test_oauth.py`, 42 tests): DCR validation, PKCE mismatch, code reuse and expiry, redirect URI mismatch,
+      binding-cookie mismatch, refresh rotation and reuse detection, revocation.
+- [x] RS (`chat/tests/test_mcp_user_server.py`, 12 tests): 401 + challenge, wrong audience or expiry rejected, sheet tools only on
+      `/mcp/user`, minted token format matches Sefaria's decoder, per-user isolation.
+- [x] End to end locally (2026-10-20): Sefaria from the branch on :8000, the Django AS
+      on :8001, MCP on :18088, and a scripted client and browser. All 19 checks passed:
+      discovery, DCR, Sefaria handoff, consent, code exchange, a real sheet created, listed
+      and read back as the user, then refresh rotation and reuse revocation. Against the
+      real Sefaria middleware, an `mcp` token is refused on sheet delete and `/api/profile`,
+      and an `mcp-login` token is not an API credential.
+
+### 2.5 Rollout (not done)
+
+- [ ] Secrets: generate `MCP_TOKEN_SECRET` (shared by Sefaria, chatbot Django and
+      chatbot-mcp) and `MCP_OAUTH_SIGNING_KEY` (chatbot Django and chatbot-mcp). Add
+      `MCP_AUTH_CALLBACK_URLS=https://chat[-dev].sefaria.org/oauth/sefaria/callback` on
+      Sefaria.
+- [ ] Infra: route `/oauth/*` and `/.well-known/oauth-authorization-server` on the chat
+      host to Django (already covered by `/`), and `/mcp/user` plus
+      `/.well-known/oauth-protected-resource/mcp/user` to chatbot-mcp (covered by the 1.5
+      PathPrefix rules).
+- [ ] Dev: connect claude.ai, Claude Desktop and MCP Inspector to
+      `https://chat-dev.sefaria.org/mcp/user` (2.0's open check).
+- Later: a page where users can see and revoke their grants; rate limits on
+  `/oauth/register` and `/oauth/token`; deleting expired grants.
+
+### 2.6 Review fixes (external review, 2026-10-21)
+
+An external review of #256 and #3840 found six issues. The three high-severity ones are fixed; the rest are deferred, by choice, to keep the change small.
+
+- [x] **The `mcp` token was not create-only.** `POST /api/sheets/` also updates sheets (payload `id`) and publishes them (`status`). For `auth_via == "mcp"`, Sefaria now refuses an `id`, forces `status: unlisted` and drops `displayedCollection` (#3840).
+- [x] **Replay detection forgot older refresh tokens.** Only the previous hash was kept. Every rotated-out token is now recorded (`ConsumedRefreshToken`); a replay or revoke of any of them revokes the grant (RFC 9700 4.14.2); and the token is re-checked under the row lock.
+- [x] **Anonymous registration grew the DB without limit.** Registration bodies are capped at 8 KB and redirect URIs at 2,000 characters; there are global ceilings of 500 new clients an hour and 2,000 sign-ins in progress (429); clients a day old with no completed sign-in are deleted. Per-IP limits are left to the gateway.
+- [x] Also found: pytest only collected `chat/`, so CI never ran the `mcp_auth` tests. `testpaths` now lists `mcp_auth`.
+- Deferred: `create_source_sheet` has no source-count bound and fans out reference fetches; Sefaria errors returned as HTTP 200 become successful tool results; a grant-management page; separate read and write scopes. (The handoff token's `state` binding, first deferred here, is fixed in 2.8.)
+
+### 2.7 Staff tools on `/mcp/admin` (2026-10-21)
+
+The topic-prompt tools move here from the stdio `sefaria-admin-mcp` server, and the separate admin token flow is retired. There is one sign-in flow for every signed-in endpoint.
+
+- [x] `list_topic_prompts` and `update_topic_prompt` are chatbot tool schemas on a new `mcp_admin` surface. They call Sefaria's `/api/admin/topic-prompts` API as the signed-in user, with the same per-call 5-minute `mcp` token as the sheet tools. Sefaria's error message is kept, and a 409 includes the current version.
+- [x] `/mcp/admin` serves only those two tools, with tool annotations and server instructions carried over from the stdio server. It is its own OAuth resource: the authorization server issues the `admin` scope only for `/mcp/admin` (`MCP_ADMIN_RESOURCE_URL`) and `sheets` only for `/mcp/user`, with matching token audiences, so a token is never accepted at the other endpoint. The consent page names what is being approved.
+- [x] **Decision: staff access is enforced by Sefaria, not here.** Anyone can sign in to `/mcp/admin`; Sefaria accepts `mcp` tokens on the two topic-prompt routes only for `is_staff` users, and the views check again. Grants follow the normal lifetimes (90 days at most) instead of the old 12-hour token; that was accepted on purpose.
+- [x] Sefaria (#3840's branch): removed the `/api/admin/mcp-token` minting page, `ADMIN_MCP_TOKEN_SECRET` and the `admin-mcp` audience. Audit records now say `via: "mcp"` or `"session"`.
+- Not done: the stdio server's `review_topic_prompts` MCP prompt was not ported. The `Sefaria/sefaria-admin-mcp` repo is now unused and can be archived. `MCP_ADMIN_RESOURCE_URL` defaults to the `/mcp/admin` beside `MCP_USER_RESOURCE_URL`, since the MCP host can differ from the issuer (the Coolify test app first failed client registration because the default was the issuer host).
+
+### 2.8 Pre-merge review fixes (2026-10-22)
+
+A code review of #256 and #3840 before merging found these; all but one are fixed.
+
+- [x] **The `mcp-login` token is bound to its flow.** Sefaria puts the flow's `state` in the token, and the callback accepts it only for that state, so a captured token cannot complete another sign-in (it was replayable for 5 minutes).
+- [x] `scope=admin` without RFC 8707's `resource` now targets `/mcp/admin` instead of failing.
+- [x] Grants past their 90-day absolute expiry are deleted (with their consumed refresh tokens) when a new grant is issued, so neither table grows forever.
+- [x] The topic-prompt tool schemas reject unknown arguments (they used to crash with a `TypeError`), and `topic` is a plain list of strings instead of a string-or-list type some clients mishandle.
+- [x] Sefaria: `POST /api/sheets/` with a non-object JSON body is a 400, not a 500.
+- Constraint, not fixed: the browser-binding cookie is `SameSite=Lax`, and Sefaria returns by a cross-origin auto-POST, so the chat host and the Sefaria sign-in host must share a registrable domain (`*.sefaria.org`). Otherwise every sign-in fails with "Finish signing in from the same browser".
 
 ## Deprecating the old MCP (after Phase 1 is proven)
 

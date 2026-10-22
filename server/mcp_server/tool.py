@@ -12,9 +12,15 @@ import time
 from typing import Any
 
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools.base import Tool, ToolResult
 from jsonschema import Draft202012Validator
-from mcp.types import TextContent
+from mcp.types import TextContent, ToolAnnotations
+
+from chat.V2.agent.contracts import MessageContext
+from chat.V2.agent.sefaria_client import SefariaClient
+from chat.V2.agent.tool_executor import SefariaToolExecutor
+from mcp_auth import sefaria_tokens
 
 from . import metrics
 
@@ -42,10 +48,12 @@ class SefariaTool(Tool):
     @classmethod
     def from_schema(cls, schema: dict[str, Any], executor: Any) -> SefariaTool:
         parameters = schema.get("input_schema", {"type": "object", "properties": {}})
+        annotations = schema.get("annotations")
         return cls(
             name=schema["name"],
             description=schema.get("description", ""),
             parameters=parameters,
+            annotations=ToolAnnotations(**annotations) if annotations else None,
             executor=executor,
             validator=Draft202012Validator(parameters),
         )
@@ -73,7 +81,7 @@ class SefariaTool(Tool):
             self._record(started, status="error", error_type="InvalidArguments")
             raise ToolError(invalid)
         try:
-            result = await self.executor.execute(self.name, arguments)
+            result = await self._execute(arguments)
         except Exception as exc:
             self._record(started, status="error", error_type=type(exc).__name__)
             raise ToolError(str(exc)) from exc
@@ -88,6 +96,9 @@ class SefariaTool(Tool):
 
         self._record(started, status="success", payload_bytes=len(text.encode()))
         return ToolResult(content=[TextContent(type="text", text=text)])
+
+    async def _execute(self, arguments: dict[str, Any]):
+        return await self.executor.execute(self.name, arguments)
 
     def _record(
         self,
@@ -104,3 +115,39 @@ class SefariaTool(Tool):
             labels(metrics.errors_total, tool_name=self.name, error_type=error_type).inc()
         if payload_bytes is not None:
             labels(metrics.tool_payload_bytes, tool_name=self.name).observe(payload_bytes)
+
+
+class UserSefariaTool(SefariaTool):
+    """A tool that acts as the signed-in user on /mcp/user and /mcp/admin.
+
+    Each call gets its own ``SefariaClient``, so concurrent users never share session
+    state, and a freshly minted 5-minute ``mcp`` token for the user named in the
+    verified access token. Nothing long-lived is ever sent to Sefaria.
+    """
+
+    token_secret: Any = None
+
+    @classmethod
+    def from_schema(cls, schema: dict[str, Any], executor: Any = None, *, token_secret: str):
+        tool = super().from_schema(schema, executor)
+        tool.token_secret = token_secret
+        return tool
+
+    async def _execute(self, arguments: dict[str, Any]):
+        access_token = get_access_token()
+        user_id = (access_token.claims or {}).get("sefaria_user_id") if access_token else None
+        if not user_id:
+            raise ToolError("Sign in with your Sefaria account to use this tool.")
+
+        client = SefariaClient()
+        executor = SefariaToolExecutor(client=client)
+        executor.set_message_context(
+            MessageContext(
+                sefaria_user_id=str(user_id),
+                encrypted_user_token=sefaria_tokens.mint(int(user_id), self.token_secret),
+            )
+        )
+        try:
+            return await executor.execute(self.name, arguments)
+        finally:
+            await client.close()
