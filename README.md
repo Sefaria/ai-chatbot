@@ -114,3 +114,4 @@ Create a `.env` file in the `server/` directory with backend API keys. For front
 ## License
 
 MIT
+# exercise branch test 2026-10-22
