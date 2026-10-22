@@ -332,7 +332,7 @@ An external review of #256 and #3840 found six issues. The three high-severity o
 - [x] **Replay detection forgot older refresh tokens.** Only the previous hash was kept. Every rotated-out token is now recorded (`ConsumedRefreshToken`); a replay or revoke of any of them revokes the grant (RFC 9700 4.14.2); and the token is re-checked under the row lock.
 - [x] **Anonymous registration grew the DB without limit.** Registration bodies are capped at 8 KB and redirect URIs at 2,000 characters; there are global ceilings of 500 new clients an hour and 2,000 sign-ins in progress (429); clients a day old with no completed sign-in are deleted. Per-IP limits are left to the gateway.
 - [x] Also found: pytest only collected `chat/`, so CI never ran the `mcp_auth` tests. `testpaths` now lists `mcp_auth`.
-- Deferred: the handoff token is not bound to `state` (reusable within 5 minutes); `create_source_sheet` has no source-count bound and fans out reference fetches; Sefaria errors returned as HTTP 200 become successful tool results; a grant-management page; separate read and write scopes.
+- Deferred: `create_source_sheet` has no source-count bound and fans out reference fetches; Sefaria errors returned as HTTP 200 become successful tool results; a grant-management page; separate read and write scopes. (The handoff token's `state` binding, first deferred here, is fixed in 2.8.)
 
 ### 2.7 Staff tools on `/mcp/admin` (2026-10-21)
 
@@ -343,6 +343,17 @@ The topic-prompt tools move here from the stdio `sefaria-admin-mcp` server, and 
 - [x] **Decision: staff access is enforced by Sefaria, not here.** Anyone can sign in to `/mcp/admin`; Sefaria accepts `mcp` tokens on the two topic-prompt routes only for `is_staff` users, and the views check again. Grants follow the normal lifetimes (90 days at most) instead of the old 12-hour token; that was accepted on purpose.
 - [x] Sefaria (#3840's branch): removed the `/api/admin/mcp-token` minting page, `ADMIN_MCP_TOKEN_SECRET` and the `admin-mcp` audience. Audit records now say `via: "mcp"` or `"session"`.
 - Not done: the stdio server's `review_topic_prompts` MCP prompt was not ported. The `Sefaria/sefaria-admin-mcp` repo is now unused and can be archived. `MCP_ADMIN_RESOURCE_URL` defaults to the `/mcp/admin` beside `MCP_USER_RESOURCE_URL`, since the MCP host can differ from the issuer (the Coolify test app first failed client registration because the default was the issuer host).
+
+### 2.8 Pre-merge review fixes (2026-10-22)
+
+A code review of #256 and #3840 before merging found these; all but one are fixed.
+
+- [x] **The `mcp-login` token is bound to its flow.** Sefaria puts the flow's `state` in the token, and the callback accepts it only for that state, so a captured token cannot complete another sign-in (it was replayable for 5 minutes).
+- [x] `scope=admin` without RFC 8707's `resource` now targets `/mcp/admin` instead of failing.
+- [x] Grants past their 90-day absolute expiry are deleted (with their consumed refresh tokens) when a new grant is issued, so neither table grows forever.
+- [x] The topic-prompt tool schemas reject unknown arguments (they used to crash with a `TypeError`), and `topic` is a plain list of strings instead of a string-or-list type some clients mishandle.
+- [x] Sefaria: `POST /api/sheets/` with a non-object JSON body is a 400, not a 500.
+- Constraint, not fixed: the browser-binding cookie is `SameSite=Lax`, and Sefaria returns by a cross-origin auto-POST, so the chat host and the Sefaria sign-in host must share a registrable domain (`*.sefaria.org`). Otherwise every sign-in fails with "Finish signing in from the same browser".
 
 ## Deprecating the old MCP (after Phase 1 is proven)
 

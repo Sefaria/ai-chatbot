@@ -18,7 +18,7 @@ from django.test import Client, override_settings
 from django.utils import timezone
 
 from mcp_auth import access_tokens, sefaria_tokens
-from mcp_auth.models import AuthorizationRequest, Grant
+from mcp_auth.models import AuthorizationRequest, ConsumedRefreshToken, Grant
 
 ISSUER = "https://chat.test"
 RESOURCE = f"{ISSUER}/mcp/user"
@@ -100,7 +100,11 @@ def sefaria_posts_back(
     browser: Client, state: str, user_id: int = USER_ID, token: str | None = None
 ):
     token = token or sefaria_tokens.mint(
-        user_id, TOKEN_SECRET, aud=sefaria_tokens.LOGIN_AUDIENCE, ttl=timedelta(minutes=5)
+        user_id,
+        TOKEN_SECRET,
+        aud=sefaria_tokens.LOGIN_AUDIENCE,
+        ttl=timedelta(minutes=5),
+        state=state,
     )
     return browser.post("/oauth/sefaria/callback", {"state": state, "token": token})
 
@@ -529,3 +533,38 @@ def test_pending_authorizations_have_a_global_ceiling(monkeypatch):
     cid = client_id(Client())
     assert authorize(Client(), cid).status_code == 302
     assert authorize(Client(), cid).status_code == 429
+
+
+def test_login_token_only_completes_the_flow_it_was_issued_for():
+    """A captured mcp-login token cannot finish someone else's sign-in."""
+    cid = client_id(Client())
+    victim, attacker = Client(), Client()
+    victim_state = sefaria_state(authorize(victim, cid))
+    attacker_state = sefaria_state(authorize(attacker, cid))
+    stolen = sefaria_tokens.mint(
+        USER_ID, TOKEN_SECRET, aud=sefaria_tokens.LOGIN_AUDIENCE, state=victim_state
+    )
+    unbound = sefaria_tokens.mint(USER_ID, TOKEN_SECRET, aud=sefaria_tokens.LOGIN_AUDIENCE)
+
+    assert sefaria_posts_back(attacker, attacker_state, token=stolen).status_code == 400
+    assert sefaria_posts_back(attacker, attacker_state, token=unbound).status_code == 400
+    assert AuthorizationRequest.objects.get(pk=attacker_state).sefaria_user_id is None
+
+
+def test_admin_scope_without_resource_targets_the_admin_endpoint():
+    cid = client_id(Client())
+    response = authorize(Client(), cid, resource=None, scope="admin")
+    state = sefaria_state(response)
+    assert AuthorizationRequest.objects.get(pk=state).scope == "admin"
+
+
+def test_grants_past_their_absolute_expiry_are_deleted():
+    _, old = full_flow()
+    old_grant = Grant.objects.get(
+        pk=jwt.decode(old["access_token"], options={"verify_signature": False})["sub"]
+    )
+    refresh(Client(), old_grant.client.client_id, old["refresh_token"])
+    Grant.objects.filter(pk=old_grant.pk).update(absolute_expires_at=timezone.now())
+    full_flow()
+    assert not Grant.objects.filter(pk=old_grant.pk).exists()
+    assert not ConsumedRefreshToken.objects.filter(grant_id=old_grant.pk).exists()

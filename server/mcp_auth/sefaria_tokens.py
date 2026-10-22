@@ -27,7 +27,12 @@ def _key(secret: str) -> bytes:
 
 
 def mint(
-    user_id: int, secret: str, *, aud: str = API_AUDIENCE, ttl: timedelta = API_TOKEN_TTL
+    user_id: int,
+    secret: str,
+    *,
+    aud: str = API_AUDIENCE,
+    ttl: timedelta = API_TOKEN_TTL,
+    state: str | None = None,
 ) -> str:
     expires_at = (datetime.now(UTC) + ttl).replace(microsecond=0)
     payload = {
@@ -36,6 +41,8 @@ def mint(
         "expiration": expires_at.isoformat(),
         "aud": aud,
     }
+    if state:
+        payload["state"] = state
     nonce = os.urandom(NONCE_SIZE_BYTES)
     data = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return base64.urlsafe_b64encode(nonce + AESGCM(_key(secret)).encrypt(nonce, data, None)).decode(
@@ -43,8 +50,11 @@ def mint(
     )
 
 
-def user_id_from(token: str, secret: str, *, aud: str) -> int | None:
-    """The Sefaria user id in ``token``, or None if it is invalid, expired or for another audience."""
+def user_id_from(token: str, secret: str, *, aud: str, state: str | None = None) -> int | None:
+    """The Sefaria user id in ``token``, or None if it is invalid, expired or for another audience.
+
+    With ``state``, the token must also have been issued for that sign-in flow.
+    """
     if not token or not secret:
         return None
     try:
@@ -57,6 +67,8 @@ def user_id_from(token: str, secret: str, *, aud: str) -> int | None:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if payload.get("aud") != aud or expires_at <= datetime.now(UTC):
+            return None
+        if state is not None and payload.get("state") != state:
             return None
         user_id = int(payload["user_id"])
         return user_id if user_id > 0 else None

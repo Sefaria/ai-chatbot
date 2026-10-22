@@ -263,7 +263,7 @@ async def test_admin_tools_call_sefaria_as_the_signed_in_user(executor, sefaria)
         _, listed = await rpc(
             client,
             "tools/call",
-            {"name": "list_topic_prompts", "arguments": {"topic": "shabbat", "published": False}},
+            {"name": "list_topic_prompts", "arguments": {"topic": ["shabbat"], "published": False}},
             token=admin_token(user_id=7),
             path="/mcp/admin",
         )
@@ -310,3 +310,17 @@ def test_admin_resource_defaults_beside_the_user_resource(monkeypatch):
     monkeypatch.setenv("MCP_USER_RESOURCE_URL", "https://mcp.test/mcp/user")
     monkeypatch.delenv("MCP_ADMIN_RESOURCE_URL", raising=False)
     assert user_auth_settings()["admin_resource"] == "https://mcp.test/mcp/admin"
+
+
+async def test_unknown_admin_tool_arguments_are_rejected_cleanly(executor, sefaria):
+    async with http(executor) as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {"name": "list_topic_prompts", "arguments": {"q": "rest"}},
+            token=admin_token(),
+            path="/mcp/admin",
+        )
+    assert result["result"]["isError"]
+    assert "Invalid arguments for list_topic_prompts" in result["result"]["content"][0]["text"]
+    assert not sefaria

@@ -454,9 +454,9 @@ TOOL_LIST_TOPIC_PROMPTS = {
         "type": "object",
         "properties": {
             "topic": {
-                "type": ["string", "array"],
+                "type": "array",
                 "items": {"type": "string"},
-                "description": 'A topic slug or list of slugs, e.g. "shabbat".',
+                "description": 'Topic slugs, e.g. ["shabbat"].',
             },
             "lang": {"type": "string", "enum": TOPIC_PROMPT_LANGS, "default": "en"},
             "review_state": {
@@ -475,6 +475,8 @@ TOOL_LIST_TOPIC_PROMPTS = {
             "limit": {"type": "integer", "minimum": 1, "maximum": MAX_RESULTS, "default": 25},
             "cursor": {"type": "string", "description": "The `next_cursor` of a previous page."},
         },
+        # The executor passes arguments through as keyword arguments.
+        "additionalProperties": False,
     },
 }
 
@@ -527,6 +529,8 @@ TOOL_UPDATE_TOPIC_PROMPT = {
             },
         },
         "required": ["id", "lang", "base_version"],
+        # Arguments other than id go straight into the PATCH body.
+        "additionalProperties": False,
     },
 }
 

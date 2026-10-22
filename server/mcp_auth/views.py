@@ -300,7 +300,10 @@ def authorize(request: HttpRequest) -> HttpResponse:
     if params.get("code_challenge_method") != "S256" or not 43 <= len(challenge) <= 128:
         return fail("invalid_request", "PKCE with code_challenge_method=S256 is required.")
     resources = resource_for_scope()
-    resource = (params.get("resource") or resource_url()).rstrip("/")
+    # Clients that skip RFC 8707's resource parameter get the resource their scope names.
+    resource = (
+        params.get("resource") or resources.get(params.get("scope", ""), resource_url())
+    ).rstrip("/")
     resource_scope = next((s for s, r in resources.items() if r == resource), None)
     if resource_scope is None:
         return fail(
@@ -358,10 +361,12 @@ def sefaria_callback(request: HttpRequest) -> HttpResponse:
             request, "Finish signing in from the same browser you started in.", status=403
         )
 
+    # The token must name this flow's state, so a captured token cannot complete another flow.
     user_id = sefaria_tokens.user_id_from(
         request.POST.get("token", ""),
         settings.MCP_TOKEN_SECRET,
         aud=sefaria_tokens.LOGIN_AUDIENCE,
+        state=auth_request.id,
     )
     if user_id is None:
         return _error_page(request, "Sefaria sign-in could not be verified. Start again.")
@@ -483,6 +488,9 @@ def _exchange_code(params) -> JsonResponse:
 
         refresh_token = new_secret()
         now = timezone.now()
+        # Grants past their absolute expiry can never be used again; drop them and their
+        # consumed refresh tokens, which would otherwise accumulate forever.
+        Grant.objects.filter(absolute_expires_at__lt=now).delete()
         grant = Grant.objects.create(
             client=auth_request.client,
             sefaria_user_id=auth_request.sefaria_user_id,
