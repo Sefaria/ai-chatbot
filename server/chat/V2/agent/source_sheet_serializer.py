@@ -18,6 +18,9 @@ DEFAULT_SHEET_OPTIONS = {
     "bsd": 0,
 }
 
+# Shown in the summary of every sheet the tool creates, so the owner can tell Claude made it.
+SHEET_ATTRIBUTION = "Created with Claude."
+
 
 def prepare_source_sheet_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Validate source-sheet create input and normalize node assignment."""
@@ -80,6 +83,14 @@ def prepare_source_sheet_sources(sources: list[dict[str, Any]]) -> list[dict[str
     return normalized_sources
 
 
+def attributed_summary(summary: str) -> str:
+    """The sheet summary, ending with a note that Claude made the sheet."""
+    summary = summary.strip()
+    if summary.endswith(SHEET_ATTRIBUTION):
+        return summary
+    return f"{summary}\n\n{SHEET_ATTRIBUTION}" if summary else SHEET_ATTRIBUTION
+
+
 def serialize_source_sheet_payload(
     *, title: str, summary: str, sources: list[dict[str, Any]]
 ) -> dict[str, Any]:
@@ -95,7 +106,7 @@ def serialize_source_sheet_payload(
     return {
         "status": "unlisted",
         "title": title,
-        "summary": summary,
+        "summary": attributed_summary(summary),
         "sources": normalized_sources,
         "nextNode": next_node,
         "options": deepcopy(DEFAULT_SHEET_OPTIONS),

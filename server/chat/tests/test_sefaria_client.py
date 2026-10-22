@@ -585,25 +585,17 @@ class TestCreateSourceSheet:
 
         client.set_user_session("186013", "encrypted-token")
 
+        # /api/v3/texts returns the English only when asked for it with `version`.
+        texts_response = {
+            "versions": [
+                {"languageFamilyName": "hebrew", "text": ["וְהַנָּחָשׁ הָיָה עָרוּם."]},
+                {"languageFamilyName": "english", "text": ["Now the serpent was the shrewdest."]},
+            ]
+        }
         with patch.object(client, "_get_client", return_value=mock_client):
             with patch.object(
-                client,
-                "get_text",
-                AsyncMock(
-                    return_value={
-                        "versions": [
-                            {
-                                "languageFamilyName": "english",
-                                "text": ["Now the serpent was the shrewdest."],
-                            },
-                            {
-                                "languageFamilyName": "hebrew",
-                                "text": ["וְהַנָּחָשׁ הָיָה עָרוּם."],
-                            },
-                        ]
-                    }
-                ),
-            ) as mock_get_text:
+                client, "_get_json", AsyncMock(return_value=texts_response)
+            ) as mock_get_json:
                 result = await client.create_source_sheet(
                     "Bereshit",
                     "A starter sheet",
@@ -614,7 +606,10 @@ class TestCreateSourceSheet:
                     ],
                 )
 
-        mock_get_text.assert_awaited_once_with("Genesis 3:1")
+        mock_get_json.assert_awaited_once_with(
+            "api/v3/texts/Genesis%203%3A1",
+            {"version": ["source", "english"], "return_format": "strip_only_footnotes"},
+        )
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert call_args.args[0] == f"{client.base_url}/api/sheets/"
@@ -622,7 +617,7 @@ class TestCreateSourceSheet:
 
         posted_payload = json.loads(call_args.kwargs["data"]["json"])
         assert posted_payload["title"] == "Bereshit"
-        assert posted_payload["summary"] == "A starter sheet"
+        assert posted_payload["summary"] == "A starter sheet\n\nCreated with Claude."
         assert posted_payload["status"] == "unlisted"
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
@@ -638,6 +633,17 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
+
+class TestSheetAttribution:
+    def test_summary_ends_with_attribution_once(self):
+        from chat.V2.agent.source_sheet_serializer import attributed_summary
+
+        assert attributed_summary("") == "Created with Claude."
+        assert attributed_summary("  Notes  ") == "Notes\n\nCreated with Claude."
+        assert (
+            attributed_summary("Notes\n\nCreated with Claude.") == "Notes\n\nCreated with Claude."
+        )
 
 
 class TestSearchInBook:
