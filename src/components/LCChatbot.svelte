@@ -1394,7 +1394,8 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
-      if (!isOpen) responseReady = true;
+      // Only for the chat that opens: an answer to another chat waits for it in History
+      if (!isOpen && sessionId === sendingSessionId) responseReady = true;
 
     } catch (e) {
       if (e?.code === 'stream_cancelled') {
