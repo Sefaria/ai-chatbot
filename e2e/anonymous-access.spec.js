@@ -107,6 +107,7 @@ test.describe('Logged-out use of the assistant', () => {
     await assistant.ask('The last free question');
 
     await expect(assistant.hostSignupOptions).toBeVisible();
+    await assistant.waitForLoginPromptSettled();
     // Under the text, 16px below it, centred, inside the prompt.
     const textBox = await assistant.loginPromptText.boundingBox();
     const optionsBox = await assistant.hostSignupOptions.boundingBox();
@@ -146,7 +147,7 @@ test.describe('Logged-out use of the assistant', () => {
       await expect(assistant.loginPrompt).toHaveCSS('border-top', '1px solid rgb(226, 232, 240)');
       await expect(assistant.loginPrompt).toHaveCSS('padding', '16px 16px 16px 18px');
 
-      await expect(assistant.loginPromptText).toHaveCSS('color', 'rgb(87, 87, 87)');
+      await expect(assistant.loginPromptText).toHaveCSS('color', 'rgb(18, 18, 18)');
       await expect(assistant.loginPromptText).toHaveCSS('font-size', '14px');
       await expect(assistant.loginPromptText).toHaveCSS('line-height', '20px');
       // Centered: measure the text itself, not its (possibly full-width) box.

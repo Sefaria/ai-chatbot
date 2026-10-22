@@ -2426,6 +2426,7 @@
     --spacing-spacing-medium: 12px;
     --semantic-action-primary: #18345D;
     --semantic-text-link: #18345D;
+    --semantic-text-primary: #121212;
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
@@ -3622,7 +3623,7 @@
 
   .login-prompt-text {
     margin: 0;
-    color: var(--lc-text-secondary);
+    color: var(--semantic-text-primary);
     /* Font family is inherited: the widget's font in English, Heebo in Hebrew. */
     font-size: var(--lc-font-size);
     line-height: var(--global-dimension-250);

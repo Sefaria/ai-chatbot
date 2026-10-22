@@ -149,6 +149,13 @@ export class AssistantPage {
     return this.loginPrompt.getByText(t('assistant.anon.limit_reached'), { exact: true });
   }
 
+  /** Wait until the prompt has finished appearing (it rises into place), so it can be measured. */
+  async waitForLoginPromptSettled() {
+    await this.loginPrompt.evaluate((el) =>
+      Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished))
+    );
+  }
+
   /** Links or buttons of the widget's own inside the prompt (not the host's options). */
   get loginPromptControls() {
     return this.loginPrompt.locator('a, button');
