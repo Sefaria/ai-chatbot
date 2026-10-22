@@ -20,7 +20,7 @@ import os
 import re
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 
@@ -37,17 +37,29 @@ DEFAULT_SEFARIA_BASE_URL = "https://www.sefaria.org"
 USER_AGENT = "Sefaria/library-assistant"
 
 
+def _sanitize(value: str) -> str:
+    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
+    return value.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
+
+
 def _user_agent() -> str:
     """Append ``settings.ENVIRONMENT`` (the value Sentry is tagged with) when it is set.
 
-    Imports settings lazily so this module can be imported before Django is configured.
+    ``SEFARIA_USER_AGENT_SERVICE`` replaces the service name, so the public MCP server
+    can identify itself as ``Sefaria/mcp``. The MCP process runs without Django
+    settings, so ``ENVIRONMENT`` is then read from the environment directly. Settings
+    are imported lazily so this module can be imported before Django is configured.
     """
     from django.conf import settings
 
-    env = str(getattr(settings, "ENVIRONMENT", "") or "")
-    # Parentheses would break the "(<env>)" token and CR/LF could inject a header.
-    env = env.replace("(", "").replace(")", "").replace("\r", "").replace("\n", "").strip()
-    return f"{USER_AGENT} ({env})" if env else USER_AGENT
+    service = _sanitize(os.environ.get("SEFARIA_USER_AGENT_SERVICE", ""))
+    base = f"Sefaria/{service}" if service else USER_AGENT
+    if settings.configured:
+        env = str(getattr(settings, "ENVIRONMENT", "") or "")
+    else:
+        env = os.environ.get("ENVIRONMENT", "")
+    env = _sanitize(env)
+    return f"{base} ({env})" if env else base
 
 
 def _get_default_sefaria_base_url() -> str:
@@ -70,6 +82,12 @@ LEXICON_SEARCH_FILTERS = list(LEXICON_MAP.keys())
 # refs are cached, new refs are still resolved but no longer stored, so the cache
 # of a long-lived client cannot grow without bound.
 REF_CACHE_MAX_SIZE = 512
+
+# get_manuscript_image fetches a caller-supplied URL, so it is limited to the host
+# /api/manuscripts returns image URLs on, and to a size that covers its full-resolution
+# scans (observed up to ~6 MB).
+MANUSCRIPT_IMAGE_HOSTS = frozenset({"manuscripts.sefaria.org"})
+MAX_MANUSCRIPT_IMAGE_BYTES = 10_000_000
 
 # Minimum number of completions to request from the name API in search_topics.
 # The API returns ref/text completions first for book-name queries, which we drop
@@ -512,17 +530,6 @@ class SefariaClient:
         except Exception:
             return None
 
-    async def get_text_or_category_shape(self, name: str) -> dict[str, Any]:
-        """Get hierarchical structure of texts or categories."""
-        encoded_name = quote(name)
-        return await self._get_json(f"api/shape/{encoded_name}")
-
-    async def get_text_catalogue_info(self, title: str) -> dict[str, Any]:
-        """Get bibliographic information for a text."""
-        encoded_title = quote(title)
-        data = await self._get_json(f"api/v2/raw/index/{encoded_title}")
-        return self._optimize_index_response(data)
-
     async def get_available_manuscripts(self, reference: str) -> dict[str, Any]:
         """Get manuscript metadata for a text passage."""
         encoded_ref = quote(reference)
@@ -531,23 +538,59 @@ class SefariaClient:
     async def get_manuscript_image(
         self, image_url: str, manuscript_title: str | None = None
     ) -> dict[str, Any]:
-        """Download a manuscript image."""
+        """Download a manuscript image.
+
+        ``image_url`` comes from the caller, and on the public MCP server that is anyone,
+        so only Sefaria's manuscript host is fetched: no other hosts, no redirects, image
+        content only, and at most ``MAX_MANUSCRIPT_IMAGE_BYTES``. Anything looser lets a
+        caller make this server fetch internal URLs and read back the response.
+        """
+        parsed = urlsplit(image_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in MANUSCRIPT_IMAGE_HOSTS
+            or parsed.port is not None
+            or parsed.username is not None
+        ):
+            raise ValueError(
+                "image_url must be a manuscript image URL on "
+                + ", ".join(f"https://{host}" for host in sorted(MANUSCRIPT_IMAGE_HOSTS))
+                + ", as returned by get_available_manuscripts"
+            )
+
         client = await self._get_client()
-        response = await client.get(image_url)
-        response.raise_for_status()
+        async with client.stream("GET", image_url, follow_redirects=False) as response:
+            if response.status_code != 200:
+                raise ValueError(
+                    f"Manuscript image request failed with HTTP {response.status_code}"
+                )
 
-        content_type = response.headers.get("content-type", "image/jpeg")
-        image_data = base64.b64encode(response.content).decode("utf-8")
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith("image/"):
+                raise ValueError("Manuscript URL did not return an image")
 
-        filename = image_url.split("/")[-1] or "manuscript.jpg"
+            too_large = ValueError(
+                f"Manuscript image is larger than {MAX_MANUSCRIPT_IMAGE_BYTES // 1_000_000} MB"
+            )
+            if int(response.headers.get("content-length") or 0) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                raise too_large
+            content = bytearray()
+            async for chunk in response.aiter_bytes():
+                content.extend(chunk)
+                if len(content) > MAX_MANUSCRIPT_IMAGE_BYTES:
+                    raise too_large
+
+        image_data = base64.b64encode(content).decode("utf-8")
+
+        filename = parsed.path.split("/")[-1] or "manuscript.jpg"
         title = manuscript_title or f"Manuscript: {filename}"
 
         return {
             "success": True,
             "image_data": image_data,
             "mime_type": content_type,
-            "size": len(response.content),
-            "original_size": len(response.content),
+            "size": len(content),
+            "original_size": len(content),
             "was_resized": False,
             "filename": filename,
             "title": title,
@@ -617,6 +660,71 @@ class SefariaClient:
             },
         )
         return self._optimize_source_sheet_response(data)
+
+    async def list_topic_prompts(
+        self,
+        *,
+        topic: str | list[str] | None = None,
+        lang: str = "en",
+        review_state: str | None = None,
+        published: bool | None = None,
+        ai_generated: bool | None = None,
+        ref: str | None = None,
+        query: str | None = None,
+        id: str | None = None,
+        limit: int = 25,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List topic prompts through Sefaria's staff API (GET /api/admin/topic-prompts)."""
+        params: list[tuple[str, str]] = [("lang", lang), ("limit", str(limit))]
+        topics = [topic] if isinstance(topic, str) else topic or []
+        params += [("topic", t) for t in topics if t]
+        for key, value in (
+            ("id", id),
+            ("review_state", review_state),
+            ("ref", ref),
+            ("q", query),
+            ("cursor", cursor),
+        ):
+            if value:
+                params.append((key, value))
+        for key, flag in (("published", published), ("ai_generated", ai_generated)):
+            if flag is not None:
+                params.append((key, "true" if flag else "false"))
+        return await self._staff_request("GET", "api/admin/topic-prompts", params=params)
+
+    async def update_topic_prompt(self, id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """Edit one topic prompt (PATCH /api/admin/topic-prompts/<id>)."""
+        return await self._staff_request(
+            "PATCH", f"api/admin/topic-prompts/{quote(id, safe='')}", json=fields
+        )
+
+    async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
+        """Call a Sefaria staff API as the signed-in user, keeping its error message.
+
+        A 409 includes the current version, which the caller must see to resolve the conflict.
+        """
+        _, session_token = self._require_user_session(endpoint)
+        client = await self._get_client()
+        response = await client.request(
+            method,
+            f"{self.base_url}/{endpoint}",
+            headers={"Accept": "application/json", "X-Session-ID": session_token},
+            **kwargs,
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        if response.is_success and isinstance(data, dict):
+            return data
+        error = data.get("error") if isinstance(data, dict) else None
+        message = f"Sefaria returned HTTP {response.status_code}: {error or response.reason_phrase}"
+        if response.status_code in (401, 403):
+            message += ". Topic prompt tools need a Sefaria staff account; sign in as staff."
+        if response.status_code == 409 and isinstance(data, dict):
+            message += f"\nCurrent version: {json.dumps(data.get('current'), ensure_ascii=False)}"
+        raise RuntimeError(message)
 
     async def resolve_ref(self, tref: str) -> dict | None:
         """Resolve a tref into {is_ref, url_ref, en, he}, or None.
@@ -855,30 +963,6 @@ class SefariaClient:
             optimized["refs_note"] = f"Showing first 10 of {len(data['refs'])} total refs"
 
         return optimized
-
-    def _optimize_index_response(self, data: Any) -> dict[str, Any]:
-        """Optimize index response."""
-        if not isinstance(data, dict):
-            return data
-
-        essential_fields = {
-            "title",
-            "heTitle",
-            "titleVariants",
-            "schema",
-            "categories",
-            "sectionNames",
-            "addressTypes",
-            "length",
-            "lengths",
-            "textDepth",
-            "primaryTitle",
-            "compDate",
-            "era",
-            "authors",
-        }
-
-        return {k: v for k, v in data.items() if k in essential_fields}
 
     def _optimize_source_sheet_response(self, data: Any) -> dict[str, Any]:
         """Keep the parts of a source sheet that are useful for the model."""

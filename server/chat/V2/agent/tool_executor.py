@@ -18,8 +18,14 @@ from typing import Any
 from .catalog_service import CatalogService
 from .contracts import MessageContext
 from .sefaria_client import SefariaClient
+from .tool_schemas import MAX_REFS_PER_VALIDATION, MAX_RESULTS
 
 logger = logging.getLogger("chat.agent")
+
+# Bounds for the validate_response_links tool. Generous for a real answer, which
+# rarely carries more than a few dozen links.
+MAX_VALIDATED_RESPONSE_CHARS = 100_000
+MAX_VALIDATED_LINKS = 50
 
 
 @dataclass
@@ -55,6 +61,37 @@ class SefariaToolExecutor:
             logger.error(f"Tool execution error for {tool_name}: {e}")
             return self._wrap_error(str(e))
 
+    async def _validate_response_links(self, response_text: str) -> dict[str, Any]:
+        """Check a draft response's links, as a tool the agent can call itself.
+
+        The hosted agent runs this validation after the fact and asks for a
+        repair. Exposing it as a tool lets an agent we do not orchestrate — one
+        running on someone's own machine against the MCP server — check its own
+        draft before sending it.
+        """
+        from .response_link_validator import ResponseLinkValidator, extract_hrefs
+
+        # Each distinct link can cost a Sefaria API call, and on the public MCP server
+        # the draft comes from anyone, so bound both the input and the fan-out. The
+        # draft is parsed once, in linear time, with every link form a client might
+        # render (not only the ones our own widget does).
+        if len(response_text) > MAX_VALIDATED_RESPONSE_CHARS:
+            raise ValueError(
+                f"Response is too long to check (over {MAX_VALIDATED_RESPONSE_CHARS:,} characters)"
+            )
+        hrefs = extract_hrefs(response_text, all_forms=True)
+        if len(hrefs) > MAX_VALIDATED_LINKS:
+            raise ValueError(
+                f"Response has more than {MAX_VALIDATED_LINKS} distinct links; check it in parts"
+            )
+
+        result = await ResponseLinkValidator(self.client).validate_hrefs(hrefs)
+        return {
+            "safe_to_send": result.is_valid,
+            "links_checked": len(hrefs),
+            "issues": [{"link": issue.href, "problem": issue.reason} for issue in result.issues],
+        }
+
     async def _dispatch(self, tool_name: str, input_data: dict[str, Any]) -> Any:
         """Route a tool call to the corresponding SefariaClient method."""
 
@@ -63,7 +100,7 @@ class SefariaToolExecutor:
 
         elif tool_name == "specific_keyword_search":
             return await self.client.text_search(
-                input_data["query"], input_data.get("filters"), input_data.get("size", 10)
+                input_data["query"], input_data.get("filters"), _bounded(input_data, "size", 10)
             )
 
         elif tool_name == "get_current_calendar":
@@ -89,7 +126,7 @@ class SefariaToolExecutor:
 
         elif tool_name == "search_in_book":
             return await self.client.search_in_book(
-                input_data["query"], input_data["book_name"], input_data.get("size", 10)
+                input_data["query"], input_data["book_name"], _bounded(input_data, "size", 10)
             )
 
         elif tool_name == "search_in_dictionaries":
@@ -99,7 +136,13 @@ class SefariaToolExecutor:
             return await self.client.get_english_translations(input_data["reference"])
 
         elif tool_name == "validate_refs":
-            return await self.client.validate_refs(input_data["refs"])
+            # Duplicates cost a call each for no answer; clamp for callers that skip
+            # schema validation.
+            refs = list(dict.fromkeys(input_data["refs"]))[:MAX_REFS_PER_VALIDATION]
+            return await self.client.validate_refs(refs)
+
+        elif tool_name == "validate_response_links":
+            return await self._validate_response_links(input_data["response"])
 
         elif tool_name == "get_topic_details":
             return await self.client.get_topic_details(
@@ -110,7 +153,9 @@ class SefariaToolExecutor:
 
         elif tool_name == "clarify_name_argument":
             return await self.client.clarify_name_argument(
-                input_data["name"], input_data.get("limit"), input_data.get("type_filter")
+                input_data["name"],
+                _bounded(input_data, "limit", None),
+                input_data.get("type_filter"),
             )
 
         elif tool_name == "clarify_search_path_filter":
@@ -128,8 +173,8 @@ class SefariaToolExecutor:
             return await self.catalog_service.get_children(
                 input_data["path"],
                 child_type=input_data.get("child_type", "all"),
-                limit=input_data.get("limit", 50),
-                offset=input_data.get("offset", 0),
+                limit=_bounded(input_data, "limit", 50),
+                offset=max(0, int(input_data.get("offset", 0))),
             )
 
         elif tool_name == "catalog_search":
@@ -137,7 +182,7 @@ class SefariaToolExecutor:
                 input_data["query"],
                 node_type=input_data.get("node_type", "any"),
                 category_path=input_data.get("category_path"),
-                limit=input_data.get("limit", 10),
+                limit=_bounded(input_data, "limit", 10),
             )
 
         elif tool_name == "catalog_query":
@@ -145,8 +190,8 @@ class SefariaToolExecutor:
                 node_type=input_data.get("node_type", "any"),
                 filters=input_data.get("filters"),
                 select=input_data.get("select"),
-                limit=input_data.get("limit", 20),
-                offset=input_data.get("offset", 0),
+                limit=_bounded(input_data, "limit", 20),
+                offset=max(0, int(input_data.get("offset", 0))),
             )
 
         elif tool_name == "get_available_manuscripts":
@@ -159,7 +204,7 @@ class SefariaToolExecutor:
 
         elif tool_name == "search_user_source_sheets":
             return await self.client.search_user_source_sheets(
-                input_data.get("query"), input_data.get("limit", 10)
+                input_data.get("query"), _bounded(input_data, "limit", 10)
             )
 
         elif tool_name == "get_source_sheet":
@@ -171,6 +216,16 @@ class SefariaToolExecutor:
                 input_data.get("summary", ""),
                 input_data["sources"],
             )
+
+        elif tool_name == "list_topic_prompts":
+            filters = {k: v for k, v in input_data.items() if k != "limit"}
+            return await self.client.list_topic_prompts(
+                **filters, limit=_bounded(input_data, "limit", 25)
+            )
+
+        elif tool_name == "update_topic_prompt":
+            fields = {k: v for k, v in input_data.items() if k != "id"}
+            return await self.client.update_topic_prompt(input_data["id"], fields)
 
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
@@ -195,6 +250,14 @@ class SefariaToolExecutor:
         return ToolResult(
             content=[{"type": "text", "text": json.dumps({"error": message})}], is_error=True
         )
+
+
+def _bounded(input_data: dict[str, Any], key: str, default: int | None) -> int | None:
+    """A size/limit argument clamped to 1..MAX_RESULTS, or ``default`` when absent."""
+    value = input_data.get(key)
+    if value is None:
+        return default
+    return max(1, min(int(value), MAX_RESULTS))
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +339,8 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         ),
         "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
         "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
+        "list_topic_prompts": lambda: "Listing topic prompts",
+        "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",
     }
 
     if tool_name in descriptions:
