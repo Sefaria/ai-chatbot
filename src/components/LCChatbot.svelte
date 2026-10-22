@@ -161,6 +161,13 @@
   let historySearchOpen = $state(false);
   let historySearchText = $state('');
   let submittedHistorySearch = $state('');
+  // Whether History has chats to search. Until the list loads, go by what's known already:
+  // saved chats last time, chats listed so far, or a chat open now.
+  let hasConversationsToSearch = $derived(hasLoadedConversations
+    ? conversations.length > 0
+    : knownHasConversations || conversations.length > 0 || messages.length > 0);
+  // Search can always be closed, or cleared after a search
+  let historySearchDisabled = $derived(!historySearchOpen && !submittedHistorySearch && !hasConversationsToSearch);
   let historyError = $state('');
   let editingConversationId = $state(null);
   let editingConversationTitle = $state('');
@@ -2065,7 +2072,7 @@
                   aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
                   data-feature-name="chat_history_search"
                   onclick={toggleHistorySearch}
-                  disabled={!historySearchOpen && !submittedHistorySearch && (hasLoadedConversations ? conversations.length === 0 : !(knownHasConversations || conversations.length > 0 || messages.length > 0))}
+                  disabled={historySearchDisabled}
                 >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
