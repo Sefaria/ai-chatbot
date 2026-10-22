@@ -2422,7 +2422,7 @@
         {:else}
         <button
           class="send-btn"
-          onclick={() => handleSend()}
+          onclick={handleSend}
           disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
         >
