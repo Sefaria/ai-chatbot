@@ -281,6 +281,8 @@
     (keyboard.box ? `top: ${keyboard.box.top}px; height: ${keyboard.box.height}px;` : '') +
     (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
   );
+  // Desktop: the panel's size (docked, it's as tall as the page)
+  let desktopPanelStyle = $derived(`width: ${visiblePanelWidth}px;` + (mode === 'docked' ? '' : ` height: ${panelHeight}px;`));
 
   // Initialize on mount
   $effect(() => {
@@ -1938,7 +1940,7 @@
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
       class:sheet-lifted={sheetOffset > 0 || sheetSettling}
-      style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
+      style={isFullscreen ? sheetStyle : desktopPanelStyle}
       role="dialog"
       aria-modal={isFullscreen ? 'true' : undefined}
       tabindex="-1"
