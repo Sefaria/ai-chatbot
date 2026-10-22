@@ -25,7 +25,10 @@
 </script>
 
 <!-- Launcher: a "✦ Ask" pill in the corner -->
-<button aria-label={label && !ready ? label : $_(ready ? 'assistant.header.open_ready_response' : 'assistant.header.openAssistant')}
+<!-- The name starts with the visible text, so voice control ("tap Ask") finds it -->
+<button aria-label={label
+          ? (ready ? $_('assistant.floating_button.aria_label_ready', { values: { label } }) : label)
+          : $_(ready ? 'assistant.floating_button.aria_ready' : 'assistant.floating_button.aria')}
         class="lc-chatbot-ask" class:response-ready={ready}
         use:animateWidth={label}
         {onclick}>
