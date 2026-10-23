@@ -32,13 +32,13 @@
 <style>
   .lc-accordion { width: 100%; }
   .lc-accordion-header {
-    display: flex; align-items: center; gap: 4px;
+    display: flex; align-items: center; gap: var(--spacing-xsmall);
     background: none; border: 0; padding: 0; cursor: pointer;
     font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px;
     color: var(--lc-text-secondary);
   }
-  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; }
+  .lc-accordion-chevron { transition: transform 0.15s ease; flex: none; color: var(--lc-icon-primary); }
   .lc-accordion-chevron.expanded { transform: rotate(180deg); }
-  .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .lc-accordion-slot { display: flex; flex-direction: column; gap: 0; margin-top: var(--spacing-small); }
   :global(.interface-hebrew) .lc-accordion-header { flex-direction: row-reverse; }
 </style>
