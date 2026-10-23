@@ -134,26 +134,25 @@ def get_cost_accumulator() -> CostAccumulator | None:
     return _cost_accumulator_var.get()
 
 
-_ANTHROPIC_EXTRA_BODY_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
+_UNSUPPORTED_SAMPLING_KEYS = ("temperature", "top_p", "top_k")
 
 
 def _normalize_messages_create_kwargs(kwargs: dict) -> dict:
-    """Move removed Anthropic SDK kwargs into extra_body.
+    """Drop sampling kwargs the current Anthropic API no longer accepts.
 
-    Anthropic SDK v1 removed direct sampling kwargs from messages.create().
-    Older Claude models still accept them as passthrough API fields, so keep
-    call sites stable while sending the shape accepted by both old and new SDKs.
+    These were previously routed into `extra_body` as a passthrough for
+    SDK versions that removed them as typed params on messages.create(),
+    on the assumption the API would still accept them as raw fields. That
+    assumption no longer holds -- the API now rejects them outright, in
+    extra_body or not, with "<key>: Extra inputs are not permitted" (seen
+    breaking the guardrail/summarization/appetizer/router calls in
+    production). Until the API exposes a supported way to control
+    sampling for the affected models, call sites that want deterministic
+    output have no client-side lever here; just drop the keys instead of
+    sending a request that will 400.
     """
-    extra_body = kwargs.get("extra_body")
-    normalized_extra_body = dict(extra_body) if extra_body else {}
-
-    for key in _ANTHROPIC_EXTRA_BODY_SAMPLING_KEYS:
-        if key in kwargs:
-            normalized_extra_body.setdefault(key, kwargs.pop(key))
-
-    if normalized_extra_body:
-        kwargs["extra_body"] = normalized_extra_body
-
+    for key in _UNSUPPORTED_SAMPLING_KEYS:
+        kwargs.pop(key, None)
     return kwargs
 
 
