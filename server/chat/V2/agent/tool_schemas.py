@@ -84,12 +84,21 @@ TOOL_SEMANTIC_SEARCH = {
 TOOL_GET_LINKS_BETWEEN_TEXTS = {
     "name": "get_links_between_texts",
     "surfaces": ("agent", "mcp"),
-    "description": "Use to find commentaries and related passages after retrieving a primary text. Finds all cross-references and connections to a specific text passage.",
+    "description": (
+        "Use to find commentaries and related passages after retrieving a primary text. "
+        "Finds all cross-references and connections to a specific text passage. "
+        "By default (with_text=1), each link's 'text' field is a SHORTENED, LOSSY PREVIEW "
+        "(not the verbatim source) meant only to help you judge which sources look relevant "
+        "-- some words are deliberately omitted. Use these previews to decide which link(s) "
+        "to pursue, then call get_text with that link's 'ref' to fetch the full, exact text "
+        "before quoting, citing, or stating any specific fact, name, number, or ruling from "
+        "it. Pass with_text=0 to get only bare references with no preview text."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
             "reference": {"type": "string"},
-            "with_text": {"type": "string", "enum": ["0", "1"], "default": "0"},
+            "with_text": {"type": "string", "enum": ["0", "1"], "default": "1"},
             "category": {
                 "type": "string",
                 "description": "Filter links to a specific category. Allowed values: Chasidut, Commentary, Essay, Guides, Halakhah, Jewish Thought, Kabbalah, Liturgy, Midrash, Mishnah, Musar, Quoting Commentary, Reference, Responsa, Second Temple, Talmud, Tanakh, Targum, Tosefta.",

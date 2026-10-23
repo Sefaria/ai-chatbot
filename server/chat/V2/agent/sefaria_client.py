@@ -24,6 +24,7 @@ from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 
+from .link_preview_compression import compress_link_preview
 from .source_sheet_serializer import (
     SHEET_ATTRIBUTION,
     attributed_summary,
@@ -287,8 +288,8 @@ class SefariaClient:
             raise
 
     async def get_links_between_texts(
-        self, reference: str, with_text: str = "0", category: str | None = None
-    ) -> list[dict[str, Any]]:
+        self, reference: str, with_text: str = "1", category: str | None = None
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Find cross-references to a text passage."""
         encoded_ref = quote(reference)
         params = {"with_text": with_text}
@@ -994,12 +995,31 @@ class SefariaClient:
 
         return optimized
 
-    def _optimize_links_response(self, data: Any) -> list[dict[str, Any]]:
-        """Optimize links response."""
+    # Shown alongside with_text="1" results so the agent knows the 'text'
+    # fields are lossy previews, not verbatim source -- validated in testing
+    # to measurably improve answer consistency/completeness at no added cost
+    # (see link_preview_compression.py's docstring for why).
+    LINKS_PREVIEW_NOTE = (
+        "The 'text' field of each link below is a shortened, lossy preview (words have been "
+        "removed) for quick scanning only -- it is NOT the verbatim source. Use these previews "
+        "only to judge which source(s) look relevant to the question. Before quoting, citing, "
+        "or stating any specific fact, name, number, or ruling, call get_text with that "
+        "source's 'ref' to fetch its full, exact text."
+    )
+
+    def _optimize_links_response(self, data: Any) -> list[dict[str, Any]] | dict[str, Any]:
+        """Optimize links response.
+
+        with_text="1" results get each link's text compressed to a short,
+        lossy preview (see link_preview_compression.py) instead of flat
+        500-char truncation, and the whole response is wrapped with a note
+        warning the agent not to treat the preview text as verbatim.
+        """
         if not isinstance(data, list):
             return data
 
         results = []
+        any_text = False
         for link in data:
             optimized = {
                 "ref": link.get("ref", ""),
@@ -1009,10 +1029,12 @@ class SefariaClient:
                 "category": link.get("category", ""),
             }
             if isinstance(link.get("text"), str):
-                text = link["text"]
-                optimized["text"] = text[:500] + "..." if len(text) > 500 else text
+                any_text = True
+                optimized["text"] = compress_link_preview(link["text"])
             results.append(optimized)
 
+        if any_text:
+            return {"note": self.LINKS_PREVIEW_NOTE, "links": results}
         return results
 
     def _optimize_topics_response(self, data: Any) -> dict[str, Any]:

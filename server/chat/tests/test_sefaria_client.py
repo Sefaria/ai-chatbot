@@ -273,13 +273,31 @@ class TestOptimizeLinksResponse:
         assert link["ref"] == "Rashi on Genesis 1:1"
         assert "extra" not in link
 
-    def test_truncates_long_text(self, client):
-        long_text = "x" * 600
+    def test_compresses_long_text_into_lossy_preview(self, client):
+        """Text is compressed (word-length-based deletion), not flat-truncated,
+        and the response is wrapped with a note warning the preview is lossy."""
+        long_text = " ".join(f"word{i}" for i in range(100))
         data = [{"ref": "test", "text": long_text}]
 
         result = client._optimize_links_response(data)
 
-        assert len(result[0]["text"]) <= 503  # 500 + "..."
+        assert isinstance(result, dict)
+        assert "note" in result and "lossy" in result["note"].lower()
+        links = result["links"]
+        assert len(links) == 1
+        # roughly 30% of words survive (retention default); gaps mark the rest
+        assert "…" in links[0]["text"]
+        assert len(links[0]["text"].split()) == len(long_text.split())
+
+    def test_non_text_links_are_not_wrapped(self, client):
+        """With no 'text' field present (with_text=0 case), behavior is unchanged:
+        a plain list, no note wrapper."""
+        data = [{"ref": "test", "sourceRef": "test"}]
+
+        result = client._optimize_links_response(data)
+
+        assert isinstance(result, list)
+        assert "text" not in result[0]
 
     def test_handles_non_list_input(self, client):
         result = client._optimize_links_response({"not": "a list"})
