@@ -116,11 +116,11 @@ class SefariaToolExecutor:
             if category is None:
                 return await self.client.get_links_between_texts(
                     input_data["reference"],
-                    input_data.get("with_text", "0"),
+                    input_data.get("with_text", "1"),
                 )
             return await self.client.get_links_between_texts(
                 input_data["reference"],
-                input_data.get("with_text", "0"),
+                input_data.get("with_text", "1"),
                 category,
             )
 
