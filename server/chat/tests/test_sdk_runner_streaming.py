@@ -205,7 +205,12 @@ def test_final_text_still_concatenates_a_final_answer_split_across_messages():
     assert result.final_text == "Part one. Part two."
 
 
-def test_first_final_text_delta_callback_waits_for_final_text():
+def test_first_final_text_delta_callback_fires_before_the_final_delta_it_gates():
+    # on_first_final_text_delta must fire before the delta it's meant to gate,
+    # not after -- callers that use it to decide whether to start forwarding
+    # on_text_delta content to a client (e.g. streaming only the final-answer
+    # text, never pre-tool-use narration) need the flag to already be true by
+    # the time that first "real" delta ("Final") arrives, not one delta late.
     runner = ClaudeSDKRunner(
         client_cls=FakeToolThenFinalClient,
         assistant_message_cls=FakeAssistantMessage,
@@ -223,7 +228,20 @@ def test_first_final_text_delta_callback_waits_for_final_text():
         )
     )
 
-    assert events == ["Let me check", "I will search", "Final", "final-started"]
+    assert events == ["Let me check", "I will search", "final-started", "Final"]
+
+
+def test_message_uses_tools_detects_real_sdk_tool_use_block():
+    # The SDK's ToolUseBlock has no `type` field, unlike the dict fakes above.
+    # Missing it meant the runner never saw tool use, so final-answer streaming
+    # never started.
+    from claude_agent_sdk.types import TextBlock, ToolUseBlock
+
+    tool_message = FakeAssistantMessage(content=[ToolUseBlock(id="t1", name="search", input={})])
+    text_message = FakeAssistantMessage(content=[TextBlock(text="Final answer")])
+
+    assert ClaudeSDKRunner.message_uses_tools(tool_message)
+    assert not ClaudeSDKRunner.message_uses_tools(text_message)
 
 
 class FakeCancelTrackingClient(FakeClient):
