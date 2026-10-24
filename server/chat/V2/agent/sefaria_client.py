@@ -999,12 +999,27 @@ class SefariaClient:
     # fields are lossy previews, not verbatim source -- validated in testing
     # to measurably improve answer consistency/completeness at no added cost
     # (see link_preview_compression.py's docstring for why).
+    #
+    # Also tells the agent where to find the complete list of sources. For a
+    # large reference (e.g. a verse with 100+ linked commentaries), this
+    # response can exceed the harness's inline tool-output budget, in which
+    # case the harness itself saves the full JSON to a file and hands the
+    # agent only a truncated view -- which, without "all_refs" sitting first
+    # in the payload (see _optimize_links_response), would silently hide
+    # every source past wherever that truncation lands. "all_refs" is a bare
+    # list of ref strings, cheap enough to survive any truncation, so the
+    # agent always sees the complete source list even when it has to go read
+    # the saved file for the previews themselves.
     LINKS_PREVIEW_NOTE = (
         "The 'text' field of each link below is a shortened, lossy preview (words have been "
         "removed) for quick scanning only -- it is NOT the verbatim source. Use these previews "
         "only to judge which source(s) look relevant to the question. Before quoting, citing, "
         "or stating any specific fact, name, number, or ruling, call get_text with that "
-        "source's 'ref' to fetch its full, exact text."
+        "source's 'ref' to fetch its full, exact text. 'all_refs' lists every linked source, "
+        "in case this response (or 'links') was truncated for size -- for a question that "
+        "requires checking many or all sources (counting, classifying, or locating an obscure "
+        "point), do not stop at whichever sources appear first; the relevant one may be later "
+        "in 'all_refs' than what's previewed here."
     )
 
     def _optimize_links_response(self, data: Any) -> list[dict[str, Any]] | dict[str, Any]:
@@ -1034,7 +1049,8 @@ class SefariaClient:
             results.append(optimized)
 
         if any_text:
-            return {"note": self.LINKS_PREVIEW_NOTE, "links": results}
+            all_refs = [r["ref"] or r["sourceRef"] for r in results]
+            return {"note": self.LINKS_PREVIEW_NOTE, "all_refs": all_refs, "links": results}
         return results
 
     def _optimize_topics_response(self, data: Any) -> dict[str, Any]:

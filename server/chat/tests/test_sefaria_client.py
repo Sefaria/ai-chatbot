@@ -289,6 +289,24 @@ class TestOptimizeLinksResponse:
         assert "…" in links[0]["text"]
         assert len(links[0]["text"].split()) == len(long_text.split())
 
+    def test_all_refs_lists_every_link_even_if_response_is_truncated(self, client):
+        """'all_refs' is a bare list of every ref, included so the full set of
+        sources survives even if 'links' itself gets truncated or offloaded to
+        a file for size -- see LINKS_PREVIEW_NOTE's docstring."""
+        data = [
+            {"ref": "Rashi on Genesis 1:1", "sourceRef": "Genesis 1:1", "text": "some words"},
+            {"ref": "", "sourceRef": "Ibn Ezra on Genesis 1:1", "text": "other words"},
+            {"ref": "Ramban on Genesis 1:1", "sourceRef": "Genesis 1:1", "text": "more words"},
+        ]
+
+        result = client._optimize_links_response(data)
+
+        assert result["all_refs"] == [
+            "Rashi on Genesis 1:1",
+            "Ibn Ezra on Genesis 1:1",
+            "Ramban on Genesis 1:1",
+        ]
+
     def test_non_text_links_are_not_wrapped(self, client):
         """With no 'text' field present (with_text=0 case), behavior is unchanged:
         a plain list, no note wrapper."""
