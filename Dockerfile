@@ -25,7 +25,9 @@ WORKDIR /server
 RUN pip install -U -r requirements.txt
 RUN mkdir -p static/js
 COPY --from=script /build/dist/lc-chatbot.umd.cjs static/js/
-RUN python manage.py collectstatic --noinput
+# Build-time only: collectstatic imports settings, which refuse missing secrets outside DEBUG.
+# The variable is scoped to this command and is not baked into the image environment.
+RUN DJANGO_DEBUG=true python manage.py collectstatic --noinput
 
 USER 1001
 

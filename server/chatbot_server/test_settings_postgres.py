@@ -11,6 +11,9 @@ Local setup:
 
 import os
 
+# CI runs without secrets; settings.py refuses the development fallbacks outside DEBUG.
+os.environ.setdefault("DJANGO_DEBUG", "True")
+
 from .settings import *  # noqa: F401, F403
 
 # PostgreSQL config with defaults for local testing
