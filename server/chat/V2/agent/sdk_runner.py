@@ -146,6 +146,7 @@ class ClaudeSDKRunner:
         on_tool_use_start: Callable[[], None] | None = None,
         on_answer_start: Callable[[], None] | None = None,
         on_answer_delta: Callable[[str], None] | None = None,
+        on_answer_end: Callable[[], None] | None = None,
         should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
@@ -207,6 +208,14 @@ class ClaudeSDKRunner:
                     answer_delta = self._respond_delta(event, respond_streams)
                     if answer_delta and on_answer_delta:
                         on_answer_delta(answer_delta)
+                    # The answer's text is complete once its tool block closes,
+                    # before the model's wrap-up turn after the tool returns.
+                    if (
+                        on_answer_end
+                        and event.get("type") == "content_block_stop"
+                        and event.get("index") in respond_streams
+                    ):
+                        on_answer_end()
                     delta = self.extract_text_delta_from_stream_event(message)
                     if delta and pending_first_text_delta_elapsed_s is None:
                         pending_first_text_delta_elapsed_s = time.time() - start_time

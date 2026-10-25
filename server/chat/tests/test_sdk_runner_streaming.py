@@ -434,6 +434,7 @@ class FakeNarrationThenRespondClient(FakeClient):
         yield json_delta(0, 'xt": "Sha')
         yield json_delta(0, 'lom \\"wor')
         yield json_delta(0, 'ld\\""}')
+        yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
         yield FakeAssistantMessage(
             content=[{"type": "tool_use", "name": "mcp__sefaria__respond", "input": {"text": 'Shalom "world"'}}]
         )
@@ -457,10 +458,14 @@ def test_respond_tool_text_streams_as_the_answer_and_plain_text_as_narration():
             on_tool_use_start=lambda: events.append(("tool",)),
             on_answer_start=lambda: events.append(("answer_start",)),
             on_answer_delta=lambda d: events.append(("answer", d)),
+            on_answer_end=lambda: events.append(("answer_end",)),
         )
     )
 
     answer = "".join(e[1] for e in events if e[0] == "answer")
+    # The answer is done when its tool block closes, right after its last piece.
+    last_answer = max(i for i, e in enumerate(events) if e[0] == "answer")
+    assert events[last_answer + 1] == ("answer_end",)
     assert events[0] == ("narration", "Let me search.")
     assert events[1] == ("tool",)
     assert ("answer_start",) in events

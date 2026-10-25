@@ -3775,7 +3775,9 @@
   }
 
   /* Thought process: narration passages, quieter than the answer */
-  .lc-thought-step {
+  /* Same look while streaming (inside the assistant bubble) and after. */
+  .lc-thought-step,
+  .message.assistant .message-content.lc-thought-step {
     color: var(--lc-text-secondary);
     font-size: var(--lc-font-size-sm);
   }

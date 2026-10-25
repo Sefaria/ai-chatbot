@@ -239,6 +239,18 @@ class TurnOrchestrator:
         def emit_answer_delta(delta: str):
             emitter.emit(AgentProgressUpdate(type="content_delta", text=delta))
 
+        content_done_emitted = False
+
+        def emit_content_done():
+            # The client hides "Writing…" and shows the thumbs on this, so send
+            # it as soon as the answer text is complete -- not after the
+            # model's wrap-up turn, link validation and saving.
+            nonlocal content_done_emitted
+            if content_done_emitted:
+                return
+            content_done_emitted = True
+            emitter.emit(AgentProgressUpdate(type="content_done"))
+
         def emit_narration_end():
             nonlocal passage_has_text
             if not passage_has_text:
@@ -255,6 +267,7 @@ class TurnOrchestrator:
                 on_tool_use_start=emit_narration_end,
                 on_answer_start=emit_answer_start,
                 on_answer_delta=emit_answer_delta,
+                on_answer_end=emit_content_done,
                 should_cancel=should_cancel,
             )
         except TurnCancelled:
@@ -273,7 +286,7 @@ class TurnOrchestrator:
         emit_synthesis_status_once()
         # The streamed answer text is complete; link validation and saving
         # still follow, but the client can stop showing "Writing…" now.
-        emitter.emit(AgentProgressUpdate(type="content_done"))
+        emit_content_done()
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
