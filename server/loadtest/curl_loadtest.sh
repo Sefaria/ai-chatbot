@@ -60,4 +60,5 @@ print(json.dumps({
 ')
 curl -sS -N -X POST "$BASE_URL/api/v2/chat/stream" \
   -H "Content-Type: application/json" \
+  -A "Sefaria/library-assistant-loadtest" \
   -d "$PAYLOAD"

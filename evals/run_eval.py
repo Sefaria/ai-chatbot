@@ -63,6 +63,7 @@ PROD_API_URL = "https://chat.sefaria.org"  # production branch → prod deploy
 BETA_API_URL = "https://chat-beta.sefaria.org"  # beta branch → beta deploy
 LOCAL_API_URL = "http://localhost:8001"
 USER_TOKEN = os.environ.get("CHATBOT_USER_TOKEN")
+USER_AGENT = "Sefaria/library-assistant-evals"
 DEFAULT_EXPERIMENT_NAME = "Automated Eval"
 
 # Braintrust REST routes. Centralized so we have one place to edit if the API
@@ -101,7 +102,9 @@ class ChatbotClient:
         self.base_url = base_url.rstrip("/")
         if not USER_TOKEN:
             raise ValueError("CHATBOT_USER_TOKEN env var must be set")
-        self.client = httpx.AsyncClient(timeout=300.0)
+        self.client = httpx.AsyncClient(
+            timeout=300.0, headers={"User-Agent": USER_AGENT}
+        )
 
     async def chat(self, message: str) -> dict:
         """

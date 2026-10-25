@@ -47,6 +47,7 @@ BETA_ENV_FILE = SERVER_DIR / ".env.beta.local"
 DEFAULT_PROJECT = "On Site Agent"
 DEFAULT_DATASET_NAME = "Latency Replay Dataset - Prod Sample - 2026-05"
 SECTION_SEPARATOR = "\n\n"
+USER_AGENT = "Sefaria/library-assistant-latency"
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"
 PAGE_CONTEXT_SECTION = (
     "Page context:\n"
@@ -494,7 +495,7 @@ async def run_all_examples(
     results: list[dict[str, Any]] = []
     semaphore = asyncio.Semaphore(max_concurrency)
     progress = tqdm(total=len(items), desc="Running beta baseline", unit="example")
-    client = httpx.AsyncClient(timeout=300.0)
+    client = httpx.AsyncClient(timeout=300.0, headers={"User-Agent": USER_AGENT})
 
     async def run_one(index: int, item: dict[str, Any]) -> dict[str, Any]:
         async with semaphore:

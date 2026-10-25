@@ -41,6 +41,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # ---------------------------------------------------------------------------
 
 NONCE_SIZE_BYTES = 12
+USER_AGENT = "Sefaria/library-assistant-loadtest"
 
 
 def _derive_key(secret: str) -> bytes:
@@ -112,7 +113,7 @@ def run_single_request(
     }
 
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, headers={"User-Agent": USER_AGENT}) as client:
             with client.stream("POST", f"{url}/v2/chat/stream", json=payload) as resp:
                 status_code = resp.status_code
                 if status_code != 200:
