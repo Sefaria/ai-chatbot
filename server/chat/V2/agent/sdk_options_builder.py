@@ -8,6 +8,11 @@ import os
 from typing import Any
 
 
+# Claude Sonnet 5 and 5.5 return a 400 on any explicit temperature value
+# ("`temperature` is deprecated for this model") - confirmed against the live API.
+_NO_SAMPLING_PARAMS_MODELS = {"claude-sonnet-5", "claude-sonnet-5-5"}
+
+
 class SDKOptionsBuilder:
     """Builds ClaudeAgentOptions compatible with multiple SDK versions."""
 
@@ -68,7 +73,7 @@ class SDKOptionsBuilder:
 
         if self._supports_option("max_tokens"):
             options_kwargs["max_tokens"] = self.max_tokens
-        if self._supports_option("temperature"):
+        if self._supports_option("temperature") and self.model not in _NO_SAMPLING_PARAMS_MODELS:
             options_kwargs["temperature"] = self.temperature
         if self._supports_option("include_partial_messages"):
             options_kwargs["include_partial_messages"] = True
