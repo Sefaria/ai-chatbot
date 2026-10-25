@@ -585,25 +585,17 @@ class TestCreateSourceSheet:
 
         client.set_user_session("186013", "encrypted-token")
 
+        # /api/v3/texts returns the English only when asked for it with `version`.
+        texts_response = {
+            "versions": [
+                {"languageFamilyName": "hebrew", "text": ["וְהַנָּחָשׁ הָיָה עָרוּם."]},
+                {"languageFamilyName": "english", "text": ["Now the serpent was the shrewdest."]},
+            ]
+        }
         with patch.object(client, "_get_client", return_value=mock_client):
             with patch.object(
-                client,
-                "get_text",
-                AsyncMock(
-                    return_value={
-                        "versions": [
-                            {
-                                "languageFamilyName": "english",
-                                "text": ["Now the serpent was the shrewdest."],
-                            },
-                            {
-                                "languageFamilyName": "hebrew",
-                                "text": ["וְהַנָּחָשׁ הָיָה עָרוּם."],
-                            },
-                        ]
-                    }
-                ),
-            ) as mock_get_text:
+                client, "_get_json", AsyncMock(return_value=texts_response)
+            ) as mock_get_json:
                 result = await client.create_source_sheet(
                     "Bereshit",
                     "A starter sheet",
@@ -614,7 +606,10 @@ class TestCreateSourceSheet:
                     ],
                 )
 
-        mock_get_text.assert_awaited_once_with("Genesis 3:1")
+        mock_get_json.assert_awaited_once_with(
+            "api/v3/texts/Genesis%203%3A1",
+            {"version": ["source", "english"], "return_format": "strip_only_footnotes"},
+        )
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
         assert call_args.args[0] == f"{client.base_url}/api/sheets/"
@@ -622,7 +617,7 @@ class TestCreateSourceSheet:
 
         posted_payload = json.loads(call_args.kwargs["data"]["json"])
         assert posted_payload["title"] == "Bereshit"
-        assert posted_payload["summary"] == "A starter sheet"
+        assert posted_payload["summary"] == "A starter sheet\n\nCreated with Claude."
         assert posted_payload["status"] == "unlisted"
         assert posted_payload["options"]["language"] == "bilingual"
         assert posted_payload["sources"][1]["node"] == 2
@@ -638,6 +633,17 @@ class TestCreateSourceSheet:
         assert result["sheetUrl"] == f"{client.base_url}/sheets/715437"
         assert result["source_count"] == 3
         assert result["sources"][2]["ref"] == "Genesis 3:1"
+
+
+class TestSheetAttribution:
+    def test_summary_ends_with_attribution_once(self):
+        from chat.V2.agent.source_sheet_serializer import attributed_summary
+
+        assert attributed_summary("") == "Created with Claude."
+        assert attributed_summary("  Notes  ") == "Notes\n\nCreated with Claude."
+        assert (
+            attributed_summary("Notes\n\nCreated with Claude.") == "Notes\n\nCreated with Claude."
+        )
 
 
 class TestSearchInBook:
@@ -885,3 +891,116 @@ class TestUserAgent:
 
         with override_settings(ENVIRONMENT="  (pr\nod)  "):
             assert _user_agent() == "Sefaria/library-assistant (prod)"
+
+    def test_service_name_can_be_overridden(self, monkeypatch):
+        from django.test import override_settings
+
+        from chat.V2.agent.sefaria_client import _user_agent
+
+        monkeypatch.setenv("SEFARIA_USER_AGENT_SERVICE", "m(cp)\r\n")
+        with override_settings(ENVIRONMENT="prod"):
+            assert _user_agent() == "Sefaria/mcp (prod)"
+
+    def test_works_without_django_settings(self, monkeypatch):
+        """The public MCP server runs the tool layer without configuring Django."""
+        from django.conf import settings
+
+        from chat.V2.agent.sefaria_client import _user_agent
+
+        monkeypatch.setattr(type(settings), "configured", property(lambda self: False))
+        monkeypatch.setenv("ENVIRONMENT", "dev")
+        assert _user_agent() == "Sefaria/library-assistant (dev)"
+        monkeypatch.delenv("ENVIRONMENT")
+        assert _user_agent() == "Sefaria/library-assistant"
+
+
+class TestManuscriptImageFetch:
+    """get_manuscript_image fetches a caller-supplied URL, so it must not be an open proxy."""
+
+    GOOD_URL = "https://manuscripts.sefaria.org/leningrad-color/BIB_LENCDX_F001B.jpg"
+
+    async def _fetch(self, client, url, handler):
+        import functools
+
+        import httpx
+
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        seen: list[str] = []
+
+        def recording(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return handler(request)
+
+        real_async_client = httpx.AsyncClient
+        with patch.object(
+            sefaria_client_module.httpx,
+            "AsyncClient",
+            functools.partial(real_async_client, transport=httpx.MockTransport(recording)),
+        ):
+            try:
+                return await client.get_manuscript_image(url), seen
+            finally:
+                await client.close()
+
+    @staticmethod
+    def _image(request, body=b"\xff\xd8jpeg", **headers):
+        import httpx
+
+        return httpx.Response(200, content=body, headers={"content-type": "image/jpeg", **headers})
+
+    async def test_fetches_sefaria_manuscript_images(self, client):
+        result, seen = await self._fetch(client, self.GOOD_URL, self._image)
+        assert seen == [self.GOOD_URL]
+        assert result["mime_type"] == "image/jpeg"
+        assert result["size"] == 6
+        assert result["filename"] == "BIB_LENCDX_F001B.jpg"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://manuscripts.sefaria.org/a.jpg",  # not https
+            "https://www.sefaria.org/a.jpg",  # another Sefaria host
+            "https://manuscripts.sefaria.org.evil.example/a.jpg",
+            "https://evil.example/a.jpg",
+            "https://manuscripts.sefaria.org:8443/a.jpg",
+            "https://user@manuscripts.sefaria.org/a.jpg",
+            "http://127.0.0.1:9090/",
+            "http://169.254.169.254/computeMetadata/v1/",
+            "file:///etc/passwd",
+        ],
+    )
+    async def test_rejects_other_urls_without_fetching(self, client, url):
+        with pytest.raises(ValueError, match="manuscripts.sefaria.org"):
+            await self._fetch(client, url, self._image)
+
+    async def test_does_not_follow_redirects(self, client):
+        import httpx
+
+        def redirect(request):
+            return httpx.Response(302, headers={"location": "http://127.0.0.1:9090/"})
+
+        with pytest.raises(ValueError, match="HTTP 302"):
+            await self._fetch(client, self.GOOD_URL, redirect)
+
+    async def test_rejects_non_image_content(self, client):
+        import httpx
+
+        def text(request):
+            return httpx.Response(200, text="secret", headers={"content-type": "text/plain"})
+
+        with pytest.raises(ValueError, match="did not return an image"):
+            await self._fetch(client, self.GOOD_URL, text)
+
+    async def test_rejects_oversized_images_by_header_and_by_body(self, client):
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        with patch.object(sefaria_client_module, "MAX_MANUSCRIPT_IMAGE_BYTES", 4):
+            with pytest.raises(ValueError, match="larger than"):
+                await self._fetch(client, self.GOOD_URL, self._image)
+
+            def lying(request):
+                return self._image(request, body=b"0123456789", **{"content-length": "1"})
+
+            with pytest.raises(ValueError, match="larger than"):
+                await self._fetch(client, self.GOOD_URL, lying)

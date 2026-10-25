@@ -415,3 +415,46 @@ async def test_resolve_tool_ref_for_non_ref_tool():
     result = await resolve_tool_ref(client, "text_search", {"query": "shabbat"})
     assert result is None
     client.resolve_ref.assert_not_awaited()
+
+
+class TestResultBounds:
+    """size/limit come from anonymous callers on the public MCP server, so they are clamped."""
+
+    @pytest.mark.parametrize(("given", "sent"), [(10_000, 100), (0, 1), (-5, 1), (25, 25)])
+    async def test_search_size_is_clamped(self, executor, mock_client, given, sent):
+        await executor.execute("specific_keyword_search", {"query": "x", "size": given})
+        assert mock_client.text_search.await_args.args[2] == sent
+
+    async def test_defaults_are_kept_when_absent(self, executor, mock_client):
+        await executor.execute("search_in_book", {"query": "x", "book_name": "Genesis"})
+        assert mock_client.search_in_book.await_args.args[2] == 10
+        await executor.execute("clarify_name_argument", {"name": "Gen"})
+        assert mock_client.clarify_name_argument.await_args.args[1] is None
+
+    def test_every_size_and_limit_schema_is_bounded(self):
+        from chat.V2.agent.tool_schemas import ALL_TOOLS, MAX_RESULTS
+
+        for name, schema in ALL_TOOLS.items():
+            for key in ("size", "limit"):
+                prop = schema["input_schema"]["properties"].get(key)
+                if prop is not None:
+                    assert prop.get("maximum") == MAX_RESULTS, (name, key)
+                    assert prop.get("minimum") == 1, (name, key)
+
+
+class TestValidateRefsBounds:
+    async def test_duplicates_are_dropped_and_the_list_is_clamped(self, executor, mock_client):
+        from chat.V2.agent.tool_schemas import MAX_REFS_PER_VALIDATION
+
+        refs = ["Genesis 1:1"] * 1200 + [f"Genesis 1:{i}" for i in range(2, 200)]
+        await executor.execute("validate_refs", {"refs": refs})
+        sent = mock_client.validate_refs.await_args.args[0]
+        assert sent[0] == "Genesis 1:1"
+        assert len(sent) == MAX_REFS_PER_VALIDATION
+        assert len(set(sent)) == len(sent)
+
+    def test_schema_bounds_the_list(self):
+        from chat.V2.agent.tool_schemas import ALL_TOOLS, MAX_REFS_PER_VALIDATION
+
+        refs = ALL_TOOLS["validate_refs"]["input_schema"]["properties"]["refs"]
+        assert refs["maxItems"] == MAX_REFS_PER_VALIDATION
