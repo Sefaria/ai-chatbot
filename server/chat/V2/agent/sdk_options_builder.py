@@ -77,6 +77,10 @@ class SDKOptionsBuilder:
         if self._supports_option("env"):
             env: dict[str, str] = {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+                # Stream tool input as it's written instead of buffering it: the
+                # final answer arrives through the respond tool, so without this
+                # it lands in large chunks rather than word by word.
+                "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING": "1",
             }
             if self.braintrust_logging_enabled:
                 env["BRAINTRUST_API_KEY"] = self.braintrust_api_key
