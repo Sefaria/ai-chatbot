@@ -127,18 +127,24 @@ class ClaudeSDKRunner:
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)
-                    if chunk:
-                        final_text += chunk
-                        if not uses_tools:
-                            final_text_delta_candidate_elapsed_s = (
-                                pending_first_text_delta_elapsed_s
-                                if pending_first_text_delta_elapsed_s is not None
-                                else time.time() - start_time
-                            )
-                            if saw_tool_use_message:
-                                notify_first_final_text_delta()
                     if isinstance(message, self.assistant_message_cls) and uses_tools:
+                        # A tool call proves whatever text came before this point
+                        # (including any narration in this same message, e.g.
+                        # "Let me also check the calendar...") wasn't the final
+                        # answer -- the turn isn't over. Discard it; the real
+                        # final text, if any, is whatever text-only message(s)
+                        # follow the *last* tool call.
+                        final_text = ""
                         saw_tool_use_message = True
+                    elif chunk:
+                        final_text += chunk
+                        final_text_delta_candidate_elapsed_s = (
+                            pending_first_text_delta_elapsed_s
+                            if pending_first_text_delta_elapsed_s is not None
+                            else time.time() - start_time
+                        )
+                        if saw_tool_use_message:
+                            notify_first_final_text_delta()
                     if isinstance(message, self.assistant_message_cls):
                         pending_first_text_delta_elapsed_s = None
 

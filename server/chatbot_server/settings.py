@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "chat",
+    "mcp_auth",
 ]
 
 MIDDLEWARE = [
@@ -218,6 +219,23 @@ RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "res
 # ============================================================================
 # Token secret used to decrypt incoming userId values for chat requests.
 CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
+
+# MCP sign-in (mcp_auth, mcp_server /mcp/user and /mcp/admin). See
+# docs/plans/2026-10-18-mcp-consolidation.md.
+# MCP_TOKEN_SECRET is shared with Sefaria-Project (mcp-login and mcp tokens);
+# MCP_OAUTH_SIGNING_KEY is shared with the MCP process (access-token JWTs). Either unset
+# disables sign-in.
+MCP_TOKEN_SECRET = os.environ.get("MCP_TOKEN_SECRET") or None
+MCP_OAUTH_SIGNING_KEY = os.environ.get("MCP_OAUTH_SIGNING_KEY") or None
+MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org")
+MCP_USER_RESOURCE_URL = os.environ.get("MCP_USER_RESOURCE_URL", f"{MCP_OAUTH_ISSUER}/mcp/user")
+# Beside /mcp/user by default: the MCP process may be on another host than the issuer.
+MCP_ADMIN_RESOURCE_URL = os.environ.get(
+    "MCP_ADMIN_RESOURCE_URL", f"{MCP_USER_RESOURCE_URL.rstrip('/').rsplit('/', 1)[0]}/admin"
+)
+SEFARIA_MCP_AUTHORIZE_URL = os.environ.get(
+    "SEFARIA_MCP_AUTHORIZE_URL", "https://www.sefaria.org/api/mcp/authorize"
+)
 
 # ============================================================================
 # Anthropic API Configuration

@@ -278,7 +278,10 @@ class TestTrackedMessagesCreate:
         client.messages.create.assert_called_once_with(model=TEST_MODEL, max_tokens=10)
         assert response is client.messages.create.return_value
 
-    def test_moves_sampling_kwargs_to_extra_body(self):
+    def test_drops_unsupported_sampling_kwargs(self):
+        """temperature/top_p/top_k are no longer accepted by the API (in or
+        out of extra_body -- see pricing.py's _normalize_messages_create_kwargs
+        docstring), so they must be dropped rather than forwarded."""
         reset_cost_accumulator()
         client = self._make_client()
         tracked_messages_create(
@@ -292,21 +295,20 @@ class TestTrackedMessagesCreate:
         client.messages.create.assert_called_once_with(
             model=TEST_MODEL,
             max_tokens=10,
-            extra_body={"temperature": 0.0, "top_p": 0.9, "top_k": 20},
         )
 
-    def test_sampling_kwargs_preserve_existing_extra_body_values(self):
+    def test_drops_sampling_kwargs_even_when_extra_body_present(self):
         reset_cost_accumulator()
         client = self._make_client()
         tracked_messages_create(
             client,
             model=TEST_MODEL,
             temperature=0.5,
-            extra_body={"temperature": 0.0, "custom": "value"},
+            extra_body={"custom": "value"},
         )
         client.messages.create.assert_called_once_with(
             model=TEST_MODEL,
-            extra_body={"temperature": 0.0, "custom": "value"},
+            extra_body={"custom": "value"},
         )
 
     def test_appends_cost_to_bound_accumulator(self):
