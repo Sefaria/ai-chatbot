@@ -600,14 +600,6 @@
     scheduleNextThinkingMessage();
   }
 
-  // After a narration passage folds away, pick the searching messages back up
-  // where they left off.
-  function resumeThinkingMessages() {
-    const nextIndex = Math.min(Math.max(thinkingMessageIndex + 1, 0), THINKING_MESSAGE_KEYS.length - 1);
-    finalThinkingPending = false;
-    fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
-  }
-
   function stopThinkingMessages() {
     clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
@@ -971,7 +963,7 @@
     pendingFeedback = activeRequests[sessionId]?.pendingFeedback || null;
     thoughtSteps = activeRequests[sessionId]?.thoughtSteps || [];
     stopThinkingMessages();
-    if (streamingMarkdown && !streamTextDone) {
+    if ((streamingMarkdown || activeRequests[sessionId]?.startedWriting) && !streamTextDone) {
       // Already past the thinking/synthesizing phase for this turn — resume
       // showing the static writing indicator rather than restarting the cycle.
       thinkingMessageKey = 'assistant.writing';
@@ -1179,7 +1171,7 @@
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
       contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
-      thoughtSteps: [], awaitingPassage: false
+      thoughtSteps: [], awaitingPassage: false, startedWriting: false
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1301,6 +1293,7 @@
         const revealAt = isForeground ? Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS) : performance.now();
         request.streamTimer = setTimeout(() => {
           request.streamDelayMs = revealAt - request.streamQueue[0].at;
+          request.startedWriting = true;
           // Switch straight to the static "Writing…" label, with no fade.
           if (sessionId === sendingSessionId) {
             clearThinkingMessageTimers();
@@ -1314,8 +1307,8 @@
       if (!request.streamTimer) playStreamQueue();
     }
 
-    // The passage on screen was narration: move it into the thought process
-    // and go back to the searching messages until the next passage starts.
+    // The passage on screen was narration: move it into the thought process.
+    // The label stays on "Writing…" -- once writing starts it never goes back.
     function foldNarration() {
       const passage = request.playedStreamText.trim();
       if (passage) request.thoughtSteps = [...request.thoughtSteps, passage];
@@ -1328,7 +1321,6 @@
       setTimeout(() => { collapsingNarration = false; }, NARRATION_COLLAPSE_MS);
       thoughtSteps = request.thoughtSteps;
       streamingMarkdown = '';
-      resumeThinkingMessages();
     }
 
     function startNextPassage() {
@@ -1400,7 +1392,7 @@
             return;
           }
           // Once the answer is streaming, leave the scroll position alone.
-          if (progress?.type === 'status' && !request.streamingMarkdown) {
+          if (progress?.type === 'status' && !request.streamingMarkdown && !request.startedWriting) {
             if (/synthesi/i.test(progress.text || '')) {
               showFinalThinkingMessage();
             }
