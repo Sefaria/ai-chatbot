@@ -1020,10 +1020,11 @@ class SefariaClient:
         "requires checking many or all sources (counting, classifying, or locating an obscure "
         "point), do not stop at whichever sources appear first; the relevant one may be later "
         "in 'all_refs' than what's previewed here. For a counting or classification question "
-        "in particular, treat this as a complete pass over every entry in 'links', not a search "
-        "for the first plausible match: a real match can read as ordinary prose in a lossy "
-        "preview, so judge each entry on its own rather than stopping once an obvious one turns "
-        "up, and verify with get_text any entry you're unsure about before excluding it."
+        "in particular, go through every entry in 'links' in order and record a brief "
+        "yes/no/maybe judgment for each one before answering -- do not stop once you've found "
+        "a plausible answer; a real match can read as ordinary prose in a lossy preview, so an "
+        "entry you're not sure about is a 'maybe', not a 'no'. Verify every yes and every maybe "
+        "with get_text before your final answer -- only entries you judged 'no' can be skipped."
     )
 
     def _optimize_links_response(self, data: Any) -> list[dict[str, Any]] | dict[str, Any]:
