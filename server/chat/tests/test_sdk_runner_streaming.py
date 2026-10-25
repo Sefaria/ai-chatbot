@@ -205,6 +205,50 @@ def test_final_text_still_concatenates_a_final_answer_split_across_messages():
     assert result.final_text == "Part one. Part two."
 
 
+def test_final_text_inserts_a_boundary_space_between_unseparated_messages():
+    """Observed live: a final answer split across messages with no trailing
+    whitespace on the first ("...no preview text." immediately followed by
+    "Now I have a clear picture...") pastes into one run-on sentence without
+    this -- "...preview text.Now I have...". Concatenation must not depend on
+    the model happening to end a message with a space."""
+
+    class UnseparatedFinalAnswerClient(FakeClient):
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Searching."},
+                    {"type": "tool_use", "name": "semantic_search", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(content=[{"type": "text", "text": "Part one."}])
+            yield FakeAssistantMessage(content=[{"type": "text", "text": "Part two."}])
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=UnseparatedFinalAnswerClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.final_text == "Part one. Part two."
+
+
+def test_extract_text_from_blocks_inserts_a_boundary_space_between_text_blocks():
+    """Same hazard, one level down: multiple 'text' blocks within a single
+    message's content list must not be pasted together either."""
+    from chat.V2.agent.sdk_runner import ClaudeSDKRunner
+
+    content = [
+        {"type": "text", "text": "First sentence."},
+        {"type": "text", "text": "Second sentence."},
+    ]
+
+    assert ClaudeSDKRunner.extract_text_from_blocks(content) == "First sentence. Second sentence."
+
+
 def test_first_final_text_delta_callback_waits_for_final_text():
     runner = ClaudeSDKRunner(
         client_cls=FakeToolThenFinalClient,

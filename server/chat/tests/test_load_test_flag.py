@@ -195,6 +195,20 @@ class TestSDKOptionsBuilderBraintrustGating:
         assert env.get("BRAINTRUST_API_KEY") == "real-bt-key"
         assert env.get("BRAINTRUST_PROJECT") == "my-project"
 
+    def test_max_mcp_output_tokens_set_in_subprocess_env(self):
+        """Pins the CLI's inline-vs-offload threshold for MCP tool results so a
+        verse with many linked commentaries doesn't fall back to the harness's
+        chunked file-read path for a payload the model could read in one pass
+        (see sdk_options_builder.py's MAX_MCP_OUTPUT_TOKENS docstring) -- and so
+        Anthropic's own remote experiment can't silently pick a lower value."""
+        from chat.V2.agent.sdk_options_builder import MAX_MCP_OUTPUT_TOKENS
+
+        builder = self._make_builder(braintrust_logging_enabled=False)
+        with patch.object(builder, "_supports_option", return_value=True):
+            builder.build(system_prompt="test", mcp_server=MagicMock(), allowed_tools=[])
+        env = builder.options_cls.call_args[1].get("env", {})
+        assert env.get("MAX_MCP_OUTPUT_TOKENS") == MAX_MCP_OUTPUT_TOKENS
+
     def test_partial_messages_enabled_when_supported(self):
         builder = self._make_builder(braintrust_logging_enabled=True)
         with patch.object(builder, "_supports_option", return_value=True):

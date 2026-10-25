@@ -15,6 +15,24 @@ from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
 from .contracts import CancelCheck, TurnCancelled
 
 
+def _append_text(accumulated: str, addition: str) -> str:
+    """Join two text fragments, inserting a space between them if neither
+    edge already has whitespace.
+
+    Guards against two real-world concatenation points -- multiple 'text'
+    blocks in one message's content list, and multiple text-only messages in
+    a row with no tool call between them -- that otherwise paste sentences
+    together with no separator (observed live: "...no preview text.Now I
+    have a clear picture...", where the final two sentences came from
+    distinct blocks/messages with nothing to mark the boundary).
+    """
+    if not accumulated or not addition:
+        return accumulated + addition
+    if accumulated[-1].isspace() or addition[0].isspace():
+        return accumulated + addition
+    return accumulated + " " + addition
+
+
 @dataclass
 class SDKRunResult:
     final_text: str
@@ -137,7 +155,7 @@ class ClaudeSDKRunner:
                         final_text = ""
                         saw_tool_use_message = True
                     elif chunk:
-                        final_text += chunk
+                        final_text = _append_text(final_text, chunk)
                         final_text_delta_candidate_elapsed_s = (
                             pending_first_text_delta_elapsed_s
                             if pending_first_text_delta_elapsed_s is not None
@@ -206,10 +224,10 @@ class ClaudeSDKRunner:
         if isinstance(content, str):
             return content
         if isinstance(content, list):
-            parts: list[str] = []
+            result = ""
             for block in content:
-                parts.append(ClaudeSDKRunner.extract_text_from_block(block))
-            return "".join(parts)
+                result = _append_text(result, ClaudeSDKRunner.extract_text_from_block(block))
+            return result
         return ""
 
     @staticmethod

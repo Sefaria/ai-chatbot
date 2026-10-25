@@ -46,10 +46,20 @@ PAGE_CONTEXT_SECTION = (
 
 # When extended thinking is disabled, the model may externalize its planning
 # as visible text (e.g. "Let me search for..."). This fragment prohibits it.
+# The examples below were widened after live testing of an exhaustive-survey
+# prompt (go through every linked source and judge it) showed this narration
+# surviving into the final reply in a form the original two examples didn't
+# cover: not just announcing a search ("Let me search for..."), but narrating
+# the synthesis/review step itself ("Now I have a clear picture...", "Having
+# scanned all the previews...") -- any sentence about the process of arriving
+# at the answer, not just the process of looking something up.
 NO_THINKING_NARRATION_INSTRUCTION = (
-    "Do not narrate your actions or search steps. "
-    'Never start a response with phrases like "Let me search for...", "I\'ll look up...", etc. '
-    "Begin your response directly with the answer."
+    "Do not narrate your actions, search steps, or reasoning process -- including "
+    "announcing that you've finished gathering or reviewing information. Never start a "
+    'response with phrases like "Let me search for...", "I\'ll look up...", "Now I have '
+    'enough information...", "Having scanned/reviewed...", or similar. Any scanning, '
+    "comparing, or judging you do over multiple sources is for your own reasoning only -- "
+    "none of it belongs in the reply. Begin your response directly with the substantive answer."
 )
 
 
