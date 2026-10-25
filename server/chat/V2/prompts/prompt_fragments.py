@@ -46,6 +46,24 @@ PAGE_CONTEXT_SECTION = (
 
 # When extended thinking is disabled, the model may externalize its planning
 # as visible text (e.g. "Let me search for..."). This fragment prohibits it.
+# The final answer is delivered through this tool, so the server knows it's
+# the answer before the first word streams; any other text is narration.
+RESPOND_TOOL_NAME = "respond"
+
+RESPOND_TOOL_DESCRIPTION = (
+    "Deliver your final answer to the user. Call this exactly once, as your last step, "
+    "with the complete answer in markdown. Only text passed to this tool is shown to the user "
+    "as your answer."
+)
+
+RESPOND_TOOL_INSTRUCTION = (
+    f"When you are ready to answer, call the `{RESPOND_TOOL_NAME}` tool with your complete final "
+    "answer as `text`, in markdown. Never write the final answer as plain text. "
+    f"Do not write anything after calling `{RESPOND_TOOL_NAME}`."
+)
+
+RESPOND_TOOL_RESULT = "Delivered to the user. End your turn now without writing anything else."
+
 NO_THINKING_NARRATION_INSTRUCTION = (
     "Do not narrate your actions or search steps. "
     'Never start a response with phrases like "Let me search for...", "I\'ll look up...", etc. '
