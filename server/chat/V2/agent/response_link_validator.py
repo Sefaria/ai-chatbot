@@ -11,7 +11,17 @@ from urllib.parse import unquote, urlsplit
 from .sefaria_client import SefariaClient
 
 SEFARIA_HOST_RE = re.compile(r"(^|\.)sefaria\.org(\.il)?$", re.IGNORECASE)
-MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# Every pattern below runs in linear time: link text cannot contain brackets and each
+# repeat is bounded, so input like "[" * 100_000 fails fast at every position instead
+# of rescanning the rest of the text (the old pattern took seconds on it).
+INLINE_LINK_RE = re.compile(
+    r"(!?)\[[^\[\]\n]{0,2000}\]\(\s*<?([^\s()<>]{1,2000})>?(?:\s+(?:\"[^\"\n]{0,500}\"|'[^'\n]{0,500}'))?\s*\)"
+)
+AUTOLINK_RE = re.compile(r"<(https?://[^\s<>]{1,2000})>")
+REFERENCE_DEFINITION_RE = re.compile(
+    r"^ {0,3}\[[^\[\]\n]{1,999}\]:[ \t]*<?([^\s<>]{1,2000})>?", re.MULTILINE
+)
+BARE_URL_RE = re.compile(r"(?<![\w(<\"'=/])https?://[^\s<>()\"'\]]{1,2000}")
 
 
 @dataclass(frozen=True)
@@ -42,12 +52,23 @@ class _AnchorHrefParser(HTMLParser):
                 self.hrefs.append(value)
 
 
-def extract_hrefs(response_text: str) -> list[str]:
-    """Extract hrefs from HTML anchors and markdown links, preserving order."""
+def extract_hrefs(response_text: str, *, all_forms: bool = False) -> list[str]:
+    """Extract hrefs from HTML anchors and markdown links, preserving order.
+
+    By default this reads what the hosted widget renders as links: HTML anchors and
+    inline markdown links. ``all_forms`` adds what other markdown renderers turn into
+    links or loads (images, autolinks, reference definitions, bare URLs), for callers
+    whose output we do not render ourselves.
+    """
+    text = response_text or ""
     parser = _AnchorHrefParser()
-    parser.feed(response_text or "")
+    parser.feed(text)
     hrefs = parser.hrefs[:]
-    hrefs.extend(match.group(1) for match in MARKDOWN_LINK_RE.finditer(response_text or ""))
+    hrefs.extend(m.group(2) for m in INLINE_LINK_RE.finditer(text) if all_forms or not m.group(1))
+    if all_forms:
+        hrefs.extend(m.group(1) for m in AUTOLINK_RE.finditer(text))
+        hrefs.extend(m.group(1) for m in REFERENCE_DEFINITION_RE.finditer(text))
+        hrefs.extend(m.group(0).rstrip(".,;:!?") for m in BARE_URL_RE.finditer(text))
 
     seen: set[str] = set()
     unique: list[str] = []
@@ -98,8 +119,11 @@ class ResponseLinkValidator:
         self.client = client
 
     async def validate_response(self, response_text: str) -> LinkValidationResult:
+        return await self.validate_hrefs(extract_hrefs(response_text))
+
+    async def validate_hrefs(self, hrefs: list[str]) -> LinkValidationResult:
         issues: list[LinkValidationIssue] = []
-        for href in extract_hrefs(response_text):
+        for href in hrefs:
             tref, issue = sefaria_text_ref_from_href(href)
             if issue:
                 issues.append(LinkValidationIssue(href=href, reason=issue))
