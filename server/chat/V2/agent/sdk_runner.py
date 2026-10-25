@@ -74,6 +74,7 @@ class ClaudeSDKRunner:
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        on_tool_use_start: Callable[[], None] | None = None,
         should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
@@ -117,6 +118,10 @@ class ClaudeSDKRunner:
                     total_cost_usd = message.total_cost_usd
                     first_final_text_delta_elapsed_s = final_text_delta_candidate_elapsed_s
                 elif isinstance(message, self.stream_event_cls):
+                    # A tool call starting means the text streamed just before
+                    # it was narration, not the final answer.
+                    if on_tool_use_start and self.stream_event_starts_tool_use(message):
+                        on_tool_use_start()
                     delta = self.extract_text_delta_from_stream_event(message)
                     if delta and pending_first_text_delta_elapsed_s is None:
                         pending_first_text_delta_elapsed_s = time.time() - start_time
@@ -163,6 +168,20 @@ class ClaudeSDKRunner:
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
         )
+
+    @staticmethod
+    def stream_event_starts_tool_use(message: Any) -> bool:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict) or event.get("type") != "content_block_start":
+            return False
+        block = event.get("content_block")
+        return isinstance(block, dict) and block.get("type") in {
+            "tool_use",
+            "server_tool_use",
+            "mcp_tool_use",
+        }
 
     @staticmethod
     def extract_text_delta_from_stream_event(message: Any) -> str:

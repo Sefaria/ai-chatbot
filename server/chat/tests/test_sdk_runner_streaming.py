@@ -385,3 +385,19 @@ async def test_cancel_interrupts_a_silent_sdk_wait():
         )
     await timer
     assert closed
+
+
+def test_stream_event_starts_tool_use_detects_tool_blocks_only():
+    tool_start = FakeStreamEvent(
+        event={"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t1", "name": "search"}}
+    )
+    text_start = FakeStreamEvent(
+        event={"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+    )
+    text_delta = FakeStreamEvent(
+        event={"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hi"}}
+    )
+
+    assert ClaudeSDKRunner.stream_event_starts_tool_use(tool_start)
+    assert not ClaudeSDKRunner.stream_event_starts_tool_use(text_start)
+    assert not ClaudeSDKRunner.stream_event_starts_tool_use(text_delta)
