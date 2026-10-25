@@ -1024,7 +1024,10 @@ class SefariaClient:
         "yes/no/maybe judgment for each one before answering -- do not stop once you've found "
         "a plausible answer; a real match can read as ordinary prose in a lossy preview, so an "
         "entry you're not sure about is a 'maybe', not a 'no'. Verify every yes and every maybe "
-        "with get_text before your final answer -- only entries you judged 'no' can be skipped."
+        "with get_text before your final answer -- only entries you judged 'no' can be skipped. "
+        "This per-entry pass is for your own reasoning, not the reply: do not list your "
+        "judgments or narrate the scan (e.g. 'I went through each entry...') in what you say "
+        "to the user -- give them only the sources that qualify and why."
     )
 
     def _optimize_links_response(self, data: Any) -> list[dict[str, Any]] | dict[str, Any]:
