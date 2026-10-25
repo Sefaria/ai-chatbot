@@ -80,6 +80,12 @@ pytest                                    # Run tests
 | `LOAD_TEST_MODEL` | No | Model for load test requests (default: claude-haiku-4-5-20251001) |
 | `CHATBOT_USER_TOKEN_SECRET` | No | AES-GCM key for userId tokens (default: `secret`) |
 | `DB_HOST`, `DB_NAME`, etc. | No | PostgreSQL (SQLite default) |
+| `MCP_TOKEN_SECRET` | No | Shared with Sefaria for MCP sign-in (`mcp-login` and `mcp` tokens); unset disables `/mcp/user` and `/mcp/admin` |
+| `MCP_OAUTH_SIGNING_KEY` | No | Signs `/mcp/user` and `/mcp/admin` access-token JWTs; shared by Django and the MCP process |
+| `MCP_OAUTH_ISSUER` | No | OAuth issuer / chat host (default `https://chat.sefaria.org`) |
+| `MCP_USER_RESOURCE_URL` | No | Default `<issuer>/mcp/user` |
+| `MCP_ADMIN_RESOURCE_URL` | No | Staff topic-prompt tools; default beside `MCP_USER_RESOURCE_URL` (`.../mcp/admin`) |
+| `SEFARIA_MCP_AUTHORIZE_URL` | No | Sefaria sign-in handoff (default `https://www.sefaria.org/api/mcp/authorize`) |
 
 ## Load Testing
 
