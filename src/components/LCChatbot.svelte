@@ -19,6 +19,7 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -106,6 +107,25 @@
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
   let pendingFeedback = $state(null);
   const TOPICS_APPEAR_MS = 250;
+  // Thought process (Claude.ai model): every passage streams in as written; one
+  // that turns out to be narration (the AI calls a tool next) collapses into a
+  // "Show thought process" accordion, and the last passage stays as the answer.
+  const NARRATION_COLLAPSE_MS = 350;
+  let thoughtSteps = $state([]);
+  let thoughtExpanded = $state(false);
+  let collapsingNarration = false;
+
+  // Plays only when a passage folds into the thought process, never when the
+  // final message replaces the streamed text.
+  function narrationCollapse(node) {
+    if (!collapsingNarration || topicsAppearMs() === 0) return { duration: 0 };
+    const height = node.offsetHeight;
+    return {
+      duration: NARRATION_COLLAPSE_MS,
+      easing: cubicOut,
+      css: (t) => `opacity: ${t}; height: ${t * height}px; overflow: hidden;`
+    };
+  }
   // Before the answer starts streaming, "Synthesizing response" stays up for
   // at least this long; text that arrives sooner is held until then.
   const SYNTHESIZING_MIN_MS = 1000;
@@ -121,7 +141,8 @@
   }
 
   $effect(() => {
-    if (!streamEl) return;
+    // Empty while a folded passage collapses away; keep its text on screen.
+    if (!streamEl || !streamingMarkdown) return;
     streamEl.innerHTML = renderMarkdown(streamingMarkdown);
     const activeRequest = activeRequests[sessionId];
     if (activeRequest) fadeInNewWords(streamEl, activeRequest);
@@ -579,6 +600,14 @@
     scheduleNextThinkingMessage();
   }
 
+  // After a narration passage folds away, pick the searching messages back up
+  // where they left off.
+  function resumeThinkingMessages() {
+    const nextIndex = Math.min(Math.max(thinkingMessageIndex + 1, 0), THINKING_MESSAGE_KEYS.length - 1);
+    finalThinkingPending = false;
+    fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
+  }
+
   function stopThinkingMessages() {
     clearThinkingMessageTimers();
     thinkingMessageKey = 'assistant.loading.initial';
@@ -940,6 +969,7 @@
     streamingMarkdown = activeRequests[sessionId]?.streamingMarkdown || '';
     streamTextDone = !!activeRequests[sessionId]?.streamTextDone;
     pendingFeedback = activeRequests[sessionId]?.pendingFeedback || null;
+    thoughtSteps = activeRequests[sessionId]?.thoughtSteps || [];
     stopThinkingMessages();
     if (streamingMarkdown && !streamTextDone) {
       // Already past the thinking/synthesizing phase for this turn — resume
@@ -1148,7 +1178,8 @@
       // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
-      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0
+      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
+      thoughtSteps: [], awaitingPassage: false
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1182,6 +1213,8 @@
     streamingMarkdown = '';
     streamTextDone = false;
     pendingFeedback = null;
+    thoughtSteps = [];
+    thoughtExpanded = false;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1235,9 +1268,17 @@
       const now = performance.now();
       let released = '';
       while (request.streamQueue.length && request.streamQueue[0].at + request.streamDelayMs <= now) {
-        released += request.streamQueue.shift().text;
+        const item = request.streamQueue.shift();
+        if (item.narrationEnd) {
+          request.playedStreamText += released;
+          released = '';
+          foldNarration();
+        } else {
+          released += item.text;
+        }
       }
       if (released) {
+        if (request.awaitingPassage) startNextPassage();
         request.playedStreamText += released;
         showCompleteWords();
       }
@@ -1273,6 +1314,37 @@
       if (!request.streamTimer) playStreamQueue();
     }
 
+    // The passage on screen was narration: move it into the thought process
+    // and go back to the searching messages until the next passage starts.
+    function foldNarration() {
+      const passage = request.playedStreamText.trim();
+      if (passage) request.thoughtSteps = [...request.thoughtSteps, passage];
+      request.playedStreamText = '';
+      request.streamingMarkdown = '';
+      request.wordRevealTimes = [];
+      request.awaitingPassage = true;
+      if (sessionId !== sendingSessionId) return;
+      collapsingNarration = true;
+      setTimeout(() => { collapsingNarration = false; }, NARRATION_COLLAPSE_MS);
+      thoughtSteps = request.thoughtSteps;
+      streamingMarkdown = '';
+      resumeThinkingMessages();
+    }
+
+    function startNextPassage() {
+      request.awaitingPassage = false;
+      if (sessionId !== sendingSessionId) return;
+      clearThinkingMessageTimers();
+      isThinkingMessageFading = false;
+      thinkingMessageKey = 'assistant.writing';
+    }
+
+    function queueNarrationEnd() {
+      if (!request.streamQueue.length && !request.playedStreamText) return;
+      request.streamQueue.push({ narrationEnd: true, at: performance.now() });
+      if (request.streamDelayMs !== null && !request.streamTimer) playStreamQueue();
+    }
+
     function finishStreamIfDone() {
       if (!request.contentDoneReceived || request.streamQueue.length || request.streamTimer) return;
       showAllPlayedText();
@@ -1303,6 +1375,10 @@
           if (progress?.type === 'content_done') {
             request.contentDoneReceived = true;
             finishStreamIfDone();
+            return;
+          }
+          if (progress?.type === 'narration_end') {
+            queueNarrationEnd();
             return;
           }
           if (progress?.type === 'appetizer' && progress.appetizerData) {
@@ -1375,6 +1451,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats,
         appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+        thoughtSteps: request.thoughtSteps.length ? [...request.thoughtSteps] : null,
         // Already on screen as streamed text, so don't animate it in again.
         noEntryAnimation: didStream,
         feedback: request.pendingFeedback
@@ -1490,6 +1567,7 @@
         streamingMarkdown = '';
         streamTextDone = false;
         pendingFeedback = null;
+        thoughtSteps = [];
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
           if (sessionId === sendingSessionId) {
@@ -2285,6 +2363,14 @@
         aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
+        {#snippet thoughtProcess(steps, expanded, onToggle)}
+          <Accordion kind="thought" {expanded} {onToggle}>
+            {#each steps as step}
+              <div class="message-content lc-thought-step">{@html renderMarkdown(step)}</div>
+            {/each}
+          </Accordion>
+        {/snippet}
+
         {#snippet feedbackButtons(messageId, feedback)}
           <div class="feedback">
             <div class="feedback-buttons">
@@ -2361,6 +2447,9 @@
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
+              {#if item.thoughtSteps?.length}
+                {@render thoughtProcess(item.thoughtSteps, !!expandedSections[`${item.messageId}_thought`], () => toggleSection(`${item.messageId}_thought`))}
+              {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
           {:else}
@@ -2395,8 +2484,13 @@
                   <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
                 </div>
               {/if}
+              {#if thoughtSteps.length && !isCurrentSessionStopping}
+                <div in:fade={{ duration: topicsAppearMs() }}>
+                  {@render thoughtProcess(thoughtSteps, thoughtExpanded, () => { thoughtExpanded = !thoughtExpanded; })}
+                </div>
+              {/if}
               {#if streamingMarkdown && !isCurrentSessionStopping}
-                <div class="lc-streaming-answer">
+                <div class="lc-streaming-answer" out:narrationCollapse>
                   <div class="message-content lc-streaming-content" class:is-writing={!streamTextDone} bind:this={streamEl}></div>
                   {#if streamTextDone}
                     <div class="message-meta">
@@ -3712,6 +3806,18 @@
     animation: none;
     background-image: none;
     -webkit-text-fill-color: currentColor;
+  }
+
+  /* Thought process: narration passages, quieter than the answer */
+  .lc-thought-step {
+    color: var(--lc-text-secondary);
+    font-size: var(--lc-font-size-sm);
+  }
+  .lc-thought-step + .lc-thought-step {
+    margin-top: var(--global-dimension-100, 8px);
+  }
+  .lc-thought-step :global(> :last-child) {
+    margin-bottom: 0;
   }
 
   /* Streaming: each new word fades in */
