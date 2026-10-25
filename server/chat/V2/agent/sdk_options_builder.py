@@ -89,7 +89,9 @@ class SDKOptionsBuilder:
                 options_kwargs["stderr"] = lambda line: self.logger.warning("Claude CLI: %s", line)
 
         if self.thinking_disabled and self._supports_option("thinking"):
-            options_kwargs["thinking"] = {"type": "disabled"}
+            # Sonnet 5.5 returns a 400 on {"type": "disabled"} - use "between_tools"
+            # instead (accepted at effort high or below, which is the default here).
+            options_kwargs["thinking"] = {"type": "between_tools"}
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):
