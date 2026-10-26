@@ -137,7 +137,6 @@
     "assistant.history.list.empty.subheader": "Conversations you start with the Library Assistant will appear here.",
     "assistant.writing": "Writing…",
     "assistant.anon.limit_reached": "To keep asking, log in or sign up for free.",
-    "assistant.anon.login_button": "Log in or sign up",
     "assistant.header.history.login_tooltip": "Log in to see chat history",
     "assistant.header.response_ready_announcement": "Your Library Assistant answer is ready",
     "assistant.header.open_ready_response": "Open Library Assistant: your answer is ready",

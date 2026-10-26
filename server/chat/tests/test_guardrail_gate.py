@@ -74,3 +74,8 @@ class TestGuardrailGateRejection:
         result = self._run_gate(GuardrailResult(allowed=False, reason=""))
         assert result is not None
         assert result.content == GUARDRAIL_REJECTION_FALLBACK
+
+    def test_block_is_marked_as_refused(self):
+        result = self._run_gate(GuardrailResult(allowed=False, reason="Off topic"))
+        assert result is not None
+        assert result.refused is True

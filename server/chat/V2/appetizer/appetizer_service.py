@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 
 from django.conf import settings
 
-from ..agent.sefaria_client import SefariaClient
+from ..agent.sefaria_client import SefariaClient, _get_configured_sefaria_base_url
 from ..pricing import tracked_messages_create
 from ..utils import get_anthropic_client, make_singleton
 from .calendar_context import render_calendar_context
@@ -301,7 +301,9 @@ class AppetizerResult:
 class AppetizerService:
     def __init__(self):
         self.client = get_anthropic_client()
-        self.sefaria_client = SefariaClient()
+        # A long-lived singleton: pinned to the deployment's Sefaria, never to whichever
+        # request happened to create it.
+        self.sefaria_client = SefariaClient(base_url=_get_configured_sefaria_base_url())
         self._calendar_cache: tuple[str, str] | None = None
 
     async def _get_calendar_context(self) -> str:

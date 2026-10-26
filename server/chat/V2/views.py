@@ -40,14 +40,17 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .. import anon_access
 from ..auth import (
     AuthenticationRequired,
     InvalidUserToken,
     UserTokenExpired,
+    anonymous_user_id,
     authenticate_request,
 )
-from ..models import ChatMessage
+from ..models import ChatMessage, ChatSession
 from ..serializers import (
+    AnonClaimRequestSerializer,
     CancelRequestSerializer,
     ChatRequestSerializer,
     ClientStreamEventSerializer,
@@ -232,6 +235,21 @@ def _build_response_payload(
     }
 
 
+def _anon_payload_fields(actor) -> dict:
+    """For a logged-out visitor under a limit: how many free answers are left. At the
+    limit, also how many questions they sent (for analytics; only then, so other
+    answers don't pay for the query)."""
+    if not actor.is_anonymous:
+        return {}
+    remaining = anon_access.anon_answers_remaining(actor.user_id)
+    if remaining is None:
+        return {}
+    fields = {"anonResponsesRemaining": remaining}
+    if remaining == 0:
+        fields["anonMessagesSent"] = anon_access.count_anon_messages(actor.user_id)
+    return fields
+
+
 def _build_appetizer_payload(result) -> dict:
     return {
         "version": 1,
@@ -329,6 +347,9 @@ def chat_stream_v2(request):
     if isinstance(actor, Response):
         return actor
 
+    if actor.is_anonymous and anon_access.anon_answers_remaining(actor.user_id) == 0:
+        return Response({"error": "login_required"}, status=status.HTTP_403_FORBIDDEN)
+
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
     # In-process relay for the shared cancel flag. The SSE thread polls Postgres
@@ -423,7 +444,9 @@ def chat_stream_v2(request):
             appetizer_metrics["error"] = True
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
-    is_load_test = data.get("isLoadTest", False)
+    # A load test uses another model and turns tracing off: not for logged-out
+    # visitors, whose questions must stay traced.
+    is_load_test = data.get("isLoadTest", False) and not actor.is_anonymous
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
@@ -872,6 +895,7 @@ def chat_stream_v2(request):
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
             )
+            final_data.update(_anon_payload_fields(actor))
 
             if (
                 context.get("forceStreamBreakBeforeFinal", False)
@@ -1049,6 +1073,7 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
     )
+    payload.update(_anon_payload_fields(actor))
     recovery_status = (
         "failed" if response_message.status == ChatMessage.Status.FAILED else "complete"
     )
@@ -1117,6 +1142,36 @@ def chat_cancel_v2(request):
             ChatMessage.ProcessingState.FAILED: "failed",
         }.get(state, "not_running")
         return Response({"status": outcome, "processingState": state})
+
+
+@api_view(["POST"])
+def anon_claim_v2(request):
+    """
+    After a logged-out visitor logs in or signs up, move their chats to the user.
+
+    POST /api/v2/anon/claim  {userId: <encrypted user token>, anonId: <the visitor's ID>}
+
+    Only a valid user token can claim, so nobody can move chats into someone
+    else's account. Claiming again moves nothing.
+    """
+    serializer = AnonClaimRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Invalid request", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, {"userId": data["userId"]})
+    if isinstance(actor, Response):
+        return actor
+
+    anon_user_id = anonymous_user_id(data["anonId"])
+    with transaction.atomic():
+        claimed = ChatSession.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+        ChatMessage.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+
+    return Response({"claimedSessions": claimed})
 
 
 @api_view(["POST"])
@@ -1197,7 +1252,7 @@ def chat_feedback_v2(request):
                 "feedback_reason": feedback_reason,
                 "feedback_comment": comment,
                 "session_id": data["sessionId"],
-                "user_id": data["userId"],
+                "user_id": data.get("userId") or anonymous_user_id(data["anonId"]),
                 "message_id": data["messageId"],
             }
             try:
