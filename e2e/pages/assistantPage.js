@@ -72,8 +72,9 @@ export class AssistantPage {
     return this.host.getByRole('dialog', { name: t('assistant.header.chatWindow') });
   }
 
+  /** The closed assistant's "✦ Ask" pill (its name may add "your answer is ready"). */
   get trigger() {
-    return this.host.getByRole('button', { name: t('assistant.header.openAssistant') });
+    return this.host.getByRole('button', { name: t('assistant.floating_button.aria') });
   }
 
   async open() {

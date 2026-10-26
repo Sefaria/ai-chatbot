@@ -19,8 +19,14 @@
     identityFields,
     claimAnonChats
   } from '../lib/api.js';
-  import { tick, untrack } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
+  import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
+  import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
+  import { sheetDrag } from '../lib/sheetDrag.js';
+  import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
+  import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
+  import AskLauncher from './AskLauncher.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import { tooltip } from '../lib/tooltip.js';
@@ -114,7 +120,12 @@
   let stopErrors = $state({});
   let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
   let isLoadingHistory = $state(false);
-  let hasMoreHistory = $state(true);
+  // A chat picked in History is loading: the open one hides meanwhile (see openConversation)
+  let isOpeningConversation = $state(false);
+  let visibleMessages = $derived(isOpeningConversation ? [] : messages);
+  // Only the server can say a session has older messages, so assume none until it does
+  // (a new chat, a logged-out visitor, or messages carried over after logging in)
+  let hasMoreHistory = $state(false);
   let sessionId = $state('');
   let panelWidth = $state(300);
   let panelHeight = $state(456);
@@ -173,9 +184,22 @@
   let hasMoreConversations = $state(false);
   let isLoadingConversations = $state(false);
   let hasLoadedConversations = $state(false);
+  // Last known answer to "does this user have saved chats?" (see STORAGE_KEYS.HAS_CONVERSATIONS)
+  let knownHasConversations = $state(!!getStorage(STORAGE_KEYS.HAS_CONVERSATIONS, false));
+  function rememberHasConversations(value) {
+    knownHasConversations = value;
+    setStorage(STORAGE_KEYS.HAS_CONVERSATIONS, value);
+  }
   let historySearchOpen = $state(false);
   let historySearchText = $state('');
   let submittedHistorySearch = $state('');
+  // Whether History has chats to search. Until the list loads, go by what's known already:
+  // saved chats last time, chats listed so far, or a chat open now.
+  let hasConversationsToSearch = $derived(hasLoadedConversations
+    ? conversations.length > 0
+    : knownHasConversations || conversations.length > 0 || messages.length > 0);
+  // Search can always be closed, or cleared after a search
+  let historySearchDisabled = $derived(!historySearchOpen && !submittedHistorySearch && !hasConversationsToSearch);
   let historyError = $state('');
   let editingConversationId = $state(null);
   let editingConversationTitle = $state('');
@@ -237,6 +261,9 @@
   // Refs
   let messageListRef = $state(null);
   let inputRef = $state(null);
+  let panelRef = $state(null);
+  // Phones: what had focus when the sheet opened (the pill, or the host's own button)
+  let sheetOpener = null;
 
   // Derive static base URL by removing '/api' suffix from apiBaseUrl
   let staticBaseUrl = $derived(apiBaseUrl.replace(/\/api\/?$/, ''));
@@ -268,6 +295,31 @@
   // claimLoggedOutChats). Requests that need the session to be the user's wait for it.
   let loggedOutChatsClaimed = Promise.resolve();
 
+  // Phones (portrait, or landscape where the panel can't fit) get a full-screen sheet
+  // instead of the floating/docked panel.
+  const FULLSCREEN_QUERY = '(max-width: 600px), (max-height: 500px)';
+  let isFullscreen = $state(window.matchMedia(FULLSCREEN_QUERY).matches);
+  let layout = $derived(isFullscreen ? 'fullscreen' : mode);
+  // Host-set launcher (chatbot:launcher): another label, and a question its click asks
+  let launcherOverride = $state(null);
+  let launcherLabel = $derived(launcherOverride ? $_(LAUNCHER_LABELS[launcherOverride.source]) : '');
+  // A reply landed while the assistant was closed: the closed launcher shows it until opened
+  let responseReady = $state(false);
+  let pendingNavigation = null;
+  // Where the chat was scrolled, so reopening the assistant returns there
+  let lastScroll = null;
+
+  // Phones: how far the sheet is dragged down by its header (lib/sheetDrag.js)
+  let sheetOffset = $state(0);
+  let sheetSettling = $state(false);
+  // The panel, not the container, follows the visual viewport (see the .mode-fullscreen CSS)
+  let sheetStyle = $derived(
+    (keyboard.box ? `top: ${keyboard.box.top}px; height: ${keyboard.box.height}px;` : '') +
+    (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
+  );
+  // Desktop: the panel's size (docked, it's as tall as the page)
+  let desktopPanelStyle = $derived(`width: ${visiblePanelWidth}px;` + (mode === 'docked' ? '' : ` height: ${panelHeight}px;`));
+
   // Initialize on mount
   $effect(() => {
     // Initialize session
@@ -279,7 +331,8 @@
 
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
-    isOpen = savedUI?.isOpen ?? defaultOpen;
+    // A full-screen sheet never opens by itself: it would hide the page the user came for.
+    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -361,6 +414,7 @@
     }
   });
 
+  // Until it loads, History's search button goes by hasConversationsToSearch
   $effect(() => {
     if (showHistoryPanel && !hasLoadedConversations && !isLoadingConversations) {
       loadConversationPage({ reset: true });
@@ -598,11 +652,28 @@
   });
 
   function openPanel() {
+    // The chat is rebuilt on open, at its top: land on the answer that arrived while closed,
+    // else where the reader left this chat, else its end
+    if (responseReady) scrollToResponseStart({ instant: true });
+    else if (lastScroll?.sessionId === sessionId) restoreScroll(lastScroll.top);
+    else scrollToBottom({ instant: true });
     isOpen = true;
+    responseReady = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
     scrollToBottom({ instant: true });
+
+    if (isFullscreen) {
+      pushSheetEntry(onSheetPopped);
+      // Focus the sheet, not the text box (the keyboard would cover the conversation), so focus
+      // and screen readers move off the page it covers
+      sheetOpener = document.activeElement;
+      setTimeout(() => {
+        panelRef?.focus({ preventScroll: true });
+      }, 100);
+      return;
+    }
 
     // Focus input after panel opens
     setTimeout(() => {
@@ -612,10 +683,96 @@
   }
 
   function closePanel() {
+    if (messageListRef) lastScroll = { sessionId, top: messageListRef.scrollTop };
+    // Phones: focus in the sheet goes back to what opened it: the pill (redrawn on close), or
+    // the host's button
+    const root = panelRef?.getRootNode();
+    if (isFullscreen && panelRef?.contains(root.activeElement)) {
+      const opener = sheetOpener;
+      tick().then(() => {
+        if (opener === $host()) root.querySelector('.lc-chatbot-ask')?.focus();
+        else if (opener?.isConnected) opener.focus();
+      });
+    }
     isOpen = false;
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: false, mode });
     dispatchEvent('closed');
+    popSheetEntry();
+  }
+
+  // Back pressed, or the UI closed the sheet and its pop has landed.
+  function onSheetPopped() {
+    if (isOpen) closePanel();
+    if (pendingNavigation) {
+      const detail = pendingNavigation;
+      pendingNavigation = null;
+      navigateHost(detail);
+    }
+  }
+
+  // In-page navigation through the host's 'sefaria:bootstrap-url' listener. On phones the
+  // sheet closes to reveal the page, and the host navigates only once the sheet's history
+  // entry is popped, or it would push the new URL on top of it.
+  function navigateHost(detail) {
+    if (hasSheetEntry()) {
+      pendingNavigation = detail;
+      closePanel();
+      return;
+    }
+    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail }));
+    if (isFullscreen && isOpen) closePanel();
+  }
+
+  $effect(() => {
+    const query = window.matchMedia(FULLSCREEN_QUERY);
+    const sync = () => {
+      isFullscreen = query.matches;
+      // An open panel that becomes the sheet gets its history entry too, so Back closes it
+      if (isFullscreen && isOpen) pushSheetEntry(onSheetPopped);
+    };
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  });
+
+  // Phones: lock the page behind the sheet, and keep the sheet above the keyboard
+  const keyboard = keyboardViewport(() => inputRef, () => isFullscreen && isOpen);
+
+  // A question asked from outside the panel starts a new chat and sends it there, so the panel
+  // doesn't open on (and scroll through) the previous conversation. No question just opens it.
+  async function askInNewChat(question) {
+    question = question.trim();
+    // Phones: History covers the chat, and would hide the question and its answer
+    if (question && isFullscreen) showHistoryPanel = false;
+    if (question && messages.length > 0) handleNewChat();
+    inputText = question; // handleNewChat clears it
+    if (!isOpen) openPanel();
+    if (!question) return;
+    await tick();
+    handleSend();
+  }
+
+  // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
+  $effect(() => listenToHost({
+    onOpen(detail) {
+      trackAssistantClick(detail?.source || 'host_open');
+      if (detail?.question) askInNewChat(detail.question);
+      else if (!isOpen) openPanel();
+    },
+    getLauncher: () => launcherOverride,
+    setLauncher: (launcher) => { launcherOverride = launcher; }
+  }));
+
+  // The host's question is asked once per page: closing and reopening from the same pill
+  // goes back to that chat instead of asking it again
+  function askFromLauncher() {
+    trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
+    if (launcherOverride?.question && !launcherOverride.asked) {
+      launcherOverride.asked = true;
+      askInNewChat(launcherOverride.question);
+    } else {
+      openPanel();
+    }
   }
 
   function toggleMode() {
@@ -634,6 +791,7 @@
     sessionId = newSessionId;
     messages = [];
     inputText = '';
+    isOpeningConversation = false;
     isLoadingHistory = false;
     hasMoreHistory = false;
 
@@ -661,6 +819,7 @@
     conversations = [normalized, ...withoutCurrent].sort((a, b) => {
       return new Date(b.lastActivity || 0).getTime() - new Date(a.lastActivity || 0).getTime();
     });
+    if (!knownHasConversations) rememberHasConversations(true);
   }
 
   function setSessionSending(targetSessionId, value) {
@@ -760,6 +919,7 @@
       conversations = reset ? nextConversations : [...conversations, ...nextConversations];
       conversationsOffset = offset + nextConversations.length;
       hasMoreConversations = data.hasMore ?? false;
+      if (reset && !search) rememberHasConversations(nextConversations.length > 0);
     } catch (e) {
       console.warn('[lc-chatbot] Failed to load conversations:', e);
       historyError = '';
@@ -816,7 +976,7 @@
     editingConversationTitle = '';
   }
 
-  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px
+  const HISTORY_ROW_MENU_HEIGHT = 78; // .history-row-dropdown: 2 items x 39px (48px on phones)
 
   function toggleHistoryRowMenu(conversation, event) {
     event?.stopPropagation();
@@ -834,7 +994,7 @@
     const spaceBelow = panel && trigger
       ? panel.getBoundingClientRect().bottom - trigger.getBoundingClientRect().bottom
       : Infinity;
-    historyMenuFlipUp = spaceBelow < HISTORY_ROW_MENU_HEIGHT + 8;
+    historyMenuFlipUp = spaceBelow < (isFullscreen ? 96 : HISTORY_ROW_MENU_HEIGHT) + 8;
   }
 
   async function commitRenameConversation(conversation) {
@@ -913,6 +1073,8 @@
   async function openConversation(conversation) {
     if (!conversation?.sessionId) return;
     const navigation = ++conversationNavigation;
+    // Phones show the history list and the chat one at a time.
+    if (isFullscreen) showHistoryPanel = false;
     activeHistoryMenuId = null;
     editingConversationId = null;
     resetScroll();
@@ -920,12 +1082,18 @@
     let payload = conversationCache[conversation.sessionId];
     const cached = !!payload;
     if (!payload) {
+      // The open chat hides while the picked one loads, so it doesn't show in its place. Its
+      // messages stay put until the switch: a reply still arriving for it is saved onto them.
+      isOpeningConversation = true;
       isLoadingHistory = true;
       try {
         payload = await loadConversation(apiBaseUrl, userId, conversation.sessionId);
       } catch (e) {
         console.warn('[lc-chatbot] Failed to load conversation:', e);
+        // Another chat was picked meanwhile: what shows is now up to that one
+        if (navigation !== conversationNavigation) return;
         historyError = '';
+        isOpeningConversation = false;
         isLoadingHistory = false;
         return;
       }
@@ -943,6 +1111,7 @@
     stopThinkingMessages();
     if (activeRequests[sessionId] && !activeRequests[sessionId].stopping) startThinkingMessages();
     messages = uiMessages;
+    isOpeningConversation = false;
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
     isLoadingHistory = false;
@@ -1024,6 +1193,7 @@
       if (result.session) {
         turnCount = result.session.turnCount ?? 0;
       }
+      hasMoreHistory = result.hasMore;
 
       // Only load messages if we don't have any locally
       if (messages.length === 0 && result.messages.length > 0) {
@@ -1038,7 +1208,7 @@
   }
 
   async function loadMoreHistory() {
-    if (isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
+    if (!userId || isLoadingHistory || !hasMoreHistory || messages.length === 0) return;
 
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
@@ -1081,14 +1251,15 @@
     return messageListRef.scrollTop + elRect.top - containerRect.top;
   }
 
-  async function scrollToResponseStart() {
+  async function scrollToResponseStart({ instant = false } = {}) {
     await tick();
-    if (!messageListRef || !autoScrollEnabled) return;
+    if (!messageListRef || (!autoScrollEnabled && !instant)) return;
+    const behavior = instant ? 'instant' : 'smooth';
     // Prefer to scroll so the .lc-response-package top sits RESPONSE_PACKAGE_TOP_OFFSET px below container top.
     // querySelectorAll returns a NodeList (no Array.at), so spread before indexing.
     const pkgEl = [...messageListRef.querySelectorAll('.lc-response-package')].at(-1);
     if (pkgEl) {
-      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET);
+      applyAutoScroll(getScrollTopForElement(pkgEl) - RESPONSE_PACKAGE_TOP_OFFSET, behavior);
       return;
     }
 
@@ -1096,11 +1267,16 @@
     const contents = [...messageListRef.querySelectorAll('.message.assistant .message-content')];
     const lastResponse = contents.at(-1)?.closest('.message.assistant');
     if (!lastResponse) return;
-    applyAutoScroll(getScrollTopForElement(lastResponse));
+    applyAutoScroll(getScrollTopForElement(lastResponse), behavior);
   }
 
-  function applyAutoScroll(top) {
-    messageListRef.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  async function restoreScroll(top) {
+    await tick();
+    messageListRef?.scrollTo({ top, behavior: 'instant' });
+  }
+
+  function applyAutoScroll(top, behavior = 'smooth') {
+    messageListRef.scrollTo({ top: Math.max(0, top), behavior });
   }
 
   function resetScroll() {
@@ -1152,7 +1328,8 @@
     inputText = '';
     setStorage(STORAGE_KEYS.DRAFT, { text: '' });
 
-    // Create user message
+    // Create user message. It shows straight away; the location pin under it waits on a
+    // ref lookup, so it's added when that returns.
     const pageUrl = window.location.href;
     const locationRef = null;
     const userMessage = {
@@ -1168,7 +1345,9 @@
 
     messages = withStoppedTurns([...messages, userMessage]);
     saveMessagesToStorage();
-    scrollToBottom();
+    // Phones: the emptied text box shrinks right after, which would cut a smooth scroll short
+    if (isFullscreen) pinChatToBottom(() => messageListRef);
+    else scrollToBottom();
 
     appetizerData = null;
     startThinkingMessages();
@@ -1324,6 +1503,8 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
+      // Only for the chat that opens: an answer to another chat waits for it in History
+      if (!isOpen && sessionId === sendingSessionId) responseReady = true;
 
     } catch (e) {
       if (e?.code === 'stream_cancelled') {
@@ -1338,6 +1519,9 @@
         if (sessionId === sendingSessionId) {
           messages = stopped;
           inputText = text;
+          // Phones: glide to the stop notice above the text box, once the restored question
+          // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
+          if (isFullscreen) pinChatToBottom(() => messageListRef);
         }
         track('assistant_response_stopped');
       } else if (e?.status === 403 && e?.code === 'login_required') {
@@ -1395,11 +1579,15 @@
           await tick();
           if (sessionId === sendingSessionId) {
             sizePrompt(inputRef);
-            inputRef?.focus({ preventScroll: true });
-            inputRef?.setSelectionRange(text.length, text.length);
+            // Phones: focus would open the keyboard over the stop notice (iOS ignores it anyway)
+            if (!isFullscreen) {
+              inputRef?.focus({ preventScroll: true });
+              inputRef?.setSelectionRange(text.length, text.length);
+            }
             if (inputRef) inputRef.scrollTop = inputRef.scrollHeight;
-            // Smoothly reveal the notice after the restored composer has its final size.
-            await scrollToBottom();
+            // Smoothly reveal the notice after the restored composer has its final size
+            // (phones already started this in the stop handler above)
+            if (!isFullscreen) await scrollToBottom();
           }
         }
       }
@@ -1601,12 +1789,7 @@
 
     const path = resolvedUrl.pathname + resolvedUrl.search + resolvedUrl.hash;
 
-    document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-      detail: {
-        url: path,
-        replaceHistory: true
-      }
-    }));
+    navigateHost({ url: path, replaceHistory: true });
   }
 
   function toggleMenu() {
@@ -1668,6 +1851,7 @@
   function handleRestartConvo() {
     if (!isLoggedIn) return; // locked for logged-out visitors (one conversation only)
     closeMenu();
+    if (isFullscreen) showHistoryPanel = false;
     isRestarted = true;
     handleNewChat();
   }
@@ -1814,7 +1998,7 @@
       const urlObj = new URL(url);
       const hostname = urlObj.hostname;
       if (isSefariaHostname(hostname)) {
-        document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail: { url } }));
+        navigateHost({ url });
       } else {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
@@ -1826,9 +2010,7 @@
   function handleAppetizerClick(topicSlug, topicUrl) {
     if (isOnSefariaPage()) {
       // In-page navigation via ReaderApp's existing event listener
-      document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', {
-        detail: { url: `/topics/${topicSlug}` }
-      }));
+      navigateHost({ url: `/topics/${topicSlug}` });
     } else {
       // Off-site: open topic page in new tab
       window.open(topicUrl || `${SEFARIA_BASE_URL}/topics/${topicSlug}`, '_blank', 'noopener,noreferrer');
@@ -1855,24 +2037,28 @@
 
 <div
   class="lc-chatbot-container"
-  class:mode-floating={mode === 'floating'}
-  class:mode-docked={mode === 'docked'}
+  class:mode-floating={layout === 'floating'}
+  class:mode-docked={layout === 'docked'}
+  class:mode-fullscreen={layout === 'fullscreen'}
   class:is-open={isOpen}
   class:interface-hebrew={interfaceLang === 'he'}
+  class:sheet-moving={sheetOffset > 0 || sheetSettling}
 >
+  <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    <!-- Floating Button -->
-    <button aria-label={$_('assistant.header.openAssistant')} class="lc-chatbot-trigger" onclick={openPanel}>
-      <img src="{staticIconsBaseUrl}/logo.svg"/>
-      <span class="trigger-label">{$_('assistant.header.triggerLabel')}</span>
-    </button>
+    <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
   {:else}
     <!-- Chat Panel -->
     <div
+      bind:this={panelRef}
       class="lc-chatbot-panel"
       class:resizing={isResizing}
-      style="width: {visiblePanelWidth}px;{mode === 'docked' && isOpen ? '' : ` height: ${panelHeight}px;`}"
+      class:sheet-settling={sheetSettling}
+      class:sheet-lifted={sheetOffset > 0 || sheetSettling}
+      style={isFullscreen ? sheetStyle : desktopPanelStyle}
       role="dialog"
+      aria-modal={isFullscreen ? 'true' : undefined}
+      tabindex="-1"
       aria-label={$_('assistant.header.chatWindow')}
     >
       <!-- Resize Handles - visual-only affordances for mouse resizing -->
@@ -1895,10 +2081,24 @@
 
       <!-- Header -->
       <div class="lc-chatbot-dimmable" class:dimmed={!!deletingConversation}>
-      <header class="lc-chatbot-header" role="banner">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <header
+        class="lc-chatbot-header"
+        role="banner"
+        use:sheetDrag={{
+          enabled: isFullscreen,
+          onMove: (offset) => { sheetOffset = offset; },
+          onSettle: (settling) => { sheetSettling = settling; },
+          onClose: closePanel
+        }}
+      >
+        {#if isFullscreen}<span class="sheet-grabber" aria-hidden="true"></span>{/if}
         <div class="header-left">
           <h2>
-            <span class="header-sparkle" aria-hidden="true">✦</span>
+            <!-- Same drawn ✦ as the Ask button; as text it looked different from the other entry points -->
+            <svg class="header-sparkle" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
+            </svg>
             <span class="header-title-text">{$_('assistant.title')}{#if testingVersion} (V{testingVersion}){/if}</span>
           </h2>
         </div>
@@ -1916,6 +2116,7 @@
           >
             <img src="{staticIconsBaseUrl}/history.svg" alt="" width="18" height="18" />
           </HeaderButton>
+          {#if !isFullscreen}
           <HeaderButton
             className="panel-btn"
             title={(mode === 'floating') ? $_('assistant.header.dock.tooltip') : $_('assistant.header.undock.tooltip')}
@@ -1928,6 +2129,7 @@
               height="18"
             />
           </HeaderButton>
+          {/if}
           <div class="menu-container" bind:this={menuContainer}>
             <HeaderButton className="menu-btn" onClick={toggleMenu} title={$_('assistant.header.moreOptions')} aria-expanded={showMenu}>
               <img src="{staticIconsBaseUrl}/ellipsis-vertical.svg" alt="" width="18" height="18" />
@@ -1958,10 +2160,12 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
+                {#if !isFullscreen}
                 <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2002,7 +2206,7 @@
                   aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
                   data-feature-name="chat_history_search"
                   onclick={toggleHistorySearch}
-                  disabled={!historySearchOpen && conversations.length === 0 && !isLoadingConversations && !submittedHistorySearch}
+                  disabled={historySearchDisabled}
                 >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
@@ -2188,6 +2392,7 @@
         class="lc-chatbot-messages"
         class:clearing={isClearing}
         bind:this={messageListRef}
+        use:keepAnchorOnResize={isFullscreen}
         onscroll={handleScroll}
         onwheel={handleWheel}
         ontouchmove={handleTouchMove}
@@ -2237,19 +2442,22 @@
         {/snippet}
 
         {#if isLoadingHistory}
-          <div class="loading-indicator">
-            <div class="loading-spinner"></div>
-            <span>{$_('assistant.messages.loadingHistory')}</span>
+          <!-- Lucide loader-circle, spinning as on lucide-animated.com: centered in an empty
+               chat, at the top while older messages load above the open one -->
+          <div class="loading-indicator" class:centered={visibleMessages.length === 0} role="status" aria-label={$_('assistant.messages.loadingHistory')}>
+            <svg class="loading-spinner" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
           </div>
         {/if}
 
-        {#if messages.length === 0 && !isLoadingHistory}
+        {#if visibleMessages.length === 0 && !isLoadingHistory}
           <div class="empty-state">
             {@render assistantBubble(getEmptyStateMessage(), false, null)}
           </div>
         {/if}
 
-        {#each messages as item (item.messageId)}
+        {#each visibleMessages as item (item.messageId)}
           {#if item.role === 'stopped'}
             {#if item.appetizerData || item.showNotice}
               <div class="message assistant no-entry-animation stopped-message">
@@ -2343,14 +2551,17 @@
             bind:this={inputRef}
             bind:value={inputText}
             onkeydown={handleKeydown}
+            ontouchstart={keyboard.onTouchStart}
+            ontouchend={keyboard.onTouchEnd}
             maxlength={effectiveMaxInputChars}
             placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
             aria-label={$_('assistant.input.aria')}
+            enterkeyhint="send"
             rows="1"
             disabled={isCurrentSessionSending || limitReached}
           ></textarea>
           {#if isCurrentSessionSending}
-            <Tooltip text={$_('assistant.stop.tooltip')}>
+            <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
               <button type="button" class="stop-btn" onclick={handleStop}
                 disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
                 <img src={stopIcon} alt="" width="18" height="18" />
@@ -2461,10 +2672,12 @@
     --semantic-text-secondary: #575757;
     --semantic-text-muted: #707070;
     --core-blue-tbr-100: #F0F7FF;
+    --core-blue-tbr-200: #DDEEFF;
     --core-base-white: #FFFFFF;
     --core-neutral-gray-100: #EEEEEE;
     --core-neutral-gray-300: #CCCCCC;
     --functional-icon-icon-primary: #666666;
+    --semantic-icon-muted: #6F6F6F;
 
     /* Component tokens — aliased to Figma tokens where applicable */
     --lc-primary: var(--semantic-action-primary);
@@ -2495,12 +2708,14 @@
     --lc-font-size-sm: 12px;
     --lc-font-size: 14px;
     --lc-font-size-lg: 16px;
+    --lc-send-size: 40px;
     /* Matches Sefaria reader chrome: #panelWrapBox uses top: 60px; docked column must inset too or it sits under the fixed header */
     --lc-docked-top-offset: 60px;
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
     --lc-icon-primary: var(--functional-icon-icon-primary);
+    --lc-icon-muted: var(--semantic-icon-muted);
     --lc-topics-bg: var(--core-blue-tbr-100);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
@@ -2524,12 +2739,16 @@
     padding: 0;
   }
 
+  /* --lc-launcher-bottom-offset: set by the host to lift the closed widget above its own
+     bottom bar (Sefaria's cookie banner) while that bar shows. It always slides there and
+     back, at every width and with reduced motion too: a jump reads as a glitch. */
   .lc-chatbot-container {
     position: fixed;
-    bottom: 24px;
+    bottom: calc(24px + var(--lc-launcher-bottom-offset, 0px));
     inset-inline-end: 24px;
     z-index: 9999;
     direction: ltr;
+    transition: bottom 0.2s ease;
   }
 
   .lc-chatbot-container.interface-hebrew {
@@ -2575,57 +2794,442 @@
     display: none;
   }
 
-  /* Trigger Button */
-  .lc-chatbot-trigger {
-    display: flex;
-    align-items: center;
+  /* Full-screen sheet on phones (FULLSCREEN_QUERY) */
+  /* Phones read at arm's length: one step up the type scale, 44px touch targets */
+  .lc-chatbot-container.mode-fullscreen {
+    --lc-send-size: 44px;
+    --lc-font-size-sm: 14px;
+    --lc-font-size: 16px;
+    --lc-font-size-lg: 18px;
+    bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom) + var(--lc-launcher-bottom-offset, 0px));
+    inset-inline-end: var(--global-dimension-200);
+  }
+
+  /* The open container is a full-screen backdrop in the panel's colour. Only the panel
+     follows the visual viewport (inline top/height), and the viewport reports a closing
+     keyboard only after it has gone, so without the backdrop the page flashes through
+     where the keyboard was. While the sheet is dragged, the backdrop clears to show the page. */
+  /* One step above the host's own bottom bars (Sefaria's cookie banner is also z-index 9999),
+     so they can't cover the input; they show again once the sheet closes */
+  .lc-chatbot-container.mode-fullscreen.is-open {
+    top: 0;
+    bottom: 0;
+    inset-inline: 0;
+    z-index: 10000;
+    background: var(--lc-body-bg);
+    transition: none;
+  }
+
+  .lc-chatbot-container.mode-fullscreen.is-open.sheet-moving {
+    background: transparent;
+  }
+
+  .mode-fullscreen .lc-chatbot-panel {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .mode-fullscreen .resize-handle {
+    display: none;
+  }
+
+  /* The header is the sheet's drag handle; the grabber bar sits above the title */
+  .mode-fullscreen .lc-chatbot-header {
+    position: relative;
+    padding: calc(var(--global-dimension-250) + env(safe-area-inset-top)) var(--global-dimension-150) var(--global-dimension-100) var(--global-dimension-200);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .sheet-grabber {
+    position: absolute;
+    inset-block-start: calc(var(--global-dimension-100) + env(safe-area-inset-top));
+    left: 50%; /* physical, so translateX centres it in RTL too */
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--lc-border-strong);
+    transform: translateX(-50%);
+  }
+
+  .mode-fullscreen .lc-chatbot-panel.sheet-settling {
+    transition: transform 0.2s ease;
+  }
+
+  /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
+  .mode-fullscreen .lc-chatbot-panel.sheet-lifted {
+    border-radius: var(--lc-radius) var(--lc-radius) 0 0;
+    box-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
+  }
+
+  .mode-fullscreen .header-actions {
     gap: 0;
-    padding: 12px 20px;
-    background: var(--brand-sefaria-blue);
-    color: white;
-    border: none;
-    border-radius: 9999px;
-    cursor: pointer;
-    font-family: var(--lc-font);
+  }
+
+  .mode-fullscreen .header-actions :global(:is(.history-btn, .menu-btn, .close-btn)) {
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
+  }
+
+  .mode-fullscreen .menu-item {
+    min-height: 48px;
+    padding: var(--global-dimension-150) var(--global-dimension-200);
     font-size: var(--lc-font-size);
-    font-weight: 500;
-    box-shadow: var(--lc-shadow);
-    transition: all 0.2s ease;
   }
 
-  .lc-chatbot-trigger:hover,
-  .lc-chatbot-trigger:focus,
-  .lc-chatbot-trigger:active {
-    gap: 8px;
+  .mode-fullscreen .lc-chatbot-body {
+    position: relative;
   }
 
-
-  .lc-chatbot-trigger:active {
-    background: #0B1A2D;
+  /* History covers the chat rather than squeezing it; the chat keeps its scroll position */
+  .mode-fullscreen .chat-history-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: auto;
+    min-width: 0;
+    border: 0;
   }
 
-  .trigger-label {
-    font-weight: 400;
-    color: var(--lc-user-text);
-    font-family: var(--lc-font);
+  .mode-fullscreen .lc-chatbot-messages,
+  .mode-fullscreen .history-list {
+    overscroll-behavior: contain;
+  }
+
+  .mode-fullscreen .lc-chatbot-input {
+    padding-bottom: calc(var(--global-dimension-200) + env(safe-area-inset-bottom));
+  }
+
+  /* Below 16px, iOS zooms the page when a field takes focus */
+  .mode-fullscreen .lc-chatbot-input textarea,
+  .mode-fullscreen .history-search input,
+  .mode-fullscreen .history-rename-form input,
+  .mode-fullscreen .feedback-modal-input,
+  .mode-fullscreen .settings-field input {
+    font-size: var(--lc-font-size);
+  }
+
+  .mode-fullscreen .lc-chatbot-input textarea {
+    min-height: var(--lc-send-size);
+  }
+
+  .mode-fullscreen .send-btn {
+    flex: none;
+  }
+
+  /* Reply text: the panel sets no size of its own, so it would follow the host page */
+  .mode-fullscreen .message-content {
+    font-size: var(--lc-font-size);
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message-content :global(:is(.response-title, .response-generic, .response-section, .response-list, .response-link)) {
+    line-height: 1.4;
+  }
+
+  .mode-fullscreen .message.assistant .message-content :global(li) {
+    margin-bottom: var(--global-dimension-100);
+  }
+
+  /* Inline links: block padding widens the tap area without moving the text */
+  .mode-fullscreen .message-content :global(a),
+  .mode-fullscreen .link-like,
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
+    padding-block: 6px;
+    -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
+  }
+
+  .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
     font-size: var(--lc-font-size-sm);
-    line-height: 18px;
-    letter-spacing: 0.24px;
-    max-width: 0;
-    overflow: hidden;
-    opacity: 0;
-    white-space: nowrap;
-    transition: max-width 0.2s ease, opacity 0.2s ease;
+    line-height: 22px;
   }
 
-  .lc-chatbot-trigger:hover .trigger-label,
-  .lc-chatbot-trigger:focus .trigger-label,
-  .lc-chatbot-trigger:active .trigger-label {
-    max-width: 12em;
-    opacity: 1;
+  /* Rotating loading text ("Searching the library", "Synthesizing response") and its glyph */
+  .mode-fullscreen :is(.lc-thinking-glyph, .lc-thinking-label) {
+    font-size: var(--lc-font-size-sm);
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :global(.progress-trail-toggle) {
+    min-height: var(--lc-send-size);
+    font-size: 13px;
+  }
+
+  .mode-fullscreen :global(.lc-accordion-header) {
+    min-height: var(--lc-send-size);
+  }
+
+  .mode-fullscreen :global(.lc-location-tag) {
+    min-height: 36px;
+    padding: var(--global-dimension-100) var(--global-dimension-150);
+    font-size: var(--lc-font-size-sm);
+  }
+
+  .mode-fullscreen :is(.message-timestamp, .message-status, .retry-btn) {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* The phone timestamp is 18px tall, so the pin steps down 4px + 18px to clear it.
+     Same triggers as the desktop rule further down: not the pin itself, nor with Retry. */
+  .mode-fullscreen .message-content:hover ~ .message-meta-row .message-meta:not(:has(.retry-btn)) ~ .message-location-tag,
+  .mode-fullscreen .message-meta:focus-within:not(:has(.retry-btn)) ~ .message-location-tag {
+    transform: translateY(22px);
+  }
+
+  .mode-fullscreen .retry-btn {
+    min-height: var(--lc-send-size);
+    padding: 0 var(--global-dimension-100);
+  }
+
+  .mode-fullscreen .feedback-buttons {
+    gap: 0;
+    margin-inline-start: 0;
+  }
+
+  .mode-fullscreen .feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
+    padding: 0;
+  }
+
+  .mode-fullscreen .feedback-modal-btn {
+    min-height: var(--lc-send-size);
+  }
+
+  /* Delete-chat confirmation: phone-sized card, text and equal-width 48px buttons */
+  .mode-fullscreen .delete-modal {
+    width: 320px;
+    padding: var(--global-dimension-300) var(--global-dimension-250) var(--global-dimension-250);
+    border-radius: 12px;
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-title {
+    font-size: var(--lc-font-size-lg);
+    line-height: 24px;
+    margin-bottom: var(--global-dimension-100);
+  }
+
+  .mode-fullscreen .delete-modal-subtext {
+    font-size: 15px;
+    line-height: 22px;
+    margin-bottom: var(--global-dimension-300);
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-actions {
+    gap: var(--global-dimension-150);
+  }
+
+  .mode-fullscreen .delete-modal .feedback-modal-btn {
+    flex: 1 1 0;
+    height: 48px;
+    font-size: var(--lc-font-size);
+    border-radius: var(--lc-radius-sm);
+  }
+
+  /* Chat history. Toolbar insets put the icons in line with the header's title and close icon */
+  .mode-fullscreen .history-toolbar {
+    height: 60px;
+    min-height: 60px;
+    padding-block: var(--global-dimension-100);
+    padding-inline: 6px var(--global-dimension-150);
+  }
+
+  .mode-fullscreen .history-toolbar-group {
+    gap: var(--global-dimension-100);
+  }
+
+  /* Search field: 48px tall, with a full 44px search/clear button at its end */
+  .mode-fullscreen .history-search {
+    height: 48px;
+    margin: 0 var(--global-dimension-150) var(--global-dimension-150);
+    padding: 0 1px 0 var(--global-dimension-200);
+    gap: var(--space-1);
+  }
+
+  .mode-fullscreen .history-search input {
+    height: 100%;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-search-submit {
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
+    flex: 0 0 44px;
+  }
+
+  .mode-fullscreen .history-search-submit img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .history-icon-btn {
+    width: 44px;
+    height: 44px;
+    padding: 13px;
+  }
+
+  .mode-fullscreen .history-row {
+    height: auto;
+    min-height: 64px;
+    padding-block: 10px;
+    padding-inline: var(--global-dimension-200) 48px;
+  }
+
+  .mode-fullscreen .history-row-title {
+    font-size: var(--lc-font-size);
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-row-date {
+    font-size: 13px;
+  }
+
+  .mode-fullscreen .history-row-menu {
+    inset-block-start: 10px;
+    inset-inline-end: 2px;
+  }
+
+  .mode-fullscreen .history-row-menu-trigger {
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
+  }
+
+  .mode-fullscreen .history-row-menu-trigger img {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Icons: CSS size wins over the width/height attributes */
+  .mode-fullscreen :is(.header-actions, .history-icon-btn) img,
+  .mode-fullscreen .send-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .menu-item :is(img, svg),
+  .mode-fullscreen .stop-btn img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .feedback-btn :global(svg) {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mode-fullscreen .history-row-dropdown img {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Rename: a 44px Done button whose 24px check sits right under the header's close X, with
+     room between it and a field whose text lines up with the chat titles */
+  .mode-fullscreen .history-rename-form {
+    gap: var(--global-dimension-200);
+    padding-inline: var(--global-dimension-150);
+  }
+
+  .mode-fullscreen .history-rename-form img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .history-rename-form button {
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
+  }
+
+  /* Open clear of the 44px trigger, wide enough for the 15px labels, and inset from the
+     screen edge */
+  .mode-fullscreen .history-row-dropdown {
+    inset-block-start: 44px;
+    inset-inline-end: var(--global-dimension-150);
+    width: 136px;
+  }
+
+  .mode-fullscreen .history-row-dropdown.flip-up {
+    inset-block-start: auto;
+    inset-block-end: 44px;
+  }
+
+  .mode-fullscreen .history-row-dropdown button {
+    height: 48px;
+    min-height: 48px;
+    padding: 0 var(--global-dimension-200);
+    font-size: 15px !important;
+  }
+
+  .mode-fullscreen .history-row-dropdown button span {
+    font-size: 15px;
+  }
+
+  /* Empty states (no chats, no search results), loading and error text */
+  .mode-fullscreen .history-empty {
+    gap: 10px;
+    padding-top: 80px;
+  }
+
+  .mode-fullscreen .history-empty-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .mode-fullscreen .history-empty-icon img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mode-fullscreen .history-empty strong {
+    font-size: var(--lc-font-size);
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-empty p {
+    max-width: 260px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen :is(.history-loading, .history-error) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .mode-fullscreen .history-loading.inline {
+    font-size: var(--lc-font-size-sm);
+    line-height: 20px;
+  }
+
+  .mode-fullscreen .feedback-modal-overlay {
+    inset: 0;
+    border-radius: 0;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   /* Chat Panel */
+  /* Focused only by code, to move focus into the sheet; its contents show their own focus */
+  .lc-chatbot-panel:focus {
+    outline: none;
+  }
+
   .lc-chatbot-panel {
     display: flex;
     flex-direction: column;
@@ -2887,17 +3491,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: #f0f7ff;
+    background: var(--core-blue-tbr-100);
   }
 
   .history-row.active {
-    background: #ddeeff;
+    background: var(--core-blue-tbr-200);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: #ddeeff;
+    background: var(--core-blue-tbr-200);
   }
 
   .history-row:disabled {
@@ -2951,6 +3555,12 @@
     z-index: 3;
   }
 
+  /* Each row's menu is its own stacking context, so the open one must outrank the
+     rows below it or their kebabs paint over its dropdown */
+  .history-row-menu:has(.history-row-dropdown) {
+    z-index: 4;
+  }
+
   .history-row-menu-trigger {
     width: 18px;
     height: 18px;
@@ -2962,6 +3572,17 @@
   .history-row-menu:focus-within .history-row-menu-trigger,
   .history-row-menu-trigger[aria-expanded="true"] {
     opacity: 1;
+  }
+
+  /* No hover on touch screens: keep rename/delete reachable */
+  @media (hover: none) {
+    .history-row {
+      padding-inline-end: 26px;
+    }
+
+    .history-row-menu-trigger {
+      opacity: 1;
+    }
   }
 
   .history-row-dropdown {
@@ -3168,15 +3789,9 @@
   }
 
 
+  /* Foundations icon-small (12px) */
   .header-sparkle {
-    font-size: 12px;
-    font-weight: 500;
-    /* Inherit the title's line-height (rather than an independent fixed value)
-       so the two elements share the same vertical metrics — needed for
-       .interface-hebrew, where the title's line-height switches to "normal"
-       and a font-dependent mismatch would otherwise throw off centering. */
-    line-height: inherit;
-    letter-spacing: 0.36px;
+    flex-shrink: 0;
     color: var(--brand-sefaria-blue);
   }
 
@@ -3233,12 +3848,12 @@
     transition: background 0.15s ease;
   }
 
-  .menu-item:hover:not(:disabled) {
+  .menu-item:hover:not(:disabled, [aria-disabled="true"]) {
     background: var(--lc-bg-tertiary);
   }
 
   .menu-item:disabled,
-  .menu-item[aria-disabled='true'] {
+  .menu-item[aria-disabled="true"] {
     opacity: 0.5;
     cursor: not-allowed;
   }
@@ -3261,7 +3876,7 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-spacing-large, 16px);
@@ -3621,18 +4236,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
     padding: 12px;
-    color: var(--lc-text-muted);
-    font-size: 13px;
+    color: var(--lc-icon-muted);
+  }
+
+  /* The list's bottom padding is 12px deeper than its top: even it out to center on the canvas */
+  .loading-indicator.centered {
+    flex: 1;
+    padding-block: var(--global-dimension-300) var(--global-dimension-150);
   }
 
   .loading-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--lc-border);
-    border-top-color: var(--brand-sefaria-blue);
-    border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
 
@@ -3720,17 +4334,19 @@
     color: var(--lc-text-muted);
   }
 
+  /* Nothing to scroll in a disabled box: no inner scrollbar */
   .lc-chatbot-input textarea:disabled {
     background: var(--lc-bg-secondary);
     cursor: not-allowed;
+    overflow: hidden;
   }
 
   .send-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: var(--lc-send-size);
+    height: var(--lc-send-size);
     background: var(--brand-sefaria-blue);
     color: white;
     border: none;
@@ -4153,6 +4769,26 @@
     line-height: normal;
   }
 
+  /* On phones, headings sit close to the text they introduce. Without margins set, browser
+     defaults (h3 1em, h4 1.33em, top and bottom) leave a ~20px gap under each. */
+  .mode-fullscreen .message-content :global(.response-title) {
+    margin-block: var(--global-dimension-200) 6px;
+  }
+
+  .mode-fullscreen .message-content :global(.response-section) {
+    margin-block: 14px var(--space-1);
+  }
+
+  .mode-fullscreen .message-content :global(.response-title + .response-section) {
+    margin-top: var(--global-dimension-100);
+  }
+
+  /* The text under a heading drops its own top margin, which would otherwise win
+     over the heading's smaller bottom margin when the two collapse */
+  .mode-fullscreen .message-content :global(:is(.response-title, .response-section) + :is(p, ul, ol)) {
+    margin-top: 0;
+  }
+
   .message-content :global(.response-list) {
     color: var(--brand-sefaria-blue);
     font-size: var(--lc-font-size);
@@ -4251,28 +4887,28 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: #18345D;
+    color: var(--semantic-text-link);
     font-weight: 600;
     text-decoration: underline;
-    text-decoration-color: rgba(24, 52, 93, 0.3);
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
     text-underline-offset: 2px;
   }
   :global(.trail-ref-link:hover) {
-    color: #465D7D;
-    text-decoration-color: rgba(70, 93, 125, 0.6);
+    color: var(--lc-primary-hover);
+    text-decoration-color: color-mix(in srgb, currentColor 60%, transparent);
   }
   :global(.trail-ref-icon) {
     display: inline-block;
     vertical-align: middle;
     margin-inline-end: 2px;
-    color: #18345D;
+    color: var(--semantic-text-link);
     opacity: 0.6;
   }
 
 
   .stop-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 40px; height: 40px; padding: 0;
+    width: var(--lc-send-size); height: var(--lc-send-size); padding: 0;
     background: var(--lc-bg); color: var(--lc-icon-primary);
     border: 1px solid var(--lc-border-strong); border-radius: var(--lc-radius-sm);
     cursor: pointer; flex-shrink: 0;

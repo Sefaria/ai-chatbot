@@ -8,7 +8,8 @@ Web component widget for embedding the chatbot.
 src/
 ├── main.js                      # Entry point, registers web component
 ├── components/
-│   └── LCChatbot.svelte         # Main widget (single-file component)
+│   ├── LCChatbot.svelte         # Main widget: state, panel, conversations
+│   └── AskLauncher.svelte       # The closed "✦ Ask" pill
 ├── i18n/
 │   ├── index.js                 # svelte-i18n setup and locale store wiring
 │   └── locales/
@@ -18,7 +19,12 @@ src/
     ├── api.js                   # HTTP client, SSE streaming
     ├── session.js               # Session management
     ├── storage.js               # localStorage persistence
-    └── markdown.js              # Markdown rendering
+    ├── markdown.js              # Markdown rendering
+    ├── hostEvents.js            # chatbot:open / chatbot:launcher listeners
+    ├── sheetHistory.js          # Phones: the sheet's Back-button history entry
+    ├── sheetDrag.js             # Phones: drag the header down to close (action)
+    ├── keyboardViewport.svelte.js # Phones: keep the sheet above the keyboard, lock page scroll
+    └── chatScroll.js            # Phones: keep your place on resize, scroll to the end
 ```
 
 ## Commands
@@ -31,7 +37,7 @@ npm run build    # Build bundle to dist/
 ## Patterns
 
 - **Svelte 5** with runes (`$state`, `$derived`, `$effect`)
-- **Single-file component** - all widget logic in LCChatbot.svelte
+- **One main component** - LCChatbot.svelte holds the widget's state and wires the pieces in `lib/` and `AskLauncher.svelte` together; each piece takes only the few values it needs
 - **Web Component** - registered as `<lc-chatbot>` custom element
 - **SSE streaming** - real-time responses via Server-Sent Events
 
@@ -62,6 +68,30 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
+
+## Host Events
+
+- Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
+- Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is asked in a new chat, never added to the open conversation.
+- Listens for `chatbot:launcher` on `document`: `detail = { source, question }` relabels the closed pill with the widget's own label for that source (`search_no_results` → `assistant.floating_button.search_label`, "✦ Search with Library Assistant") and makes a click ask `question` as `chatbot:open` would (in a new chat). It asks once: later clicks with the same source and question (e.g. after closing the assistant, or on another empty tab of the same search) just reopen the assistant; `detail = null` puts the "✦ Ask" pill back.
+
+## Launcher
+
+The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-ask` in `AskLauncher.svelte`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. The chat is rebuilt on every open, so opening lands on the start of an answer that arrived while closed, otherwise where the reader left that chat (recorded on close, so not after a reload), otherwise at the bottom (its latest message). A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height at its mobile widths (up to 842px, where the banner is full width) until the banner is dismissed. The move always slides (0.2s), reduced motion included.
+
+## Phones
+
+Under `FULLSCREEN_QUERY` (≤600px wide, or ≤500px tall) the widget is a full-screen sheet, not a floating/docked panel:
+
+- Never opens on load, whatever `default-open` or saved state says. The closed launcher stays put while the page scrolls (hiding it on scroll was tried and dropped: the flicker distracted more than the button covered).
+- Owns one history entry (`lib/sheetHistory.js`), so Back closes it. Its popstate listener is registered at bundle load so it runs before the host's; Sefaria loads the bundle in `<head>`. It hides a pop from the host only when the pop returns to the URL the sheet opened over; a jump further back (Back's long-press menu) closes the sheet and reaches the host. In-page links close the sheet and navigate after the pop.
+- Locks page scroll. The open container is a full-screen backdrop in the panel's colour, and only the panel follows `visualViewport`, so the input stays above the keyboard and the page never flashes through while the keyboard closes. Tapping the text box makes room for the keyboard before it opens (half the screen the first time, then the keyboard height last seen in that orientation, at most 60% of the screen) and focuses it without scrolling; otherwise iOS scrolls the page to reveal the box and animates that scroll after reporting the final viewport, so the sheet dropped and climbed back. If no on-screen keyboard appears within 0.6s, the room is given back. When the text box loses focus the sheet takes the full height at once (after the tap that blurred it lands), since iOS reports the keyboard closing only ~0.5s later. Every text field is 16px (smaller makes iOS zoom).
+- When the chat area changes height (keyboard opening or closing, the text box growing), the chat scrolls by the same amount, so what was just above the text box stays there; at the bottom it stays at the bottom.
+- After Stop, the chat scrolls to the bottom so the stop notice shows above the restored question.
+- One step up the type scale (`--lc-font-size*` redefined on `.mode-fullscreen`). Buttons are at least 44×44px, with 24px icons (22px in menus and feedback); inline links get block padding for a taller tap area.
+- The header is a drag handle (grabber bar on top, buttons excluded): dragging down more than 120px, or a quick flick, closes the sheet; a shorter drag, or one the system interrupts, springs back.
+- No dock mode. History covers the chat; picking a chat returns to it.
+- Focus: opening moves focus to the sheet itself (`aria-modal`), not the text box, so no keyboard opens; closing returns it to the pill, or to the host button that opened it.
 
 ## i18n
 
