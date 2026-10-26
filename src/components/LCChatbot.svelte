@@ -161,6 +161,13 @@
   let historySearchOpen = $state(false);
   let historySearchText = $state('');
   let submittedHistorySearch = $state('');
+  // Whether History has chats to search. Until the list loads, go by what's known already:
+  // saved chats last time, chats listed so far, or a chat open now.
+  let hasConversationsToSearch = $derived(hasLoadedConversations
+    ? conversations.length > 0
+    : knownHasConversations || conversations.length > 0 || messages.length > 0);
+  // Search can always be closed, or cleared after a search
+  let historySearchDisabled = $derived(!historySearchOpen && !submittedHistorySearch && !hasConversationsToSearch);
   let historyError = $state('');
   let editingConversationId = $state(null);
   let editingConversationTitle = $state('');
@@ -274,6 +281,8 @@
     (keyboard.box ? `top: ${keyboard.box.top}px; height: ${keyboard.box.height}px;` : '') +
     (sheetOffset ? ` transform: translateY(${sheetOffset}px);` : '')
   );
+  // Desktop: the panel's size (docked, it's as tall as the page)
+  let desktopPanelStyle = $derived(`width: ${visiblePanelWidth}px;` + (mode === 'docked' ? '' : ` height: ${panelHeight}px;`));
 
   // Initialize on mount
   $effect(() => {
@@ -337,10 +346,9 @@
     }
   });
 
-  // Loads when the assistant opens, not only when History does, so History's search button
-  // is already right (enabled only if there are chats) the moment History appears
+  // Until it loads, History's search button goes by hasConversationsToSearch
   $effect(() => {
-    if ((showHistoryPanel || (isOpen && userId)) && !hasLoadedConversations && !isLoadingConversations) {
+    if (showHistoryPanel && !hasLoadedConversations && !isLoadingConversations) {
       loadConversationPage({ reset: true });
     }
   });
@@ -679,16 +687,11 @@
   // The host's question is asked once per page: closing and reopening from the same pill
   // goes back to that chat instead of asking it again
   function askFromLauncher() {
+    trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
     if (launcherOverride?.question && !launcherOverride.asked) {
-      const { source, question } = launcherOverride;
-      trackAssistantClick(source || 'ask_pill_open');
       launcherOverride.asked = true;
-      askInNewChat(question);
-    } else if (launcherOverride) {
-      trackAssistantClick(launcherOverride.source);
-      openPanel();
+      askInNewChat(launcherOverride.question);
     } else {
-      trackAssistantClick('ask_pill_open');
       openPanel();
     }
   }
@@ -1404,7 +1407,8 @@
         toolCalls: response.toolCalls,
         stats: response.stats
       });
-      if (!isOpen) responseReady = true;
+      // Only for the chat that opens: an answer to another chat waits for it in History
+      if (!isOpen && sessionId === sendingSessionId) responseReady = true;
 
     } catch (e) {
       if (e?.code === 'stream_cancelled') {
@@ -1940,7 +1944,7 @@
       class:resizing={isResizing}
       class:sheet-settling={sheetSettling}
       class:sheet-lifted={sheetOffset > 0 || sheetSettling}
-      style={isFullscreen ? sheetStyle : `width: ${visiblePanelWidth}px;${mode === 'docked' ? '' : ` height: ${panelHeight}px;`}`}
+      style={isFullscreen ? sheetStyle : desktopPanelStyle}
       role="dialog"
       aria-modal={isFullscreen ? 'true' : undefined}
       tabindex="-1"
@@ -2074,7 +2078,7 @@
                   aria-label={$_(historySearchOpen ? 'assistant.history.header.search_close.aria' : 'assistant.history.header.search_open.aria')}
                   data-feature-name="chat_history_search"
                   onclick={toggleHistorySearch}
-                  disabled={!historySearchOpen && !submittedHistorySearch && (hasLoadedConversations ? conversations.length === 0 : !(knownHasConversations || conversations.length > 0 || messages.length > 0))}
+                  disabled={historySearchDisabled}
                 >
                   <img src="{staticIconsBaseUrl}/search.svg" alt="" width="18" height="18" />
                 </button>
@@ -2431,7 +2435,7 @@
         {:else}
         <button
           class="send-btn"
-          onclick={() => handleSend()}
+          onclick={handleSend}
           disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
           aria-label={$_('assistant.input.send.tooltip')}
         >

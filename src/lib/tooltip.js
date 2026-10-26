@@ -126,9 +126,9 @@ export function tooltip(node, text = '') {
     }
   }
 
-  // Mouse only: a tap's emulated mouseenter would leave the bubble stuck on touch screens.
+  // Not for touch: a tap's emulated mouseenter would leave the bubble stuck. A hovering pen keeps it.
   function onPointerEnter(e) {
-    if (e.pointerType === 'mouse') show();
+    if (e.pointerType !== 'touch') show();
   }
 
   node.addEventListener('pointerenter', onPointerEnter);
