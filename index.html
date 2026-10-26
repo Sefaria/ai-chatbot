@@ -189,11 +189,23 @@
 
   <!-- The chatbot custom element -->
   <lc-chatbot
-    user-id="VrEKrbLVo8iV0AgQDGNStkXu0fWsD08bM7iYQ2AwZKRkiTrPuoBxYTPWumaIdMLw_YpJKfZl1ZXvNTtVm-CLUfz5Drtk9si4t-3k2hVKutEt36uzWtsk-frg-Eb-WmxCyi2mVVOTqQ2jMWQ"
     api-base-url="/api"
     default-open="false"
     placement="right"
   ></lc-chatbot>
+
+  <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
+       ?user-id=<encrypted user token> shows it logged in as that user, and
+       ?anon-free-answers=<n> passes the host's free-answer limit.
+       Runs before the widget module below, which loads deferred. -->
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    for (const attribute of ['user-id', 'anon-free-answers']) {
+      if (params.get(attribute)) {
+        document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
+      }
+    }
+  </script>
 
   <!-- Load the chatbot bundle -->
   <script type="module" src="/src/main.js"></script>

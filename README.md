@@ -31,7 +31,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Visit `http://localhost:5173` for the local widget.
+Visit `http://localhost:5173` for the local widget. It opens logged out; add `?user-id=<encrypted user token>` to open it as that user.
 
 ## Widget Usage
 
@@ -48,10 +48,17 @@ Visit `http://localhost:5173` for the local widget.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user-id` | string | Yes | Unique user identifier |
+| `user-id` | string | No | Encrypted user token. Leave it out for a logged-out visitor: the widget then identifies them with an anonymous ID it keeps in localStorage, and when it loads logged out it deletes any chat a logged-in user left in the browser |
 | `api-base-url` | string | Yes | Base URL for the chat API |
 | `placement` | `"left"` \| `"right"` | No | Corner placement |
 | `default-open` | boolean | No | Open on load |
+| `anon-free-answers` | number | No | The host's free-answer limit for logged-out visitors. Only for analytics (`prompts_left` on a new visitor's first question, `rate_limit` when they reach it); the chat server enforces the limit |
+
+### Slots
+
+| Slot | Description |
+|------|-------------|
+| `signup-options` | The host page's sign-up options, shown under the text of the login prompt (a logged-out visitor who used up their free answers), centred. Put them in a child element: `<lc-chatbot><div slot="signup-options">…</div></lc-chatbot>`. They stay in the host page's DOM, so its own styles and scripts apply. With no such child, the prompt shows its text only |
 
 Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
 
@@ -94,6 +101,7 @@ pytest           # Run tests
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Yes | PostgreSQL connection for Django |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
 | `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens |
+| `CHATBOT_ALLOWED_SEFARIA_HOSTS` | For logged-out visitors | Comma-separated Sefaria hosts this deployment serves (`*.` matches subdomains), checked against the request's `Origin`. A request from one uses that Sefaria, and logged-out visitors (`anonId`) are accepted only from these. Production: `www.sefaria.org,www.sefaria.org.il`; unset means no logged-out visitors |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
 | `SENTRY_DSN` | No | Enable Sentry error monitoring for Django + agent errors |
@@ -101,7 +109,7 @@ pytest           # Run tests
 | `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
-| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages for local ref detection (defaults include localhost) |
+| `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection. Empty by default; `.env.example` sets localhost |
 
 Create a `.env` file in the `server/` directory with backend API keys. For frontend-only local values, copy root `.env.example` to `.env.local`.
 
