@@ -96,7 +96,11 @@ class SDKOptionsBuilder:
         if self.thinking_disabled and self._supports_option("thinking"):
             # Sonnet 5.5 returns a 400 on {"type": "disabled"} - use "between_tools"
             # instead (accepted at effort high or below, which is the default here).
-            options_kwargs["thinking"] = {"type": "between_tools"}
+            # Other models (e.g. Sonnet 5) only accept "disabled".
+            if self.model == "claude-sonnet-5-5":
+                options_kwargs["thinking"] = {"type": "between_tools"}
+            else:
+                options_kwargs["thinking"] = {"type": "disabled"}
 
         system_prompt_in_options = False
         if self._supports_option("system_prompt"):

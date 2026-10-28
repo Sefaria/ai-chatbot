@@ -9,8 +9,9 @@ AGENT_MODEL = "claude-sonnet-5-5"
 AGENT_MAX_TOKENS = 8000
 AGENT_TEMPERATURE = 0.7
 
-# The topic appetizer uses the same model as the main agent by default.
-APPETIZER_MODEL = AGENT_MODEL
+# The appetizer forces tool_choice, which Sonnet 5.5 returns a 400 on - keep
+# this pinned independent of AGENT_MODEL until that's supported.
+APPETIZER_MODEL = "claude-sonnet-4-6"
 
 GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
 GUARDRAIL_MAX_TOKENS = 256
