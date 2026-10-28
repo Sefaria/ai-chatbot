@@ -741,11 +741,17 @@
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
+  // A logged-out visitor has one chat, so the question goes there, under the earlier ones; at
+  // the free-answer limit nothing is sent, and the assistant opens on that chat's login prompt.
   async function askInNewChat(question) {
     question = question.trim();
+    if (loginRequired) {
+      if (!isOpen) openPanel();
+      return;
+    }
     // Phones: History covers the chat, and would hide the question and its answer
     if (question && isFullscreen) showHistoryPanel = false;
-    if (question && messages.length > 0) handleNewChat();
+    if (question && messages.length > 0 && isLoggedIn) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
     if (!question) return;
@@ -771,10 +777,10 @@
   }));
 
   // The host's question is asked once per page: closing and reopening from the same pill
-  // goes back to that chat instead of asking it again
+  // goes back to that chat instead of asking it again. At the free-answer limit it isn't asked.
   function askFromLauncher() {
     trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
-    if (launcherOverride?.question && !launcherOverride.asked) {
+    if (launcherOverride?.question && !launcherOverride.asked && !loginRequired) {
       launcherOverride.asked = true;
       askInNewChat(launcherOverride.question);
     } else {
