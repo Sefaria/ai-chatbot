@@ -3414,18 +3414,12 @@
   }
 
   /* Response package: stacks topics accordion → thought accordion → answer bubble.
-     8px gap between accordions; answer bubble pulled flush (0px) via negative margin. */
+     Same 16px spacing as the loading area the answer streams into, so nothing
+     moves when the streamed answer becomes the finished message. */
   .lc-response-package {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-
-  /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
-     When there are no accordions the bubble is the only child and the gap spec
-     does not apply, so we scope this to :not(:first-child). */
-  .lc-response-package > .message.assistant:not(:first-child) {
-    margin-top: -8px;
+    gap: var(--spacing-spacing-large, 16px);
   }
 
   .empty-state .message.assistant .message-content,
