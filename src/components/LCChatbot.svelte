@@ -101,8 +101,6 @@
   let streamingMarkdown = $state('');
   let streamEl = $state(null);
   let streamTextDone = $state(false);
-  // Leaked narration folded out of the streaming answer so far this turn.
-  let thoughtSteps = $state([]);
   // Thumbs show as soon as the streamed text ends, before the final message
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
@@ -118,13 +116,12 @@
     return (text.split('**').length - 1) % 2 === 1;
   }
 
-  // Streamed text that isn't part of the final answer is narration that leaked
-  // between tool calls; the server ends each passage with a paragraph break.
-  function leakedNarration(streamed, answer) {
+  // Streamed text before the final answer is narration that leaked between
+  // tool calls. It stays on screen, so keep it in the saved message too.
+  function withLeakedNarration(streamed, answer) {
     const start = (answer || '').trim().slice(0, 40);
     const at = start ? (streamed || '').lastIndexOf(start) : -1;
-    if (at <= 0) return [];
-    return streamed.slice(0, at).split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
+    return at > 0 ? streamed.slice(0, at).trim() + '\n\n' + answer : answer;
   }
 
   function topicsAppearMs() {
@@ -950,7 +947,6 @@
     appetizerData = activeRequests[sessionId]?.appetizerData || null;
     streamingMarkdown = activeRequests[sessionId]?.streamingMarkdown || '';
     streamTextDone = !!activeRequests[sessionId]?.streamTextDone;
-    thoughtSteps = activeRequests[sessionId]?.thoughtSteps || [];
     pendingFeedback = activeRequests[sessionId]?.pendingFeedback || null;
     stopThinkingMessages();
     if (streamingMarkdown && !streamTextDone) {
@@ -1160,8 +1156,7 @@
       // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
-      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
-      thoughtSteps: []
+      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1194,7 +1189,6 @@
     appetizerData = null;
     streamingMarkdown = '';
     streamTextDone = false;
-    thoughtSteps = [];
     pendingFeedback = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
@@ -1223,7 +1217,6 @@
     // streamingMarkdown/streamTextDone/pendingFeedback are only touched while
     // this session is the one currently shown.
     let onStreamDrained = null;
-    let keepAnswerAt = null;
 
     function showCompleteWords() {
       for (let end = request.playedStreamText.length; end > request.streamingMarkdown.length; end--) {
@@ -1250,14 +1243,7 @@
       const now = performance.now();
       let released = '';
       while (request.streamQueue.length && request.streamQueue[0].at + request.streamDelayMs <= now) {
-        const item = request.streamQueue.shift();
-        if (!item.fold) {
-          released += item.text;
-          continue;
-        }
-        request.playedStreamText += released;
-        released = '';
-        foldPlayedText();
+        released += request.streamQueue.shift().text;
       }
       if (released) {
         request.playedStreamText += released;
@@ -1295,20 +1281,6 @@
       if (!request.streamTimer) playStreamQueue();
     }
 
-    // A tool call proves the text streamed before it was narration, not the
-    // answer: keep it above, as its own lines, while the answer streams in.
-    function foldPlayedText() {
-      const steps = request.playedStreamText.split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
-      request.playedStreamText = '';
-      request.streamingMarkdown = '';
-      request.wordRevealTimes = [];
-      request.thoughtSteps = [...request.thoughtSteps, ...steps];
-      if (sessionId === sendingSessionId) {
-        streamingMarkdown = '';
-        thoughtSteps = request.thoughtSteps;
-      }
-    }
-
     function finishStreamIfDone() {
       if (!request.contentDoneReceived || request.streamQueue.length || request.streamTimer) return;
       showAllPlayedText();
@@ -1344,11 +1316,6 @@
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             request.appetizerData = progress.appetizerData;
           }
-          // Fold at the point in playback where the tool call happened.
-          if (progress?.type === 'tool_start' && (request.playedStreamText || request.streamQueue.length)) {
-            request.streamQueue.push({ fold: true, text: '', at: performance.now() });
-            if (request.streamDelayMs !== null && !request.streamTimer) playStreamQueue();
-          }
           if (sessionId !== sendingSessionId) return;
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             appetizerData = progress.appetizerData;
@@ -1365,7 +1332,7 @@
             return;
           }
           // Once the answer is streaming, leave the scroll position alone.
-          if (progress?.type === 'status' && request.streamDelayMs === null) {
+          if (progress?.type === 'status' && !request.streamingMarkdown) {
             if (/synthesi/i.test(progress.text || '')) {
               showFinalThinkingMessage();
             }
@@ -1389,10 +1356,6 @@
       await streamDrained();
       showAllPlayedText();
       const didStream = !!request.streamingMarkdown;
-      const lateNarration = leakedNarration(request.playedStreamText, response.markdown);
-      const steps = [...request.thoughtSteps, ...lateNarration];
-      const liveThoughtKey = `${request.messageId}_live_thought`;
-      if (expandedSections[liveThoughtKey]) expandedSections[`${response.messageId}_thought`] = true;
       if (didStream && sessionId === sendingSessionId) {
         await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
       }
@@ -1413,14 +1376,13 @@
         sessionId: response.sessionId,
         userId,
         role: 'assistant',
-        content: response.markdown,
+        content: withLeakedNarration(request.playedStreamText, response.markdown),
         timestamp: response.timestamp,
         status: 'sent',
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
         appetizerData: request.appetizerData ? {...request.appetizerData} : null,
-        thoughtSteps: steps,
         // Already on screen as streamed text, so don't animate it in again.
         noEntryAnimation: didStream,
         feedback: request.pendingFeedback
@@ -1431,10 +1393,6 @@
 
       const completedMessages = [...sentMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
-        // Narration folding away above the answer shouldn't move the answer.
-        if (lateNarration.length && messageListRef) {
-          keepAnswerAt = messageListRef.scrollHeight - messageListRef.scrollTop;
-        }
         messages = completedMessages;
         saveMessagesToStorage();
         // A streamed answer is already in view; jumping to its start would be jarring.
@@ -1539,12 +1497,7 @@
         appetizerData = null;
         streamingMarkdown = '';
         streamTextDone = false;
-        thoughtSteps = [];
         pendingFeedback = null;
-        if (keepAnswerAt !== null) {
-          await tick();
-          if (messageListRef) messageListRef.scrollTop = messageListRef.scrollHeight - keepAnswerAt;
-        }
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
           if (sessionId === sendingSessionId) {
@@ -2416,9 +2369,6 @@
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
-              {#if item.thoughtSteps?.length}
-                <div class="message-content">{@html renderMarkdown(item.thoughtSteps.join('\n\n'))}</div>
-              {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
           {:else}
@@ -2452,9 +2402,6 @@
                 <div in:fade={{ duration: topicsAppearMs() }}>
                   <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
                 </div>
-              {/if}
-              {#if thoughtSteps.length && !isCurrentSessionStopping}
-                <div class="message-content">{@html renderMarkdown(thoughtSteps.join('\n\n'))}</div>
               {/if}
               {#if streamingMarkdown && !isCurrentSessionStopping}
                 <div class="lc-streaming-answer">
@@ -3410,6 +3357,9 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
+    /* Reserve the scrollbar's space up front, so text doesn't rewrap (and the
+       whole conversation shift) when a growing answer first makes it scroll. */
+    scrollbar-gutter: stable;
     /* Vertical scroll only. Without an explicit overflow-x, `overflow-y: auto`
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
