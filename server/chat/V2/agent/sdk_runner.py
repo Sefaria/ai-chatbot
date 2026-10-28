@@ -25,6 +25,9 @@ class SDKRunResult:
     first_final_text_delta_elapsed_s: float | None = None
 
 
+PASSAGE_BREAK = "\n\n"
+
+
 class ClaudeSDKRunner:
     """Runs the query -> receive_response loop for Claude Agent SDK."""
 
@@ -86,6 +89,7 @@ class ClaudeSDKRunner:
         first_final_text_delta_elapsed_s: float | None = None
         first_final_text_delta_notified = False
         saw_tool_use_message = False
+        streamed_text_blocks: set[int] = set()
         start_time = time.time()
 
         def notify_first_final_text_delta() -> None:
@@ -129,6 +133,22 @@ class ClaudeSDKRunner:
                         notify_first_final_text_delta()
                     if delta and on_text_delta:
                         on_text_delta(delta)
+                    # End each streamed text block with a paragraph break, so
+                    # passages split by tool calls don't run together and the
+                    # client's whole-word display doesn't hold back the last
+                    # word until the next passage starts.
+                    index = self.text_block_index_from_stream_event(message)
+                    if delta and index is not None:
+                        streamed_text_blocks.add(index)
+                    elif self.stream_event_type(message) == "message_start":
+                        streamed_text_blocks.clear()
+                    elif (
+                        self.stream_event_type(message) == "content_block_stop"
+                        and index in streamed_text_blocks
+                    ):
+                        streamed_text_blocks.discard(index)
+                        if on_text_delta:
+                            on_text_delta(PASSAGE_BREAK)
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)
@@ -163,6 +183,23 @@ class ClaudeSDKRunner:
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
         )
+
+    @staticmethod
+    def stream_event_type(message: Any) -> str | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        return event.get("type") if isinstance(event, dict) else None
+
+    @staticmethod
+    def text_block_index_from_stream_event(message: Any) -> int | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict):
+            return None
+        index = event.get("index")
+        return index if isinstance(index, int) else None
 
     @staticmethod
     def extract_text_delta_from_stream_event(message: Any) -> str:

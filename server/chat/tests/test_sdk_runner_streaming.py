@@ -106,6 +106,56 @@ def test_stream_event_text_deltas_are_observed_without_changing_final_text():
     assert result.first_final_text_delta_elapsed_s is not None
 
 
+class FakeIndexedPassagesClient(FakeClient):
+    async def receive_response(self):
+        for chunks, uses_tool in ((("Let me ", "look these up."), True), (("Here ", "it is."), False)):
+            passage = "".join(chunks)
+            yield FakeStreamEvent(event={"type": "message_start"})
+            yield FakeStreamEvent(event={"type": "content_block_start", "index": 0})
+            for chunk in chunks:
+                yield FakeStreamEvent(
+                    event={
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "text_delta", "text": chunk},
+                    }
+                )
+            yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
+            if uses_tool:
+                yield FakeStreamEvent(event={"type": "content_block_start", "index": 1})
+                yield FakeStreamEvent(
+                    event={
+                        "type": "content_block_delta",
+                        "index": 1,
+                        "delta": {"type": "input_json_delta", "partial_json": "{}"},
+                    }
+                )
+                yield FakeStreamEvent(event={"type": "content_block_stop", "index": 1})
+            content = [{"type": "text", "text": passage}]
+            if uses_tool:
+                content.append({"type": "tool_use", "name": "semantic_search", "input": {}})
+            yield FakeAssistantMessage(content=content)
+        yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+
+def test_each_streamed_text_block_ends_with_a_paragraph_break():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeIndexedPassagesClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    deltas = []
+
+    result = asyncio.run(
+        runner.run(options=object(), prompt_text="prompt", on_text_delta=deltas.append)
+    )
+
+    assert "".join(deltas) == "Let me look these up.\n\nHere it is.\n\n"
+    assert deltas.count("\n\n") == 2
+    assert result.final_text == "Here it is."
+
+
 def test_first_final_text_delta_uses_last_text_message_before_result(monkeypatch):
     timestamps = iter([100.0, 101.0, 102.0, 110.0])
     monkeypatch.setattr(sdk_runner_module.time, "time", lambda: next(timestamps))
