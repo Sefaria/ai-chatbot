@@ -302,6 +302,8 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
+  // Where the next send was asked from on the host page (askInNewChat sets it, handleSend uses it)
+  let nextSendSource = '';
   let launcherLabel = $derived(launcherOverride ? $_(LAUNCHER_LABELS[launcherOverride.source]) : '');
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
@@ -743,7 +745,8 @@
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
   // A logged-out visitor has one chat, so the question goes there, under the earlier ones; at
   // the free-answer limit nothing is sent, and the assistant opens on that chat's login prompt.
-  async function askInNewChat(question) {
+  // `source` tells the server where the question was asked from (see sendMessageStream).
+  async function askInNewChat(question, source = '') {
     question = question.trim();
     if (loginRequired) {
       if (!isOpen) openPanel();
@@ -756,6 +759,7 @@
     if (!isOpen) openPanel();
     if (!question) return;
     await tick();
+    nextSendSource = source;
     handleSend();
   }
 
@@ -769,7 +773,7 @@
         return;
       }
       trackAssistantClick(detail?.source || 'host_open');
-      if (detail?.question) askInNewChat(detail.question);
+      if (detail?.question) askInNewChat(detail.question, detail.source);
       else if (!isOpen) openPanel();
     },
     getLauncher: () => launcherOverride,
@@ -782,7 +786,7 @@
     trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
     if (launcherOverride?.question && !launcherOverride.asked && !loginRequired) {
       launcherOverride.asked = true;
-      askInNewChat(launcherOverride.question);
+      askInNewChat(launcherOverride.question, launcherOverride.source);
     } else {
       openPanel();
     }
@@ -1320,6 +1324,9 @@
   }
 
   async function handleSend() {
+    // Only the send askInNewChat starts carries its source; a Send click or Enter has none
+    const source = nextSendSource;
+    nextSendSource = '';
     await loggedOutChatsClaimed;
     const text = inputText.trim();
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
@@ -1428,7 +1435,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal }), request.controller.signal);
+      }, interfaceLang, { signal: request.controller.signal, source }), request.controller.signal);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
