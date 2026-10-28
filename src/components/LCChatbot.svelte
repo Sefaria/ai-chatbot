@@ -142,10 +142,19 @@
     };
   }
 
-  // The latest thought step as one line of plain text, for the closed accordion header.
+  const THOUGHT_PREVIEW_CHARS = 40;
+
+  // The latest thought step for the closed accordion header: its last sentence
+  // (narration usually ends with the action), cut at a word boundary.
   function thoughtPreview(steps) {
-    const last = steps[steps.length - 1] || '';
-    return last.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+    const text = (steps[steps.length - 1] || '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+    const sentences = text.match(/[^.!?]+[.!?]*/g)?.map(sentence => sentence.trim()).filter(Boolean) || [];
+    const last = sentences[sentences.length - 1] || text;
+    if (last.length <= THOUGHT_PREVIEW_CHARS) return last;
+    const cut = last.slice(0, THOUGHT_PREVIEW_CHARS + 1);
+    const atSpace = cut.lastIndexOf(' ');
+    return (atSpace > 0 ? cut.slice(0, atSpace) : cut).replace(/[\s,;:—-]+$/, '') + '…';
   }
 
   function topicsAppearMs() {
