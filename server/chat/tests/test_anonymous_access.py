@@ -66,18 +66,17 @@ def agent():
         yield mock
 
 
-def ask(client, identity, message_id=MESSAGE_ID, session_id=SESSION_ID):
-    return client.post(
-        "/api/v2/chat/stream",
-        data={
-            **identity,
-            "sessionId": session_id,
-            "messageId": message_id,
-            "timestamp": timezone.now().isoformat(),
-            "text": "A question",
-        },
-        format="json",
-    )
+def ask(client, identity, message_id=MESSAGE_ID, session_id=SESSION_ID, source=None):
+    data = {
+        **identity,
+        "sessionId": session_id,
+        "messageId": message_id,
+        "timestamp": timezone.now().isoformat(),
+        "text": "A question",
+    }
+    if source:
+        data["context"] = {"source": source}
+    return client.post("/api/v2/chat/stream", data=data, format="json")
 
 
 def answered(response):
@@ -231,14 +230,19 @@ class Visitor:
         self.session_id = session_id
         self.asked = 0
 
-    def ask(self, session_id=None):
+    def ask(self, session_id=None, source=None):
         self.asked += 1
         return ask(
             self.client,
             {"anonId": self.anon_id},
             message_id=f"msg_{self.anon_id[:8]}_{self.asked}",
             session_id=session_id or self.session_id,
+            source=source,
         )
+
+    def ask_from_empty_search(self):
+        """The question the empty-search page asks (Sefaria's "Search with Library Assistant")."""
+        return self.ask(source="search_no_results")
 
     def last_message_id(self):
         return f"msg_{self.anon_id[:8]}_{self.asked}"
@@ -404,6 +408,71 @@ def test_a_cancelled_turn_does_not_use_up_a_free_answer(client, no_limit_by_defa
     )
 
     assert final_message(Visitor(client).ask())["anonResponsesRemaining"] == limit - 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_empty_search_question_never_uses_up_the_last_free_answer(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit - 1)
+
+    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
+    assert final_message(visitor.ask())["anonResponsesRemaining"] == 0
+    assert_login_required(visitor.ask())
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_the_free_empty_search_answer_happens_once_per_visitor(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit - 1)
+    final_message(visitor.ask_from_empty_search())
+
+    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 0
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_an_empty_search_question_counts_when_it_is_not_the_last(client, no_limit_by_default):
+    no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+
+    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
+    # It wasn't the last, so the exception is still there for the last one.
+    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_an_empty_search_question_at_the_limit_needs_login(client, agent, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit)
+
+    assert_login_required(visitor.ask_from_empty_search())
+    assert agent.send_message.await_count == limit
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_a_failed_empty_search_answer_leaves_the_exception_unused(
+    client, agent, no_limit_by_default
+):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit - 1)
+    answer = agent.send_message.return_value
+    agent.send_message.side_effect = [Exception("Agent crashed"), answer]
+    with patch("chat.V2.views.capture_exception"):
+        answered(visitor.ask_from_empty_search())
+
+    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
+
+
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_other_sources_are_not_free(client, no_limit_by_default):
+    limit = no_limit_by_default.return_value = 2
+    visitor = Visitor(client)
+    visitor.use_up(limit - 1)
+
+    assert final_message(visitor.ask(source="some_other_page"))["anonResponsesRemaining"] == 0
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)

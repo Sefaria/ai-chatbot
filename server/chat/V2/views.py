@@ -349,6 +349,9 @@ def chat_stream_v2(request):
 
     if actor.is_anonymous and anon_access.anon_answers_remaining(actor.user_id) == 0:
         return Response({"error": "login_required"}, status=status.HTTP_403_FORBIDDEN)
+    free_answer = actor.is_anonymous and anon_access.gets_free_answer(
+        actor.user_id, (data.get("context") or {}).get("source", "")
+    )
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
     stream_closed = False
@@ -827,6 +830,9 @@ def chat_stream_v2(request):
                     model_name=agent_response.model or "unknown",
                 )
                 response_message = logging_result.response_message
+                if free_answer and response_message.status == ChatMessage.Status.SUCCESS:
+                    response_message.free_answer = True
+                    response_message.save(update_fields=["free_answer"])
                 assistant_persisted = True
                 _mark_turn_completed(user_message.id)
 
