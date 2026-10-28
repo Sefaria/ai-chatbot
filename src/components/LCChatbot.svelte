@@ -19,6 +19,7 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -103,6 +104,9 @@
   let streamTextDone = $state(false);
   // Leaked narration folded out of the streaming answer so far this turn.
   let thoughtSteps = $state([]);
+  // Narration that was just folded, shown in place while it collapses into the accordion.
+  let foldingMarkdown = $state('');
+  const FOLD_MS = 250;
   // Thumbs show as soon as the streamed text ends, before the final message
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
@@ -125,6 +129,23 @@
     const at = start ? (streamed || '').lastIndexOf(start) : -1;
     if (at <= 0) return [];
     return streamed.slice(0, at).split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
+  }
+
+  // Collapses upward and fades, toward the thought-process header above it.
+  function foldAway(node) {
+    const height = node.offsetHeight;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    return {
+      duration: reduced ? 0 : FOLD_MS,
+      easing: cubicOut,
+      css: (t) => `height: ${t * height}px; opacity: ${t}; overflow: hidden; transform: translateY(${(t - 1) * 6}px);`
+    };
+  }
+
+  // The latest thought step as one line of plain text, for the closed accordion header.
+  function thoughtPreview(steps) {
+    const last = steps[steps.length - 1] || '';
+    return last.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
   }
 
   function topicsAppearMs() {
@@ -1298,7 +1319,8 @@
     // A tool call proves the text streamed before it was narration, not the
     // answer: move it into the thought process before the answer streams in.
     function foldPlayedText() {
-      const steps = request.playedStreamText.split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
+      const folded = request.playedStreamText;
+      const steps = folded.split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
       request.playedStreamText = '';
       request.streamingMarkdown = '';
       request.wordRevealTimes = [];
@@ -1306,6 +1328,11 @@
       if (sessionId === sendingSessionId) {
         streamingMarkdown = '';
         thoughtSteps = request.thoughtSteps;
+        // Swap the streamed text for a static copy, then let it collapse away.
+        if (steps.length) {
+          foldingMarkdown = folded;
+          tick().then(() => { foldingMarkdown = ''; });
+        }
       }
     }
 
@@ -2461,13 +2488,16 @@
               {/if}
               {#if thoughtSteps.length && !isCurrentSessionStopping}
                 {@const liveThoughtKey = `${activeRequests[sessionId]?.messageId}_live_thought`}
-                <Accordion kind="thought"
+                <Accordion kind="thought" preview={thoughtPreview(thoughtSteps)}
                   expanded={!!expandedSections[liveThoughtKey]}
                   onToggle={() => toggleSection(liveThoughtKey)}>
                   {#each thoughtSteps as step}
                     <div class="message-content lc-thought-step">{@html renderMarkdown(step)}</div>
                   {/each}
                 </Accordion>
+              {/if}
+              {#if foldingMarkdown}
+                <div class="message-content lc-folding-narration" out:foldAway>{@html renderMarkdown(foldingMarkdown)}</div>
               {/if}
               {#if streamingMarkdown && !isCurrentSessionStopping}
                 <div class="lc-streaming-answer">
