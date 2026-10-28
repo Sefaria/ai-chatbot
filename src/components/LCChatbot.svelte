@@ -120,16 +120,21 @@
   const DIVIDER_LINE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|<hr\b[^>]*>)\s*$/;
   const NARRATION_DIVIDER = '<hr class="lc-narration-divider">';
 
+  // How far into the answer an AI-written divider still counts as separating
+  // narration: narration in the same passage as the answer opens the answer.
+  const DIVIDER_LOOKAHEAD_BLOCKS = 3;
+
   // Streamed text before the final answer is narration that leaked between
   // tool calls. It stays on screen, so keep it in the saved message too, with
-  // a divider before the answer unless the AI already wrote one there.
+  // a divider before the answer unless the AI already wrote one near there.
   function withLeakedNarration(streamed, answer) {
     const start = (answer || '').trim().slice(0, 40);
     const at = start ? (streamed || '').lastIndexOf(start) : -1;
     if (at <= 0) return answer;
     const narration = streamed.slice(0, at).trim();
+    const answerOpening = answer.trim().split(/\n{2,}/).slice(0, DIVIDER_LOOKAHEAD_BLOCKS);
     const hasDivider = DIVIDER_LINE.test(narration.split('\n').at(-1))
-      || DIVIDER_LINE.test(answer.trimStart().split('\n')[0]);
+      || answerOpening.some(block => block.split('\n').some(line => DIVIDER_LINE.test(line)));
     return narration + '\n\n' + (hasDivider ? '' : NARRATION_DIVIDER + '\n\n') + answer;
   }
 
