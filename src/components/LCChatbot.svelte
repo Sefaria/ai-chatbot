@@ -116,12 +116,21 @@
     return (text.split('**').length - 1) % 2 === 1;
   }
 
+  // A markdown thematic break (---, ***, ___) or an <hr> on its own line.
+  const DIVIDER_LINE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|<hr\b[^>]*>)\s*$/;
+  const NARRATION_DIVIDER = '<hr class="lc-narration-divider">';
+
   // Streamed text before the final answer is narration that leaked between
-  // tool calls. It stays on screen, so keep it in the saved message too.
+  // tool calls. It stays on screen, so keep it in the saved message too, with
+  // a divider before the answer unless the AI already wrote one there.
   function withLeakedNarration(streamed, answer) {
     const start = (answer || '').trim().slice(0, 40);
     const at = start ? (streamed || '').lastIndexOf(start) : -1;
-    return at > 0 ? streamed.slice(0, at).trim() + '\n\n' + answer : answer;
+    if (at <= 0) return answer;
+    const narration = streamed.slice(0, at).trim();
+    const hasDivider = DIVIDER_LINE.test(narration.split('\n').at(-1))
+      || DIVIDER_LINE.test(answer.trimStart().split('\n')[0]);
+    return narration + '\n\n' + (hasDivider ? '' : NARRATION_DIVIDER + '\n\n') + answer;
   }
 
   function topicsAppearMs() {
@@ -3434,6 +3443,25 @@
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
+  }
+
+  /* Zero height, so adding it after the answer streams in moves nothing: the
+     paragraph margins around it still collapse into one gap, and the line is
+     drawn in the middle of that gap. */
+  .message-content :global(hr.lc-narration-divider) {
+    position: relative;
+    height: 0;
+    margin: 0;
+    border: 0;
+    overflow: visible;
+  }
+  .message-content :global(hr.lc-narration-divider)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -0.5em;
+    border-top: 1px solid var(--lc-border);
   }
 
   .message.assistant .message-content :global(ul),
