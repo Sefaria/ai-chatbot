@@ -208,6 +208,11 @@
   let settingsError = $state('');
 
   let expandedSections = $state({});
+  // The latest answer keeps its topics box open, as it was while loading, so
+  // nothing moves when it finishes; it collapses once the next question is sent.
+  let openTopicsMessageId = $derived(
+    isCurrentSessionSending ? null : messages.findLast(m => m.role === 'assistant')?.messageId
+  );
   function toggleSection(key) {
     expandedSections[key] = !expandedSections[key];
   }
@@ -2362,7 +2367,11 @@
             {/if}
           {:else if item.role === 'assistant'}
             <div class="lc-response-package">
-              {#if item.appetizerData}
+              {#if item.appetizerData && item.messageId === openTopicsMessageId}
+                <div>
+                  <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                </div>
+              {:else if item.appetizerData}
                 <Accordion kind="topics"
                   expanded={!!expandedSections[`${item.messageId}_topics`]}
                   onToggle={() => toggleSection(`${item.messageId}_topics`)}>
