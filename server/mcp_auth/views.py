@@ -338,14 +338,20 @@ def authorize(request: HttpRequest) -> HttpResponse:
         f"{urlencode({'state': auth_request.id, 'redirect_uri': callback_url()})}"
     )
     response = HttpResponseRedirect(sign_in)
+    # Sefaria returns by a cross-site auto-POST when it is on another site than this host
+    # (staging pairs chat-dev.sefaria.org with sefariastaging.org), and browsers drop
+    # SameSite=Lax cookies from those. None is safe here: the cookie only proves this browser
+    # started the flow, and an attacker's flow is bound to the attacker's own cookie.
+    secure = issuer().startswith("https://")
     response.set_cookie(
         _binding_cookie(auth_request.id),
         binding,
         max_age=int(AUTHORIZATION_REQUEST_TTL.total_seconds()),
         path="/oauth/",
-        secure=issuer().startswith("https://"),
+        secure=secure,
         httponly=True,
-        samesite="Lax",
+        # SameSite=None requires Secure; plain-http local development stays same-site.
+        samesite="None" if secure else "Lax",
     )
     return response
 

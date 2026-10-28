@@ -353,7 +353,8 @@ A code review of #256 and #3840 before merging found these; all but one are fixe
 - [x] Grants past their 90-day absolute expiry are deleted (with their consumed refresh tokens) when a new grant is issued, so neither table grows forever.
 - [x] The topic-prompt tool schemas reject unknown arguments (they used to crash with a `TypeError`), and `topic` is a plain list of strings instead of a string-or-list type some clients mishandle.
 - [x] Sefaria: `POST /api/sheets/` with a non-object JSON body is a 400, not a 500.
-- Constraint, not fixed: the browser-binding cookie is `SameSite=Lax`, and Sefaria returns by a cross-origin auto-POST, so the chat host and the Sefaria sign-in host must share a registrable domain (`*.sefaria.org`). Otherwise every sign-in fails with "Finish signing in from the same browser".
+- [x] **Cross-site return (2026-10-22).** The browser-binding cookie was `SameSite=Lax`, which browsers drop from Sefaria's cross-site auto-POST when Sefaria is on another site than the chat host. Staging is exactly that (`chat-dev.sefaria.org` with `sefariastaging.org`), so every staging sign-in would fail with "Finish signing in from the same browser". Over https the cookie is now `SameSite=None; Secure`; that is safe because the cookie only proves which browser started the flow, and an attacker's flow is bound to the attacker's own cookie. Plain-http local development keeps `Lax`.
+- [x] **Sheets saved "..." as every source's English (found in staging use, 2026-10-22).** Sheet sources were filled from `/api/v3/texts/<ref>` with no `version`, which returns only the primary (Hebrew) version. They now request `version=source&version=english` with `return_format=strip_only_footnotes`. The unit test had mocked a response with both languages, which the real API never returns, so it hid the bug. Sheets the tool creates now end their summary with "Created with Claude."
 
 ## Deprecating the old MCP (after Phase 1 is proven)
 
@@ -372,3 +373,15 @@ A code review of #256 and #3840 before merging found these; all but one are fixe
 2. Should `validate_refs` and `validate_response_links` be public?
 3. Sefaria team: the `aud: "mcp"` token, its TTL, and revocation (2.1).
 4. Deprecation: redirect `mcp.sefaria.org` or turn it off, and on what timeline?
+
+
+### 2.9 Updating sheets (2026-10-22)
+
+`create_source_sheet` was create-only by design (2.6). `update_source_sheet` now edits a sheet, within limits the user chose:
+
+- [x] **Only sheets the signed-in user owns.** Collaborator sheets stay read-only to Claude. Sefaria enforces this for `mcp` tokens (403), and the tool checks it too.
+- [x] **Edit, reorder, add and remove text sources; never remove media.** Removing a media source makes Sefaria delete the uploaded file, so neither side allows it. The tool takes the sheet's complete new source list: `{"node": n}` keeps a source, `outsideText` or `ref`+`heRef` with a node rewrites it, and an item without a node adds one.
+- [x] **Publishing status never changes**, and `displayedCollection` is never set.
+- [x] **No lost edits.** The tool reads the sheet and sends its `dateModified` as `lastModified`, so Sefaria's existing check refuses the save if the sheet changed in between; the tool reports that rather than retrying.
+- [x] On sheets whose summary ends with "Created with Claude.", a rewritten summary keeps that note.
+- Needs Sefaria-Project's matching change (MCP tokens used to be refused on any update).

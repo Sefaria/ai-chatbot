@@ -24,7 +24,13 @@ from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 
-from .source_sheet_serializer import prepare_source_sheet_sources, serialize_source_sheet_payload
+from .source_sheet_serializer import (
+    SHEET_ATTRIBUTION,
+    attributed_summary,
+    merge_source_sheet_sources,
+    prepare_source_sheet_sources,
+    serialize_source_sheet_payload,
+)
 
 # ---------------------------------------------------------------------------
 # Base URL configuration — supports both public Sefaria and local k8s service
@@ -661,6 +667,78 @@ class SefariaClient:
         )
         return self._optimize_source_sheet_response(data)
 
+    async def update_source_sheet(
+        self,
+        sheet_id: int | str,
+        *,
+        title: str | None = None,
+        summary: str | None = None,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Update one of the signed-in user's own sheets.
+
+        Reads the sheet's current state and sends it back with the changes, carrying its
+        ``dateModified`` as ``lastModified`` so Sefaria refuses the save if the sheet changed
+        in between. Sefaria keeps the publishing status and refuses sheets the user does not
+        own; see ``merge_source_sheet_sources`` for how ``sources`` is applied.
+        """
+        user_id, session_token = self._require_user_session("update_source_sheet")
+        headers = {"Accept": "application/json", "X-Session-ID": session_token}
+        sheet = await self._get_json(f"api/sheets/{quote(str(sheet_id), safe='')}", headers=headers)
+        if not isinstance(sheet, dict) or "error" in sheet or "id" not in sheet:
+            message = sheet.get("error") if isinstance(sheet, dict) else None
+            raise ValueError(message or f"Source sheet {sheet_id} was not found")
+        if str(sheet.get("owner")) != str(user_id):
+            raise ValueError("You can only update your own source sheets")
+
+        update: dict[str, Any] = {
+            key: value for key, value in sheet.items() if key not in ("_id", "error")
+        }
+        update["lastModified"] = sheet.get("dateModified")
+        if title is not None:
+            update["title"] = title
+        if summary is not None:
+            # Keep the "Created with Claude." note on sheets that had it.
+            existing_summary = (sheet.get("summary") or "").strip()
+            update["summary"] = (
+                attributed_summary(summary)
+                if existing_summary.endswith(SHEET_ATTRIBUTION)
+                else summary
+            )
+        if sources is not None:
+            merged, next_node = merge_source_sheet_sources(
+                sheet.get("sources", []), sources, int(sheet.get("nextNode") or 1)
+            )
+            missing_text = [i for i, s in enumerate(merged) if s.get("ref") and "text" not in s]
+            payloads = await asyncio.gather(
+                *[self._get_sheet_source_text(merged[i]["ref"]) for i in missing_text]
+            )
+            for i, payload in zip(missing_text, payloads, strict=True):
+                merged[i]["text"] = self._build_sheet_text_block(payload)
+            update["sources"] = merged
+            update["nextNode"] = max(next_node, max(s["node"] for s in merged) + 1)
+
+        client = await self._get_client()
+        response = await client.post(
+            f"{self.base_url}/api/sheets/",
+            data={"json": json.dumps(update, ensure_ascii=False)},
+            headers=headers,
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        if not response.is_success and not (isinstance(data, dict) and data.get("error")):
+            response.raise_for_status()
+        # Sefaria reports a refused update in the body, sometimes with HTTP 200.
+        if isinstance(data, dict) and data.get("error"):
+            if data["error"] == "Sheet updated.":
+                raise ValueError(
+                    "The sheet changed while it was being updated; read it again and retry"
+                )
+            raise ValueError(data["error"])
+        return self._optimize_source_sheet_response(data)
+
     async def list_topic_prompts(
         self,
         *,
@@ -1033,13 +1111,29 @@ class SefariaClient:
             return normalized_sources
 
         ref_payloads = await asyncio.gather(
-            *[self.get_text(normalized_sources[index]["ref"]) for index in ref_indices]
+            *[
+                self._get_sheet_source_text(normalized_sources[index]["ref"])
+                for index in ref_indices
+            ]
         )
 
         for index, ref_payload in zip(ref_indices, ref_payloads, strict=True):
             normalized_sources[index]["text"] = self._build_sheet_text_block(ref_payload)
 
         return normalized_sources
+
+    async def _get_sheet_source_text(self, reference: str) -> dict[str, Any]:
+        """Fetch the Hebrew and English of a ref for a sheet source.
+
+        Without a ``version`` parameter /api/v3/texts returns only the primary (usually Hebrew)
+        version, which left every sheet source's English as the "..." placeholder. Footnotes are
+        stripped because a sheet source shows the text alone.
+        """
+        data = await self._get_json(
+            f"api/v3/texts/{quote(reference)}",
+            {"version": ["source", "english"], "return_format": "strip_only_footnotes"},
+        )
+        return self._optimize_text_response(data)
 
     def _build_sheet_text_block(self, payload: dict[str, Any]) -> dict[str, str]:
         """Convert a get_text response into the bilingual HTML saved on sheets."""
