@@ -143,6 +143,11 @@
   }
 
   const THOUGHT_PREVIEW_CHARS = 40;
+  // Narration is one short paragraph; streamed text past this looks like the answer.
+  const ANSWER_LIKELY_CHARS = 200;
+
+  // Once the answer is evidently streaming, the narration is behind us.
+  let answerLikely = $derived(streamTextDone || /\n\n\S/.test(streamingMarkdown.trim()) || streamingMarkdown.length > ANSWER_LIKELY_CHARS);
 
   // The latest thought step for the closed accordion header: its last sentence
   // (narration usually ends with the action), cut at a word boundary.
@@ -2497,7 +2502,7 @@
               {/if}
               {#if thoughtSteps.length && !isCurrentSessionStopping}
                 {@const liveThoughtKey = `${activeRequests[sessionId]?.messageId}_live_thought`}
-                <Accordion kind="thought" preview={thoughtPreview(thoughtSteps)}
+                <Accordion kind="thought" preview={answerLikely ? '' : thoughtPreview(thoughtSteps)}
                   expanded={!!expandedSections[liveThoughtKey]}
                   onToggle={() => toggleSection(liveThoughtKey)}>
                   {#each thoughtSteps as step}
