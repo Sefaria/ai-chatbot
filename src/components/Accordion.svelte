@@ -18,9 +18,10 @@
   <button class="lc-accordion-header" aria-expanded={expanded} onclick={toggle}
     data-feature-name={kind === 'thought' ? 'thinking_steps_toggle' : undefined}
     data-element-shown-name={kind === 'thought' ? 'thinking_steps_toggle_shown' : undefined}>
-    <span class="lc-accordion-title">{$_(titleKey)}</span>
     {#if preview && !expanded}
-      <span class="lc-accordion-preview">· {preview}</span>
+      <span class="lc-accordion-preview">{preview}</span>
+    {:else}
+      <span class="lc-accordion-title">{$_(titleKey)}</span>
     {/if}
     <svg class="lc-accordion-chevron" class:expanded width="18" height="18" viewBox="0 0 24 24"
       fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
