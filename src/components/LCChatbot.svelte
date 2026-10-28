@@ -19,7 +19,6 @@
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { cubicOut } from 'svelte/easing';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -104,9 +103,6 @@
   let streamTextDone = $state(false);
   // Leaked narration folded out of the streaming answer so far this turn.
   let thoughtSteps = $state([]);
-  // Narration that was just folded, shown in place while it collapses into the accordion.
-  let foldingMarkdown = $state('');
-  const FOLD_MS = 250;
   // Thumbs show as soon as the streamed text ends, before the final message
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
@@ -129,37 +125,6 @@
     const at = start ? (streamed || '').lastIndexOf(start) : -1;
     if (at <= 0) return [];
     return streamed.slice(0, at).split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
-  }
-
-  // Collapses upward and fades, toward the thought-process header above it.
-  function foldAway(node) {
-    const height = node.offsetHeight;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    return {
-      duration: reduced ? 0 : FOLD_MS,
-      easing: cubicOut,
-      css: (t) => `height: ${t * height}px; opacity: ${t}; overflow: hidden; transform: translateY(${(t - 1) * 6}px);`
-    };
-  }
-
-  const THOUGHT_PREVIEW_CHARS = 40;
-  // Narration is one short paragraph; streamed text past this looks like the answer.
-  const ANSWER_LIKELY_CHARS = 200;
-
-  // Once the answer is evidently streaming, the narration is behind us.
-  let answerLikely = $derived(streamTextDone || /\n\n\S/.test(streamingMarkdown.trim()) || streamingMarkdown.length > ANSWER_LIKELY_CHARS);
-
-  // The latest thought step for the closed accordion header: its last sentence
-  // (narration usually ends with the action), cut at a word boundary.
-  function thoughtPreview(steps) {
-    const text = (steps[steps.length - 1] || '')
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
-    const sentences = text.match(/[^.!?]+[.!?]*/g)?.map(sentence => sentence.trim()).filter(Boolean) || [];
-    const last = sentences[sentences.length - 1] || text;
-    if (last.length <= THOUGHT_PREVIEW_CHARS) return last;
-    const cut = last.slice(0, THOUGHT_PREVIEW_CHARS + 1);
-    const atSpace = cut.lastIndexOf(' ');
-    return (atSpace > 0 ? cut.slice(0, atSpace) : cut).replace(/[\s,;:—-]+$/, '') + '…';
   }
 
   function topicsAppearMs() {
@@ -1331,10 +1296,9 @@
     }
 
     // A tool call proves the text streamed before it was narration, not the
-    // answer: move it into the thought process before the answer streams in.
+    // answer: keep it above, as its own lines, while the answer streams in.
     function foldPlayedText() {
-      const folded = request.playedStreamText;
-      const steps = folded.split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
+      const steps = request.playedStreamText.split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
       request.playedStreamText = '';
       request.streamingMarkdown = '';
       request.wordRevealTimes = [];
@@ -1342,11 +1306,6 @@
       if (sessionId === sendingSessionId) {
         streamingMarkdown = '';
         thoughtSteps = request.thoughtSteps;
-        // Swap the streamed text for a static copy, then let it collapse away.
-        if (steps.length) {
-          foldingMarkdown = folded;
-          tick().then(() => { foldingMarkdown = ''; });
-        }
       }
     }
 
@@ -2458,13 +2417,7 @@
                 </Accordion>
               {/if}
               {#if item.thoughtSteps?.length}
-                <Accordion kind="thought"
-                  expanded={!!expandedSections[`${item.messageId}_thought`]}
-                  onToggle={() => toggleSection(`${item.messageId}_thought`)}>
-                  {#each item.thoughtSteps as step}
-                    <div class="message-content lc-thought-step">{@html renderMarkdown(step)}</div>
-                  {/each}
-                </Accordion>
+                <div class="message-content">{@html renderMarkdown(item.thoughtSteps.join('\n\n'))}</div>
               {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
             </div>
@@ -2501,17 +2454,7 @@
                 </div>
               {/if}
               {#if thoughtSteps.length && !isCurrentSessionStopping}
-                {@const liveThoughtKey = `${activeRequests[sessionId]?.messageId}_live_thought`}
-                <Accordion kind="thought" preview={answerLikely ? '' : thoughtPreview(thoughtSteps)}
-                  expanded={!!expandedSections[liveThoughtKey]}
-                  onToggle={() => toggleSection(liveThoughtKey)}>
-                  {#each thoughtSteps as step}
-                    <div class="message-content lc-thought-step">{@html renderMarkdown(step)}</div>
-                  {/each}
-                </Accordion>
-              {/if}
-              {#if foldingMarkdown}
-                <div class="message-content lc-folding-narration" out:foldAway>{@html renderMarkdown(foldingMarkdown)}</div>
+                <div class="message-content">{@html renderMarkdown(thoughtSteps.join('\n\n'))}</div>
               {/if}
               {#if streamingMarkdown && !isCurrentSessionStopping}
                 <div class="lc-streaming-answer">
@@ -3830,18 +3773,6 @@
     animation: none;
     background-image: none;
     -webkit-text-fill-color: currentColor;
-  }
-
-  .lc-response-package .message-content.lc-thought-step,
-  .message.assistant .message-content.lc-thought-step {
-    color: var(--lc-text-secondary);
-    font-size: var(--lc-font-size-sm);
-  }
-  .lc-thought-step + .lc-thought-step {
-    margin-top: var(--global-dimension-100, 8px);
-  }
-  .lc-thought-step :global(> :last-child) {
-    margin-bottom: 0;
   }
 
   /* Streaming: each new word fades in */
