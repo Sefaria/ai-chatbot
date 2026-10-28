@@ -767,7 +767,9 @@
   $effect(() => listenToHost({
     onOpen(detail) {
       // The page's own link to the relabelled launcher's question (e.g. the no-results text)
-      // acts as a launcher click: the question is asked once, whichever is clicked first
+      // acts as a launcher click: the question is asked once, whichever is clicked first.
+      // Only when it sends exactly the launcher's `source` and `question` (see lib/hostEvents.js):
+      // any difference, even whitespace, makes it a new question, asked again in a new chat.
       if (detail?.question && launcherOverride?.source === detail.source && launcherOverride.question === detail.question) {
         askFromLauncher();
         return;
