@@ -665,7 +665,6 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
-    scrollToBottom({ instant: true });
 
     if (isFullscreen) {
       pushSheetEntry(onSheetPopped);
