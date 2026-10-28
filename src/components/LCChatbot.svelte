@@ -116,6 +116,15 @@
     return (text.split('**').length - 1) % 2 === 1;
   }
 
+  // Streamed text that isn't part of the final answer is narration that leaked
+  // between tool calls; the server ends each passage with a paragraph break.
+  function leakedNarration(streamed, answer) {
+    const start = (answer || '').trim().slice(0, 40);
+    const at = start ? (streamed || '').lastIndexOf(start) : -1;
+    if (at <= 0) return [];
+    return streamed.slice(0, at).split(/\n{2,}/).map(step => step.trim()).filter(Boolean);
+  }
+
   function topicsAppearMs() {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TOPICS_APPEAR_MS;
   }
@@ -1348,6 +1357,7 @@
       await streamDrained();
       showAllPlayedText();
       const didStream = !!request.streamingMarkdown;
+      const thoughtSteps = leakedNarration(request.playedStreamText, response.markdown);
       if (didStream && sessionId === sendingSessionId) {
         await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
       }
@@ -1375,6 +1385,7 @@
         toolCalls: response.toolCalls,
         stats: response.stats,
         appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+        thoughtSteps,
         // Already on screen as streamed text, so don't animate it in again.
         noEntryAnimation: didStream,
         feedback: request.pendingFeedback
@@ -2359,6 +2370,15 @@
                   expanded={!!expandedSections[`${item.messageId}_topics`]}
                   onToggle={() => toggleSection(`${item.messageId}_topics`)}>
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
+                </Accordion>
+              {/if}
+              {#if item.thoughtSteps?.length}
+                <Accordion kind="thought"
+                  expanded={!!expandedSections[`${item.messageId}_thought`]}
+                  onToggle={() => toggleSection(`${item.messageId}_thought`)}>
+                  {#each item.thoughtSteps as step}
+                    <div class="message-content lc-thought-step">{@html renderMarkdown(step)}</div>
+                  {/each}
                 </Accordion>
               {/if}
               {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
@@ -3712,6 +3732,17 @@
     animation: none;
     background-image: none;
     -webkit-text-fill-color: currentColor;
+  }
+
+  .lc-response-package .message-content.lc-thought-step {
+    color: var(--lc-text-secondary);
+    font-size: var(--lc-font-size-sm);
+  }
+  .lc-thought-step + .lc-thought-step {
+    margin-top: var(--global-dimension-100, 8px);
+  }
+  .lc-thought-step :global(> :last-child) {
+    margin-bottom: 0;
   }
 
   /* Streaming: each new word fades in */
