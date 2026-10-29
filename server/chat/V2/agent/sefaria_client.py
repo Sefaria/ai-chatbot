@@ -78,9 +78,10 @@ def _get_default_sefaria_base_url() -> str:
 _API_KEY_PATTERN = re.compile(r"[A-Za-z0-9_\-]{8,256}")
 _warned_bad_api_key = False
 
-# Hosts that receive x-api-key: sefaria.org and its subdomains (www, cauldrons, ...) over
-# https. SEFARIA_API_KEY_EXTRA_HOSTS (comma-separated exact hostnames) adds more, e.g. an
-# in-cluster service. Hosts in MANUSCRIPT_IMAGE_HOSTS are never approved.
+# x-api-key is sent only over https. Hosts that receive it: sefaria.org and its subdomains
+# (www, cauldrons, ...). SEFARIA_API_KEY_EXTRA_HOSTS (comma-separated exact hostnames) adds
+# more, e.g. an in-cluster service, but those too only over https: a plain-http URL, or a
+# redirect to one, never carries the key. Hosts in MANUSCRIPT_IMAGE_HOSTS are never approved.
 API_KEY_HOST_SUFFIX = "sefaria.org"
 
 
@@ -109,6 +110,8 @@ def _validated(key: str | None) -> str:
 
 
 def _api_key_host_approved(url: httpx.URL) -> bool:
+    if url.scheme != "https":
+        return False
     host = (url.host or "").lower().rstrip(".")
     if not host or host in MANUSCRIPT_IMAGE_HOSTS:
         return False
@@ -119,9 +122,7 @@ def _api_key_host_approved(url: httpx.URL) -> bool:
     }
     if host in extra:
         return True
-    return url.scheme == "https" and (
-        host == API_KEY_HOST_SUFFIX or host.endswith("." + API_KEY_HOST_SUFFIX)
-    )
+    return host == API_KEY_HOST_SUFFIX or host.endswith("." + API_KEY_HOST_SUFFIX)
 
 
 _UNSET: Any = object()

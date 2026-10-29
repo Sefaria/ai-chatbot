@@ -1202,6 +1202,44 @@ class TestApiKeyHeader:
 
         assert seen[0].headers["x-api-key"] == self.FAKE_KEY
 
+    async def test_http_extra_host_never_carries_the_key(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.setenv("SEFARIA_API_KEY_EXTRA_HOSTS", "sefaria.internal.test")
+
+        seen = await self._run(
+            monkeypatch,
+            lambda c: c._get_json("api/calendars"),
+            base_url="http://sefaria.internal.test",
+        )
+
+        assert len(seen) == 1
+        assert "x-api-key" not in seen[0].headers
+
+    async def test_https_to_http_redirect_on_extra_host_drops_the_key(self, monkeypatch):
+        import httpx
+
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.setenv("SEFARIA_API_KEY_EXTRA_HOSTS", "sefaria.internal.test")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.scheme == "https":
+                return httpx.Response(
+                    302, headers={"location": "http://sefaria.internal.test/api/calendars"}
+                )
+            return httpx.Response(200, json={})
+
+        async def call(client):
+            http = await client._get_client()
+            await http.get(f"{client.base_url}/api/calendars", follow_redirects=True)
+
+        seen = await self._run(
+            monkeypatch, call, handler=handler, base_url="https://sefaria.internal.test"
+        )
+
+        assert [r.url.scheme for r in seen] == ["https", "http"]
+        assert seen[0].headers["x-api-key"] == self.FAKE_KEY
+        assert "x-api-key" not in seen[1].headers
+
     async def test_absolute_url_to_another_host_never_carries_the_key(self, monkeypatch):
         monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
 
