@@ -302,8 +302,6 @@
   let layout = $derived(isFullscreen ? 'fullscreen' : mode);
   // Host-set launcher (chatbot:launcher): another label, and a question its click asks
   let launcherOverride = $state(null);
-  // Where the next send was asked from on the host page (askInNewChat sets it, handleSend uses it)
-  let nextSendSource = '';
   let launcherLabel = $derived(launcherOverride ? $_(LAUNCHER_LABELS[launcherOverride.source]) : '');
   // A reply landed while the assistant was closed: the closed launcher shows it until opened
   let responseReady = $state(false);
@@ -758,8 +756,7 @@
     if (!isOpen) openPanel();
     if (!question) return;
     await tick();
-    nextSendSource = source;
-    handleSend();
+    handleSend({ source });
   }
 
   // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
@@ -1324,10 +1321,8 @@
     }
   }
 
-  async function handleSend() {
-    // Only the send askInNewChat starts carries its source; a Send click or Enter has none
-    const source = nextSendSource;
-    nextSendSource = '';
+  // `source`: where on the host page the question was asked from (only askInNewChat passes one)
+  async function handleSend({ source = '' } = {}) {
     await loggedOutChatsClaimed;
     const text = inputText.trim();
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
@@ -2591,7 +2586,7 @@
           {:else}
           <button
             class="send-btn"
-            onclick={handleSend}
+            onclick={() => handleSend()}
             disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
             aria-label={$_('assistant.input.send.tooltip')}
           >
