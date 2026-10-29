@@ -235,6 +235,31 @@ class SefariaToolExecutor:
             fields = {k: v for k, v in input_data.items() if k != "id"}
             return await self.client.update_topic_prompt(input_data["id"], fields)
 
+        elif tool_name == "publish_topic_prompts":
+            return await self.client.publish_topic_prompts(
+                input_data["items"],
+                lang=input_data.get("lang", "en"),
+                published=input_data.get("published", True),
+                dry_run=input_data.get("dry_run", False),
+            )
+
+        elif tool_name == "generate_topic_prompts":
+            return await self.client.generate_topic_prompts(
+                input_data["topic"], lang=input_data.get("lang", "en"), ids=input_data.get("ids")
+            )
+
+        elif tool_name == "get_admin_task":
+            return await self.client.get_admin_task(input_data["task_id"])
+
+        elif tool_name in ("tag_ref_with_topic", "untag_ref_from_topic"):
+            call = getattr(self.client, tool_name)
+            return await call(
+                input_data["ref"],
+                input_data["topic"],
+                lang=input_data.get("lang", "en"),
+                dry_run=input_data.get("dry_run", False),
+            )
+
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -350,6 +375,14 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "update_source_sheet": lambda: f"Updating source sheet {q(tool_input.get('sheet_id'))}",
         "list_topic_prompts": lambda: "Listing topic prompts",
         "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",
+        "publish_topic_prompts": lambda: (
+            f"{'Unpublishing' if tool_input.get('published') is False else 'Publishing'} "
+            f"{len(tool_input.get('items') or [])} topic prompt(s)"
+        ),
+        "generate_topic_prompts": lambda: f"Generating prompts for {q(tool_input.get('topic'))}",
+        "get_admin_task": lambda: f"Checking task {q(tool_input.get('task_id'))}",
+        "tag_ref_with_topic": lambda: f"Tagging {q(tool_input.get('ref'))} with {q(tool_input.get('topic'))}",
+        "untag_ref_from_topic": lambda: f"Removing {q(tool_input.get('ref'))} from {q(tool_input.get('topic'))}",
     }
 
     if tool_name in descriptions:

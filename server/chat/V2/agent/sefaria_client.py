@@ -777,6 +777,49 @@ class SefariaClient:
             "PATCH", f"api/admin/topic-prompts/{quote(id, safe='')}", json=fields
         )
 
+    async def publish_topic_prompts(
+        self, items: list[dict[str, str]], *, lang: str = "en", published: bool = True, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Publish or unpublish topic prompts (POST /api/admin/topic-prompts/publish)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/topic-prompts/publish",
+            json={"items": items, "lang": lang, "published": published, "dry_run": dry_run},
+        )
+
+    async def generate_topic_prompts(
+        self, topic: str, *, lang: str = "en", ids: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Queue AI prompt generation (POST /api/admin/topic-prompts/generate)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/topic-prompts/generate",
+            json={"topic": topic, "lang": lang, "ids": ids or []},
+        )
+
+    async def get_admin_task(self, task_id: str) -> dict[str, Any]:
+        """A background task's state (GET /api/admin/tasks/<id>)."""
+        return await self._staff_request("GET", f"api/admin/tasks/{quote(task_id, safe='')}")
+
+    async def tag_ref_with_topic(
+        self, ref: str, topic: str, *, lang: str = "en", dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Tag a passage with a topic (POST /api/admin/ref-topic-links)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/ref-topic-links",
+            json={"ref": ref, "topic": topic, "lang": lang, "dry_run": dry_run},
+        )
+
+    async def untag_ref_from_topic(
+        self, ref: str, topic: str, *, lang: str = "en", dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Remove a passage from a topic (DELETE /api/admin/ref-topic-links)."""
+        params = [("ref", ref), ("topic", topic), ("lang", lang)]
+        if dry_run:
+            params.append(("dry_run", "true"))
+        return await self._staff_request("DELETE", "api/admin/ref-topic-links", params=params)
+
     async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """Call a Sefaria staff API as the signed-in user, keeping its error message.
 

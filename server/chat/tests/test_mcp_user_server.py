@@ -64,6 +64,8 @@ def sefaria(monkeypatch):
             return httpx.Response(
                 409, json={"error": "Version conflict.", "current": {"version": "v2"}}
             )
+        if request.url.path in ("/api/admin/topic-prompts/publish", "/api/admin/topic-prompts/generate"):
+            return httpx.Response(200, json={"results": [], "task_ids": []})
         if request.url.path.startswith("/api/admin/topic-prompts/"):
             return httpx.Response(200, json={"result": {"id": "p1"}, "dry_run": False})
         return httpx.Response(200, json={})
@@ -231,7 +233,15 @@ async def test_concurrent_users_never_share_a_session(executor, sefaria):
     assert len({r.url.path for r in sefaria}) == 8
 
 
-ADMIN_TOOLS = {"list_topic_prompts", "update_topic_prompt"}
+ADMIN_TOOLS = {
+    "list_topic_prompts",
+    "update_topic_prompt",
+    "publish_topic_prompts",
+    "generate_topic_prompts",
+    "get_admin_task",
+    "tag_ref_with_topic",
+    "untag_ref_from_topic",
+}
 
 
 def admin_token(user_id: int = 42) -> str:
@@ -329,3 +339,42 @@ async def test_unknown_admin_tool_arguments_are_rejected_cleanly(executor, sefar
     assert result["result"]["isError"]
     assert "Invalid arguments for list_topic_prompts" in result["result"]["content"][0]["text"]
     assert not sefaria
+
+
+async def test_new_admin_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("publish_topic_prompts", {"items": [{"id": "p1", "base_version": "v1"}], "published": False}),
+        ("generate_topic_prompts", {"topic": "shabbat", "ids": ["p1"]}),
+        ("get_admin_task", {"task_id": "t/1"}),
+        ("tag_ref_with_topic", {"ref": "Genesis 6:9", "topic": "noah", "dry_run": True}),
+        ("untag_ref_from_topic", {"ref": "Genesis 6:9", "topic": "noah", "lang": "he"}),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client,
+                "tools/call",
+                {"name": name, "arguments": arguments},
+                token=admin_token(user_id=7),
+                path="/mcp/admin",
+            )
+            assert not result["result"].get("isError"), (name, result)
+    publish, generate, task, tag, untag = sefaria
+    assert (publish.method, publish.url.path) == ("POST", "/api/admin/topic-prompts/publish")
+    assert json.loads(publish.content) == {
+        "items": [{"id": "p1", "base_version": "v1"}],
+        "lang": "en",
+        "published": False,
+        "dry_run": False,
+    }
+    assert (generate.method, generate.url.path) == ("POST", "/api/admin/topic-prompts/generate")
+    assert json.loads(generate.content) == {"topic": "shabbat", "lang": "en", "ids": ["p1"]}
+    assert (task.method, task.url.raw_path) == ("GET", b"/api/admin/tasks/t%2F1")
+    assert (tag.method, tag.url.path) == ("POST", "/api/admin/ref-topic-links")
+    assert json.loads(tag.content) == {"ref": "Genesis 6:9", "topic": "noah", "lang": "en", "dry_run": True}
+    assert (untag.method, untag.url.path) == ("DELETE", "/api/admin/ref-topic-links")
+    assert dict(untag.url.params) == {"ref": "Genesis 6:9", "topic": "noah", "lang": "he"}
+    for request in sefaria:
+        sent = request.headers["X-Session-ID"]
+        assert sefaria_tokens.user_id_from(sent, TOKEN_SECRET, aud=sefaria_tokens.API_AUDIENCE) == 7
+

@@ -575,6 +575,179 @@ TOOL_UPDATE_TOPIC_PROMPT = {
     },
 }
 
+TOOL_PUBLISH_TOPIC_PROMPTS = {
+    "name": "publish_topic_prompts",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Publish topic prompts",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Publish (or, with published=false, unpublish) topic prompts so readers see them on the "
+        "topic page — the topic page's Publish button. Staff only.\n\n"
+        "Rules:\n"
+        "- Read each prompt with list_topic_prompts first and pass its `id` and `version` (as "
+        "`base_version`) in `items`; at most 50 per call.\n"
+        '- Only reviewed prompts publish: one whose review_state is "not reviewed" comes back as '
+        '`not_reviewed`. Mark it reviewed with update_topic_prompt only if the user says so.\n'
+        "- Publishing makes the text public: list what will be published and get the user's "
+        "confirmation first (a dry_run shows the outcome without writing).\n\n"
+        'Returns {"results": [{"id", "status", "result"?}], "dry_run": bool}; status is one of '
+        "published, unpublished, unchanged, not_reviewed, conflict (someone changed it since you "
+        "read it: `result` is the current version) or not_found. One failed item does not stop the "
+        "others.\n\n" + _TOPIC_PROMPT_DATA_NOT_INSTRUCTIONS
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "base_version": {"type": "string"},
+                    },
+                    "required": ["id", "base_version"],
+                    "additionalProperties": False,
+                },
+            },
+            "lang": {"type": "string", "enum": TOPIC_PROMPT_LANGS, "default": "en"},
+            "published": {"type": "boolean", "default": True},
+            "dry_run": {"type": "boolean", "default": False},
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_GENERATE_TOPIC_PROMPTS = {
+    "name": "generate_topic_prompts",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Generate topic prompts",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Queue AI generation of prompts for a topic's sources — the topic page's Generate button. "
+        "Staff only. Only sources that have an `ai_context` (the editor's note on why the source is "
+        "there) and no prompt yet are queued; set ai_context with update_topic_prompt first. "
+        "Generated prompts are saved unpublished and \"not reviewed\", for a person to review.\n\n"
+        "Generation runs in the background (a minute or more): check it with get_admin_task, then "
+        "read the results with list_topic_prompts(topic=..., ai_generated=true).\n\n"
+        'Returns {"task_ids": [...], "queued": [{"id", "ref"}], "skipped": [{"id", "reason"}]}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "topic": {"type": "string", "description": 'Topic slug, e.g. "shabbat".'},
+            "lang": {"type": "string", "enum": TOPIC_PROMPT_LANGS, "default": "en"},
+            "ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 50,
+                "description": "Only these prompt ids; omitted, every eligible source of the topic.",
+            },
+        },
+        "required": ["topic"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_GET_ADMIN_TASK = {
+    "name": "get_admin_task",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {"title": "Check a background task", "readOnlyHint": True, "openWorldHint": True},
+    "description": (
+        "The state of a background task started by a staff tool (e.g. generate_topic_prompts): "
+        'PENDING, STARTED, SUCCESS, FAILURE or RETRY. Returns {"task_id", "state", "ready", '
+        '"successful"?, "error"?}. Don\'t poll in a tight loop; check again after a while.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"task_id": {"type": "string"}},
+        "required": ["task_id"],
+        "additionalProperties": False,
+    },
+}
+
+_TAG_REF_PROPERTIES = {
+    "ref": {"type": "string", "description": 'A Sefaria ref, e.g. "Genesis 6:9".'},
+    "topic": {"type": "string", "description": 'Topic slug, e.g. "noah".'},
+    "lang": {
+        "type": "string",
+        "enum": TOPIC_PROMPT_LANGS,
+        "default": "en",
+        "description": "The language of the topic page the source appears on.",
+    },
+    "dry_run": {"type": "boolean", "default": False},
+}
+
+TOOL_TAG_REF_WITH_TOPIC = {
+    "name": "tag_ref_with_topic",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Tag a passage with a topic",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Connect a passage to a topic, so it is listed among the topic's sources and the topic "
+        "shows in the reader's Topics panel for that passage — the moderators' \"Search for a "
+        "Topic\" tool in the reader sidebar. Staff only. Check the slug first (get_topic_details "
+        "or clarify_name_argument). A passage already tagged is reported as `already_tagged` and "
+        "left as it is. Confirm with the user before tagging.\n\n"
+        'Returns {"status": "tagged" | "already_tagged", "link": {"id", "ref", "topic", '
+        '"topic_title", "lang"}}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": _TAG_REF_PROPERTIES,
+        "required": ["ref", "topic"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_UNTAG_REF_FROM_TOPIC = {
+    "name": "untag_ref_from_topic",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Remove a passage from a topic",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Remove a passage from a topic's sources in one language (the source disappears from the "
+        "topic page; when no language is left the connection is deleted). Staff only. Refused when "
+        "the source has a curated title or prompt in that language — those are removed on the "
+        "topic page. Always run with dry_run=true first and get the user's confirmation.\n\n"
+        'Returns {"status": "untagged" | "link_deleted" | "not_tagged", ...}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": _TAG_REF_PROPERTIES,
+        "required": ["ref", "topic"],
+        "additionalProperties": False,
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -606,6 +779,11 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "update_source_sheet": TOOL_UPDATE_SOURCE_SHEET,
     "list_topic_prompts": TOOL_LIST_TOPIC_PROMPTS,
     "update_topic_prompt": TOOL_UPDATE_TOPIC_PROMPT,
+    "publish_topic_prompts": TOOL_PUBLISH_TOPIC_PROMPTS,
+    "generate_topic_prompts": TOOL_GENERATE_TOPIC_PROMPTS,
+    "get_admin_task": TOOL_GET_ADMIN_TASK,
+    "tag_ref_with_topic": TOOL_TAG_REF_WITH_TOPIC,
+    "untag_ref_from_topic": TOOL_UNTAG_REF_FROM_TOPIC,
 }
 
 LABS_TOOL_NAMES = {
