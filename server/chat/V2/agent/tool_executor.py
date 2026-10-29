@@ -251,6 +251,26 @@ class SefariaToolExecutor:
         elif tool_name == "get_admin_task":
             return await self.client.get_admin_task(input_data["task_id"])
 
+        elif tool_name == "get_lexicon_entry":
+            return await self.client.get_lexicon_entry(input_data["lexicon"], input_data["headword"])
+
+        elif tool_name == "update_lexicon_entry":
+            return await self.client.update_lexicon_entry(
+                input_data["lexicon"],
+                input_data["headword"],
+                input_data["content"],
+                input_data["base_version"],
+                dry_run=input_data.get("dry_run", False),
+            )
+
+        elif tool_name == "rename_lexicon_headword":
+            return await self.client.rename_lexicon_headword(
+                input_data["lexicon"],
+                input_data["headword"],
+                input_data["new_headword"],
+                dry_run=input_data.get("dry_run", False),
+            )
+
         elif tool_name in ("tag_ref_with_topic", "untag_ref_from_topic"):
             call = getattr(self.client, tool_name)
             return await call(
@@ -383,6 +403,11 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "get_admin_task": lambda: f"Checking task {q(tool_input.get('task_id'))}",
         "tag_ref_with_topic": lambda: f"Tagging {q(tool_input.get('ref'))} with {q(tool_input.get('topic'))}",
         "untag_ref_from_topic": lambda: f"Removing {q(tool_input.get('ref'))} from {q(tool_input.get('topic'))}",
+        "get_lexicon_entry": lambda: f"Reading {q(tool_input.get('headword'))} in {q(tool_input.get('lexicon'))}",
+        "update_lexicon_entry": lambda: f"Editing {q(tool_input.get('headword'))} in {q(tool_input.get('lexicon'))}",
+        "rename_lexicon_headword": lambda: (
+            f"Renaming {q(tool_input.get('headword'))} to {q(tool_input.get('new_headword'))}"
+        ),
     }
 
     if tool_name in descriptions:

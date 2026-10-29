@@ -820,6 +820,36 @@ class SefariaClient:
             params.append(("dry_run", "true"))
         return await self._staff_request("DELETE", "api/admin/ref-topic-links", params=params)
 
+    @staticmethod
+    def _lexicon_path(lexicon: str, headword: str) -> str:
+        return f"{quote(lexicon, safe='')}/{quote(headword, safe='')}"
+
+    async def get_lexicon_entry(self, lexicon: str, headword: str) -> dict[str, Any]:
+        """Read a dictionary entry with its version (GET /api/admin/lexicon-entries/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "GET", f"api/admin/lexicon-entries/{self._lexicon_path(lexicon, headword)}"
+        )
+
+    async def update_lexicon_entry(
+        self, lexicon: str, headword: str, content: dict[str, Any], base_version: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Edit a dictionary entry's content (PATCH /api/admin/lexicon-entries/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/lexicon-entries/{self._lexicon_path(lexicon, headword)}",
+            json={"content": content, "base_version": base_version, "dry_run": dry_run},
+        )
+
+    async def rename_lexicon_headword(
+        self, lexicon: str, headword: str, new_headword: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Rename a headword (PATCH /api/admin/lexicon-entries/headword/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/lexicon-entries/headword/{self._lexicon_path(lexicon, headword)}",
+            json={"new_headword": new_headword, "dry_run": dry_run},
+        )
+
     async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """Call a Sefaria staff API as the signed-in user, keeping its error message.
 

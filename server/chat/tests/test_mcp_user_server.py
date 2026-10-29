@@ -241,6 +241,9 @@ ADMIN_TOOLS = {
     "get_admin_task",
     "tag_ref_with_topic",
     "untag_ref_from_topic",
+    "get_lexicon_entry",
+    "update_lexicon_entry",
+    "rename_lexicon_headword",
 }
 
 
@@ -377,4 +380,34 @@ async def test_new_admin_tools_reach_their_staff_routes(executor, sefaria):
     for request in sefaria:
         sent = request.headers["X-Session-ID"]
         assert sefaria_tokens.user_id_from(sent, TOKEN_SECRET, aud=sefaria_tokens.API_AUDIENCE) == 7
+
+
+async def test_lexicon_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("get_lexicon_entry", {"lexicon": "Jastrow Dictionary", "headword": "אב"}),
+        (
+            "update_lexicon_entry",
+            {"lexicon": "Jastrow Dictionary", "headword": "אב", "content": {"notes": "x"}, "base_version": "v1"},
+        ),
+        (
+            "rename_lexicon_headword",
+            {"lexicon": "Jastrow Dictionary", "headword": "אב", "new_headword": "אָב", "dry_run": True},
+        ),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client, "tools/call", {"name": name, "arguments": arguments}, token=admin_token(), path="/mcp/admin"
+            )
+            assert not result["result"].get("isError"), (name, result)
+    get, update, rename = sefaria
+    path = "/api/admin/lexicon-entries/Jastrow%20Dictionary/%D7%90%D7%91"
+    assert (get.method, get.url.raw_path) == ("GET", path.encode())
+    assert (update.method, update.url.raw_path) == ("PATCH", path.encode())
+    assert json.loads(update.content) == {"content": {"notes": "x"}, "base_version": "v1", "dry_run": False}
+    assert (rename.method, rename.url.raw_path) == (
+        "PATCH",
+        b"/api/admin/lexicon-entries/headword/Jastrow%20Dictionary/%D7%90%D7%91",
+    )
+    assert json.loads(rename.content) == {"new_headword": "אָב", "dry_run": True}
 
