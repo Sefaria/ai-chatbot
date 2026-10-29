@@ -26,6 +26,8 @@
   import Accordion from './Accordion.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
+  import { createAnalytics } from '@sefaria/analytics';
+  import { CHATBOT_EXTRA_ALLOWED_PARAMS, assistantClickParams } from '../lib/analytics.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -61,9 +63,16 @@
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
 
+  // GA4 analytics, through the shared @sefaria/analytics package. It sends through the host page's
+  // window.gtag and does nothing if there isn't one.
+  const analytics = createAnalytics({
+    extraAllowedParams: CHATBOT_EXTRA_ALLOWED_PARAMS,
+    // Read on every event, so a change to is-moderator while the page is open is picked up.
+    commonParams: () => ({ is_staff: isStaff, la_version: APP_VERSION }),
+  });
+
   function track(event, params = {}) {
-    if (typeof window.gtag !== 'function') return;
-    window.gtag('event', event, { ...params, is_staff: isStaff, la_version: APP_VERSION });
+    analytics.track(event, params);
   }
 
   function trackAssistantClick(featureName) {
@@ -325,55 +334,12 @@
     const host = $host();
     if (!host) return;
 
-    function trackClick(e) {
-      const path = e.composedPath();
-      // Skip the toggle button — toggleMode() fires its own specific event
-      const isToggle = path.some(
-        el => el instanceof Element && el.getAttribute('aria-label') === 'Toggle docked/floating'
-      );
-      if (isToggle) return;
-      // Explicit analytics label wins over the generic link/aria-label logic
-      // below (e.g. appetizer topic links, thinking-step links are <a> elements).
-      const labelled = path.find(
-        el => el instanceof Element && el.getAttribute('data-feature-name')
-      );
-      if (labelled) {
-        track('assistant_click', { feature_name: labelled.getAttribute('data-feature-name'), link_text: labelled.textContent.trim() });
-        return;
-      }
-      // If a response link was clicked — capture the link text
-      const link = path.find(
-        el => el instanceof Element && el.tagName === 'A' && el.getAttribute('href')
-      );
-      if (link) {
-        const raw = link.getAttribute('href');
-        // new URL() throws on a malformed href — a bad link must not kill the handler
-        let link_url = raw;
-        if (raw.startsWith('http')) {
-          try {
-            const url = new URL(raw);
-            link_url = url.pathname + (url.search || '');
-          } catch {
-            // keep the raw href
-          }
-        }
-        const link_text = link.textContent.trim();
-        track('assistant_click', { feature_name: 'Response link', text: link_text, link_url, link_text });
-        return;
-      }
-
-      // Otherwise walk up the path for the nearest aria-label. No link_text here:
-      // this fallback matches broad containers (e.g. the "Chat messages" scroll
-      // region) whose textContent is the whole conversation, not a link label.
-      const target = path.find(
-        el => el instanceof Element && el.getAttribute('aria-label')
-      );
-      if (!target) return;
-      track('assistant_click', { feature_name: target.getAttribute('aria-label') });
-    }
-
-    host.addEventListener('click', trackClick);
-    return () => host.removeEventListener('click', trackClick);
+    // `path` is every element the click passed through, innermost first, including the ones inside the shadow root.
+    // assistantClickParams (src/lib/analytics.js) decides what, if anything, the click reports.
+    return analytics.listen(host, 'click', (e, path) => {
+      const params = assistantClickParams(path);
+      if (params) track('assistant_click', params);
+    });
   });
 
   // GA4 tracking: fire 'assistant_element_shown' the first time an element with
@@ -385,41 +351,12 @@
     if (!messageListRef) return;
     const root = messageListRef;
 
-    const seen = new WeakSet();
-    const io = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const el = entry.target;
-        io.unobserve(el);
-        if (seen.has(el)) continue;
-        seen.add(el);
-        track('assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') });
-      }
-    }, { root, threshold: 0.5 });
-
-    function observe(node) {
-      if (!(node instanceof Element)) return;
-      if (node.hasAttribute('data-element-shown-name') && !seen.has(node)) {
-        io.observe(node);
-      }
-      node.querySelectorAll?.('[data-element-shown-name]').forEach(el => {
-        if (!seen.has(el)) io.observe(el);
-      });
-    }
-
-    observe(root);
-
-    const mo = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        m.addedNodes.forEach(observe);
-      }
-    });
-    mo.observe(root, { childList: true, subtree: true });
-
-    return () => {
-      io.disconnect();
-      mo.disconnect();
-    };
+    return analytics.observeFirstSeen(
+      root,
+      '[data-element-shown-name]',
+      el => track('assistant_element_shown', { feature_name: el.getAttribute('data-element-shown-name') }),
+      { root, threshold: 0.5 }
+    );
   });
 
   // Dispatch custom events

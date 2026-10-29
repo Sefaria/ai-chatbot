@@ -14,10 +14,12 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "jsdom": "^26.1.0",
     "svelte": "^5.0.0",
     "vite": "^5.4.0"
   },
   "dependencies": {
+    "@sefaria/analytics": "github:Sefaria/Sefaria-Analytics#4d341c2ff5045d04d009295d7757d94a7e1dc3cf",
     "dompurify": "^3.2.0",
     "marked": "^15.0.0",
     "svelte-i18n": "^4.0.1"
