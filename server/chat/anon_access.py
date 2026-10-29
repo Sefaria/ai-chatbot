@@ -94,13 +94,14 @@ def anon_answers_remaining(user_id: str) -> int | None:
 FREE_ANSWER_SOURCES = {"search_no_results"}
 
 
-def gets_free_answer(user_id: str, source: str) -> bool:
+def gets_free_answer(user_id: str, source: str, remaining: int | None) -> bool:
     """Whether this question's answer won't use up a free answer.
 
     The question the empty-search page asks never uses up a visitor's last free
     answer, once per visitor: with one left it's answered for free, and they still
-    have one. Any other time it counts like any other question.
+    have one. Any other time it counts like any other question. `remaining` is
+    anon_answers_remaining(user_id), which the caller has already worked out.
     """
-    if source not in FREE_ANSWER_SOURCES or anon_answers_remaining(user_id) != 1:
+    if source not in FREE_ANSWER_SOURCES or remaining != 1:
         return False
     return not ChatMessage.objects.filter(user_id=user_id, free_answer=True).exists()
