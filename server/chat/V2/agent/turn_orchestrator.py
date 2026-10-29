@@ -10,6 +10,7 @@ from braintrust import current_span
 from django.conf import settings
 
 from ..prompts.prompt_fragments import (
+    DISABLED_THINKING_TOOL_USE_NUDGE,
     ERROR_FALLBACK_MESSAGE,
     NO_THINKING_NARRATION_INSTRUCTION,
     SECTION_SEPARATOR,
@@ -174,6 +175,10 @@ class TurnOrchestrator:
         system_prompt = prompt_result.full_prompt
         if self.options_builder.thinking_disabled:
             system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
+            # TEST (Sonnet 5 PR only): Anthropic's prompting guide says Sonnet 5
+            # reaches for tools less with thinking off unless nudged explicitly.
+            if self.options_builder.model == "claude-sonnet-5":
+                system_prompt += SECTION_SEPARATOR + DISABLED_THINKING_TOOL_USE_NUDGE
 
         options, system_prompt_in_options = self.options_builder.build(
             system_prompt=system_prompt,

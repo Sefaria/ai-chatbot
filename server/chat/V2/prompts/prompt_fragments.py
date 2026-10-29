@@ -52,6 +52,15 @@ NO_THINKING_NARRATION_INSTRUCTION = (
     "Begin your response directly with the answer."
 )
 
+# Anthropic's Sonnet 5 prompting guide notes that with thinking disabled, the
+# model is less likely to reach for tools and recommends an explicit nudge:
+# https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5
+DISABLED_THINKING_TOOL_USE_NUDGE = (
+    "Even though extended thinking is off, you should still proactively use the "
+    "available tools (search, text retrieval, etc.) whenever a question calls for "
+    "them. Reach for a tool rather than answering from memory or guessing."
+)
+
 
 def build_prompt(
     user_message: str,
