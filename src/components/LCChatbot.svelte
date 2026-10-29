@@ -18,6 +18,7 @@
     deleteConversation
   } from '../lib/api.js';
   import { tick, untrack } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -90,11 +91,109 @@
   let resizeEdge = $state(null);
   
   let appetizerData = $state(null);
+
+  // Streaming UX: the final answer shows as the server sends it, word by word,
+  // each new word fading in. Per-turn bookkeeping (queue, timers, played text)
+  // lives on the request object in activeRequests so concurrent sends across
+  // different sessions never share state; these top-level vars only mirror
+  // whichever request belongs to the currently foregrounded session.
+  const WORD_FADE_MS = 400;
+  let streamingMarkdown = $state('');
+  let streamEl = $state(null);
+  let streamTextDone = $state(false);
+  // Thumbs show as soon as the streamed text ends, before the final message
+  // (and its traceId) arrives; a click is held under this id until then.
+  const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
+  let pendingFeedback = $state(null);
+  const TOPICS_APPEAR_MS = 250;
+  // Before the answer starts streaming, "Synthesizing response" stays up for
+  // at least this long; text that arrives sooner is held until then.
+  const SYNTHESIZING_MIN_MS = 1000;
+
+  function hasOpenMarkup(text) {
+    if (text.lastIndexOf('[') > text.lastIndexOf(']')) return true;
+    if (text.lastIndexOf('](') > text.lastIndexOf(')')) return true;
+    return (text.split('**').length - 1) % 2 === 1;
+  }
+
+  // A markdown thematic break (---, ***, ___) or an <hr> on its own line.
+  const DIVIDER_LINE = /^\s*(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|<hr\b[^>]*>)\s*$/;
+  const NARRATION_DIVIDER = '<hr class="lc-narration-divider">';
+
+  // How far into the answer an AI-written divider still counts as separating
+  // narration: narration in the same passage as the answer opens the answer.
+  const DIVIDER_LOOKAHEAD_BLOCKS = 3;
+
+  // Streamed text before the final answer is narration that leaked between
+  // tool calls. It stays on screen, so keep it in the saved message too, with
+  // a divider before the answer unless the AI already wrote one near there.
+  function withLeakedNarration(streamed, answer) {
+    const start = (answer || '').trim().slice(0, 40);
+    const at = start ? (streamed || '').lastIndexOf(start) : -1;
+    if (at <= 0) return answer;
+    const narration = streamed.slice(0, at).trim();
+    const answerOpening = answer.trim().split(/\n{2,}/).slice(0, DIVIDER_LOOKAHEAD_BLOCKS);
+    const hasDivider = DIVIDER_LINE.test(narration.split('\n').at(-1))
+      || answerOpening.some(block => block.split('\n').some(line => DIVIDER_LINE.test(line)));
+    return narration + '\n\n' + (hasDivider ? '' : NARRATION_DIVIDER + '\n\n') + answer;
+  }
+
+  function topicsAppearMs() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TOPICS_APPEAR_MS;
+  }
+
+  $effect(() => {
+    if (!streamEl) return;
+    streamEl.innerHTML = renderMarkdown(streamingMarkdown);
+    const activeRequest = activeRequests[sessionId];
+    if (activeRequest) fadeInNewWords(streamEl, activeRequest);
+  });
+
+  // The streamed HTML is re-rendered on every update, so each word keeps the
+  // time it first appeared and resumes its fade from there (negative delay).
+  // Reveal times live on the request (not a local var) so a word's fade only
+  // restarts if it was never shown to begin with (e.g. this session was
+  // backgrounded for the whole time it streamed in).
+  function fadeInNewWords(root, request) {
+    const wordRevealTimes = (request.wordRevealTimes ??= []);
+    const now = performance.now();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    let wordIndex = 0;
+    for (const node of textNodes) {
+      const frag = document.createDocumentFragment();
+      let hasFadingWord = false;
+      for (const part of node.data.split(/(\s+)/)) {
+        if (!part.trim()) {
+          frag.append(part);
+          continue;
+        }
+        const age = now - (wordRevealTimes[wordIndex] ??= now);
+        wordIndex++;
+        if (age >= WORD_FADE_MS) {
+          frag.append(part);
+          continue;
+        }
+        const span = document.createElement('span');
+        span.className = 'lc-word-fade';
+        span.style.animationDelay = `-${Math.round(age)}ms`;
+        span.textContent = part;
+        frag.append(span);
+        hasFadingWord = true;
+      }
+      if (hasFadingWord) node.replaceWith(frag);
+    }
+  }
+
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
   let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
   let thinkingMessageFadeTimeout = null;
+  // Dedupe guard for the one-time flip to the final/writing thinking label;
+  // shared because only one session's thinking indicator is ever shown.
+  let finalThinkingPending = false;
 
   // Auto-scroll controller
   let autoScrollEnabled = $state(true);
@@ -123,6 +222,11 @@
   let settingsError = $state('');
 
   let expandedSections = $state({});
+  // The latest answer keeps its topics box open, as it was while loading, so
+  // nothing moves when it finishes; it collapses once the next question is sent.
+  let openTopicsMessageId = $derived(
+    isCurrentSessionSending ? null : messages.findLast(m => m.role === 'assistant')?.messageId
+  );
   function toggleSection(key) {
     expandedSections[key] = !expandedSections[key];
   }
@@ -466,6 +570,13 @@
     thinkingMessageFadeTimeout = setTimeout(() => {
       thinkingMessageKey = nextKey;
       thinkingMessageIndex = nextIndex;
+      if (nextKey === 'assistant.thinking.final') {
+        // Anchors the synthesizing-hold timer on the foreground request, so
+        // the answer's playback start can be delayed to match.
+        const activeRequest = activeRequests[sessionId];
+        if (activeRequest) activeRequest.synthesizingShownAt = performance.now();
+        finalThinkingPending = false;
+      }
       isThinkingMessageFading = false;
       thinkingMessageFadeTimeout = null;
       if (scheduleAfterFade) {
@@ -491,6 +602,7 @@
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
     isThinkingMessageFading = false;
+    finalThinkingPending = false;
     scheduleNextThinkingMessage();
   }
 
@@ -502,6 +614,8 @@
   }
 
   function showFinalThinkingMessage() {
+    if (thinkingMessageKey === 'assistant.thinking.final' || finalThinkingPending) return;
+    finalThinkingPending = true;
     fadeToThinkingMessage('assistant.thinking.final');
   }
 
@@ -850,8 +964,17 @@
     inputText = conversationDrafts[sessionId] ?? getStorage(STORAGE_KEYS.DRAFT + ':' + sessionId, {text: ''}).text;
     updateSessionActivity(sessionId);
     appetizerData = activeRequests[sessionId]?.appetizerData || null;
+    streamingMarkdown = activeRequests[sessionId]?.streamingMarkdown || '';
+    streamTextDone = !!activeRequests[sessionId]?.streamTextDone;
+    pendingFeedback = activeRequests[sessionId]?.pendingFeedback || null;
     stopThinkingMessages();
-    if (activeRequests[sessionId] && !activeRequests[sessionId].stopping) startThinkingMessages();
+    if (streamingMarkdown && !streamTextDone) {
+      // Already past the thinking/synthesizing phase for this turn — resume
+      // showing the static writing indicator rather than restarting the cycle.
+      thinkingMessageKey = 'assistant.writing';
+    } else if (activeRequests[sessionId] && !activeRequests[sessionId].stopping && !streamingMarkdown) {
+      startThinkingMessages();
+    }
     messages = uiMessages;
     turnCount = payload.conversation?.turnCount ?? conversation.turnCount ?? messages.filter(item => item.role === 'user').length;
     hasMoreHistory = false;
@@ -1048,7 +1171,11 @@
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
       messageId: generateMessageId(), controller: new AbortController(), text,
-      stopping: false, appetizerData: null
+      stopping: false, appetizerData: null,
+      // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
+      streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
+      playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
+      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1079,6 +1206,9 @@
     scrollToBottom();
 
     appetizerData = null;
+    streamingMarkdown = '';
+    streamTextDone = false;
+    pendingFeedback = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
 
@@ -1099,6 +1229,90 @@
       }
     };
 
+    // Streaming playback for this turn only -- closes over `request` and
+    // `sendingSessionId` so concurrent sends in other sessions never collide.
+    // Streamed text and timers are kept on `request` itself (background-safe,
+    // and restored by openConversation when switching back); the top-level
+    // streamingMarkdown/streamTextDone/pendingFeedback are only touched while
+    // this session is the one currently shown.
+    let onStreamDrained = null;
+
+    function showCompleteWords() {
+      for (let end = request.playedStreamText.length; end > request.streamingMarkdown.length; end--) {
+        if (!/\s/.test(request.playedStreamText[end - 1])) continue;
+        const candidate = request.playedStreamText.slice(0, end);
+        // A bare list marker ("1. " or "- ") would render as an empty bullet.
+        if (!hasOpenMarkup(candidate) && !/(^|\n)\s*(\d+\.|[-*])\s*$/.test(candidate)) {
+          request.streamingMarkdown = candidate;
+          if (sessionId === sendingSessionId) streamingMarkdown = candidate;
+          return;
+        }
+      }
+    }
+
+    function showAllPlayedText() {
+      if (request.playedStreamText.length > request.streamingMarkdown.length) {
+        request.streamingMarkdown = request.playedStreamText;
+        if (sessionId === sendingSessionId) streamingMarkdown = request.playedStreamText;
+      }
+    }
+
+    function playStreamQueue() {
+      request.streamTimer = null;
+      const now = performance.now();
+      let released = '';
+      while (request.streamQueue.length && request.streamQueue[0].at + request.streamDelayMs <= now) {
+        released += request.streamQueue.shift().text;
+      }
+      if (released) {
+        request.playedStreamText += released;
+        showCompleteWords();
+      }
+      if (request.streamQueue.length) {
+        request.streamTimer = setTimeout(playStreamQueue, request.streamQueue[0].at + request.streamDelayMs - now);
+      } else {
+        onStreamDrained?.();
+        finishStreamIfDone();
+      }
+    }
+
+    function queueStreamDelta(delta) {
+      request.streamQueue.push({ text: delta, at: performance.now() });
+      if (request.streamDelayMs === null) {
+        if (request.streamTimer) return;
+        const isForeground = sessionId === sendingSessionId;
+        if (isForeground) showFinalThinkingMessage();
+        const shownAt = request.synthesizingShownAt || performance.now() + getThinkingMessageFadeMs();
+        // A backgrounded session has nothing on screen to hold, so skip the wait.
+        const revealAt = isForeground ? Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS) : performance.now();
+        request.streamTimer = setTimeout(() => {
+          request.streamDelayMs = revealAt - request.streamQueue[0].at;
+          // Switch straight to the static "Writing…" label, with no fade.
+          if (sessionId === sendingSessionId) {
+            clearThinkingMessageTimers();
+            isThinkingMessageFading = false;
+            thinkingMessageKey = 'assistant.writing';
+          }
+          playStreamQueue();
+        }, Math.max(0, revealAt - performance.now()));
+        return;
+      }
+      if (!request.streamTimer) playStreamQueue();
+    }
+
+    function finishStreamIfDone() {
+      if (!request.contentDoneReceived || request.streamQueue.length || request.streamTimer) return;
+      showAllPlayedText();
+      request.streamTextDone = true;
+      if (sessionId === sendingSessionId) streamTextDone = true;
+    }
+
+    // Resolves once every queued piece of text is on screen.
+    function streamDrained() {
+      if (!request.streamQueue.length && !request.streamTimer) return Promise.resolve();
+      return new Promise((resolve) => { onStreamDrained = resolve; });
+    }
+
     try {
       // Resolve location independently; Stop and chat switching remain responsive.
       parseSefariaRef(pageUrl).then(location => {
@@ -1113,6 +1327,11 @@
       const response = await waitForTurn(sendMessageStream(apiBaseUrl, userId, sendingSessionId, text, {
         onProgress: (progress) => {
           if (request.stopping) return;
+          if (progress?.type === 'content_done') {
+            request.contentDoneReceived = true;
+            finishStreamIfDone();
+            return;
+          }
           if (progress?.type === 'appetizer' && progress.appetizerData) {
             request.appetizerData = progress.appetizerData;
           }
@@ -1131,12 +1350,17 @@
             scrollToLoadingElement();
             return;
           }
-          if (progress?.type === 'status') {
+          // Once the answer is streaming, leave the scroll position alone.
+          if (progress?.type === 'status' && !request.streamingMarkdown) {
             if (/synthesi/i.test(progress.text || '')) {
               showFinalThinkingMessage();
             }
             scrollToLoadingElement();
           }
+        },
+        onPartial: (delta) => {
+          if (request.stopping || !delta) return;
+          queueStreamDelta(delta);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1145,6 +1369,15 @@
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, interfaceLang, { signal: request.controller.signal }), request.controller.signal);
+
+      // Let the delayed playback and the last word's fade finish before
+      // swapping in the final message.
+      await streamDrained();
+      showAllPlayedText();
+      const didStream = !!request.streamingMarkdown;
+      if (didStream && sessionId === sendingSessionId) {
+        await new Promise((resolve) => setTimeout(resolve, WORD_FADE_MS));
+      }
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
@@ -1162,21 +1395,27 @@
         sessionId: response.sessionId,
         userId,
         role: 'assistant',
-        content: response.markdown,
+        content: withLeakedNarration(request.playedStreamText, response.markdown),
         timestamp: response.timestamp,
         status: 'sent',
         traceId: response.traceId || null,
-        feedback: null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: request.appetizerData ? {...request.appetizerData} : null
+        appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+        // Already on screen as streamed text, so don't animate it in again.
+        noEntryAnimation: didStream,
+        feedback: request.pendingFeedback
       };
+      if (feedbackModalMessageId === PENDING_FEEDBACK_ID) {
+        feedbackModalMessageId = assistantMessage.messageId;
+      }
 
       const completedMessages = [...sentMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
         messages = completedMessages;
         saveMessagesToStorage();
-        scrollToResponseStart();
+        // A streamed answer is already in view; jumping to its start would be jarring.
+        if (!didStream) scrollToResponseStart();
       } else {
         setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, completedMessages);
       }
@@ -1271,9 +1510,13 @@
       delete activeRequests[sendingSessionId];
       delete stopErrors[sendingSessionId];
       setSessionSending(sendingSessionId, false);
+      clearTimeout(request.streamTimer);
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
         appetizerData = null;
+        streamingMarkdown = '';
+        streamTextDone = false;
+        pendingFeedback = null;
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
           if (sessionId === sendingSessionId) {
@@ -1326,8 +1569,10 @@
   }
 
   async function handleFeedback(messageId, score) {
+    if (!apiBaseUrl) return;
+    const isPending = messageId === PENDING_FEEDBACK_ID;
     const target = messages.find(m => m.messageId === messageId);
-    if (!target?.traceId || !apiBaseUrl) return;
+    if (!isPending && !target?.traceId) return;
 
     // Show the feedback modal for both likes and dislikes
     feedbackModalMessageId = messageId;
@@ -1335,6 +1580,15 @@
     feedbackReason = '';
     feedbackType = score === 1 ? FEEDBACK_UP : FEEDBACK_DOWN;
     showFeedbackModal = true;
+
+    // The streamed answer has no messageId/traceId yet; hold the choice until
+    // the final message arrives (handleSend reassigns feedbackModalMessageId).
+    if (isPending) {
+      const request = activeRequests[sessionId];
+      if (request) request.pendingFeedback = feedbackType;
+      pendingFeedback = feedbackType;
+      return;
+    }
 
     // Update UI immediately to show selection
     messages = messages.map(m =>
@@ -2058,6 +2312,32 @@
         aria-label={$_('assistant.messages.aria')}
         aria-live="polite"
       >
+        {#snippet feedbackButtons(messageId, feedback)}
+          <div class="feedback">
+            <div class="feedback-buttons">
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_UP}
+                onclick={() => handleFeedback(messageId, 1)}
+                aria-label={$_('assistant.feedback.positive')}
+              >
+                {@html THUMBUP}
+              </button>
+              <button
+                class="feedback-btn"
+                class:active={feedback === FEEDBACK_DOWN}
+                onclick={() => handleFeedback(messageId, 0)}
+                aria-label={$_('assistant.feedback.negative')}
+              >
+                {@html THUMBDOWN}
+              </button>
+            </div>
+            {#if feedback}
+              <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
+            {/if}
+          </div>
+        {/snippet}
+
         {#snippet assistantBubble(content, showFeedback, feedbackProps)}
           <div class="message assistant" class:failed={feedbackProps?.status === STATUS_FAILED} class:no-entry-animation={feedbackProps?.noEntryAnimation}>
             <div class="message-content">
@@ -2070,29 +2350,7 @@
                 </button>
               {/if}
               {#if showFeedback && feedbackProps}
-                <div class="feedback">
-                  <div class="feedback-buttons">
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_UP}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 1)}
-                      aria-label={$_('assistant.feedback.positive')}
-                    >
-                      {@html THUMBUP}
-                    </button>
-                    <button
-                      class="feedback-btn"
-                      class:active={feedbackProps.feedback === FEEDBACK_DOWN}
-                      onclick={() => handleFeedback(feedbackProps.messageId, 0)}
-                      aria-label={$_('assistant.feedback.negative')}
-                    >
-                      {@html THUMBDOWN}
-                    </button>
-                  </div>
-                  {#if feedbackProps.feedback}
-                    <p class="feedback-thanks">{$_('assistant.messages.feedbackThanks')}</p>
-                  {/if}
-                </div>
+                {@render feedbackButtons(feedbackProps.messageId, feedbackProps.feedback)}
               {/if}
             </div>
           </div>
@@ -2123,7 +2381,11 @@
             {/if}
           {:else if item.role === 'assistant'}
             <div class="lc-response-package">
-              {#if item.appetizerData}
+              {#if item.appetizerData && item.messageId === openTopicsMessageId}
+                <div>
+                  <TopicAppetizer data={normalizeAppetizerData(item.appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
+                </div>
+              {:else if item.appetizerData}
                 <Accordion kind="topics"
                   expanded={!!expandedSections[`${item.messageId}_topics`]}
                   onToggle={() => toggleSection(`${item.messageId}_topics`)}>
@@ -2160,16 +2422,29 @@
           <div class="message assistant">
             <div class="lc-loading-wrapper" bind:this={loadingWrapperRef}>
               {#if appetizerData}
-                <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
-              {/if}
-              {#if !isCurrentSessionStopping}<div class="lc-thinking-block">
-                <div class="lc-thinking-step">
-                  <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
-                  <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                    <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
-                  </span>
+                <div in:fade={{ duration: topicsAppearMs() }}>
+                  <TopicAppetizer data={normalizeAppetizerData(appetizerData)} streaming={true} onClickTopic={handleAppetizerClick} />
                 </div>
-              </div>
+              {/if}
+              {#if streamingMarkdown && !isCurrentSessionStopping}
+                <div class="lc-streaming-answer">
+                  <div class="message-content lc-streaming-content" class:is-writing={!streamTextDone} bind:this={streamEl}></div>
+                  {#if streamTextDone}
+                    <div class="message-meta">
+                      {@render feedbackButtons(PENDING_FEEDBACK_ID, pendingFeedback)}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+              {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
+                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
+                  <div class="lc-thinking-step">
+                    <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                    </span>
+                  </div>
+                </div>
               {/if}
             </div>
           </div>
@@ -3105,6 +3380,9 @@
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
+    /* Reserve the scrollbar's space up front, so text doesn't rewrap (and the
+       whole conversation shift) when a growing answer first makes it scroll. */
+    scrollbar-gutter: stable;
     /* Vertical scroll only. Without an explicit overflow-x, `overflow-y: auto`
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
@@ -3159,23 +3437,36 @@
   }
 
   /* Response package: stacks topics accordion → thought accordion → answer bubble.
-     8px gap between accordions; answer bubble pulled flush (0px) via negative margin. */
+     Same 16px spacing as the loading area the answer streams into, so nothing
+     moves when the streamed answer becomes the finished message. */
   .lc-response-package {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-
-  /* Pull the answer bubble flush against the last accordion (8px gap - 8px = 0px).
-     When there are no accordions the bubble is the only child and the gap spec
-     does not apply, so we scope this to :not(:first-child). */
-  .lc-response-package > .message.assistant:not(:first-child) {
-    margin-top: -8px;
+    gap: var(--spacing-spacing-large, 16px);
   }
 
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
     color: #575757;
+  }
+
+  /* Zero height, so adding it after the answer streams in moves nothing: the
+     paragraph margins around it still collapse into one gap, and the line is
+     drawn in the middle of that gap. */
+  .message-content :global(hr.lc-narration-divider) {
+    position: relative;
+    height: 0;
+    margin: 0;
+    border: 0;
+    overflow: visible;
+  }
+  .message-content :global(hr.lc-narration-divider)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -0.5em;
+    border-top: 1px solid var(--lc-border);
   }
 
   .message.assistant .message-content :global(ul),
@@ -3454,6 +3745,33 @@
       animation: none;
       background-image: none;
       -webkit-text-fill-color: currentColor;
+    }
+  }
+
+  /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
+  .lc-streaming-content.is-writing :global(> :last-child) {
+    margin-bottom: 0;
+  }
+  .lc-thinking-block.is-writing {
+    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+  }
+  .lc-thinking-block.is-writing .lc-thinking-label-base {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  /* Streaming: each new word fades in */
+  .lc-streaming-content :global(.lc-word-fade) {
+    animation: lc-word-fade 400ms ease-out both;
+  }
+  @keyframes lc-word-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lc-streaming-content :global(.lc-word-fade) {
+      animation: none;
     }
   }
 
