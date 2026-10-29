@@ -139,7 +139,8 @@ class UserSefariaTool(SefariaTool):
         if not user_id:
             raise ToolError("Sign in with your Sefaria account to use this tool.")
 
-        client = SefariaClient()
+        # The public MCP process never holds or sends SEFARIA_API_KEY.
+        client = SefariaClient(api_key=None)
         executor = SefariaToolExecutor(client=client)
         executor.set_message_context(
             MessageContext(
