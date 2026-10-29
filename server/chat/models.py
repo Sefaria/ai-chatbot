@@ -254,6 +254,8 @@ class ChatMessage(models.Model):
 
     # Metadata
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.SUCCESS)
+    # A logged-out visitor's answer that doesn't use up a free answer (see anon_access.py)
+    free_answer = models.BooleanField(default=False)
     latency_ms = models.IntegerField(null=True, blank=True)
     processing_state = models.CharField(
         max_length=20, choices=ProcessingState.choices, blank=True, default=""

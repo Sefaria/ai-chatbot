@@ -373,9 +373,10 @@
     } else {
       anonLimitReached = getStorage(STORAGE_KEYS.ANON_LIMIT_REACHED, false) === true;
     }
-    // A restored conversation opens at its end. (A no-op when the panel is closed
-    // or the conversation is empty.)
-    scrollToBottom({ instant: true });
+
+    // Opening by itself skips openPanel, so land on the latest message here (the chat
+    // would otherwise start at its top)
+    if (untrack(() => isOpen)) scrollToBottom({ instant: true });
 
     // A visitor who just logged in: their logged-out chats become the user's.
     const anonId = getStorage(STORAGE_KEYS.ANON_ID, null);
@@ -662,7 +663,6 @@
     showSettings = false;
     setStorage(STORAGE_KEYS.UI, { isOpen: true, mode });
     dispatchEvent('opened');
-    scrollToBottom({ instant: true });
 
     if (isFullscreen) {
       pushSheetEntry(onSheetPopped);
@@ -740,23 +740,38 @@
 
   // A question asked from outside the panel starts a new chat and sends it there, so the panel
   // doesn't open on (and scroll through) the previous conversation. No question just opens it.
-  async function askInNewChat(question) {
+  // A logged-out visitor has one chat, so the question goes there, under the earlier ones; at
+  // the free-answer limit nothing is sent, and the assistant opens on that chat's login prompt.
+  // `source` tells the server where the question was asked from (see sendMessageStream).
+  async function askInNewChat(question, source = '') {
     question = question.trim();
+    if (loginRequired) {
+      if (!isOpen) openPanel();
+      return;
+    }
     // Phones: History covers the chat, and would hide the question and its answer
     if (question && isFullscreen) showHistoryPanel = false;
-    if (question && messages.length > 0) handleNewChat();
+    if (question && messages.length > 0 && isLoggedIn) handleNewChat();
     inputText = question; // handleNewChat clears it
     if (!isOpen) openPanel();
     if (!question) return;
     await tick();
-    handleSend();
+    handleSend({ source });
   }
 
   // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
   $effect(() => listenToHost({
     onOpen(detail) {
+      // The page's own link to the relabelled launcher's question (e.g. the no-results text)
+      // acts as a launcher click: the question is asked once, whichever is clicked first.
+      // Only when it sends exactly the launcher's `source` and `question` (see lib/hostEvents.js):
+      // any difference, even whitespace, makes it a new question, asked again in a new chat.
+      if (detail?.question && launcherOverride?.source === detail.source && launcherOverride.question === detail.question) {
+        askFromLauncher();
+        return;
+      }
       trackAssistantClick(detail?.source || 'host_open');
-      if (detail?.question) askInNewChat(detail.question);
+      if (detail?.question) askInNewChat(detail.question, detail.source);
       else if (!isOpen) openPanel();
     },
     getLauncher: () => launcherOverride,
@@ -764,12 +779,12 @@
   }));
 
   // The host's question is asked once per page: closing and reopening from the same pill
-  // goes back to that chat instead of asking it again
+  // goes back to that chat instead of asking it again. At the free-answer limit it isn't asked.
   function askFromLauncher() {
     trackAssistantClick(launcherOverride?.source || 'ask_pill_open');
-    if (launcherOverride?.question && !launcherOverride.asked) {
+    if (launcherOverride?.question && !launcherOverride.asked && !loginRequired) {
       launcherOverride.asked = true;
-      askInNewChat(launcherOverride.question);
+      askInNewChat(launcherOverride.question, launcherOverride.source);
     } else {
       openPanel();
     }
@@ -1306,7 +1321,8 @@
     }
   }
 
-  async function handleSend() {
+  // `source`: where on the host page the question was asked from (only askInNewChat passes one)
+  async function handleSend({ source = '' } = {}) {
     await loggedOutChatsClaimed;
     const text = inputText.trim();
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
@@ -1415,7 +1431,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal }), request.controller.signal);
+      }, interfaceLang, { signal: request.controller.signal, source }), request.controller.signal);
 
       const cachedPayload = conversationCache[sendingSessionId];
       const baseMessages = sessionId === sendingSessionId
@@ -2570,7 +2586,7 @@
           {:else}
           <button
             class="send-btn"
-            onclick={handleSend}
+            onclick={() => handleSend()}
             disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
             aria-label={$_('assistant.input.send.tooltip')}
           >
