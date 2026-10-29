@@ -12,6 +12,8 @@ from django.conf import settings
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     NO_THINKING_NARRATION_INSTRUCTION,
+    RESPOND_TOOL_INSTRUCTION,
+    RESPOND_TOOL_NAME,
     SECTION_SEPARATOR,
 )
 from .contracts import (
@@ -165,6 +167,10 @@ class TurnOrchestrator:
         allowed_tools = [
             f"mcp__{self.mcp_server_name}__{tool_schema['name']}" for tool_schema in tools
         ]
+        # The final answer goes through the respond tool, so it can be streamed
+        # as the answer from its first word; all other text is narration.
+        sdk_tools.append(self.tool_runtime.build_respond_tool())
+        allowed_tools.append(f"mcp__{self.mcp_server_name}__{RESPOND_TOOL_NAME}")
         mcp_server = self.create_mcp_server(
             name=self.mcp_server_name,
             version="1.0.0",
@@ -174,6 +180,7 @@ class TurnOrchestrator:
         system_prompt = prompt_result.full_prompt
         if self.options_builder.thinking_disabled:
             system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
+        system_prompt += SECTION_SEPARATOR + RESPOND_TOOL_INSTRUCTION
 
         options, system_prompt_in_options = self.options_builder.build(
             system_prompt=system_prompt,
@@ -201,18 +208,66 @@ class TurnOrchestrator:
         synthesis_status_emitted = False
 
         def emit_synthesis_status_once():
+            # Fires exactly once, right before the first text delta that
+            # follows a tool call (see ClaudeSDKRunner.run()).
             nonlocal synthesis_status_emitted
             if synthesis_status_emitted:
                 return
             synthesis_status_emitted = True
             emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
+        # Stream all of the model's text as it's written, Claude.ai-style. We
+        # can't know a passage is the final answer until it ends, so when a
+        # tool call starts after streamed text, tell the client that passage
+        # was narration; it folds it into a "thought process" view.
+        # The respond tool's text streams as the answer ("content_delta"); any
+        # plain text the model writes is narration for the thought-process view
+        # ("narration_delta"), with "narration_end" between passages.
+        passage_has_text = False
+        answer_started = False
+
+        def emit_narration_delta(delta: str):
+            nonlocal passage_has_text
+            passage_has_text = True
+            emitter.emit(AgentProgressUpdate(type="narration_delta", text=delta))
+
+        def emit_answer_start():
+            nonlocal answer_started
+            answer_started = True
+            emit_synthesis_status_once()
+
+        def emit_answer_delta(delta: str):
+            emitter.emit(AgentProgressUpdate(type="content_delta", text=delta))
+
+        content_done_emitted = False
+
+        def emit_content_done():
+            # The client hides "Writing…" and shows the thumbs on this, so send
+            # it as soon as the answer text is complete -- not after the
+            # model's wrap-up turn, link validation and saving.
+            nonlocal content_done_emitted
+            if content_done_emitted:
+                return
+            content_done_emitted = True
+            emitter.emit(AgentProgressUpdate(type="content_done"))
+
+        def emit_narration_end():
+            nonlocal passage_has_text
+            if not passage_has_text:
+                return
+            passage_has_text = False
+            emitter.emit(AgentProgressUpdate(type="narration_end"))
+
         try:
             sdk_start_time = time.time()
             sdk_result = await self.sdk_runner.run(
                 options=options,
                 prompt_text=prompt_text,
-                on_first_final_text_delta=emit_synthesis_status_once,
+                on_text_delta=emit_narration_delta,
+                on_tool_use_start=emit_narration_end,
+                on_answer_start=emit_answer_start,
+                on_answer_delta=emit_answer_delta,
+                on_answer_end=emit_content_done,
                 should_cancel=should_cancel,
             )
         except TurnCancelled:
@@ -223,7 +278,15 @@ class TurnOrchestrator:
             self.trace_logger.log_error(bt_span=bt_span, exc=exc, latency_ms=latency_ms)
             raise
 
+        if not answer_started and passage_has_text:
+            # The model answered in plain text instead of calling respond: that
+            # last passage is the answer (shown with the final message), not
+            # narration, so the client drops it from the thought process.
+            emitter.emit(AgentProgressUpdate(type="narration_was_answer"))
         emit_synthesis_status_once()
+        # The streamed answer text is complete; link validation and saving
+        # still follow, but the client can stop showing "Writing…" now.
+        emit_content_done()
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)

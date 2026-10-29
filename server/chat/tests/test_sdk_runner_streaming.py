@@ -205,7 +205,12 @@ def test_final_text_still_concatenates_a_final_answer_split_across_messages():
     assert result.final_text == "Part one. Part two."
 
 
-def test_first_final_text_delta_callback_waits_for_final_text():
+def test_first_final_text_delta_callback_fires_before_the_final_delta_it_gates():
+    # on_first_final_text_delta must fire before the delta it's meant to gate,
+    # not after -- callers that use it to decide whether to start forwarding
+    # on_text_delta content to a client (e.g. streaming only the final-answer
+    # text, never pre-tool-use narration) need the flag to already be true by
+    # the time that first "real" delta ("Final") arrives, not one delta late.
     runner = ClaudeSDKRunner(
         client_cls=FakeToolThenFinalClient,
         assistant_message_cls=FakeAssistantMessage,
@@ -223,7 +228,20 @@ def test_first_final_text_delta_callback_waits_for_final_text():
         )
     )
 
-    assert events == ["Let me check", "I will search", "Final", "final-started"]
+    assert events == ["Let me check", "I will search", "final-started", "Final"]
+
+
+def test_message_uses_tools_detects_real_sdk_tool_use_block():
+    # The SDK's ToolUseBlock has no `type` field, unlike the dict fakes above.
+    # Missing it meant the runner never saw tool use, so final-answer streaming
+    # never started.
+    from claude_agent_sdk.types import TextBlock, ToolUseBlock
+
+    tool_message = FakeAssistantMessage(content=[ToolUseBlock(id="t1", name="search", input={})])
+    text_message = FakeAssistantMessage(content=[TextBlock(text="Final answer")])
+
+    assert ClaudeSDKRunner.message_uses_tools(tool_message)
+    assert not ClaudeSDKRunner.message_uses_tools(text_message)
 
 
 class FakeCancelTrackingClient(FakeClient):
@@ -367,3 +385,115 @@ async def test_cancel_interrupts_a_silent_sdk_wait():
         )
     await timer
     assert closed
+
+
+def test_stream_event_starts_tool_use_detects_tool_blocks_only():
+    tool_start = FakeStreamEvent(
+        event={"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t1", "name": "search"}}
+    )
+    text_start = FakeStreamEvent(
+        event={"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+    )
+    text_delta = FakeStreamEvent(
+        event={"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hi"}}
+    )
+
+    assert ClaudeSDKRunner.stream_event_starts_tool_use(tool_start)
+    assert not ClaudeSDKRunner.stream_event_starts_tool_use(text_start)
+    assert not ClaudeSDKRunner.stream_event_starts_tool_use(text_delta)
+
+
+class FakeNarrationThenRespondClient(FakeClient):
+    """Narrates, calls a tool, then delivers the answer through respond."""
+
+    async def receive_response(self):
+        def delta(index, text):
+            return FakeStreamEvent(
+                event={"type": "content_block_delta", "index": index, "delta": {"type": "text_delta", "text": text}}
+            )
+
+        def tool_start(index, name):
+            return FakeStreamEvent(
+                event={"type": "content_block_start", "index": index, "content_block": {"type": "tool_use", "name": name}}
+            )
+
+        def json_delta(index, partial):
+            return FakeStreamEvent(
+                event={"type": "content_block_delta", "index": index, "delta": {"type": "input_json_delta", "partial_json": partial}}
+            )
+
+        yield FakeStreamEvent(event={"type": "message_start"})
+        yield delta(0, "Let me search.")
+        yield tool_start(1, "mcp__sefaria__semantic_search")
+        yield FakeAssistantMessage(
+            content=[{"type": "text", "text": "Let me search."}, {"type": "tool_use", "name": "mcp__sefaria__semantic_search", "input": {}}]
+        )
+        yield FakeStreamEvent(event={"type": "message_start"})
+        yield tool_start(0, "mcp__sefaria__respond")
+        yield json_delta(0, '{"te')
+        yield json_delta(0, 'xt": "Sha')
+        yield json_delta(0, 'lom \\"wor')
+        yield json_delta(0, 'ld\\""}')
+        yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
+        yield FakeAssistantMessage(
+            content=[{"type": "tool_use", "name": "mcp__sefaria__respond", "input": {"text": 'Shalom "world"'}}]
+        )
+        yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+
+def test_respond_tool_text_streams_as_the_answer_and_plain_text_as_narration():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeNarrationThenRespondClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    events = []
+
+    result = asyncio.run(
+        runner.run(
+            options=object(),
+            prompt_text="prompt",
+            on_text_delta=lambda d: events.append(("narration", d)),
+            on_tool_use_start=lambda: events.append(("tool",)),
+            on_answer_start=lambda: events.append(("answer_start",)),
+            on_answer_delta=lambda d: events.append(("answer", d)),
+            on_answer_end=lambda: events.append(("answer_end",)),
+        )
+    )
+
+    answer = "".join(e[1] for e in events if e[0] == "answer")
+    # The answer is done when its tool block closes, right after its last piece.
+    last_answer = max(i for i, e in enumerate(events) if e[0] == "answer")
+    assert events[last_answer + 1] == ("answer_end",)
+    assert events[0] == ("narration", "Let me search.")
+    assert events[1] == ("tool",)
+    assert ("answer_start",) in events
+    assert answer == 'Shalom "world"'
+    assert result.final_text == 'Shalom "world"'
+
+
+def test_final_text_falls_back_to_plain_text_without_respond():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.final_text == "Shalom world"
+
+
+@pytest.mark.parametrize("size", [1, 2, 3, 7])
+def test_json_string_field_stream_decodes_across_any_chunking(size):
+    import json
+
+    from chat.V2.agent.sdk_runner import JsonStringFieldStream
+
+    text = 'Line "one"\nback\\slash, é and 😀'
+    raw = json.dumps({"text": text})
+    stream = JsonStringFieldStream("text")
+
+    assert "".join(stream.feed(raw[i : i + size]) for i in range(0, len(raw), size)) == text

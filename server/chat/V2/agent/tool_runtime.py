@@ -7,6 +7,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from ..prompts.prompt_fragments import (
+    RESPOND_TOOL_DESCRIPTION,
+    RESPOND_TOOL_NAME,
+    RESPOND_TOOL_RESULT,
+)
 from .contracts import AgentProgressUpdate, MessageContext
 from .helpers import truncate
 from .tool_executor import SefariaToolExecutor, describe_tool_call, resolve_tool_ref
@@ -105,6 +110,25 @@ class ToolRuntime:
             sdk_tools.append(build_handler(name, description, input_schema))
 
         return sdk_tools
+
+    def build_respond_tool(self) -> Any:
+        """The tool the agent delivers its final answer through (streamed as the answer)."""
+
+        async def handler(args: dict[str, Any]) -> dict[str, Any]:
+            return {"content": [{"type": "text", "text": RESPOND_TOOL_RESULT}]}
+
+        return self._decorate_tool(
+            handler=handler,
+            tool_name=RESPOND_TOOL_NAME,
+            tool_description=RESPOND_TOOL_DESCRIPTION,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The complete final answer, in markdown."}
+                },
+                "required": ["text"],
+            },
+        )
 
     def _decorate_tool(
         self,
