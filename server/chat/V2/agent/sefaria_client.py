@@ -777,6 +777,119 @@ class SefariaClient:
             "PATCH", f"api/admin/topic-prompts/{quote(id, safe='')}", json=fields
         )
 
+    async def publish_topic_prompts(
+        self, items: list[dict[str, str]], *, lang: str = "en", published: bool = True, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Publish or unpublish topic prompts (POST /api/admin/topic-prompts/publish)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/topic-prompts/publish",
+            json={"items": items, "lang": lang, "published": published, "dry_run": dry_run},
+        )
+
+    async def generate_topic_prompts(
+        self, topic: str, *, lang: str = "en", ids: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Queue AI prompt generation (POST /api/admin/topic-prompts/generate)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/topic-prompts/generate",
+            json={"topic": topic, "lang": lang, "ids": ids or []},
+        )
+
+    async def get_admin_task(self, task_id: str) -> dict[str, Any]:
+        """A background task's state (GET /api/admin/tasks/<id>)."""
+        return await self._staff_request("GET", f"api/admin/tasks/{quote(task_id, safe='')}")
+
+    async def tag_ref_with_topic(
+        self, ref: str, topic: str, *, lang: str = "en", dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Tag a passage with a topic (POST /api/admin/ref-topic-links)."""
+        return await self._staff_request(
+            "POST",
+            "api/admin/ref-topic-links",
+            json={"ref": ref, "topic": topic, "lang": lang, "dry_run": dry_run},
+        )
+
+    async def untag_ref_from_topic(
+        self, ref: str, topic: str, *, lang: str = "en", dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Remove a passage from a topic (DELETE /api/admin/ref-topic-links)."""
+        params = [("ref", ref), ("topic", topic), ("lang", lang)]
+        if dry_run:
+            params.append(("dry_run", "true"))
+        return await self._staff_request("DELETE", "api/admin/ref-topic-links", params=params)
+
+    @staticmethod
+    def _lexicon_path(lexicon: str, headword: str) -> str:
+        return f"{quote(lexicon, safe='')}/{quote(headword, safe='')}"
+
+    async def get_lexicon_entry(self, lexicon: str, headword: str) -> dict[str, Any]:
+        """Read a dictionary entry with its version (GET /api/admin/lexicon-entries/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "GET", f"api/admin/lexicon-entries/{self._lexicon_path(lexicon, headword)}"
+        )
+
+    async def update_lexicon_entry(
+        self, lexicon: str, headword: str, content: dict[str, Any], base_version: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Edit a dictionary entry's content (PATCH /api/admin/lexicon-entries/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/lexicon-entries/{self._lexicon_path(lexicon, headword)}",
+            json={"content": content, "base_version": base_version, "dry_run": dry_run},
+        )
+
+    async def rename_lexicon_headword(
+        self, lexicon: str, headword: str, new_headword: str, *, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """Rename a headword (PATCH /api/admin/lexicon-entries/headword/<lexicon>/<headword>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/lexicon-entries/headword/{self._lexicon_path(lexicon, headword)}",
+            json={"new_headword": new_headword, "dry_run": dry_run},
+        )
+
+    @staticmethod
+    def _version_path(title: str, lang: str, version_title: str) -> str:
+        return f"{quote(title, safe='')}/{quote(lang, safe='')}/{quote(version_title, safe='')}"
+
+    async def get_version_metadata(self, title: str, lang: str, version_title: str) -> dict[str, Any]:
+        """A version's metadata with its version hash (GET /api/admin/versions/<title>/<lang>/<versionTitle>)."""
+        return await self._staff_request(
+            "GET", f"api/admin/versions/{self._version_path(title, lang, version_title)}"
+        )
+
+    async def update_version_metadata(
+        self,
+        title: str,
+        lang: str,
+        version_title: str,
+        fields: dict[str, Any],
+        base_version: str,
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Edit a version's metadata (PATCH /api/admin/versions/<title>/<lang>/<versionTitle>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/versions/{self._version_path(title, lang, version_title)}",
+            json={"fields": fields, "base_version": base_version, "dry_run": dry_run},
+        )
+
+    async def find_versions(self, version_title: str, language: str | None = None) -> dict[str, Any]:
+        """Books with a version of this title (GET /api/admin/versions)."""
+        params = [("versionTitle", version_title)] + ([("language", language)] if language else [])
+        return await self._staff_request("GET", "api/admin/versions", params=params)
+
+    async def check_index_dependencies(self, title: str) -> dict[str, Any]:
+        """What depends on a book (GET /api/admin/index-dependencies/<title>)."""
+        return await self._staff_request("GET", f"api/admin/index-dependencies/{quote(title, safe='')}")
+
+    async def purge_cache(self, ref: str) -> dict[str, Any]:
+        """Refresh caches for a book or ref (POST /api/admin/cache/purge)."""
+        return await self._staff_request("POST", "api/admin/cache/purge", json={"ref": ref})
+
     async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """Call a Sefaria staff API as the signed-in user, keeping its error message.
 

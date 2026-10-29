@@ -64,6 +64,8 @@ def sefaria(monkeypatch):
             return httpx.Response(
                 409, json={"error": "Version conflict.", "current": {"version": "v2"}}
             )
+        if request.url.path in ("/api/admin/topic-prompts/publish", "/api/admin/topic-prompts/generate"):
+            return httpx.Response(200, json={"results": [], "task_ids": []})
         if request.url.path.startswith("/api/admin/topic-prompts/"):
             return httpx.Response(200, json={"result": {"id": "p1"}, "dry_run": False})
         return httpx.Response(200, json={})
@@ -231,7 +233,23 @@ async def test_concurrent_users_never_share_a_session(executor, sefaria):
     assert len({r.url.path for r in sefaria}) == 8
 
 
-ADMIN_TOOLS = {"list_topic_prompts", "update_topic_prompt"}
+ADMIN_TOOLS = {
+    "list_topic_prompts",
+    "update_topic_prompt",
+    "publish_topic_prompts",
+    "generate_topic_prompts",
+    "get_admin_task",
+    "tag_ref_with_topic",
+    "untag_ref_from_topic",
+    "get_lexicon_entry",
+    "update_lexicon_entry",
+    "rename_lexicon_headword",
+    "get_version_metadata",
+    "update_version_metadata",
+    "find_versions",
+    "check_index_dependencies",
+    "purge_cache",
+}
 
 
 def admin_token(user_id: int = 42) -> str:
@@ -329,3 +347,108 @@ async def test_unknown_admin_tool_arguments_are_rejected_cleanly(executor, sefar
     assert result["result"]["isError"]
     assert "Invalid arguments for list_topic_prompts" in result["result"]["content"][0]["text"]
     assert not sefaria
+
+
+async def test_new_admin_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("publish_topic_prompts", {"items": [{"id": "p1", "base_version": "v1"}], "published": False}),
+        ("generate_topic_prompts", {"topic": "shabbat", "ids": ["p1"]}),
+        ("get_admin_task", {"task_id": "t/1"}),
+        ("tag_ref_with_topic", {"ref": "Genesis 6:9", "topic": "noah", "dry_run": True}),
+        ("untag_ref_from_topic", {"ref": "Genesis 6:9", "topic": "noah", "lang": "he"}),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client,
+                "tools/call",
+                {"name": name, "arguments": arguments},
+                token=admin_token(user_id=7),
+                path="/mcp/admin",
+            )
+            assert not result["result"].get("isError"), (name, result)
+    publish, generate, task, tag, untag = sefaria
+    assert (publish.method, publish.url.path) == ("POST", "/api/admin/topic-prompts/publish")
+    assert json.loads(publish.content) == {
+        "items": [{"id": "p1", "base_version": "v1"}],
+        "lang": "en",
+        "published": False,
+        "dry_run": False,
+    }
+    assert (generate.method, generate.url.path) == ("POST", "/api/admin/topic-prompts/generate")
+    assert json.loads(generate.content) == {"topic": "shabbat", "lang": "en", "ids": ["p1"]}
+    assert (task.method, task.url.raw_path) == ("GET", b"/api/admin/tasks/t%2F1")
+    assert (tag.method, tag.url.path) == ("POST", "/api/admin/ref-topic-links")
+    assert json.loads(tag.content) == {"ref": "Genesis 6:9", "topic": "noah", "lang": "en", "dry_run": True}
+    assert (untag.method, untag.url.path) == ("DELETE", "/api/admin/ref-topic-links")
+    assert dict(untag.url.params) == {"ref": "Genesis 6:9", "topic": "noah", "lang": "he"}
+    for request in sefaria:
+        sent = request.headers["X-Session-ID"]
+        assert sefaria_tokens.user_id_from(sent, TOKEN_SECRET, aud=sefaria_tokens.API_AUDIENCE) == 7
+
+
+async def test_lexicon_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("get_lexicon_entry", {"lexicon": "Jastrow Dictionary", "headword": "אב"}),
+        (
+            "update_lexicon_entry",
+            {"lexicon": "Jastrow Dictionary", "headword": "אב", "content": {"notes": "x"}, "base_version": "v1"},
+        ),
+        (
+            "rename_lexicon_headword",
+            {"lexicon": "Jastrow Dictionary", "headword": "אב", "new_headword": "אָב", "dry_run": True},
+        ),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client, "tools/call", {"name": name, "arguments": arguments}, token=admin_token(), path="/mcp/admin"
+            )
+            assert not result["result"].get("isError"), (name, result)
+    get, update, rename = sefaria
+    path = "/api/admin/lexicon-entries/Jastrow%20Dictionary/%D7%90%D7%91"
+    assert (get.method, get.url.raw_path) == ("GET", path.encode())
+    assert (update.method, update.url.raw_path) == ("PATCH", path.encode())
+    assert json.loads(update.content) == {"content": {"notes": "x"}, "base_version": "v1", "dry_run": False}
+    assert (rename.method, rename.url.raw_path) == (
+        "PATCH",
+        b"/api/admin/lexicon-entries/headword/Jastrow%20Dictionary/%D7%90%D7%91",
+    )
+    assert json.loads(rename.content) == {"new_headword": "אָב", "dry_run": True}
+
+
+async def test_version_and_cache_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("get_version_metadata", {"title": "Genesis", "lang": "en", "version_title": "The Koren Jerusalem Bible"}),
+        (
+            "update_version_metadata",
+            {
+                "title": "Genesis",
+                "lang": "en",
+                "version_title": "The Koren Jerusalem Bible",
+                "fields": {"status": "locked"},
+                "base_version": "v1",
+                "dry_run": True,
+            },
+        ),
+        ("find_versions", {"version_title": "The Koren Jerusalem Bible", "language": "en"}),
+        ("check_index_dependencies", {"title": "Genesis"}),
+        ("purge_cache", {"ref": "Genesis 1"}),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client, "tools/call", {"name": name, "arguments": arguments}, token=admin_token(), path="/mcp/admin"
+            )
+            assert not result["result"].get("isError"), (name, result)
+    get, update, find, deps, purge = sefaria
+    path = b"/api/admin/versions/Genesis/en/The%20Koren%20Jerusalem%20Bible"
+    assert (get.method, get.url.raw_path) == ("GET", path)
+    assert (update.method, update.url.raw_path) == ("PATCH", path)
+    assert json.loads(update.content) == {"fields": {"status": "locked"}, "base_version": "v1", "dry_run": True}
+    assert (find.method, find.url.path) == ("GET", "/api/admin/versions")
+    assert dict(find.url.params) == {"versionTitle": "The Koren Jerusalem Bible", "language": "en"}
+    assert (deps.method, deps.url.path) == ("GET", "/api/admin/index-dependencies/Genesis")
+    assert (purge.method, purge.url.path) == ("POST", "/api/admin/cache/purge")
+    assert json.loads(purge.content) == {"ref": "Genesis 1"}
+
