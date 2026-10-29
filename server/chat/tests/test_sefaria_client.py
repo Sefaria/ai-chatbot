@@ -1190,6 +1190,64 @@ class TestApiKeyHeader:
             assert len(seen) == 1
             assert ("x-api-key" in seen[0].headers) is expected, base_url
 
+    async def test_key_is_limited_to_the_base_host_and_its_www_apex_pair(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.delenv("SEFARIA_API_KEY_EXTRA_HOSTS", raising=False)
+
+        async def call(client):
+            http = await client._get_client()
+            for host in (
+                "www.sefaria.org",
+                "sefaria.org",
+                "chat.sefaria.org",
+                "storage.sefaria.org",
+                "other.cauldron.sefaria.org",
+                "manuscripts.sefaria.org",
+            ):
+                await http.get(f"https://{host}/api/calendars")
+
+        seen = await self._run(monkeypatch, call, base_url="https://www.sefaria.org")
+
+        sent = {r.url.host: "x-api-key" in r.headers for r in seen}
+        assert sent == {
+            "www.sefaria.org": True,
+            "sefaria.org": True,
+            "chat.sefaria.org": False,
+            "storage.sefaria.org": False,
+            "other.cauldron.sefaria.org": False,
+            "manuscripts.sefaria.org": False,
+        }
+
+    async def test_cauldron_base_host_and_apex_get_the_key_but_not_other_sefaria_hosts(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.delenv("SEFARIA_API_KEY_EXTRA_HOSTS", raising=False)
+
+        async def call(client):
+            http = await client._get_client()
+            for host in (
+                "www.apisplit.cauldron.sefaria.org",
+                "apisplit.cauldron.sefaria.org",
+                "www.sefaria.org",
+                "sefaria.org",
+                "other.cauldron.sefaria.org",
+            ):
+                await http.get(f"https://{host}/api/calendars")
+
+        seen = await self._run(
+            monkeypatch, call, base_url="https://www.apisplit.cauldron.sefaria.org"
+        )
+
+        sent = {r.url.host: "x-api-key" in r.headers for r in seen}
+        assert sent == {
+            "www.apisplit.cauldron.sefaria.org": True,
+            "apisplit.cauldron.sefaria.org": True,
+            "www.sefaria.org": False,
+            "sefaria.org": False,
+            "other.cauldron.sefaria.org": False,
+        }
+
     async def test_extra_hosts_env_adds_an_approved_host(self, monkeypatch):
         monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
         monkeypatch.setenv("SEFARIA_API_KEY_EXTRA_HOSTS", "sefaria.internal.test, other.test")

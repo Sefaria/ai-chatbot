@@ -78,11 +78,12 @@ def _get_default_sefaria_base_url() -> str:
 _API_KEY_PATTERN = re.compile(r"[A-Za-z0-9_\-]{8,256}")
 _warned_bad_api_key = False
 
-# x-api-key is sent only over https. Hosts that receive it: sefaria.org and its subdomains
-# (www, cauldrons, ...). SEFARIA_API_KEY_EXTRA_HOSTS (comma-separated exact hostnames) adds
-# more, e.g. an in-cluster service, but those too only over https: a plain-http URL, or a
-# redirect to one, never carries the key. Hosts in MANUSCRIPT_IMAGE_HOSTS are never approved.
-API_KEY_HOST_SUFFIX = "sefaria.org"
+# x-api-key is sent only over https, and only to an exact host allowlist: the host of the
+# client's configured Sefaria API base URL plus its www/apex counterpart (when that base is a
+# *.sefaria.org host), plus SEFARIA_API_KEY_EXTRA_HOSTS (comma-separated exact hostnames, e.g. an in-cluster
+# service). Other sefaria.org subdomains get no key. A plain-http URL, or a redirect to one,
+# never carries the key. Hosts in MANUSCRIPT_IMAGE_HOSTS are never approved.
+_SEFARIA_DOMAIN = "sefaria.org"
 
 
 def _get_sefaria_api_key() -> str:
@@ -109,7 +110,20 @@ def _validated(key: str | None) -> str:
     return key if _API_KEY_PATTERN.fullmatch(key) else ""
 
 
-def _api_key_host_approved(url: httpx.URL) -> bool:
+def _base_url_key_hosts(base_url: str) -> set[str]:
+    """The base URL's host and its www/apex counterpart; empty unless it is a sefaria.org host.
+
+    A base URL outside sefaria.org (local, in-cluster) gets the key only via
+    SEFARIA_API_KEY_EXTRA_HOSTS.
+    """
+    host = (urlsplit(base_url).hostname or "").lower().rstrip(".")
+    if host != _SEFARIA_DOMAIN and not host.endswith("." + _SEFARIA_DOMAIN):
+        return set()
+    apex = host[4:] if host.startswith("www.") else host
+    return {host, apex, "www." + apex}
+
+
+def _api_key_host_approved(url: httpx.URL, base_url: str) -> bool:
     if url.scheme != "https":
         return False
     host = (url.host or "").lower().rstrip(".")
@@ -120,9 +134,7 @@ def _api_key_host_approved(url: httpx.URL) -> bool:
         for h in os.environ.get("SEFARIA_API_KEY_EXTRA_HOSTS", "").split(",")
         if h.strip()
     }
-    if host in extra:
-        return True
-    return host == API_KEY_HOST_SUFFIX or host.endswith("." + API_KEY_HOST_SUFFIX)
+    return host in extra or host in _base_url_key_hosts(base_url)
 
 
 _UNSET: Any = object()
@@ -247,7 +259,7 @@ class SefariaClient:
 
     async def _attach_api_key(self, request: httpx.Request) -> None:
         request.headers.pop("x-api-key", None)
-        if self._api_key and _api_key_host_approved(request.url):
+        if self._api_key and _api_key_host_approved(request.url, self.base_url):
             request.headers["x-api-key"] = self._api_key
 
     async def _get_client(self) -> httpx.AsyncClient:
