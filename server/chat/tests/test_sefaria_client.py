@@ -1004,3 +1004,135 @@ class TestManuscriptImageFetch:
 
             with pytest.raises(ValueError, match="larger than"):
                 await self._fetch(client, self.GOOD_URL, lying)
+
+
+class TestApiKeyHeader:
+    """SEFARIA_API_KEY is sent as x-api-key on every Sefaria API request.
+
+    knn-search also keeps its Bearer token. The manuscript image host is not a Sefaria
+    API host, so the key must not reach it.
+    """
+
+    FAKE_KEY = "sfr_test_fake"
+    FAKE_BEARER = "bearer-test-fake"
+
+    async def _run(self, monkeypatch, call, handler=None):
+        import functools
+
+        import httpx
+
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        seen: list[httpx.Request] = []
+
+        def recording(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if handler is not None:
+                return handler(request)
+            return httpx.Response(200, json={})
+
+        real_async_client = httpx.AsyncClient
+        monkeypatch.setattr(
+            sefaria_client_module.httpx,
+            "AsyncClient",
+            functools.partial(real_async_client, transport=httpx.MockTransport(recording)),
+        )
+        client = SefariaClient(base_url="https://www.sefaria.org")
+        try:
+            await call(client)
+        finally:
+            await client.close()
+        return seen
+
+    @staticmethod
+    async def _every_helper(client):
+        await client._get_json("api/calendars")
+        await client._search("love")
+        await client._post_form_json("api/sheets/", {"json": "{}"})
+        await client.semantic_search("love")
+
+    async def test_every_request_path_carries_x_api_key(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.delenv("SEMANTIC_SEARCH_API_TOKEN", raising=False)
+
+        seen = await self._run(monkeypatch, self._every_helper)
+
+        assert [r.url.path for r in seen] == [
+            "/api/calendars",
+            "/api/search-wrapper/es8",
+            "/api/sheets/",
+            "/api/knn-search",
+        ]
+        for request in seen:
+            assert request.headers["x-api-key"] == self.FAKE_KEY, request.url
+
+    async def test_knn_search_keeps_bearer_alongside_x_api_key(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        monkeypatch.setenv("SEMANTIC_SEARCH_API_TOKEN", self.FAKE_BEARER)
+
+        seen = await self._run(monkeypatch, lambda c: c.semantic_search("love"))
+
+        assert len(seen) == 1
+        assert seen[0].url.path == "/api/knn-search"
+        assert seen[0].headers["x-api-key"] == self.FAKE_KEY
+        assert seen[0].headers["authorization"] == f"Bearer {self.FAKE_BEARER}"
+
+    async def test_no_x_api_key_when_key_unset(self, monkeypatch):
+        monkeypatch.delenv("SEFARIA_API_KEY", raising=False)
+        monkeypatch.setenv("SEMANTIC_SEARCH_API_TOKEN", self.FAKE_BEARER)
+
+        seen = await self._run(monkeypatch, self._every_helper)
+
+        assert seen
+        for request in seen:
+            assert "x-api-key" not in request.headers, request.url
+
+    async def test_blank_key_is_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", "   ")
+
+        seen = await self._run(monkeypatch, self._every_helper)
+
+        assert seen
+        for request in seen:
+            assert "x-api-key" not in request.headers, request.url
+
+    async def test_manuscript_host_never_receives_the_key(self, monkeypatch):
+        import httpx
+
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        image_url = "https://manuscripts.sefaria.org/leningrad-color/BIB_LENCDX_F001B.jpg"
+
+        def image(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, content=b"\xff\xd8jpeg", headers={"content-type": "image/jpeg"}
+            )
+
+        seen = await self._run(
+            monkeypatch, lambda c: c.get_manuscript_image(image_url), handler=image
+        )
+
+        assert [str(r.url) for r in seen] == [image_url]
+        assert seen[0].headers.get("x-api-key", "") == ""
+        assert self.FAKE_KEY not in str(seen[0].headers)
+
+    async def test_key_value_never_appears_in_logs(self, monkeypatch, caplog):
+        import logging
+
+        import httpx
+
+        monkeypatch.setenv("SEFARIA_API_KEY", self.FAKE_KEY)
+        caplog.set_level(logging.DEBUG)
+
+        def fail(request):
+            return httpx.Response(500, json={"error": "boom"})
+
+        async def call(client):
+            with pytest.raises(httpx.HTTPStatusError):
+                await client._get_json("api/calendars")
+
+        await self._run(monkeypatch, call, handler=fail)
+
+        assert caplog.records
+        assert self.FAKE_KEY not in caplog.text
+        for record in caplog.records:
+            assert self.FAKE_KEY not in record.getMessage()

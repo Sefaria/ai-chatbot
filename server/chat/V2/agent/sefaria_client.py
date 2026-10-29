@@ -72,6 +72,14 @@ def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
 
 
+def _get_sefaria_api_key() -> str:
+    """Return the Sefaria API key from SEFARIA_API_KEY, or "" when unset or blank.
+
+    Sent as ``x-api-key`` on every Sefaria API request. Never log the value.
+    """
+    return os.environ.get("SEFARIA_API_KEY", "").strip()
+
+
 # Mapping from Sefaria search filter paths to human-friendly dictionary names.
 # Used by search_in_dictionaries to scope search to lexicon categories.
 LEXICON_MAP = {
@@ -198,9 +206,11 @@ class SefariaClient:
             except Exception:
                 pass
 
-        self._client = httpx.AsyncClient(
-            timeout=self.timeout, headers={"User-Agent": _user_agent()}
-        )
+        headers = {"User-Agent": _user_agent()}
+        api_key = _get_sefaria_api_key()
+        if api_key:
+            headers["x-api-key"] = api_key
+        self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
         self._client_loop = loop
         return self._client
 
@@ -565,7 +575,11 @@ class SefariaClient:
             )
 
         client = await self._get_client()
-        async with client.stream("GET", image_url, follow_redirects=False) as response:
+        # The client's default x-api-key is for Sefaria's API hosts only; blank it here
+        # so the manuscript host never receives the key.
+        async with client.stream(
+            "GET", image_url, headers={"x-api-key": ""}, follow_redirects=False
+        ) as response:
             if response.status_code != 200:
                 raise ValueError(
                     f"Manuscript image request failed with HTTP {response.status_code}"
