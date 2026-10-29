@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent, ToolUseBlock
 
 from .contracts import CancelCheck, TurnCancelled
 
@@ -23,6 +23,9 @@ class SDKRunResult:
     usage: dict[str, Any] | None
     total_cost_usd: float | None
     first_final_text_delta_elapsed_s: float | None = None
+
+
+PASSAGE_BREAK = "\n\n"
 
 
 class ClaudeSDKRunner:
@@ -86,6 +89,7 @@ class ClaudeSDKRunner:
         first_final_text_delta_elapsed_s: float | None = None
         first_final_text_delta_notified = False
         saw_tool_use_message = False
+        streamed_text_blocks: set[int] = set()
         start_time = time.time()
 
         def notify_first_final_text_delta() -> None:
@@ -120,10 +124,31 @@ class ClaudeSDKRunner:
                     delta = self.extract_text_delta_from_stream_event(message)
                     if delta and pending_first_text_delta_elapsed_s is None:
                         pending_first_text_delta_elapsed_s = time.time() - start_time
-                    if delta and on_text_delta:
-                        on_text_delta(delta)
+                    # Notify before forwarding the delta (not after) so a caller
+                    # using on_first_final_text_delta to gate on_text_delta
+                    # forwarding (e.g. only streaming final-answer content to
+                    # the client, not pre-tool-use narration) sees the flag
+                    # flip before this delta arrives, not one delta late.
                     if delta and saw_tool_use_message:
                         notify_first_final_text_delta()
+                    if delta and on_text_delta:
+                        on_text_delta(delta)
+                    # End each streamed text block with a paragraph break, so
+                    # passages split by tool calls don't run together and the
+                    # client's whole-word display doesn't hold back the last
+                    # word until the next passage starts.
+                    index = self.text_block_index_from_stream_event(message)
+                    if delta and index is not None:
+                        streamed_text_blocks.add(index)
+                    elif self.stream_event_type(message) == "message_start":
+                        streamed_text_blocks.clear()
+                    elif (
+                        self.stream_event_type(message) == "content_block_stop"
+                        and index in streamed_text_blocks
+                    ):
+                        streamed_text_blocks.discard(index)
+                        if on_text_delta:
+                            on_text_delta(PASSAGE_BREAK)
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)
@@ -158,6 +183,23 @@ class ClaudeSDKRunner:
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
         )
+
+    @staticmethod
+    def stream_event_type(message: Any) -> str | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        return event.get("type") if isinstance(event, dict) else None
+
+    @staticmethod
+    def text_block_index_from_stream_event(message: Any) -> int | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict):
+            return None
+        index = event.get("index")
+        return index if isinstance(index, int) else None
 
     @staticmethod
     def extract_text_delta_from_stream_event(message: Any) -> str:
@@ -236,6 +278,9 @@ class ClaudeSDKRunner:
         if not isinstance(content, list):
             return False
         for block in content:
+            # The SDK's ToolUseBlock has no `type` field, so match it by class.
+            if isinstance(block, ToolUseBlock):
+                return True
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 return True
             if getattr(block, "type", None) == "tool_use":
