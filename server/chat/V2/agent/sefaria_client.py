@@ -850,6 +850,46 @@ class SefariaClient:
             json={"new_headword": new_headword, "dry_run": dry_run},
         )
 
+    @staticmethod
+    def _version_path(title: str, lang: str, version_title: str) -> str:
+        return f"{quote(title, safe='')}/{quote(lang, safe='')}/{quote(version_title, safe='')}"
+
+    async def get_version_metadata(self, title: str, lang: str, version_title: str) -> dict[str, Any]:
+        """A version's metadata with its version hash (GET /api/admin/versions/<title>/<lang>/<versionTitle>)."""
+        return await self._staff_request(
+            "GET", f"api/admin/versions/{self._version_path(title, lang, version_title)}"
+        )
+
+    async def update_version_metadata(
+        self,
+        title: str,
+        lang: str,
+        version_title: str,
+        fields: dict[str, Any],
+        base_version: str,
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Edit a version's metadata (PATCH /api/admin/versions/<title>/<lang>/<versionTitle>)."""
+        return await self._staff_request(
+            "PATCH",
+            f"api/admin/versions/{self._version_path(title, lang, version_title)}",
+            json={"fields": fields, "base_version": base_version, "dry_run": dry_run},
+        )
+
+    async def find_versions(self, version_title: str, language: str | None = None) -> dict[str, Any]:
+        """Books with a version of this title (GET /api/admin/versions)."""
+        params = [("versionTitle", version_title)] + ([("language", language)] if language else [])
+        return await self._staff_request("GET", "api/admin/versions", params=params)
+
+    async def check_index_dependencies(self, title: str) -> dict[str, Any]:
+        """What depends on a book (GET /api/admin/index-dependencies/<title>)."""
+        return await self._staff_request("GET", f"api/admin/index-dependencies/{quote(title, safe='')}")
+
+    async def purge_cache(self, ref: str) -> dict[str, Any]:
+        """Refresh caches for a book or ref (POST /api/admin/cache/purge)."""
+        return await self._staff_request("POST", "api/admin/cache/purge", json={"ref": ref})
+
     async def _staff_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """Call a Sefaria staff API as the signed-in user, keeping its error message.
 

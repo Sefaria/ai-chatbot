@@ -846,6 +846,137 @@ TOOL_RENAME_LEXICON_HEADWORD = {
     },
 }
 
+_VERSION_PROPERTIES = {
+    "title": {"type": "string", "description": 'The book\'s title, e.g. "Genesis".'},
+    "lang": {"type": "string", "enum": ["en", "he"], "description": "The version's language."},
+    "version_title": {"type": "string", "description": 'The versionTitle, e.g. "The Koren Jerusalem Bible".'},
+}
+_VERSION_EDITABLE = [
+    "versionTitleInHebrew", "shortVersionTitle", "shortVersionTitleInHebrew", "versionSource", "versionNotes",
+    "versionNotesInHebrew", "license", "priority", "digitizedBySefaria", "purchaseInformationURL",
+    "purchaseInformationImage", "direction", "isSource", "isPrimary", "status", "newVersionTitle",
+]
+
+TOOL_GET_VERSION_METADATA = {
+    "name": "get_version_metadata",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {"title": "Read a version's metadata", "readOnlyHint": True, "openWorldHint": True},
+    "description": (
+        "Read one text version's metadata (not its text): source, license, notes, priority, status "
+        "(\"locked\" = only moderators may edit the text), short titles, purchase info. Staff only. "
+        'Returns {"metadata", "version", "editable_fields"}; pass `version` to update_version_metadata.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": _VERSION_PROPERTIES,
+        "required": ["title", "lang", "version_title"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_UPDATE_VERSION_METADATA = {
+    "name": "update_version_metadata",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Edit a version's metadata",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Edit a text version's metadata — the book page's version editor (pencil). Staff only; logged "
+        "in history. Read it first with get_version_metadata and pass its `version` as base_version.\n\n"
+        "- `fields` holds only the fields to change. `status`: \"locked\" locks the text against "
+        "edits by non-moderators, null unlocks it. `license` \"\" removes it. `newVersionTitle` renames "
+        "the version (links to it by name change too). `isPrimary` changes which version readers see "
+        "first. Ask the user explicitly before a rename, a lock change or isPrimary.\n"
+        "- Run with dry_run first and show the before/after; confirm before saving.\n"
+        "- On a conflict, show the current metadata from the error instead of retrying."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            **_VERSION_PROPERTIES,
+            "fields": {
+                "type": "object",
+                "description": "Field name → new value. Allowed: " + ", ".join(_VERSION_EDITABLE) + ".",
+                "propertyNames": {"enum": _VERSION_EDITABLE},
+            },
+            "base_version": {"type": "string"},
+            "dry_run": {"type": "boolean", "default": False},
+        },
+        "required": ["title", "lang", "version_title", "fields", "base_version"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_FIND_VERSIONS = {
+    "name": "find_versions",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {"title": "Find books with a version", "readOnlyHint": True, "openWorldHint": True},
+    "description": (
+        "List the books that have a version with this versionTitle (e.g. every book in "
+        '"The Koren Jerusalem Bible"), with each book\'s categories. Staff only. Returns '
+        '{"indices": [titles], "metadata": {title: {"categories"}}}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "version_title": {"type": "string"},
+            "language": {"type": "string", "enum": ["en", "he"]},
+        },
+        "required": ["version_title"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_CHECK_INDEX_DEPENDENCIES = {
+    "name": "check_index_dependencies",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {"title": "Check what depends on a book", "readOnlyHint": True, "openWorldHint": True},
+    "description": (
+        "What depends on a book: commentaries and other dependent books, how many versions and links it "
+        "has. Staff only. Use it before suggesting any change to a book's title or structure. Returns "
+        '{"title", "dependent_indices", "version_count", "link_count", "has_dependencies"}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+        "required": ["title"],
+        "additionalProperties": False,
+    },
+}
+
+TOOL_PURGE_CACHE = {
+    "name": "purge_cache",
+    # mcp_admin: the signed-in /mcp/admin endpoint only.
+    "surfaces": ("mcp_admin",),
+    "annotations": {
+        "title": "Refresh caches for a text",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Refresh Sefaria's caches for a text after an edit doesn't show: a book title refreshes its "
+        "index cache, version state and table of contents and purges it from the web cache; any other "
+        "ref is purged from the web cache. Staff only; safe to repeat. Returns "
+        '{"ref", "book_level", "purged": [what was refreshed]}.'
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"ref": {"type": "string", "description": 'A book title or ref, e.g. "Genesis" or "Genesis 1".'}},
+        "required": ["ref"],
+        "additionalProperties": False,
+    },
+}
+
 # ============================================================================
 # Tool Mappings
 # ============================================================================
@@ -885,6 +1016,11 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "get_lexicon_entry": TOOL_GET_LEXICON_ENTRY,
     "update_lexicon_entry": TOOL_UPDATE_LEXICON_ENTRY,
     "rename_lexicon_headword": TOOL_RENAME_LEXICON_HEADWORD,
+    "get_version_metadata": TOOL_GET_VERSION_METADATA,
+    "update_version_metadata": TOOL_UPDATE_VERSION_METADATA,
+    "find_versions": TOOL_FIND_VERSIONS,
+    "check_index_dependencies": TOOL_CHECK_INDEX_DEPENDENCIES,
+    "purge_cache": TOOL_PURGE_CACHE,
 }
 
 LABS_TOOL_NAMES = {

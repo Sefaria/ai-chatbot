@@ -244,6 +244,11 @@ ADMIN_TOOLS = {
     "get_lexicon_entry",
     "update_lexicon_entry",
     "rename_lexicon_headword",
+    "get_version_metadata",
+    "update_version_metadata",
+    "find_versions",
+    "check_index_dependencies",
+    "purge_cache",
 }
 
 
@@ -410,4 +415,40 @@ async def test_lexicon_tools_reach_their_staff_routes(executor, sefaria):
         b"/api/admin/lexicon-entries/headword/Jastrow%20Dictionary/%D7%90%D7%91",
     )
     assert json.loads(rename.content) == {"new_headword": "אָב", "dry_run": True}
+
+
+async def test_version_and_cache_tools_reach_their_staff_routes(executor, sefaria):
+    calls = [
+        ("get_version_metadata", {"title": "Genesis", "lang": "en", "version_title": "The Koren Jerusalem Bible"}),
+        (
+            "update_version_metadata",
+            {
+                "title": "Genesis",
+                "lang": "en",
+                "version_title": "The Koren Jerusalem Bible",
+                "fields": {"status": "locked"},
+                "base_version": "v1",
+                "dry_run": True,
+            },
+        ),
+        ("find_versions", {"version_title": "The Koren Jerusalem Bible", "language": "en"}),
+        ("check_index_dependencies", {"title": "Genesis"}),
+        ("purge_cache", {"ref": "Genesis 1"}),
+    ]
+    async with http(executor) as client:
+        for name, arguments in calls:
+            _, result = await rpc(
+                client, "tools/call", {"name": name, "arguments": arguments}, token=admin_token(), path="/mcp/admin"
+            )
+            assert not result["result"].get("isError"), (name, result)
+    get, update, find, deps, purge = sefaria
+    path = b"/api/admin/versions/Genesis/en/The%20Koren%20Jerusalem%20Bible"
+    assert (get.method, get.url.raw_path) == ("GET", path)
+    assert (update.method, update.url.raw_path) == ("PATCH", path)
+    assert json.loads(update.content) == {"fields": {"status": "locked"}, "base_version": "v1", "dry_run": True}
+    assert (find.method, find.url.path) == ("GET", "/api/admin/versions")
+    assert dict(find.url.params) == {"versionTitle": "The Koren Jerusalem Bible", "language": "en"}
+    assert (deps.method, deps.url.path) == ("GET", "/api/admin/index-dependencies/Genesis")
+    assert (purge.method, purge.url.path) == ("POST", "/api/admin/cache/purge")
+    assert json.loads(purge.content) == {"ref": "Genesis 1"}
 

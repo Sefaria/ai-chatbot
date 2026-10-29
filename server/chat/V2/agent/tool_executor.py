@@ -271,6 +271,30 @@ class SefariaToolExecutor:
                 dry_run=input_data.get("dry_run", False),
             )
 
+        elif tool_name == "get_version_metadata":
+            return await self.client.get_version_metadata(
+                input_data["title"], input_data["lang"], input_data["version_title"]
+            )
+
+        elif tool_name == "update_version_metadata":
+            return await self.client.update_version_metadata(
+                input_data["title"],
+                input_data["lang"],
+                input_data["version_title"],
+                input_data["fields"],
+                input_data["base_version"],
+                dry_run=input_data.get("dry_run", False),
+            )
+
+        elif tool_name == "find_versions":
+            return await self.client.find_versions(input_data["version_title"], input_data.get("language"))
+
+        elif tool_name == "check_index_dependencies":
+            return await self.client.check_index_dependencies(input_data["title"])
+
+        elif tool_name == "purge_cache":
+            return await self.client.purge_cache(input_data["ref"])
+
         elif tool_name in ("tag_ref_with_topic", "untag_ref_from_topic"):
             call = getattr(self.client, tool_name)
             return await call(
@@ -405,6 +429,11 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "untag_ref_from_topic": lambda: f"Removing {q(tool_input.get('ref'))} from {q(tool_input.get('topic'))}",
         "get_lexicon_entry": lambda: f"Reading {q(tool_input.get('headword'))} in {q(tool_input.get('lexicon'))}",
         "update_lexicon_entry": lambda: f"Editing {q(tool_input.get('headword'))} in {q(tool_input.get('lexicon'))}",
+        "get_version_metadata": lambda: f"Reading {q(tool_input.get('version_title'))} of {q(tool_input.get('title'))}",
+        "update_version_metadata": lambda: f"Editing {q(tool_input.get('version_title'))} of {q(tool_input.get('title'))}",
+        "find_versions": lambda: f"Finding books with {q(tool_input.get('version_title'))}",
+        "check_index_dependencies": lambda: f"Checking what depends on {q(tool_input.get('title'))}",
+        "purge_cache": lambda: f"Refreshing caches for {q(tool_input.get('ref'))}",
         "rename_lexicon_headword": lambda: (
             f"Renaming {q(tool_input.get('headword'))} to {q(tool_input.get('new_headword'))}"
         ),
