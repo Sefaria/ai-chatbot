@@ -7,6 +7,23 @@ import logging
 import os
 from typing import Any
 
+# The Claude CLI offloads any single MCP tool result above this many tokens
+# to a file (or hard-truncates it) instead of inlining it -- independent of
+# how much of the model's 200K-token context window is actually free. Unset,
+# it falls back to a remote experiment flag before a 25,000 default, so a
+# verse with enough linked commentaries (e.g. Genesis 12:1's ~120, whose
+# compressed previews run to ~26-27K tokens) can trip it even though the
+# model could easily have read the whole thing in one pass -- confirmed by
+# feeding it the same compressed previews directly: it found sources the
+# chunked-file-read fallback the CLI substitutes in that case missed.
+#
+# Set explicitly (a) to stop that remote experiment from silently picking a
+# lower value for some cohort of users, and (b) to buy headroom -- ~1.5x the
+# worst case measured so far -- without raising it so far that a turn with
+# several large tool calls (max_iterations=10) risks crowding out the rest
+# of a long-running conversation's history.
+MAX_MCP_OUTPUT_TOKENS = "40000"
+
 
 class SDKOptionsBuilder:
     """Builds ClaudeAgentOptions compatible with multiple SDK versions."""
@@ -77,6 +94,7 @@ class SDKOptionsBuilder:
         if self._supports_option("env"):
             env: dict[str, str] = {
                 "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+                "MAX_MCP_OUTPUT_TOKENS": MAX_MCP_OUTPUT_TOKENS,
             }
             if self.braintrust_logging_enabled:
                 env["BRAINTRUST_API_KEY"] = self.braintrust_api_key
