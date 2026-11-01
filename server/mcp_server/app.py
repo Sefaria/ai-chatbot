@@ -35,6 +35,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from chat.V2.agent.sefaria_client import SefariaClient
 from chat.V2.agent.tool_executor import SefariaToolExecutor
 from chat.V2.agent.tool_schemas import get_tools_for_surface
 from mcp_auth import access_tokens
@@ -153,9 +154,14 @@ def port() -> int:
     return _env_int("SEFARIA_MCP_PORT", DEFAULT_PORT)
 
 
+def build_mcp_executor() -> SefariaToolExecutor:
+    """The executor for the MCP process, whose client never sends SEFARIA_API_KEY."""
+    return SefariaToolExecutor(client=SefariaClient(api_key=None))
+
+
 def build_server(executor: SefariaToolExecutor | None = None) -> FastMCP:
     """Build the FastMCP server with every tool marked for the MCP surface."""
-    executor = executor or SefariaToolExecutor()
+    executor = executor or build_mcp_executor()
     mcp = FastMCP(SERVER_NAME, version=server_version())
 
     for schema in get_tools_for_surface(SURFACE):
@@ -251,7 +257,7 @@ def build_app(executor: SefariaToolExecutor | None = None) -> Starlette:
             _env_list("SEFARIA_MCP_ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS) if protect else None
         ),
     }
-    executor = executor or SefariaToolExecutor()
+    executor = executor or build_mcp_executor()
     mcp_app = build_server(executor).http_app(path=HTTP_PATH, **transport_options)
     sub_apps = [mcp_app]
 

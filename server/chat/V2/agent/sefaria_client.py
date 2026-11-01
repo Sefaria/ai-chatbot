@@ -16,6 +16,7 @@ import asyncio
 import base64
 import html
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -31,6 +32,8 @@ from .source_sheet_serializer import (
     prepare_source_sheet_sources,
     serialize_source_sheet_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Base URL configuration — supports both public Sefaria and local k8s service
@@ -70,6 +73,71 @@ def _user_agent() -> str:
 
 def _get_default_sefaria_base_url() -> str:
     return os.environ.get("SEFARIA_API_BASE_URL") or DEFAULT_SEFARIA_BASE_URL
+
+
+_API_KEY_PATTERN = re.compile(r"[A-Za-z0-9_\-]{8,256}")
+_warned_bad_api_key = False
+
+# x-api-key is sent only over https, and only to an exact host allowlist: the host of the
+# client's configured Sefaria API base URL plus its www/apex counterpart (when that base is a
+# *.sefaria.org host), plus SEFARIA_API_KEY_EXTRA_HOSTS (comma-separated exact hostnames, e.g. an in-cluster
+# service). Other sefaria.org subdomains get no key. A plain-http URL, or a redirect to one,
+# never carries the key. Hosts in MANUSCRIPT_IMAGE_HOSTS are never approved.
+_SEFARIA_DOMAIN = "sefaria.org"
+
+
+def _get_sefaria_api_key() -> str:
+    """Return the Sefaria API key from SEFARIA_API_KEY, or "" when unset, blank or malformed.
+
+    A key that is not a plain token (letters, digits, ``_``, ``-``; 8-256 characters) is
+    dropped with a constant warning, so a stray CR/LF or space can never reach a header.
+    Never log the value.
+    """
+    global _warned_bad_api_key
+    key = os.environ.get("SEFARIA_API_KEY", "").strip()
+    if not key:
+        return ""
+    if _API_KEY_PATTERN.fullmatch(key):
+        return key
+    if not _warned_bad_api_key:
+        _warned_bad_api_key = True
+        logger.warning("SEFARIA_API_KEY is malformed; requests are sent without x-api-key")
+    return ""
+
+
+def _validated(key: str | None) -> str:
+    key = (key or "").strip()
+    return key if _API_KEY_PATTERN.fullmatch(key) else ""
+
+
+def _base_url_key_hosts(base_url: str) -> set[str]:
+    """The base URL's host and its www/apex counterpart; empty unless it is a sefaria.org host.
+
+    A base URL outside sefaria.org (local, in-cluster) gets the key only via
+    SEFARIA_API_KEY_EXTRA_HOSTS.
+    """
+    host = (urlsplit(base_url).hostname or "").lower().rstrip(".")
+    if host != _SEFARIA_DOMAIN and not host.endswith("." + _SEFARIA_DOMAIN):
+        return set()
+    apex = host[4:] if host.startswith("www.") else host
+    return {host, apex, "www." + apex}
+
+
+def _api_key_host_approved(url: httpx.URL, base_url: str) -> bool:
+    if url.scheme != "https":
+        return False
+    host = (url.host or "").lower().rstrip(".")
+    if not host or host in MANUSCRIPT_IMAGE_HOSTS:
+        return False
+    extra = {
+        h.strip().lower()
+        for h in os.environ.get("SEFARIA_API_KEY_EXTRA_HOSTS", "").split(",")
+        if h.strip()
+    }
+    return host in extra or host in _base_url_key_hosts(base_url)
+
+
+_UNSET: Any = object()
 
 
 # Mapping from Sefaria search filter paths to human-friendly dictionary names.
@@ -161,7 +229,14 @@ class SefariaClient:
     (e.g. asyncio.run in a new thread), a fresh client is created.
     """
 
-    def __init__(self, base_url: str | None = None, timeout: float = 30.0):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        timeout: float = 30.0,
+        api_key: str | None = _UNSET,
+    ):
+        """``api_key`` defaults to SEFARIA_API_KEY; pass ``None`` to never send one (MCP)."""
+        self._api_key = _get_sefaria_api_key() if api_key is _UNSET else _validated(api_key)
         self.base_url = (base_url or _get_default_sefaria_base_url()).rstrip("/")
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
@@ -182,6 +257,11 @@ class SefariaClient:
             self._client = None
             self._client_loop = None
 
+    async def _attach_api_key(self, request: httpx.Request) -> None:
+        request.headers.pop("x-api-key", None)
+        if self._api_key and _api_key_host_approved(request.url, self.base_url):
+            request.headers["x-api-key"] = self._api_key
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get an AsyncClient bound to the current event loop.
 
@@ -198,8 +278,12 @@ class SefariaClient:
             except Exception:
                 pass
 
+        # The key is attached per request, only for approved hosts. The hook runs again
+        # for every redirect hop and removes a header copied from the earlier request.
         self._client = httpx.AsyncClient(
-            timeout=self.timeout, headers={"User-Agent": _user_agent()}
+            timeout=self.timeout,
+            headers={"User-Agent": _user_agent()},
+            event_hooks={"request": [self._attach_api_key]},
         )
         self._client_loop = loop
         return self._client
