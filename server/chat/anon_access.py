@@ -64,7 +64,7 @@ def count_anon_answers(user_id: str) -> int:
     """Answers a logged-out visitor got, across all their sessions.
 
     Only real answers count: refused questions, failed turns, cancelled turns
-    and the free answer (see gets_free_answer) don't.
+    and free answers (see gets_free_answer) don't.
     """
     return ChatMessage.objects.filter(
         user_id=user_id,
