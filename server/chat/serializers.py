@@ -14,6 +14,8 @@ class MessageContextSerializer(serializers.Serializer):
     locale = serializers.CharField(max_length=10, required=False, allow_blank=True)
     clientVersion = serializers.CharField(max_length=20, required=False, allow_blank=True)
     origin = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    # Where on the host page the question was asked from, e.g. "search_no_results"
+    source = serializers.CharField(max_length=50, required=False, allow_blank=True)
     isStaff = serializers.BooleanField(required=False, default=False)
     labs = serializers.BooleanField(required=False, default=False)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)

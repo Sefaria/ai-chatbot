@@ -63,13 +63,14 @@ def _fetch_limit(base_url: str) -> int | None:
 def count_anon_answers(user_id: str) -> int:
     """Answers a logged-out visitor got, across all their sessions.
 
-    Only real answers count: refused questions, failed turns and cancelled
-    turns don't.
+    Only real answers count: refused questions, failed turns, cancelled turns
+    and free answers (see gets_free_answer) don't.
     """
     return ChatMessage.objects.filter(
         user_id=user_id,
         role=ChatMessage.Role.ASSISTANT,
         status=ChatMessage.Status.SUCCESS,
+        free_answer=False,
     ).count()
 
 
@@ -87,3 +88,18 @@ def anon_answers_remaining(user_id: str) -> int | None:
     if limit is None:
         return None
     return max(limit - count_anon_answers(user_id), 0)
+
+
+# Questions the host page asks for the visitor (the context's `source`) that can be free
+FREE_ANSWER_SOURCES = {"search_no_results"}
+
+
+def gets_free_answer(source: str, remaining: int | None) -> bool:
+    """Whether this question's answer won't use up a free answer.
+
+    The question the empty-search page asks never uses up a visitor's last free
+    answer: with one left it's answered for free, every time, and they still have
+    one. With more left it counts like any other question. `remaining` is
+    anon_answers_remaining(user_id), which the caller has already worked out.
+    """
+    return source in FREE_ANSWER_SOURCES and remaining == 1

@@ -271,8 +271,9 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
- * @param {{signal?: AbortSignal}} [options] - `signal` aborts the stream; the resulting
+ * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
+ *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -289,12 +290,15 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null } = options;
+  const { signal = null, source = '' } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  if (source) {
+    context.source = source;
+  }
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }

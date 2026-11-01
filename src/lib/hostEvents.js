@@ -6,7 +6,9 @@ export const LAUNCHER_LABELS = { search_no_results: 'assistant.floating_button.s
  * Returns a function that stops listening, so it can be returned from an $effect.
  *
  * - `chatbot:open`: onOpen(detail). Hosts open the assistant from their own UI, e.g. Sefaria's
- *   mobile menu, and can pass a question to ask, e.g. from their search box.
+ *   mobile menu, and can pass a question to ask, e.g. from their search box. A detail whose
+ *   `source` and `question` are exactly the current launcher's counts as a launcher click, so
+ *   the question is asked only once between them; the host must build both from the same text.
  * - `chatbot:launcher`: a host page turns the closed launcher into a page-specific action, e.g.
  *   Sefaria's search no-results page: "✦ Search with Library Assistant", asking about the search.
  *   detail = { source, question }, or null to go back to the "✦ Ask" pill. The widget owns the
