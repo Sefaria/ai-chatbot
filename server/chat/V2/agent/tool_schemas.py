@@ -599,7 +599,8 @@ TOOL_PUBLISH_TOPIC_PROMPTS = {
         'Returns {"results": [{"id", "status", "result"?}], "dry_run": bool}; status is one of '
         "published, unpublished, unchanged, not_reviewed, conflict (someone changed it since you "
         "read it: `result` is the current version) or not_found. One failed item does not stop the "
-        "others.\n\n" + _TOPIC_PROMPT_DATA_NOT_INSTRUCTIONS
+        "others; a malformed item (missing or invalid id or base_version) fails the whole call before "
+        "anything is published.\n\n" + _TOPIC_PROMPT_DATA_NOT_INSTRUCTIONS
     ),
     "input_schema": {
         "type": "object",
@@ -643,9 +644,13 @@ TOOL_GENERATE_TOPIC_PROMPTS = {
         "Staff only. Only sources that have an `ai_context` (the editor's note on why the source is "
         "there) and no prompt yet are queued; set ai_context with update_topic_prompt first. "
         "Generated prompts are saved unpublished and \"not reviewed\", for a person to review.\n\n"
-        "Generation runs in the background (a minute or more): check it with get_admin_task, then "
-        "read the results with list_topic_prompts(topic=..., ai_generated=true).\n\n"
-        'Returns {"task_ids": [...], "queued": [{"id", "ref"}], "skipped": [{"id", "reason"}]}.'
+        "Authors' sources (popular-writing-of) are not supported and come back as skipped.\n\n"
+        "Without `ids`, up to 50 eligible sources are queued; `remaining` says how many more are "
+        "eligible: call again once these have generated. Generation runs in the background (a minute "
+        "or more): check it with get_admin_task, then read the results with "
+        "list_topic_prompts(topic=..., ai_generated=true).\n\n"
+        'Returns {"task_ids": [...], "queued": [{"id", "ref"}], "skipped": [{"id", "reason"}], '
+        '"remaining": int}.'
     ),
     "input_schema": {
         "type": "object",
@@ -734,11 +739,12 @@ TOOL_UNTAG_REF_FROM_TOPIC = {
         "openWorldHint": True,
     },
     "description": (
-        "Remove a passage from a topic's sources in one language (the source disappears from the "
-        "topic page; when no language is left the connection is deleted). Staff only. Refused when "
-        "the source has a curated title or prompt in that language — those are removed on the "
-        "topic page. Always run with dry_run=true first and get the user's confirmation.\n\n"
-        'Returns {"status": "untagged" | "link_deleted" | "not_tagged", ...}.'
+        "Remove a passage from a topic's sources in one language: only that language's entry goes, "
+        "and the connection is deleted only when no other language is left (`remaining_langs`). Staff "
+        "only. Refused when the source has a curated title or prompt in that language — those are "
+        "removed on the topic page. Always run with dry_run=true first and get the user's "
+        "confirmation.\n\n"
+        'Returns {"status": "untagged" | "link_deleted" | "not_tagged", "remaining_langs", ...}.'
     ),
     "input_schema": {
         "type": "object",
@@ -794,9 +800,10 @@ TOOL_UPDATE_LEXICON_ENTRY = {
     "description": (
         "Edit the content of one dictionary entry — the reader's moderator tool \"Edit Lexicon "
         "Content\". Staff only. Read it first with get_lexicon_entry; pass its `version` as "
-        "base_version and only fields listed in its content_attr_names, each with its complete new "
-        "value (a field you pass is replaced whole; keep the structure of the value you read, e.g. "
-        "`content.senses`). Preview with dry_run and confirm with the user before saving. The edit "
+        "base_version and only the fields you are changing, from its content_attr_names. Fields "
+        "you leave out are kept as they are. A field you pass is replaced whole, so give its complete "
+        "new value and keep the structure you read (e.g. `content.senses`). The dry_run preview is "
+        "exactly what a save stores. Confirm with the user before saving. The edit "
         "is logged in the entry's history. On a version conflict, show the user the current entry "
         "from the error instead of retrying.\n\n" + _LEXICON_DATA_NOT_INSTRUCTIONS
     ),
