@@ -422,13 +422,15 @@ def test_the_empty_search_question_never_uses_up_the_last_free_answer(client, no
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_the_free_empty_search_answer_happens_once_per_visitor(client, no_limit_by_default):
+def test_the_empty_search_question_is_free_every_time_at_the_last_answer(
+    client, no_limit_by_default
+):
     limit = no_limit_by_default.return_value = 2
     visitor = Visitor(client)
     visitor.use_up(limit - 1)
-    final_message(visitor.ask_from_empty_search())
 
-    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 0
+    for _ in range(3):
+        assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
@@ -437,7 +439,7 @@ def test_an_empty_search_question_counts_when_it_is_not_the_last(client, no_limi
     visitor = Visitor(client)
 
     assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
-    # It wasn't the last, so the exception is still there for the last one.
+    # Now it would use up the last one, so it's free.
     assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
 
 
@@ -449,21 +451,6 @@ def test_an_empty_search_question_at_the_limit_needs_login(client, agent, no_lim
 
     assert_login_required(visitor.ask_from_empty_search())
     assert agent.send_message.await_count == limit
-
-
-@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_a_failed_empty_search_answer_leaves_the_exception_unused(
-    client, agent, no_limit_by_default
-):
-    limit = no_limit_by_default.return_value = 2
-    visitor = Visitor(client)
-    visitor.use_up(limit - 1)
-    answer = agent.send_message.return_value
-    agent.send_message.side_effect = [Exception("Agent crashed"), answer]
-    with patch("chat.V2.views.capture_exception"):
-        answered(visitor.ask_from_empty_search())
-
-    assert final_message(visitor.ask_from_empty_search())["anonResponsesRemaining"] == 1
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)

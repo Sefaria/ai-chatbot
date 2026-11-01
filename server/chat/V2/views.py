@@ -353,7 +353,7 @@ def chat_stream_v2(request):
         if remaining == 0:
             return Response({"error": "login_required"}, status=status.HTTP_403_FORBIDDEN)
         free_answer = anon_access.gets_free_answer(
-            actor.user_id, (data.get("context") or {}).get("source", ""), remaining
+            (data.get("context") or {}).get("source", ""), remaining
         )
 
     progress_queue = queue.Queue(maxsize=STREAM_PROGRESS_QUEUE_MAXSIZE)
