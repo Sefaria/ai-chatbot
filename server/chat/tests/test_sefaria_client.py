@@ -1392,3 +1392,59 @@ class TestApiKeyHeader:
         )
 
         assert seen[0].headers["x-api-key"] == self.FAKE_KEY
+
+    MCP_KEY = "sfr_mcpkey123"
+    LA_KEY = "sfr_lakey456"
+
+    async def test_chatbot_never_sends_mcp_key(self, monkeypatch):
+        monkeypatch.setenv("SEFARIA_API_KEY", self.LA_KEY)
+        monkeypatch.setenv("MCP_SEFARIA_API_KEY", self.MCP_KEY)
+        monkeypatch.delenv("SEMANTIC_SEARCH_API_TOKEN", raising=False)
+
+        seen = await self._run(monkeypatch, self._every_helper)
+
+        assert seen
+        for request in seen:
+            assert request.headers["x-api-key"] == self.LA_KEY, request.url
+
+    async def test_chatbot_sends_no_key_when_only_mcp_key_is_set(self, monkeypatch):
+        monkeypatch.delenv("SEFARIA_API_KEY", raising=False)
+        monkeypatch.setenv("MCP_SEFARIA_API_KEY", self.MCP_KEY)
+        monkeypatch.delenv("SEMANTIC_SEARCH_API_TOKEN", raising=False)
+
+        seen = await self._run(monkeypatch, self._every_helper)
+
+        assert seen
+        for request in seen:
+            assert "x-api-key" not in request.headers, request.url
+
+    def test_mcp_key_reader_returns_the_mcp_variable_only(self, monkeypatch):
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        monkeypatch.setenv("SEFARIA_API_KEY", self.LA_KEY)
+        monkeypatch.delenv("MCP_SEFARIA_API_KEY", raising=False)
+        assert sefaria_client_module._get_mcp_sefaria_api_key() is None
+
+        monkeypatch.setenv("MCP_SEFARIA_API_KEY", f"  {self.MCP_KEY}  ")
+        assert sefaria_client_module._get_mcp_sefaria_api_key() == self.MCP_KEY
+
+    @pytest.mark.parametrize("bad_key", ["sfr key", "short", "sfr_test\nfake_key"])
+    def test_malformed_mcp_key_is_dropped_with_constant_warning(
+        self, monkeypatch, chat_logs, bad_key
+    ):
+        import logging
+
+        from chat.V2.agent import sefaria_client as sefaria_client_module
+
+        monkeypatch.setattr(sefaria_client_module, "_warned_bad_mcp_api_key", False)
+        monkeypatch.setenv("MCP_SEFARIA_API_KEY", bad_key)
+        chat_logs.set_level(logging.DEBUG)
+
+        assert sefaria_client_module._get_mcp_sefaria_api_key() is None
+        assert sefaria_client_module._get_mcp_sefaria_api_key() is None
+
+        assert bad_key.strip() not in chat_logs.text
+        warnings = [r for r in chat_logs.records if r.levelno == logging.WARNING]
+        assert [r.getMessage() for r in warnings] == [
+            "MCP_SEFARIA_API_KEY is malformed; requests are sent without x-api-key"
+        ]

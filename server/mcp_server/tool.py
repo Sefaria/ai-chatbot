@@ -18,7 +18,7 @@ from jsonschema import Draft202012Validator
 from mcp.types import TextContent, ToolAnnotations
 
 from chat.V2.agent.contracts import MessageContext
-from chat.V2.agent.sefaria_client import SefariaClient
+from chat.V2.agent.sefaria_client import SefariaClient, _get_mcp_sefaria_api_key
 from chat.V2.agent.tool_executor import SefariaToolExecutor
 from mcp_auth import sefaria_tokens
 
@@ -139,8 +139,8 @@ class UserSefariaTool(SefariaTool):
         if not user_id:
             raise ToolError("Sign in with your Sefaria account to use this tool.")
 
-        # The public MCP process never holds or sends SEFARIA_API_KEY.
-        client = SefariaClient(api_key=None)
+        # The public MCP process sends only MCP_SEFARIA_API_KEY, never SEFARIA_API_KEY.
+        client = SefariaClient(api_key=_get_mcp_sefaria_api_key())
         executor = SefariaToolExecutor(client=client)
         executor.set_message_context(
             MessageContext(
