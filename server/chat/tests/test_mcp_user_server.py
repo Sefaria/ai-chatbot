@@ -224,6 +224,22 @@ async def test_signed_in_tools_never_send_the_sefaria_api_key(executor, sefaria,
         assert "sfr_test_fake_key" not in str(request.headers)
 
 
+async def test_user_tool_sends_mcp_key(executor, sefaria, monkeypatch):
+    monkeypatch.setenv("SEFARIA_API_KEY", "sfr_lakey456")
+    monkeypatch.setenv("MCP_SEFARIA_API_KEY", "sfr_mcpkey123")
+    async with http(executor) as client:
+        await rpc(
+            client,
+            "tools/call",
+            {"name": "search_user_source_sheets", "arguments": {}},
+            token=access_token(user_id=42),
+        )
+    assert sefaria
+    for request in sefaria:
+        assert request.headers["x-api-key"] == "sfr_mcpkey123"
+        assert "sfr_lakey456" not in str(request.headers)
+
+
 async def test_concurrent_users_never_share_a_session(executor, sefaria):
     async with http(executor) as client:
         await asyncio.gather(

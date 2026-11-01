@@ -105,6 +105,28 @@ def _get_sefaria_api_key() -> str:
     return ""
 
 
+_warned_bad_mcp_api_key = False
+
+
+def _get_mcp_sefaria_api_key() -> str | None:
+    """Return the MCP server's key from MCP_SEFARIA_API_KEY, or None when unset, blank or malformed.
+
+    Same format check and constant warning as _get_sefaria_api_key(). The two variables are
+    read separately: the chatbot never sees MCP_SEFARIA_API_KEY and the MCP process never
+    sees SEFARIA_API_KEY. Never log the value.
+    """
+    global _warned_bad_mcp_api_key
+    key = os.environ.get("MCP_SEFARIA_API_KEY", "").strip()
+    if not key:
+        return None
+    if _API_KEY_PATTERN.fullmatch(key):
+        return key
+    if not _warned_bad_mcp_api_key:
+        _warned_bad_mcp_api_key = True
+        logger.warning("MCP_SEFARIA_API_KEY is malformed; requests are sent without x-api-key")
+    return None
+
+
 def _validated(key: str | None) -> str:
     key = (key or "").strip()
     return key if _API_KEY_PATTERN.fullmatch(key) else ""
