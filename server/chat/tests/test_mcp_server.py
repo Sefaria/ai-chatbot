@@ -441,6 +441,7 @@ async def test_mcp_executors_never_send_the_sefaria_api_key(monkeypatch):
     from chat.V2.agent import sefaria_client as sefaria_client_module
     from mcp_server.app import build_mcp_executor
 
+    monkeypatch.delenv("MCP_SEFARIA_API_KEY", raising=False)
     monkeypatch.setenv("SEFARIA_API_KEY", "sfr_test_fake_key")
     seen: list[httpx.Request] = []
 

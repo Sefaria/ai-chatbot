@@ -210,6 +210,7 @@ async def test_sheet_tools_send_a_fresh_mcp_token_for_the_signed_in_user(executo
 
 
 async def test_signed_in_tools_never_send_the_sefaria_api_key(executor, sefaria, monkeypatch):
+    monkeypatch.delenv("MCP_SEFARIA_API_KEY", raising=False)
     monkeypatch.setenv("SEFARIA_API_KEY", "sfr_test_fake_key")
     async with http(executor) as client:
         await rpc(
