@@ -679,7 +679,10 @@ def chat_stream_v2(request):
                         event_data["refData"] = update.ref_data
 
                     _mark_turn_heartbeat(user_message.id)
-                    yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+                    # Final-answer text goes out as its own event so the
+                    # client can render it as it streams.
+                    event_name = "partial" if update.type == "content_delta" else "progress"
+                    yield f"event: {event_name}\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
                     # The agent is quiet. Cancellation is handled at the top of
