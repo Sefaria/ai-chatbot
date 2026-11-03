@@ -74,6 +74,8 @@ class AgentResponse:
     cache_creation_tokens: int | None = None
     cache_read_tokens: int | None = None
     total_cost_usd: float | None = None
+    # The guardrail refused the question; `content` is its refusal reply.
+    refused: bool = False
 
 
 ProgressCallback = Callable[[AgentProgressUpdate], None]
