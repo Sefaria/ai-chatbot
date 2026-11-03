@@ -58,7 +58,7 @@ Visit `http://localhost:5173` for the local widget. It opens logged out; add `?u
 
 | Slot | Description |
 |------|-------------|
-| `signup-options` | The host page's sign-up options, shown under the text of the login prompt (a logged-out visitor who used up their free answers), centred. Put them in a child element: `<lc-chatbot><div slot="signup-options">…</div></lc-chatbot>`. They stay in the host page's DOM, so its own styles and scripts apply. With no such child, the prompt shows its text only |
+| `signup-options` | The host page's sign-up options, shown under the text of the login prompt (a logged-out visitor who used up their free answers), centred. Put them in a child element: `<lc-chatbot><div slot="signup-options">…</div></lc-chatbot>`. They stay in the host page's DOM, so its own styles and scripts apply. With no such child, the prompt shows its text only. On phones the widget sets `--lc-signup-option-size: 48px`, `--lc-signup-icon-size: 22px` and `--lc-signup-apple-icon-size: 25px` on the prompt, which reach the slotted options for the host to size them by; elsewhere they're unset |
 
 Bot version and prompt slugs can be configured from the widget settings panel (gear icon).
 

@@ -21,7 +21,7 @@
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
   import { renderMarkdown } from '../lib/markdown.js';
-  import { pushSheetEntry, popSheetEntry, hasSheetEntry } from '../lib/sheetHistory.js';
+  import { pushSheetEntry, popSheetEntry, hasSheetEntry, forgetSheetEntry, isOnSheetEntry, adoptSheetEntry } from '../lib/sheetHistory.js';
   import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
   import { sheetDrag } from '../lib/sheetDrag.js';
   import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
@@ -333,6 +333,13 @@
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
     isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
+    // Except on its own history entry: Back from a host page opened inside the sheet (e.g.
+    // Sefaria's sign-up form) returns to the sheet as the visitor left it, open, and the next
+    // Back closes it as usual.
+    if (untrack(() => isFullscreen) && isOnSheetEntry()) {
+      adoptSheetEntry(onSheetPopped);
+      isOpen = true;
+    }
     if (savedUI?.mode) {
       mode = savedUI.mode;
     } else {
@@ -723,6 +730,9 @@
     document.dispatchEvent(new CustomEvent('sefaria:bootstrap-url', { detail }));
     if (isFullscreen && isOpen) closePanel();
   }
+
+  // Removed by the host (e.g. it shows its own page): the next Back is the host's (sheetHistory.js)
+  $effect(() => () => forgetSheetEntry());
 
   $effect(() => {
     const query = window.matchMedia(FULLSCREEN_QUERY);
@@ -4297,6 +4307,15 @@
   :global(.login-prompt > slot[name='signup-options']::slotted(*)) {
     margin-top: 4px;
     align-self: center;
+  }
+
+  /* Phones: bigger sign-up options. Sefaria sizes its round buttons with these variables
+     (defaults 40px, 18px, 20px), which reach the slotted options through the slot. Apple's
+     box is bigger because apple.svg has space around the logo: 25px draws it 21px. */
+  .mode-fullscreen .login-prompt {
+    --lc-signup-option-size: 48px;
+    --lc-signup-icon-size: 22px;
+    --lc-signup-apple-icon-size: 25px;
   }
 
   @keyframes loginPromptIn {

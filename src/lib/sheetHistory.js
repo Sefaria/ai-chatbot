@@ -24,10 +24,30 @@ window.addEventListener('popstate', (e) => {
   onSheetEntryPopped?.();
 });
 
+// Marks the sheet's entry in history.state, so a host that navigates from inside the open
+// sheet (its own control in it, e.g. a sign-up option) can tell, and replace the entry with its
+// page instead of pushing on top of it; then Back from that page goes straight back.
+export const SHEET_ENTRY_STATE_KEY = 'lcSheet';
+
 export function pushSheetEntry(callback) {
   if (isSheetEntryCurrent) return;
   sheetEntryUrl = location.href;
-  history.pushState(history.state, '');
+  history.pushState({ ...history.state, [SHEET_ENTRY_STATE_KEY]: true }, '');
+  isSheetEntryCurrent = true;
+  onSheetEntryPopped = callback;
+}
+
+/** Whether the browser is on a sheet's entry (a widget that was removed while open left it). */
+export function isOnSheetEntry() {
+  return history.state?.[SHEET_ENTRY_STATE_KEY] === true;
+}
+
+/**
+ * Take over the sheet's entry the browser is on, as a widget just put back by the host does
+ * (Back from a host page opened inside the sheet): the next Back closes the sheet again.
+ */
+export function adoptSheetEntry(callback) {
+  sheetEntryUrl = location.href;
   isSheetEntryCurrent = true;
   onSheetEntryPopped = callback;
 }
@@ -39,4 +59,13 @@ export function popSheetEntry() {
 
 export function hasSheetEntry() {
   return isSheetEntryCurrent;
+}
+
+/**
+ * The widget is going away (the host removed it, e.g. to show its own page). Its entry is no
+ * longer the sheet's to handle: the next Back belongs to the host, who may have replaced it.
+ */
+export function forgetSheetEntry() {
+  isSheetEntryCurrent = false;
+  onSheetEntryPopped = null;
 }
