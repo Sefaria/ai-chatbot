@@ -97,6 +97,26 @@ test.describe('Logged-out use of the assistant', () => {
     expect(await assistant.isFocusInsideLoginPrompt()).toBe(false);
   });
 
+  test("on a phone the host page's sign-up options get the phone sizes", async ({ page, context }) => {
+    await page.setViewportSize({ width: 375, height: 740 });
+    const assistant = await setUp(page, context);
+    await assistant.addHostSignupOptions();
+
+    await reachLimit(assistant);
+
+    // 48px circles; Google and Email 22px icons; Apple's box 25px draws its logo 21px.
+    expect(await assistant.hostSignupOptionSizes()).toEqual({ circle: '48px', icon: '22px', appleIcon: '25px' });
+  });
+
+  test("on a desktop the host page's sign-up options keep the host's own sizes", async ({ page, context }) => {
+    const assistant = await setUp(page, context);
+    await assistant.addHostSignupOptions();
+
+    await reachLimit(assistant);
+
+    expect(await assistant.hostSignupOptionSizes()).toEqual({ circle: '', icon: '', appleIcon: '' });
+  });
+
   test("the login prompt shows the host page's sign-up options under its text", async ({ page, context }) => {
     const assistant = await setUp(page, context);
     // The host adds its options after the widget is on the page.

@@ -88,6 +88,49 @@ export class AssistantPage {
     await expect(this.panel).toBeHidden();
   }
 
+  // The phone sheet's history entry (see src/lib/sheetHistory.js)
+
+  /** Whether the browser is on the open sheet's history entry, as a host can tell. */
+  async isSheetEntryCurrent() {
+    return this.page.evaluate(() => history.state?.lcSheet === true);
+  }
+
+  /**
+   * Act as the host navigating from a control inside the open sheet (Sefaria's Email
+   * sign-up option): push its own page and remove the assistant. Like Sefaria, the
+   * host puts the assistant back when Back returns to its page. Records the Back
+   * navigations the host hears from then on.
+   */
+  async actAsHostOpeningAPageFromTheSheet(path) {
+    await this.page.evaluate((url) => {
+      const assistant = document.querySelector('lc-chatbot');
+      const attributes = [...assistant.attributes].map(({ name, value }) => [name, value]);
+      window.hostBacks = [];
+      window.addEventListener('popstate', () => {
+        window.hostBacks.push(location.href);
+        if (location.pathname !== url && !document.querySelector('lc-chatbot')) {
+          const again = document.createElement('lc-chatbot');
+          attributes.forEach(([name, value]) => again.setAttribute(name, value));
+          document.body.append(again);
+        }
+      });
+      history.pushState({ hostPage: url }, '', url);
+      assistant.remove();
+    }, path);
+    await expect(this.host).toHaveCount(0);
+    // The custom element tears down its component a microtask after it's removed.
+    await this.page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  }
+
+  async pressBack() {
+    await this.page.evaluate(() => history.back());
+  }
+
+  /** The pages the host was told the browser went back to (actAsHostOpeningAPageFromTheSheet). */
+  async hostBackNavigations() {
+    return this.page.evaluate(() => window.hostBacks || []);
+  }
+
   // Messages
 
   get messageList() {
@@ -173,6 +216,22 @@ export class AssistantPage {
   }
 
   /** Act as the host page: put a sign-up button in the prompt's slot. */
+  /**
+   * The sizes the widget passes to the host's options (CSS variables inherited through
+   * the slot): '' when unset, so the host's own defaults apply.
+   */
+  async hostSignupOptionSizes() {
+    return this.hostSignupOptions.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const value = (name) => style.getPropertyValue(name).trim();
+      return {
+        circle: value('--lc-signup-option-size'),
+        icon: value('--lc-signup-icon-size'),
+        appleIcon: value('--lc-signup-apple-icon-size'),
+      };
+    });
+  }
+
   async addHostSignupOptions({ featureName } = {}) {
     await this.host.evaluate((host, name) => {
       const options = document.createElement('div');
