@@ -101,6 +101,8 @@
   let streamingMarkdown = $state('');
   let streamEl = $state(null);
   let streamTextDone = $state(false);
+  // True while the answer is streaming but no new word has shown for STREAM_PAUSE_MS.
+  let streamPaused = $state(false);
   // Thumbs show as soon as the streamed text ends, before the final message
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
@@ -109,6 +111,8 @@
   // Before the answer starts streaming, "Synthesizing response" stays up for
   // at least this long; text that arrives sooner is held until then.
   const SYNTHESIZING_MIN_MS = 1000;
+  // Once writing has started, the indicator only shimmers after this long with no new words.
+  const STREAM_PAUSE_MS = 1000;
 
   function hasOpenMarkup(text) {
     if (text.lastIndexOf('[') > text.lastIndexOf(']')) return true;
@@ -952,6 +956,7 @@
     appetizerData = activeRequests[sessionId]?.appetizerData || null;
     streamingMarkdown = activeRequests[sessionId]?.streamingMarkdown || '';
     streamTextDone = !!activeRequests[sessionId]?.streamTextDone;
+    streamPaused = !!activeRequests[sessionId]?.streamPaused;
     pendingFeedback = activeRequests[sessionId]?.pendingFeedback || null;
     stopThinkingMessages();
     if (streamingMarkdown && !streamTextDone) {
@@ -1161,7 +1166,8 @@
       // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
-      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0
+      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
+      streamPaused: false, pauseTimer: null
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1194,6 +1200,7 @@
     appetizerData = null;
     streamingMarkdown = '';
     streamTextDone = false;
+    streamPaused = false;
     pendingFeedback = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
@@ -1223,6 +1230,18 @@
     // this session is the one currently shown.
     let onStreamDrained = null;
 
+    function setStreamPaused(paused) {
+      request.streamPaused = paused;
+      if (sessionId === sendingSessionId) streamPaused = paused;
+    }
+
+    // New words on screen: the stream isn't paused, and is again if nothing follows soon.
+    function noteWordsShown() {
+      setStreamPaused(false);
+      clearTimeout(request.pauseTimer);
+      request.pauseTimer = setTimeout(() => setStreamPaused(true), STREAM_PAUSE_MS);
+    }
+
     function showCompleteWords() {
       for (let end = request.playedStreamText.length; end > request.streamingMarkdown.length; end--) {
         if (!/\s/.test(request.playedStreamText[end - 1])) continue;
@@ -1231,6 +1250,7 @@
         if (!hasOpenMarkup(candidate) && !/(^|\n)\s*(\d+\.|[-*])\s*$/.test(candidate)) {
           request.streamingMarkdown = candidate;
           if (sessionId === sendingSessionId) streamingMarkdown = candidate;
+          noteWordsShown();
           return;
         }
       }
@@ -1240,6 +1260,7 @@
       if (request.playedStreamText.length > request.streamingMarkdown.length) {
         request.streamingMarkdown = request.playedStreamText;
         if (sessionId === sendingSessionId) streamingMarkdown = request.playedStreamText;
+        noteWordsShown();
       }
     }
 
@@ -1497,11 +1518,13 @@
       delete stopErrors[sendingSessionId];
       setSessionSending(sendingSessionId, false);
       clearTimeout(request.streamTimer);
+      clearTimeout(request.pauseTimer);
       if (sessionId === sendingSessionId) {
         stopThinkingMessages();
         appetizerData = null;
         streamingMarkdown = '';
         streamTextDone = false;
+        streamPaused = false;
         pendingFeedback = null;
         if (conversationDrafts[sendingSessionId] === text) {
           await tick();
@@ -2423,11 +2446,12 @@
                 </div>
               {/if}
               {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
-                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
+                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown} class:is-paused={streamPaused}>
                   <div class="lc-thinking-step">
                     <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
                       <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                      <span class="lc-thinking-label lc-thinking-label-shimmer" aria-hidden="true">{$_(thinkingMessageKey)}</span>
                     </span>
                   </div>
                 </div>
@@ -3676,6 +3700,14 @@
   }
   .lc-thinking-label-base {
     color: var(--semantic-text-secondary, #575757);
+  }
+  /* The shimmer is a copy of the label laid over it, so it can fade in and out
+     while its sweep keeps running underneath. */
+  .lc-thinking-label-shimmer {
+    position: absolute;
+    inset: 0;
+    color: var(--semantic-text-secondary, #575757);
+    transition: opacity 300ms ease-in-out;
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -3693,7 +3725,7 @@
     -webkit-text-fill-color: transparent;
     animation: lc-thinking-shimmer-ltr 2.4s linear infinite;
   }
-  .interface-hebrew .lc-thinking-label-base {
+  .interface-hebrew .lc-thinking-label-shimmer {
     animation-name: lc-thinking-shimmer-rtl;
   }
   @keyframes lc-thinking-shimmer-ltr {
@@ -3704,23 +3736,40 @@
     from { background-position: 0% 0; }
     to { background-position: 100% 0; }
   }
+  /* Same sweeps under another name: switching to them on a pause restarts the
+     sweep from its first frame, with the highlight just off the label's edge. */
+  @keyframes lc-thinking-shimmer-ltr-restart {
+    from { background-position: 100% 0; }
+    to { background-position: 0% 0; }
+  }
+  @keyframes lc-thinking-shimmer-rtl-restart {
+    from { background-position: 0% 0; }
+    to { background-position: 100% 0; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .lc-thinking-label-wrap {
       transition: none;
     }
-    .lc-thinking-label-base {
-      animation: none;
-      background-image: none;
-      -webkit-text-fill-color: currentColor;
+    .lc-thinking-label-shimmer {
+      display: none;
     }
   }
 
-  /* Streaming: "✦ Writing…" sits close under the text, and shimmers like the thinking messages */
+  /* Streaming: the indicator sits close under the text, and shimmers only while the text has paused */
   .lc-streaming-content.is-writing :global(> :last-child) {
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
     margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+  }
+  .lc-thinking-block.is-writing:not(.is-paused) .lc-thinking-label-shimmer {
+    opacity: 0;
+  }
+  .lc-thinking-block.is-writing.is-paused .lc-thinking-label-shimmer {
+    animation-name: lc-thinking-shimmer-ltr-restart;
+  }
+  .interface-hebrew .lc-thinking-block.is-writing.is-paused .lc-thinking-label-shimmer {
+    animation-name: lc-thinking-shimmer-rtl-restart;
   }
 
   /* Streaming: each new word fades in */
