@@ -957,7 +957,7 @@
     if (streamingMarkdown && !streamTextDone) {
       // Already past the thinking/synthesizing phase for this turn — resume
       // showing the static writing indicator rather than restarting the cycle.
-      thinkingMessageKey = 'assistant.writing';
+      thinkingMessageKey = 'assistant.thinking.final';
     } else if (activeRequests[sessionId] && !activeRequests[sessionId].stopping && !streamingMarkdown) {
       startThinkingMessages();
     }
@@ -1277,7 +1277,7 @@
           if (sessionId === sendingSessionId) {
             clearThinkingMessageTimers();
             isThinkingMessageFading = false;
-            thinkingMessageKey = 'assistant.writing';
+            thinkingMessageKey = 'assistant.thinking.final';
           }
           playStreamQueue();
         }, Math.max(0, revealAt - performance.now()));
