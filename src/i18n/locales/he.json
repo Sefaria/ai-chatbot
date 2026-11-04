@@ -142,6 +142,9 @@
     "assistant.menu.restart.login_tooltip": "התחברו כדי להתחיל שיחה חדשה",
     "assistant.floating_button.search_label": "חיפוש עם עוזר הספרייה",
     "assistant.floating_button.label": "שאלו אותי",
+    "assistant.anon.google.aria": "המשך עם גוגל",
+    "assistant.anon.apple.aria": "המשך עם אפל",
+    "assistant.anon.email.aria": "המשך עם דוא״ל"
     "assistant.floating_button.aria": "שאלו את עוזר הספרייה",
     "assistant.floating_button.aria_ready": "שאלו את עוזר הספרייה: התשובה שלך מוכנה",
     "assistant.floating_button.aria_label_ready": "{label}: התשובה שלך מוכנה"
