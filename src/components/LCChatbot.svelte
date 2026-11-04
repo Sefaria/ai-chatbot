@@ -3715,17 +3715,12 @@
     }
   }
 
-  /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
+  /* Streaming: "✦ Writing…" sits close under the text, and shimmers like the thinking messages */
   .lc-streaming-content.is-writing :global(> :last-child) {
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
     margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
-  }
-  .lc-thinking-block.is-writing .lc-thinking-label-base {
-    animation: none;
-    background-image: none;
-    -webkit-text-fill-color: currentColor;
   }
 
   /* Streaming: each new word fades in */
