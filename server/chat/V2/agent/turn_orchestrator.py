@@ -224,6 +224,10 @@ class TurnOrchestrator:
                 return
             emitter.emit(AgentProgressUpdate(type="content_delta", text=delta))
 
+        def emit_tool_call_start():
+            # Lets the client mark where in the streamed text a tool wait begins.
+            emitter.emit(AgentProgressUpdate(type="tool_call_start"))
+
         try:
             sdk_start_time = time.time()
             sdk_result = await self.sdk_runner.run(
@@ -231,6 +235,7 @@ class TurnOrchestrator:
                 prompt_text=prompt_text,
                 on_text_delta=emit_content_delta,
                 on_first_final_text_delta=emit_synthesis_status_once,
+                on_tool_call_start=emit_tool_call_start,
                 should_cancel=should_cancel,
             )
         except TurnCancelled:

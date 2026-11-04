@@ -122,7 +122,13 @@ class FakeIndexedPassagesClient(FakeClient):
                 )
             yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
             if uses_tool:
-                yield FakeStreamEvent(event={"type": "content_block_start", "index": 1})
+                yield FakeStreamEvent(
+                    event={
+                        "type": "content_block_start",
+                        "index": 1,
+                        "content_block": {"type": "tool_use", "name": "semantic_search"},
+                    }
+                )
                 yield FakeStreamEvent(
                     event={
                         "type": "content_block_delta",
@@ -154,6 +160,27 @@ def test_each_streamed_text_block_ends_with_a_paragraph_break():
     assert "".join(deltas) == "Let me look these up.\n\nHere it is.\n\n"
     assert deltas.count("\n\n") == 2
     assert result.final_text == "Here it is."
+
+
+def test_tool_call_start_fires_when_a_tool_block_opens_after_the_passage():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeIndexedPassagesClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    events = []
+
+    asyncio.run(
+        runner.run(
+            options=object(),
+            prompt_text="prompt",
+            on_text_delta=events.append,
+            on_tool_call_start=lambda: events.append("<tool call>"),
+        )
+    )
+
+    assert "".join(events) == "Let me look these up.\n\n<tool call>Here it is.\n\n"
 
 
 def test_first_final_text_delta_uses_last_text_message_before_result(monkeypatch):

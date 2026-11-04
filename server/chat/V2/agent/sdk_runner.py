@@ -26,6 +26,7 @@ class SDKRunResult:
 
 
 PASSAGE_BREAK = "\n\n"
+TOOL_CALL_BLOCK_TYPES = {"tool_use", "server_tool_use", "mcp_tool_use"}
 
 
 class ClaudeSDKRunner:
@@ -77,6 +78,7 @@ class ClaudeSDKRunner:
         prompt_text: str,
         on_text_delta: Callable[[str], None] | None = None,
         on_first_final_text_delta: Callable[[], None] | None = None,
+        on_tool_call_start: Callable[[], None] | None = None,
         should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
@@ -149,6 +151,10 @@ class ClaudeSDKRunner:
                         streamed_text_blocks.discard(index)
                         if on_text_delta:
                             on_text_delta(PASSAGE_BREAK)
+                    # A tool call block opening means a wait is starting now,
+                    # before the model has finished writing the call's input.
+                    if on_tool_call_start and self.stream_event_starts_tool_call(message):
+                        on_tool_call_start()
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)
@@ -190,6 +196,16 @@ class ClaudeSDKRunner:
             message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
         )
         return event.get("type") if isinstance(event, dict) else None
+
+    @staticmethod
+    def stream_event_starts_tool_call(message: Any) -> bool:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict) or event.get("type") != "content_block_start":
+            return False
+        block = event.get("content_block")
+        return isinstance(block, dict) and block.get("type") in TOOL_CALL_BLOCK_TYPES
 
     @staticmethod
     def text_block_index_from_stream_event(message: Any) -> int | None:
