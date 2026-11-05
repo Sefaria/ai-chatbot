@@ -2795,6 +2795,83 @@
     max-height: 100%;
   }
 
+  /* Dark theme, while the page is dark (data-theme on the host: lib/hostTheme.js). The values
+     are Sefaria's dark tokens (Sefaria-Project static/css/theme-tokens.css): page #121212,
+     panel #1C1C1C, menus #252525, text #E8E6E3, brand blue #A9C1EB as text and #2F5A96 as a
+     fill. Screen only, so printing stays light, as on Sefaria. */
+  @media screen {
+    :host([data-theme="dark"]) {
+      --semantic-action-primary: #A9C1EB;
+      --semantic-text-link: #A9C1EB;
+      --semantic-text-primary: #E8E6E3;
+      --semantic-text-secondary: #B3B1AE;
+      --semantic-text-muted: #959390;
+      --semantic-icon-muted: #959390;
+      --functional-icon-icon-primary: #B3B1AE;
+      --brand-sefaria-blue: #A9C1EB; /* as text, borders and focus */
+      --lc-sefaria-blue: #A9C1EB;
+      --lc-primary-fill: #2F5A96; /* under white text */
+      --lc-primary-hover: #3A69AB;
+      --lc-user-bg: #2F5A96;
+      --lc-submit-bg: #2F5A96;
+
+      --lc-body-bg: #1C1C1C;
+      --lc-bg: #252525;
+      --lc-bg-secondary: #1C1C1C;
+      --lc-bg-tertiary: #333333;
+      --lc-bg-hover: #333333;
+      --lc-text: #E8E6E3;
+      --lc-text-muted: #959390;
+      --lc-border: #474747;
+      --lc-border-strong: #767676;
+      --lc-input-bg: #262626;
+      --lc-input-border: #777777;
+      --lc-assistant-bg: #252525;
+      --lc-assistant-text: #E8E6E3;
+      --lc-topics-bg: #1A2B40;
+      --lc-history-row-hover: #1A2B40;
+      --lc-history-row-active: #1E3A5F;
+      --lc-history-fade-from: rgba(28, 28, 28, 0.7);
+      --lc-history-fade-to: rgba(28, 28, 28, 0.2);
+      --lc-empty-icon-bg: #2B2B2B;
+
+      --lc-error: #FF7B6B;
+      --lc-error-hover: #FFA196;
+      --lc-error-bg: #3A2323;
+      --lc-danger: #FF7B6B;
+      --lc-danger-fill: #B34A42;
+      --lc-danger-hover: #9E3F38;
+      --lc-disabled-button: #2B2B2B;
+      --lc-disabled-text: #959390;
+      --lc-disabled-icon: #7A7875;
+
+      /* Grey <img> icons; the red trash icon is lightened */
+      --lc-icon-filter: brightness(0) saturate(100%) invert(70%);
+      --lc-stop-icon-filter: var(--lc-icon-filter);
+      --lc-danger-icon-filter: brightness(1.6);
+
+      /* Shadows barely show on a dark page: floating surfaces get a 1px edge too */
+      --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+      --lc-panel-shadow: 0 0 0 1px var(--lc-border), var(--lc-shadow);
+      --lc-docked-shadow: 0 0 0 1px var(--lc-border), 0 16px 32px 0 rgb(0 0 0 / 0.5);
+      --lc-sheet-shadow: 0 0 0 1px var(--lc-border), 0 -8px 32px rgb(0 0 0 / 0.6);
+      --lc-dropdown-shadow: 0 8px 18px rgb(0 0 0 / 0.5);
+      --lc-tap-highlight: rgb(255 255 255 / 0.12);
+
+      --lc-trail-text: #A8A6A3;
+      --lc-trail-muted: #959390;
+      --lc-trail-hover: #D6D4D1;
+      --lc-trail-error: #FF7B6B;
+    }
+
+    /* Native controls and scrollbars, and text with no colour of its own. Set inside the
+       shadow tree, where the page's own rules for <lc-chatbot> can't override them. */
+    :host([data-theme="dark"]) .lc-chatbot-container {
+      color-scheme: dark;
+      color: var(--lc-text);
+    }
+  }
+
   * {
     box-sizing: border-box;
     margin: 0;
