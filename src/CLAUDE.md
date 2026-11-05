@@ -21,6 +21,7 @@ src/
     ├── storage.js               # localStorage persistence
     ├── markdown.js              # Markdown rendering
     ├── hostEvents.js            # chatbot:open / chatbot:launcher listeners
+    ├── hostTheme.js             # follows the page's <html data-theme> (light/dark)
     ├── sheetHistory.js          # Phones: the sheet's Back-button history entry
     ├── sheetDrag.js             # Phones: drag the header down to close (action)
     ├── keyboardViewport.svelte.js # Phones: keep the sheet above the keyboard, lock page scroll
@@ -79,6 +80,10 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 ## Launcher
 
 The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-ask` in `AskLauncher.svelte`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. The chat is rebuilt on every open, so opening lands on the start of an answer that arrived while closed, otherwise where the reader left that chat (recorded on close, so not after a reload), otherwise at the bottom (its latest message). A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height at its mobile widths (up to 842px, where the banner is full width) until the banner is dismissed. The move always slides (0.2s), reduced motion included.
+
+## Theme
+
+The widget follows the page's light/dark theme: `<html data-theme="dark">` is dark, anything else (or none yet) light, read on connect and watched live (`lib/hostTheme.js`). It reflects the theme on itself as `<lc-chatbot data-theme="dark|light">`, which is how a host tells it from an older widget with no dark theme (Sefaria keeps `lc-chatbot:not([data-theme])` light). Dark values live in one `:host([data-theme="dark"])` block in `LCChatbot.svelte` (Sefaria's dark palette); a new colour gets a token in `:host` plus a dark value there, never a literal in a rule. The page's own rules on `<lc-chatbot>` beat `:host`, so `color-scheme` and text colour are set inside the shadow tree.
 
 ## Phones
 
