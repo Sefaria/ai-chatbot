@@ -26,6 +26,7 @@
   import { sheetDrag } from '../lib/sheetDrag.js';
   import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
   import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
+  import { followHostTheme } from '../lib/hostTheme.js';
   import AskLauncher from './AskLauncher.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -768,6 +769,13 @@
     await tick();
     handleSend({ source });
   }
+
+  // Follow the page's light/dark theme (<html data-theme>, lib/hostTheme.js). The styles key off
+  // data-theme on the host, which also tells the page this widget has a dark theme.
+  $effect(() => {
+    const host = $host();
+    return followHostTheme((theme) => host.setAttribute('data-theme', theme));
+  });
 
   // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
   $effect(() => listenToHost({
