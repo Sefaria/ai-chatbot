@@ -11,7 +11,6 @@ from django.conf import settings
 
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
-    NO_THINKING_NARRATION_INSTRUCTION,
     SECTION_SEPARATOR,
 )
 from .contracts import (
@@ -172,8 +171,6 @@ class TurnOrchestrator:
         )
 
         system_prompt = prompt_result.full_prompt
-        if self.options_builder.thinking_disabled:
-            system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
 
         options, system_prompt_in_options = self.options_builder.build(
             system_prompt=system_prompt,
@@ -199,29 +196,20 @@ class TurnOrchestrator:
 
         emitter.emit(AgentProgressUpdate(type="status", text="Thinking..."))
         synthesis_status_emitted = False
-        in_final_phase = False
 
         def emit_synthesis_status_once():
-            # Fires exactly once, right before the first text delta that
-            # belongs to the model's final answer (as opposed to any
-            # pre-tool-use narration). Also flips the gate that lets
-            # on_text_delta below start forwarding content to the client --
-            # see the ordering note in ClaudeSDKRunner.run().
-            nonlocal synthesis_status_emitted, in_final_phase
-            in_final_phase = True
+            # Fires once, right before the first text delta of the model's
+            # final answer -- used only for the time-to-first-final-token
+            # metric below. Narration (any text before that point) streams
+            # to the client too; see emit_content_delta.
+            nonlocal synthesis_status_emitted
             if synthesis_status_emitted:
                 return
             synthesis_status_emitted = True
             emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
         def emit_content_delta(delta: str):
-            # Only stream text once we're in the final-answer phase. Deltas
-            # before that point are pre-tool-use narration, which the system
-            # prompt already asks the model to suppress (see
-            # NO_THINKING_NARRATION_INSTRUCTION) -- we don't want to show it
-            # to the user even if the model occasionally emits some anyway.
-            if not in_final_phase:
-                return
+            # Stream every delta, narration included.
             emitter.emit(AgentProgressUpdate(type="content_delta", text=delta))
 
         try:

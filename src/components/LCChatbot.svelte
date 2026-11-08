@@ -141,9 +141,17 @@
   // different sessions never share state; these top-level vars only mirror
   // whichever request belongs to the currently foregrounded session.
   const WORD_FADE_MS = 400;
+  // Sentinel the server inlines into the delta stream the instant a tool call
+  // opens (see sdk_runner.py's TOOL_WAIT_MARKER). Travels through the same
+  // timed word-reveal queue as real text, so the shimmer toggles exactly when
+  // playback reaches that point -- not whenever the network event arrives.
+  const TOOL_WAIT_MARKER = '';
   let streamingMarkdown = $state('');
   let streamEl = $state(null);
   let streamTextDone = $state(false);
+  // Shimmers "Synthesizing response" while playback is at a tool-wait marker;
+  // static while real words are actively being revealed.
+  let toolWaitActive = $state(false);
   // Thumbs show as soon as the streamed text ends, before the final message
   // (and its traceId) arrives; a click is held under this id until then.
   const PENDING_FEEDBACK_ID = 'pending-streamed-answer';
@@ -1226,8 +1234,8 @@
     stopThinkingMessages();
     if (streamingMarkdown && !streamTextDone) {
       // Already past the thinking/synthesizing phase for this turn — resume
-      // showing the static writing indicator rather than restarting the cycle.
-      thinkingMessageKey = 'assistant.writing';
+      // showing it rather than restarting the cycle.
+      thinkingMessageKey = 'assistant.thinking.final';
     } else if (activeRequests[sessionId] && !activeRequests[sessionId].stopping && !streamingMarkdown) {
       startThinkingMessages();
     }
@@ -1441,7 +1449,8 @@
       // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
-      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0
+      contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
+      toolWaitActive: false
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
@@ -1478,6 +1487,7 @@
     appetizerData = null;
     streamingMarkdown = '';
     streamTextDone = false;
+    toolWaitActive = false;
     pendingFeedback = null;
     startThinkingMessages();
     updateSessionActivity(sendingSessionId);
@@ -1534,6 +1544,17 @@
       while (request.streamQueue.length && request.streamQueue[0].at + request.streamDelayMs <= now) {
         released += request.streamQueue.shift().text;
       }
+      // The marker itself renders as nothing; it only flips the shimmer on
+      // (or, once real words follow it, back off) at the moment playback
+      // reaches it -- not whenever the server-side event actually arrived.
+      if (released.includes(TOOL_WAIT_MARKER)) {
+        released = released.split(TOOL_WAIT_MARKER).join('');
+        request.toolWaitActive = true;
+        if (sessionId === sendingSessionId) toolWaitActive = true;
+      } else if (released && request.toolWaitActive) {
+        request.toolWaitActive = false;
+        if (sessionId === sendingSessionId) toolWaitActive = false;
+      }
       if (released) {
         request.playedStreamText += released;
         showCompleteWords();
@@ -1557,11 +1578,13 @@
         const revealAt = isForeground ? Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS) : performance.now();
         request.streamTimer = setTimeout(() => {
           request.streamDelayMs = revealAt - request.streamQueue[0].at;
-          // Switch straight to the static "Writing…" label, with no fade.
+          // Stop cycling through loading messages, but keep "Synthesizing
+          // response" up (no fade) rather than switching to a static
+          // "Writing…" label -- it shimmers again whenever playback hits a
+          // tool-wait marker (see playStreamQueue), stays still otherwise.
           if (sessionId === sendingSessionId) {
             clearThinkingMessageTimers();
             isThinkingMessageFading = false;
-            thinkingMessageKey = 'assistant.writing';
           }
           playStreamQueue();
         }, Math.max(0, revealAt - performance.now()));
@@ -1574,7 +1597,11 @@
       if (!request.contentDoneReceived || request.streamQueue.length || request.streamTimer) return;
       showAllPlayedText();
       request.streamTextDone = true;
-      if (sessionId === sendingSessionId) streamTextDone = true;
+      request.toolWaitActive = false;
+      if (sessionId === sendingSessionId) {
+        streamTextDone = true;
+        toolWaitActive = false;
+      }
     }
 
     // Resolves once every queued piece of text is on screen.
@@ -2778,7 +2805,7 @@
                 </div>
               {/if}
               {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
-                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown}>
+                <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown} class:is-paused={toolWaitActive}>
                   <div class="lc-thinking-step">
                     <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
@@ -4494,14 +4521,16 @@
     }
   }
 
-  /* Streaming: "✦ Writing…" sits close under the text and doesn't shimmer */
+  /* Streaming: "Synthesizing response" sits close under the text and only
+     shimmers while playback is paused on a tool-wait marker (.is-paused) --
+     still while real words are flowing. */
   .lc-streaming-content.is-writing :global(> :last-child) {
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
     margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
   }
-  .lc-thinking-block.is-writing .lc-thinking-label-base {
+  .lc-thinking-block.is-writing:not(.is-paused) .lc-thinking-label-base {
     animation: none;
     background-image: none;
     -webkit-text-fill-color: currentColor;

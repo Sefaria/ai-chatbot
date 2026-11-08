@@ -266,6 +266,85 @@ def test_narration_segments_keep_one_entry_per_discarded_round():
     assert result.final_text == "Today's Daf Yomi is Bekhorot 33, with linked sources."
 
 
+def test_passage_break_ends_each_streamed_text_block_before_a_tool_call():
+    """The live delta stream (not just final_text) gets a paragraph break
+    where a tool call interrupts it, so the client's display doesn't run
+    narration and the next passage together."""
+
+    class TextThenToolClient(FakeClient):
+        async def receive_response(self):
+            yield FakeStreamEvent(event={"type": "message_start"})
+            yield FakeStreamEvent(
+                event={"type": "content_block_start", "index": 0, "content_block": {"type": "text"}}
+            )
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "Let me check."},
+                }
+            )
+            yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "tool_use"},
+                }
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Let me check."},
+                    {"type": "tool_use", "name": "get_current_calendar", "input": {}},
+                ]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TextThenToolClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    deltas = []
+
+    asyncio.run(runner.run(options=object(), prompt_text="prompt", on_text_delta=deltas.append))
+
+    assert deltas == [
+        "Let me check.",
+        sdk_runner_module.PASSAGE_BREAK,
+        sdk_runner_module.TOOL_WAIT_MARKER,
+    ]
+
+
+def test_tool_wait_marker_streams_before_the_tool_calls_own_input_is_written():
+    class ToolUseClient(FakeClient):
+        async def receive_response(self):
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "tool_use", "name": "semantic_search"},
+                }
+            )
+            yield FakeAssistantMessage(
+                content=[{"type": "tool_use", "name": "semantic_search", "input": {}}]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=ToolUseClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    deltas = []
+
+    asyncio.run(runner.run(options=object(), prompt_text="prompt", on_text_delta=deltas.append))
+
+    assert deltas == [sdk_runner_module.TOOL_WAIT_MARKER]
+
+
 def test_no_narration_segments_when_no_tool_is_called():
     runner = ClaudeSDKRunner(
         client_cls=FakeClient,
