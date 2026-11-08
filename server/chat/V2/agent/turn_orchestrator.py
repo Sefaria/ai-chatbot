@@ -322,4 +322,5 @@ class TurnOrchestrator:
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
+            narration_segments=sdk_result.narration_segments,
         )

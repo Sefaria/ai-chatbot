@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
@@ -76,6 +76,10 @@ class AgentResponse:
     total_cost_usd: float | None = None
     # The guardrail refused the question; `content` is its refusal reply.
     refused: bool = False
+    # Narration rounds that preceded `content`, in display order. Shown to the
+    # user in history (see ChatMessage.MessageKind) but never re-sent to the
+    # model as conversation history or fed to the summarizer.
+    narration_segments: list[str] = field(default_factory=list)
 
 
 ProgressCallback = Callable[[AgentProgressUpdate], None]

@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
@@ -23,6 +23,10 @@ class SDKRunResult:
     usage: dict[str, Any] | None
     total_cost_usd: float | None
     first_final_text_delta_elapsed_s: float | None = None
+    # Text discarded from final_text because a later tool call proved it wasn't
+    # the final answer, in the order it was superseded -- i.e. the narration
+    # rounds that preceded the real answer.
+    narration_segments: list[str] = field(default_factory=list)
 
 
 class ClaudeSDKRunner:
@@ -77,6 +81,7 @@ class ClaudeSDKRunner:
         should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
+        narration_segments: list[str] = []
         trace_id = None
         llm_call_count = 0
         usage: dict[str, Any] | None = None
@@ -136,9 +141,14 @@ class ClaudeSDKRunner:
                         # A tool call proves whatever text came before this point
                         # (including any narration in this same message, e.g.
                         # "Let me also check the calendar...") wasn't the final
-                        # answer -- the turn isn't over. Discard it; the real
-                        # final text, if any, is whatever text-only message(s)
-                        # follow the *last* tool call.
+                        # answer -- the turn isn't over. It's not thrown away
+                        # anymore though: it's one narration round, kept in
+                        # order so the caller can persist it. The real final
+                        # text, if any, is whatever text-only message(s) follow
+                        # the *last* tool call.
+                        narration_round = final_text + chunk
+                        if narration_round:
+                            narration_segments.append(narration_round)
                         final_text = ""
                         saw_tool_use_message = True
                     elif chunk:
@@ -162,6 +172,7 @@ class ClaudeSDKRunner:
             usage=usage,
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
+            narration_segments=narration_segments,
         )
 
     @staticmethod

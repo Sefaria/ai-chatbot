@@ -205,6 +205,80 @@ def test_final_text_still_concatenates_a_final_answer_split_across_messages():
     assert result.final_text == "Part one. Part two."
 
 
+def test_narration_segments_capture_what_would_otherwise_be_discarded():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeToolThenFinalClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    # "Let me check" (its own message) and "I will search" (the tool-call
+    # message's own leading text) are one narration round, superseded by the
+    # single tool call that follows them.
+    assert result.narration_segments == ["Let me checkI will search"]
+    assert result.final_text == "Final answer"
+
+
+def test_narration_segments_keep_one_entry_per_discarded_round():
+    class TwoToolRoundsClient(FakeClient):
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Let me check the calendar."},
+                    {"type": "tool_use", "name": "get_current_calendar", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33. It concerns blemishes.",
+                    },
+                    {"type": "tool_use", "name": "semantic_search", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33, with linked sources.",
+                    }
+                ]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TwoToolRoundsClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.narration_segments == [
+        "Let me check the calendar.",
+        "Today's Daf Yomi is Bekhorot 33. It concerns blemishes.",
+    ]
+    assert result.final_text == "Today's Daf Yomi is Bekhorot 33, with linked sources."
+
+
+def test_no_narration_segments_when_no_tool_is_called():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.narration_segments == []
+
+
 def test_first_final_text_delta_callback_fires_before_the_final_delta_it_gates():
     # on_first_final_text_delta must fire before the delta it's meant to gate,
     # not after -- callers that use it to decide whether to start forwarding

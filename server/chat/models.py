@@ -228,6 +228,13 @@ class ChatMessage(models.Model):
         CANCELLING = "cancelling", "Cancelling"
         CANCELLED = "cancelled", "Cancelled"
 
+    class MessageKind(models.TextChoices):
+        # Pre-tool-use narration the model wrote before its real answer (e.g.
+        # "Let me check the calendar..."). Several of these can precede the
+        # final_response row in the same turn.
+        NARRATION = "narration", "Narration"
+        FINAL_RESPONSE = "final_response", "Final response"
+
     # Identifiers
     message_id = models.CharField(max_length=100, unique=True, db_index=True)
     session_id = models.CharField(max_length=100, db_index=True)
@@ -253,6 +260,11 @@ class ChatMessage(models.Model):
     )
 
     # Metadata
+    # Blank for user messages; for assistant messages, distinguishes a
+    # narration row from the turn's one final_response row.
+    message_kind = models.CharField(
+        max_length=20, choices=MessageKind.choices, blank=True, default=""
+    )
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.SUCCESS)
     # A logged-out visitor's answer that doesn't use up a free answer (see anon_access.py)
     free_answer = models.BooleanField(default=False)
