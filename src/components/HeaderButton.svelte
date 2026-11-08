@@ -63,6 +63,15 @@
     border-color: var(--lc-border);
   }
 
+  /* Locked (e.g. history for a logged-out visitor): faded, no hover highlight. */
+  .history-btn[aria-disabled='true'],
+  .history-btn[aria-disabled='true']:hover,
+  .history-btn[aria-disabled='true']:active {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: transparent;
+  }
+
   .close-btn {
     display: inline-flex;
     align-items: center;

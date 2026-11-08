@@ -69,4 +69,5 @@ class DefaultGuardrailGate:
             tool_calls=[],
             latency_ms=latency_ms,
             trace_id=bt_span.id,
+            refused=True,
         )

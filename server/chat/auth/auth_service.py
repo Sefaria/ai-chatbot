@@ -6,12 +6,14 @@ import logging
 
 from django.conf import settings
 
+from ..sefaria_base_url import request_sefaria_base_url
 from ..user_token_service import (
     UserTokenError,
     UserTokenExpiredError,
     decrypt_chatbot_user_identity,
 )
 from .actor import Actor
+from .anonymous import anonymous_user_id
 
 logger = logging.getLogger("chat")
 
@@ -52,10 +54,11 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     Authentication is attempted in order:
     1. X-Api-Key header (for Anthropic-compatible endpoints)
     2. userId field in body_data (for streaming endpoint)
+    3. anonId field in body_data, for a logged-out visitor
 
     Args:
         request: Django request object
-        body_data: Optional dict containing userId field for user token auth
+        body_data: Optional dict containing userId or anonId
 
     Returns:
         Actor with user_id set
@@ -73,6 +76,15 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     # Fall back to userId in body (for streaming endpoint)
     if body_data and body_data.get("userId"):
         return _authenticate_user_token(body_data["userId"])
+
+    # A logged-out visitor's anonId in body, accepted only from a Sefaria page this
+    # deployment allows (CHATBOT_ALLOWED_SEFARIA_HOSTS, read from the request's Origin
+    # by SefariaBaseUrlMiddleware): other sites can't use the assistant for their
+    # visitors. A script can still send a Sefaria Origin.
+    if body_data and body_data.get("anonId"):
+        if request_sefaria_base_url() is None:
+            raise AuthenticationRequired()
+        return Actor(user_id=anonymous_user_id(body_data["anonId"]), is_anonymous=True)
 
     raise AuthenticationRequired()
 

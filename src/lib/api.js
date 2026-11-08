@@ -2,7 +2,17 @@
  * API client for chatbot communication
  */
 
-import { generateMessageId } from './session.js';
+import { generateMessageId, getOrCreateAnonId } from './session.js';
+
+/**
+ * The identity fields for a request body: the user token when there is a
+ * user, otherwise the logged-out visitor's anonymous ID.
+ * @param {string} userId - Encrypted user token, or '' when logged out
+ * @returns {{ userId: string } | { anonId: string }}
+ */
+export function identityFields(userId) {
+  return userId ? { userId } : { anonId: getOrCreateAnonId() };
+}
 
 /**
  * @typedef {Object} MessageContext
@@ -106,7 +116,7 @@ async function reportClientStreamEvent(
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        userId,
+        ...identityFields(userId),
         sessionId,
         messageId,
         timestamp,
@@ -133,7 +143,7 @@ async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, 
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          userId,
+          ...identityFields(userId),
           sessionId,
           messageId
         })
@@ -261,8 +271,9 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {boolean} [labs] - Whether Labs tools are enabled for this request
  * @param {{messageId?: string, timestamp?: string}} [requestMetadata] - Stable request identifiers
  * @param {string} [interfaceLang] - Widget interface language ('en'|'he'); used as the request locale so server-side topic titles match the UI
- * @param {{signal?: AbortSignal}} [options] - `signal` aborts the stream; the resulting
+ * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
+ *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -279,19 +290,22 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null } = options;
+  const { signal = null, source = '' } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  if (source) {
+    context.source = source;
+  }
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
   }
 
   /** @type {SendMessagePayload} */
   const payload = {
-    userId,
+    ...identityFields(userId),
     sessionId,
     messageId,
     timestamp,
@@ -407,7 +421,9 @@ export async function sendMessageStream(
                   toolCalls: data.toolCalls,
                   stats: data.stats,
                   session: data.session,
-                  recovered: data.recovered || false
+                  recovered: data.recovered || false,
+                  anonResponsesRemaining: data.anonResponsesRemaining,
+                  anonMessagesSent: data.anonMessagesSent
                 };
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
@@ -561,7 +577,7 @@ export async function cancelStream(apiBaseUrl, { userId, sessionId, messageId })
     while (true) {
       const response = await fetch(`${apiBaseUrl}/v2/chat/cancel`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, sessionId, messageId }), signal: timeout.signal
+        body: JSON.stringify({ ...identityFields(userId), sessionId, messageId }), signal: timeout.signal
       });
       if (response.status === 404 && !timeout.signal.aborted) {
         await sleep(100);
@@ -645,6 +661,30 @@ export async function loadHistory(apiBaseUrl, userId, sessionId, before = null, 
     hasMore: data.hasMore ?? false,
     session: data.session || null
   };
+}
+
+/**
+ * After a logged-out visitor logs in or signs up: move their chats to the user,
+ * so they continue the same conversation and it shows in their history.
+ * @param {string} apiBaseUrl
+ * @param {string} userId - Encrypted user token
+ * @param {string} anonId - The visitor's anonymous ID
+ * @returns {Promise<{ claimedSessions: number }>}
+ */
+export async function claimAnonChats(apiBaseUrl, userId, anonId) {
+  const response = await fetch(`${apiBaseUrl}/v2/anon/claim`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId, anonId })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Claim failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
