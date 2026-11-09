@@ -2745,16 +2745,18 @@
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
-            <div class="message-meta">
-              {#if feedbackProps?.status === STATUS_FAILED}
-                <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
-                  {$_('assistant.messages.retry')}
-                </button>
-              {/if}
-              {#if showFeedback && feedbackProps}
-                {@render feedbackButtons(feedbackProps.messageId, feedbackProps.feedback)}
-              {/if}
-            </div>
+            {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
+              <div class="message-meta">
+                {#if feedbackProps?.status === STATUS_FAILED}
+                  <button class="retry-btn" aria-label={$_('assistant.messages.retry')} onclick={() => retryMessage(feedbackProps.messageId)}>
+                    {$_('assistant.messages.retry')}
+                  </button>
+                {/if}
+                {#if showFeedback && feedbackProps}
+                  {@render feedbackButtons(feedbackProps.messageId, feedbackProps.feedback)}
+                {/if}
+              </div>
+            {/if}
           </div>
         {/snippet}
 
@@ -5290,5 +5292,17 @@
   .message.assistant.stopped-message { align-self: stretch; }
   .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
   .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
+
+  /* A stop notice right after a partial answer already gets the message list's
+     own gap from it -- its own top margin would stack a second gap on top. */
+  .lc-response-package + .stopped-message .stop-notice {
+    margin-top: 0;
+  }
+  /* Descendant (not child) combinator: zeroes the trailing margin all the way
+     down the "last child of last child..." chain -- e.g. a <ul>'s own margin
+     and its last <li>'s -- not just the top-level block. */
+  .lc-response-package:has(+ .stopped-message) .message-content :global(*:last-child) {
+    margin-bottom: 0;
+  }
 
 </style>
