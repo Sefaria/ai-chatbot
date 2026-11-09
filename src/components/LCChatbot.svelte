@@ -27,6 +27,7 @@
   import { sheetDrag } from '../lib/sheetDrag.js';
   import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
   import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
+  import { nudge } from '../lib/nudge.js';
   import AskLauncher from './AskLauncher.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -882,6 +883,7 @@
       trackAssistantClick(detail?.source || 'host_open');
       if (detail?.question) askInNewChat(detail.question, detail.source);
       else if (!isOpen) openPanel();
+      else if (!isFullscreen) nudge(panelRef, mode, interfaceLang === 'he');
     },
     getLauncher: () => launcherOverride,
     setLauncher: (launcher) => { launcherOverride = launcher; }
