@@ -65,6 +65,9 @@ class TestPersistNarrationSegments:
         # response_message still points only at the final row, not a narration one.
         assert result.response_message.message_kind == ChatMessage.MessageKind.FINAL_RESPONSE
         assert result.response_message.content == resp.content
+        # The caller (the live turn) gets the same narration rows back, in order,
+        # so it can show them on screen instead of just the final answer.
+        assert [m.content for m in result.narration_messages] == resp.narration_segments
 
     def test_narration_rows_carry_no_aggregate_metrics(self, session, user_message):
         resp = AgentResponse(

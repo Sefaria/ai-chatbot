@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from django.utils import timezone
@@ -18,6 +18,10 @@ class TurnLoggingResult:
 
     response_message: ChatMessage
     stats: dict[str, Any]
+    # In display order, same rows history reload shows before the final
+    # response -- so a live turn's narration stays on screen, not just a
+    # conversation loaded afterward.
+    narration_messages: list[ChatMessage] = field(default_factory=list)
 
 
 class TurnLoggingService:
@@ -73,7 +77,7 @@ class TurnLoggingService:
         # signal between same-turn rows) sorts before the final response.
         # They carry none of the turn's aggregate metrics -- those stay on the
         # final row only, so summed session totals aren't double-counted.
-        for segment in agent_response.narration_segments:
+        narration_messages = [
             ChatMessage.objects.create(
                 message_id=ChatMessage.generate_message_id(),
                 session_id=user_message.session_id,
@@ -85,6 +89,8 @@ class TurnLoggingService:
                 model_name=model_name,
                 status=status,
             )
+            for segment in agent_response.narration_segments
+        ]
 
         response_message = ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
@@ -112,7 +118,9 @@ class TurnLoggingService:
         user_message.save(update_fields=["response_message", "latency_ms"])
 
         stats = self.build_stats(agent_response=agent_response, latency_ms=latency_ms)
-        return TurnLoggingResult(response_message=response_message, stats=stats)
+        return TurnLoggingResult(
+            response_message=response_message, stats=stats, narration_messages=narration_messages
+        )
 
     def update_session_success(
         self,

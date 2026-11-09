@@ -425,6 +425,7 @@ export async function sendMessageStream(
                   stats: data.stats,
                   session: data.session,
                   recovered: data.recovered || false,
+                  narrationMessages: data.narrationMessages || [],
                   anonResponsesRemaining: data.anonResponsesRemaining,
                   anonMessagesSent: data.anonMessagesSent
                 };

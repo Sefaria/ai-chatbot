@@ -1690,6 +1690,28 @@
           : m
       );
 
+      // Each narration round the model wrote gets its own row server-side
+      // (ChatMessage.MessageKind.NARRATION, persisted before the final answer)
+      // so it's still there on reload -- these mirror those rows here so the
+      // narration that was already visible while streaming stays on screen
+      // instead of being replaced by the final-answer-only bubble below.
+      const narrationMessages = (response.narrationMessages || []).map((narration, i) => ({
+        messageId: narration.messageId,
+        sessionId: response.sessionId,
+        userId,
+        role: 'assistant',
+        content: narration.content,
+        timestamp: narration.timestamp,
+        status: 'sent',
+        traceId: null,
+        toolCalls: [],
+        stats: null,
+        appetizerData: i === 0 && request.appetizerData ? {...request.appetizerData} : null,
+        // Already on screen as streamed text, so don't animate it in again.
+        noEntryAnimation: didStream,
+        feedback: null
+      }));
+
       // Add assistant response
       const assistantMessage = {
         messageId: response.messageId,
@@ -1702,7 +1724,8 @@
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
-        appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+        appetizerData: narrationMessages.length === 0 && request.appetizerData
+          ? {...request.appetizerData} : null,
         // Already on screen as streamed text, so don't animate it in again.
         noEntryAnimation: didStream,
         feedback: request.pendingFeedback
@@ -1711,7 +1734,7 @@
         feedbackModalMessageId = assistantMessage.messageId;
       }
 
-      const completedMessages = [...sentMessages, assistantMessage];
+      const completedMessages = [...sentMessages, ...narrationMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
         messages = completedMessages;
         saveMessagesToStorage();
