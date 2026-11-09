@@ -6,11 +6,11 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent
+from claude_agent_sdk.types import AssistantMessage, ResultMessage, StreamEvent, ToolUseBlock
 
 from .contracts import CancelCheck, TurnCancelled
 
@@ -23,6 +23,22 @@ class SDKRunResult:
     usage: dict[str, Any] | None
     total_cost_usd: float | None
     first_final_text_delta_elapsed_s: float | None = None
+    # Text discarded from final_text because a later tool call proved it wasn't
+    # the final answer, in the order it was superseded -- i.e. the narration
+    # rounds that preceded the real answer.
+    narration_segments: list[str] = field(default_factory=list)
+
+
+#: Ends each streamed text block so passages split by a tool call don't run
+#: together in the client's live display.
+PASSAGE_BREAK = "\n\n"
+#: Inlined into the live delta stream the instant a tool call opens (before
+#: its input has even been written), so the client can toggle a "waiting on
+#: a lookup" indicator exactly when playback reaches this point. Chosen from
+#: the Unicode Private Use Area -- real model text never contains it -- and
+#: stripped back out client-side before rendering.
+TOOL_WAIT_MARKER = ""
+TOOL_CALL_BLOCK_TYPES = {"tool_use", "server_tool_use", "mcp_tool_use"}
 
 
 class ClaudeSDKRunner:
@@ -77,6 +93,7 @@ class ClaudeSDKRunner:
         should_cancel: CancelCheck | None = None,
     ) -> SDKRunResult:
         final_text = ""
+        narration_segments: list[str] = []
         trace_id = None
         llm_call_count = 0
         usage: dict[str, Any] | None = None
@@ -86,6 +103,10 @@ class ClaudeSDKRunner:
         first_final_text_delta_elapsed_s: float | None = None
         first_final_text_delta_notified = False
         saw_tool_use_message = False
+        # Indices of content blocks currently mid-stream, so a block's close
+        # can end it with a passage break -- but only the ones that actually
+        # streamed text, not e.g. a tool_use block's own index.
+        streamed_text_blocks: set[int] = set()
         start_time = time.time()
 
         def notify_first_final_text_delta() -> None:
@@ -120,10 +141,27 @@ class ClaudeSDKRunner:
                     delta = self.extract_text_delta_from_stream_event(message)
                     if delta and pending_first_text_delta_elapsed_s is None:
                         pending_first_text_delta_elapsed_s = time.time() - start_time
-                    if delta and on_text_delta:
-                        on_text_delta(delta)
+                    # on_first_final_text_delta only drives the time-to-first-
+                    # final-token metric now; every delta is forwarded below
+                    # regardless of this flag.
                     if delta and saw_tool_use_message:
                         notify_first_final_text_delta()
+                    if delta and on_text_delta:
+                        on_text_delta(delta)
+                    index = self.text_block_index_from_stream_event(message)
+                    event_type = self.stream_event_type(message)
+                    if delta and index is not None:
+                        streamed_text_blocks.add(index)
+                    elif event_type == "message_start":
+                        streamed_text_blocks.clear()
+                    elif event_type == "content_block_stop" and index in streamed_text_blocks:
+                        streamed_text_blocks.discard(index)
+                        if on_text_delta:
+                            on_text_delta(PASSAGE_BREAK)
+                    # A tool call block opening means a wait is starting now,
+                    # before the model has finished writing the call's input.
+                    if on_text_delta and self.stream_event_starts_tool_call(message):
+                        on_text_delta(TOOL_WAIT_MARKER)
                 else:
                     chunk = self.extract_text_from_message(message)
                     uses_tools = self.message_uses_tools(message)
@@ -131,9 +169,14 @@ class ClaudeSDKRunner:
                         # A tool call proves whatever text came before this point
                         # (including any narration in this same message, e.g.
                         # "Let me also check the calendar...") wasn't the final
-                        # answer -- the turn isn't over. Discard it; the real
-                        # final text, if any, is whatever text-only message(s)
-                        # follow the *last* tool call.
+                        # answer -- the turn isn't over. It's not thrown away
+                        # anymore though: it's one narration round, kept in
+                        # order so the caller can persist it. The real final
+                        # text, if any, is whatever text-only message(s) follow
+                        # the *last* tool call.
+                        narration_round = final_text + chunk
+                        if narration_round:
+                            narration_segments.append(narration_round)
                         final_text = ""
                         saw_tool_use_message = True
                     elif chunk:
@@ -157,7 +200,35 @@ class ClaudeSDKRunner:
             usage=usage,
             total_cost_usd=total_cost_usd,
             first_final_text_delta_elapsed_s=first_final_text_delta_elapsed_s,
+            narration_segments=narration_segments,
         )
+
+    @staticmethod
+    def stream_event_type(message: Any) -> str | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        return event.get("type") if isinstance(event, dict) else None
+
+    @staticmethod
+    def text_block_index_from_stream_event(message: Any) -> int | None:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict):
+            return None
+        index = event.get("index")
+        return index if isinstance(index, int) else None
+
+    @staticmethod
+    def stream_event_starts_tool_call(message: Any) -> bool:
+        event = (
+            message.get("event") if isinstance(message, dict) else getattr(message, "event", None)
+        )
+        if not isinstance(event, dict) or event.get("type") != "content_block_start":
+            return False
+        block = event.get("content_block")
+        return isinstance(block, dict) and block.get("type") in TOOL_CALL_BLOCK_TYPES
 
     @staticmethod
     def extract_text_delta_from_stream_event(message: Any) -> str:
@@ -236,6 +307,9 @@ class ClaudeSDKRunner:
         if not isinstance(content, list):
             return False
         for block in content:
+            # The SDK's ToolUseBlock has no `type` field, so match it by class.
+            if isinstance(block, ToolUseBlock):
+                return True
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 return True
             if getattr(block, "type", None) == "tool_use":

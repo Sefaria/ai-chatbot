@@ -205,7 +205,165 @@ def test_final_text_still_concatenates_a_final_answer_split_across_messages():
     assert result.final_text == "Part one. Part two."
 
 
-def test_first_final_text_delta_callback_waits_for_final_text():
+def test_narration_segments_capture_what_would_otherwise_be_discarded():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeToolThenFinalClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    # "Let me check" (its own message) and "I will search" (the tool-call
+    # message's own leading text) are one narration round, superseded by the
+    # single tool call that follows them.
+    assert result.narration_segments == ["Let me checkI will search"]
+    assert result.final_text == "Final answer"
+
+
+def test_narration_segments_keep_one_entry_per_discarded_round():
+    class TwoToolRoundsClient(FakeClient):
+        async def receive_response(self):
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Let me check the calendar."},
+                    {"type": "tool_use", "name": "get_current_calendar", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33. It concerns blemishes.",
+                    },
+                    {"type": "tool_use", "name": "semantic_search", "input": {}},
+                ]
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": "Today's Daf Yomi is Bekhorot 33, with linked sources.",
+                    }
+                ]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TwoToolRoundsClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.narration_segments == [
+        "Let me check the calendar.",
+        "Today's Daf Yomi is Bekhorot 33. It concerns blemishes.",
+    ]
+    assert result.final_text == "Today's Daf Yomi is Bekhorot 33, with linked sources."
+
+
+def test_passage_break_ends_each_streamed_text_block_before_a_tool_call():
+    """The live delta stream (not just final_text) gets a paragraph break
+    where a tool call interrupts it, so the client's display doesn't run
+    narration and the next passage together."""
+
+    class TextThenToolClient(FakeClient):
+        async def receive_response(self):
+            yield FakeStreamEvent(event={"type": "message_start"})
+            yield FakeStreamEvent(
+                event={"type": "content_block_start", "index": 0, "content_block": {"type": "text"}}
+            )
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": "Let me check."},
+                }
+            )
+            yield FakeStreamEvent(event={"type": "content_block_stop", "index": 0})
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "tool_use"},
+                }
+            )
+            yield FakeAssistantMessage(
+                content=[
+                    {"type": "text", "text": "Let me check."},
+                    {"type": "tool_use", "name": "get_current_calendar", "input": {}},
+                ]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=TextThenToolClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    deltas = []
+
+    asyncio.run(runner.run(options=object(), prompt_text="prompt", on_text_delta=deltas.append))
+
+    assert deltas == [
+        "Let me check.",
+        sdk_runner_module.PASSAGE_BREAK,
+        sdk_runner_module.TOOL_WAIT_MARKER,
+    ]
+
+
+def test_tool_wait_marker_streams_before_the_tool_calls_own_input_is_written():
+    class ToolUseClient(FakeClient):
+        async def receive_response(self):
+            yield FakeStreamEvent(
+                event={
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "tool_use", "name": "semantic_search"},
+                }
+            )
+            yield FakeAssistantMessage(
+                content=[{"type": "tool_use", "name": "semantic_search", "input": {}}]
+            )
+            yield FakeResultMessage(usage={"input_tokens": 1}, total_cost_usd=0.01)
+
+    runner = ClaudeSDKRunner(
+        client_cls=ToolUseClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+    deltas = []
+
+    asyncio.run(runner.run(options=object(), prompt_text="prompt", on_text_delta=deltas.append))
+
+    assert deltas == [sdk_runner_module.TOOL_WAIT_MARKER]
+
+
+def test_no_narration_segments_when_no_tool_is_called():
+    runner = ClaudeSDKRunner(
+        client_cls=FakeClient,
+        assistant_message_cls=FakeAssistantMessage,
+        result_message_cls=FakeResultMessage,
+        stream_event_cls=FakeStreamEvent,
+    )
+
+    result = asyncio.run(runner.run(options=object(), prompt_text="prompt"))
+
+    assert result.narration_segments == []
+
+
+def test_first_final_text_delta_callback_fires_before_the_final_delta_it_gates():
+    # on_first_final_text_delta must fire before the delta it's meant to gate,
+    # not after -- callers that use it to decide whether to start forwarding
+    # on_text_delta content to a client (e.g. streaming only the final-answer
+    # text, never pre-tool-use narration) need the flag to already be true by
+    # the time that first "real" delta ("Final") arrives, not one delta late.
     runner = ClaudeSDKRunner(
         client_cls=FakeToolThenFinalClient,
         assistant_message_cls=FakeAssistantMessage,
@@ -223,7 +381,20 @@ def test_first_final_text_delta_callback_waits_for_final_text():
         )
     )
 
-    assert events == ["Let me check", "I will search", "Final", "final-started"]
+    assert events == ["Let me check", "I will search", "final-started", "Final"]
+
+
+def test_message_uses_tools_detects_real_sdk_tool_use_block():
+    # The SDK's ToolUseBlock has no `type` field, unlike the dict fakes above.
+    # Missing it meant the runner never saw tool use, so final-answer streaming
+    # never started.
+    from claude_agent_sdk.types import TextBlock, ToolUseBlock
+
+    tool_message = FakeAssistantMessage(content=[ToolUseBlock(id="t1", name="search", input={})])
+    text_message = FakeAssistantMessage(content=[TextBlock(text="Final answer")])
+
+    assert ClaudeSDKRunner.message_uses_tools(tool_message)
+    assert not ClaudeSDKRunner.message_uses_tools(text_message)
 
 
 class FakeCancelTrackingClient(FakeClient):
