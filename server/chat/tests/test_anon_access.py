@@ -8,6 +8,7 @@ from django.core.cache import cache
 
 from chat import anon_access
 from chat.anon_access import REMOTE_CONFIG_KEY, get_anon_answer_limit
+from chat.models import ChatMessage
 
 
 @pytest.fixture(autouse=True)
@@ -92,3 +93,39 @@ def test_the_limit_comes_from_the_requests_sefaria_cached_per_sefaria():
         "https://a.cauldron.sefaria.org/api/remote-config",
         "https://b.cauldron.sefaria.org/api/remote-config",
     ]
+
+
+@pytest.mark.django_db
+class TestCountAnonAnswersExcludesNarration:
+    """Narration rows (ChatMessage.MessageKind.NARRATION) are assistant/success
+    rows too, but they're not an answer in their own right -- a turn with
+    narration must still cost exactly one answer, not one per segment."""
+
+    def _assistant_row(self, *, user_id, turn_id, message_kind):
+        return ChatMessage.objects.create(
+            message_id=ChatMessage.generate_message_id(),
+            session_id="sess_quota_test",
+            user_id=user_id,
+            turn_id=turn_id,
+            role=ChatMessage.Role.ASSISTANT,
+            content="text",
+            message_kind=message_kind,
+            status=ChatMessage.Status.SUCCESS,
+        )
+
+    def test_a_turn_with_narration_still_counts_as_one_answer(self):
+        from chat.anon_access import count_anon_answers
+
+        self._assistant_row(
+            user_id="anon_1", turn_id="turn_1", message_kind=ChatMessage.MessageKind.NARRATION
+        )
+        self._assistant_row(
+            user_id="anon_1", turn_id="turn_1", message_kind=ChatMessage.MessageKind.NARRATION
+        )
+        self._assistant_row(
+            user_id="anon_1",
+            turn_id="turn_1",
+            message_kind=ChatMessage.MessageKind.FINAL_RESPONSE,
+        )
+
+        assert count_anon_answers("anon_1") == 1

@@ -212,6 +212,19 @@ def _build_recovery_status_payload(user_message: ChatMessage) -> dict:
     return payload
 
 
+def _narration_messages_payload(messages) -> list[dict]:
+    """Narration rows in display order, for the live turn to show alongside
+    the final answer -- the same rows a history reload would show."""
+    return [
+        {
+            "messageId": message.message_id,
+            "timestamp": message.server_timestamp.isoformat(),
+            "content": message.content,
+        }
+        for message in messages
+    ]
+
+
 def _build_response_payload(
     *,
     response_message: ChatMessage,
@@ -220,6 +233,7 @@ def _build_response_payload(
     stats: dict,
     trace_id: str | None = None,
     recovered: bool = False,
+    narration_messages: list | None = None,
 ) -> dict:
     return {
         "messageId": response_message.message_id,
@@ -232,6 +246,7 @@ def _build_response_payload(
         "stats": stats,
         "recovered": recovered,
         "status": response_message.status,
+        "narrationMessages": _narration_messages_payload(narration_messages or []),
     }
 
 
@@ -708,7 +723,10 @@ def chat_stream_v2(request):
                         event_data["refData"] = update.ref_data
 
                     _mark_turn_heartbeat(user_message.id)
-                    yield f"event: progress\ndata: {json.dumps(event_data)}\n\n"
+                    # Final-answer text goes out as its own event so the
+                    # client can render it as it streams.
+                    event_name = "partial" if update.type == "content_delta" else "progress"
+                    yield f"event: {event_name}\ndata: {json.dumps(event_data)}\n\n"
 
                 except queue.Empty:
                     # The agent is quiet. Cancellation is handled at the top of
@@ -903,6 +921,7 @@ def chat_stream_v2(request):
                 turn_count=_compute_turn_count(data["sessionId"]),
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
+                narration_messages=logging_result.narration_messages,
             )
             final_data.update(_anon_payload_fields(actor))
 
@@ -1075,12 +1094,21 @@ def chat_recover_v2(request):
         )
 
     stats = get_turn_logging_service().build_stats_from_message(response_message)
+    narration_messages = (
+        ChatMessage.objects.filter(
+            turn_id=user_message.turn_id,
+            message_kind=ChatMessage.MessageKind.NARRATION,
+        ).order_by("server_timestamp")
+        if user_message.turn_id
+        else []
+    )
     payload = _build_response_payload(
         response_message=response_message,
         session_id=user_message.session_id,
         turn_count=_compute_turn_count(user_message.session_id),
         stats=stats,
         recovered=True,
+        narration_messages=narration_messages,
     )
     payload.update(_anon_payload_fields(actor))
     recovery_status = (

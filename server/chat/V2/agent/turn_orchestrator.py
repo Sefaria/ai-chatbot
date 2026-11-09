@@ -11,7 +11,6 @@ from django.conf import settings
 
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
-    NO_THINKING_NARRATION_INSTRUCTION,
     SECTION_SEPARATOR,
 )
 from .contracts import (
@@ -172,8 +171,6 @@ class TurnOrchestrator:
         )
 
         system_prompt = prompt_result.full_prompt
-        if self.options_builder.thinking_disabled:
-            system_prompt += SECTION_SEPARATOR + NO_THINKING_NARRATION_INSTRUCTION
 
         options, system_prompt_in_options = self.options_builder.build(
             system_prompt=system_prompt,
@@ -201,17 +198,26 @@ class TurnOrchestrator:
         synthesis_status_emitted = False
 
         def emit_synthesis_status_once():
+            # Fires once, right before the first text delta of the model's
+            # final answer -- used only for the time-to-first-final-token
+            # metric below. Narration (any text before that point) streams
+            # to the client too; see emit_content_delta.
             nonlocal synthesis_status_emitted
             if synthesis_status_emitted:
                 return
             synthesis_status_emitted = True
             emitter.emit(AgentProgressUpdate(type="status", text="Synthesizing response..."))
 
+        def emit_content_delta(delta: str):
+            # Stream every delta, narration included.
+            emitter.emit(AgentProgressUpdate(type="content_delta", text=delta))
+
         try:
             sdk_start_time = time.time()
             sdk_result = await self.sdk_runner.run(
                 options=options,
                 prompt_text=prompt_text,
+                on_text_delta=emit_content_delta,
                 on_first_final_text_delta=emit_synthesis_status_once,
                 should_cancel=should_cancel,
             )
@@ -224,6 +230,9 @@ class TurnOrchestrator:
             raise
 
         emit_synthesis_status_once()
+        # The streamed answer text is complete; link validation and saving
+        # still follow, but the client can stop showing "Writing…" now.
+        emitter.emit(AgentProgressUpdate(type="content_done"))
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
@@ -301,4 +310,5 @@ class TurnOrchestrator:
             llm_call_count=sdk_result.llm_call_count,
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
+            narration_segments=sdk_result.narration_segments,
         )

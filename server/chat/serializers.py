@@ -134,6 +134,7 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
     responseMessageId = serializers.SerializerMethodField()
     appetizerData = serializers.JSONField(source="appetizer_data")
     toolCalls = serializers.JSONField(source="tool_calls_data")
+    messageKind = serializers.CharField(source="message_kind")
 
     processingState = serializers.CharField(source="processing_state")
 
@@ -152,6 +153,7 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
             "responseMessageId",
             "appetizerData",
             "toolCalls",
+            "messageKind",
         ]
 
     def get_responseMessageId(self, obj):

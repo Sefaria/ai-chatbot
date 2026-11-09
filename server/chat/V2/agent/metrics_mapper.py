@@ -73,6 +73,7 @@ def build_agent_response(
     llm_call_count: int,
     usage: UsageMetrics,
     total_cost_usd: float | None,
+    narration_segments: list[str] | None = None,
 ) -> AgentResponse:
     return AgentResponse(
         content=content,
@@ -86,4 +87,5 @@ def build_agent_response(
         cache_creation_tokens=usage.cache_creation_tokens,
         cache_read_tokens=usage.cache_read_tokens,
         total_cost_usd=total_cost_usd,
+        narration_segments=narration_segments or [],
     )

@@ -63,15 +63,20 @@ def _fetch_limit(base_url: str) -> int | None:
 def count_anon_answers(user_id: str) -> int:
     """Answers a logged-out visitor got, across all their sessions.
 
-    Only real answers count: refused questions, failed turns, cancelled turns
-    and free answers (see gets_free_answer) don't.
+    Only real answers count: refused questions, failed turns, cancelled turns,
+    free answers (see gets_free_answer) and narration rows (not a real answer
+    in their own right -- see ChatMessage.MessageKind) don't.
     """
-    return ChatMessage.objects.filter(
-        user_id=user_id,
-        role=ChatMessage.Role.ASSISTANT,
-        status=ChatMessage.Status.SUCCESS,
-        free_answer=False,
-    ).count()
+    return (
+        ChatMessage.objects.filter(
+            user_id=user_id,
+            role=ChatMessage.Role.ASSISTANT,
+            status=ChatMessage.Status.SUCCESS,
+            free_answer=False,
+        )
+        .exclude(message_kind=ChatMessage.MessageKind.NARRATION)
+        .count()
+    )
 
 
 def count_anon_messages(user_id: str) -> int:

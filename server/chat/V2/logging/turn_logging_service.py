@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from django.utils import timezone
@@ -18,6 +18,10 @@ class TurnLoggingResult:
 
     response_message: ChatMessage
     stats: dict[str, Any]
+    # In display order, same rows history reload shows before the final
+    # response -- so a live turn's narration stays on screen, not just a
+    # conversation loaded afterward.
+    narration_messages: list[ChatMessage] = field(default_factory=list)
 
 
 class TurnLoggingService:
@@ -49,6 +53,7 @@ class TurnLoggingService:
             turn_id=turn_id,
             role=ChatMessage.Role.ASSISTANT,
             content=error_text,
+            message_kind=ChatMessage.MessageKind.FINAL_RESPONSE,
             status=ChatMessage.Status.FAILED,
             latency_ms=latency_ms,
             **{**actor.to_db_fields(), **({"user_id": owner} if owner else {})},
@@ -65,6 +70,28 @@ class TurnLoggingService:
         # The question's current owner: a logged-out visitor's chats may have been
         # claimed by their account while this answer was generated.
         user_message.refresh_from_db(fields=["user_id"])
+        status = (
+            ChatMessage.Status.REFUSED if agent_response.refused else ChatMessage.Status.SUCCESS
+        )
+        # Narration rows first, so their server_timestamp (the only ordering
+        # signal between same-turn rows) sorts before the final response.
+        # They carry none of the turn's aggregate metrics -- those stay on the
+        # final row only, so summed session totals aren't double-counted.
+        narration_messages = [
+            ChatMessage.objects.create(
+                message_id=ChatMessage.generate_message_id(),
+                session_id=user_message.session_id,
+                user_id=user_message.user_id,
+                turn_id=user_message.turn_id,
+                role=ChatMessage.Role.ASSISTANT,
+                content=segment,
+                message_kind=ChatMessage.MessageKind.NARRATION,
+                model_name=model_name,
+                status=status,
+            )
+            for segment in agent_response.narration_segments
+        ]
+
         response_message = ChatMessage.objects.create(
             message_id=ChatMessage.generate_message_id(),
             session_id=user_message.session_id,
@@ -72,14 +99,13 @@ class TurnLoggingService:
             turn_id=user_message.turn_id,
             role=ChatMessage.Role.ASSISTANT,
             content=agent_response.content,
+            message_kind=ChatMessage.MessageKind.FINAL_RESPONSE,
             latency_ms=latency_ms,
             llm_calls=agent_response.llm_calls,
             tool_calls_count=len(agent_response.tool_calls),
             tool_calls_data=agent_response.tool_calls,
             model_name=model_name,
-            status=(
-                ChatMessage.Status.REFUSED if agent_response.refused else ChatMessage.Status.SUCCESS
-            ),
+            status=status,
             input_tokens=agent_response.input_tokens,
             output_tokens=agent_response.output_tokens,
             cache_creation_tokens=agent_response.cache_creation_tokens,
@@ -92,7 +118,9 @@ class TurnLoggingService:
         user_message.save(update_fields=["response_message", "latency_ms"])
 
         stats = self.build_stats(agent_response=agent_response, latency_ms=latency_ms)
-        return TurnLoggingResult(response_message=response_message, stats=stats)
+        return TurnLoggingResult(
+            response_message=response_message, stats=stats, narration_messages=narration_messages
+        )
 
     def update_session_success(
         self,
