@@ -302,6 +302,10 @@
   let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
   let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
+  // Once the answer is fully on screen, the rest of the turn (link validation,
+  // persistence) runs invisibly server-side and isn't something to wait on or
+  // offer to stop -- only the stretch before that locks the composer.
+  let isCurrentSessionFinalizing = $derived(isCurrentSessionSending && !streamTextDone);
   let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
 
   // Menu state
@@ -1775,18 +1779,41 @@
       if (e?.code === 'stream_cancelled') {
         const cached = conversationCache[sendingSessionId];
         const base = sessionId === sendingSessionId ? messages : (cached?.messages || [userMessage]);
-        const stopped = withStoppedTurns(base.map(m => m.messageId === request.messageId
-          ? {...m, status: 'sent', processingState: 'cancelled', appetizerData: request.appetizerData} : m));
+        const sentMessages = base.map(m => m.messageId === request.messageId ? {...m, status: 'sent'} : m);
+        // Whatever had already streamed to the screen stays there as the answer
+        // (incomplete, but real) -- only an empty stream falls back to the
+        // "stopped, edit or resend" notice, since there's nothing to show instead.
+        const streamedText = request.streamingMarkdown;
+        const stopped = streamedText ? [...sentMessages, {
+          messageId: `${request.messageId}_stopped`,
+          sessionId: sendingSessionId,
+          userId,
+          role: 'assistant',
+          content: streamedText,
+          timestamp: new Date().toISOString(),
+          status: 'sent',
+          traceId: null,
+          toolCalls: [],
+          stats: null,
+          appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+          noEntryAnimation: true,
+          feedback: request.pendingFeedback
+        }] : withStoppedTurns(sentMessages.map(m => m.messageId === request.messageId
+          ? {...m, processingState: 'cancelled'} : m));
         conversationCache[sendingSessionId] = {...cached, messages: stopped};
         setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, stopped);
-        conversationDrafts[sendingSessionId] = text;
-        setStorage(STORAGE_KEYS.DRAFT + ':' + sendingSessionId, {text});
+        if (!streamedText) {
+          conversationDrafts[sendingSessionId] = text;
+          setStorage(STORAGE_KEYS.DRAFT + ':' + sendingSessionId, {text});
+        }
         if (sessionId === sendingSessionId) {
           messages = stopped;
-          inputText = text;
-          // Phones: glide to the stop notice above the text box, once the restored question
-          // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
-          if (isFullscreen) pinChatToBottom(() => messageListRef);
+          if (!streamedText) {
+            inputText = text;
+            // Phones: glide to the stop notice above the text box, once the restored question
+            // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
+            if (isFullscreen) pinChatToBottom(() => messageListRef);
+          }
         }
         track('assistant_response_stopped');
       } else if (e?.status === 403 && e?.code === 'login_required') {
@@ -2851,13 +2878,13 @@
             ontouchstart={keyboard.onTouchStart}
             ontouchend={keyboard.onTouchEnd}
             maxlength={effectiveMaxInputChars}
-            placeholder={isCurrentSessionSending ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
+            placeholder={isCurrentSessionFinalizing ? $_('assistant.input.generating') : (limitReached ? "" : $_('assistant.input.placeholder'))}
             aria-label={$_('assistant.input.aria')}
             enterkeyhint="send"
             rows="1"
-            disabled={isCurrentSessionSending || limitReached}
+            disabled={isCurrentSessionFinalizing || limitReached}
           ></textarea>
-          {#if isCurrentSessionSending}
+          {#if isCurrentSessionFinalizing}
             <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
               <button type="button" class="stop-btn" onclick={handleStop}
                 disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
