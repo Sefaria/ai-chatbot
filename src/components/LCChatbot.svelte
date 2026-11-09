@@ -1781,39 +1781,45 @@
         const base = sessionId === sendingSessionId ? messages : (cached?.messages || [userMessage]);
         const sentMessages = base.map(m => m.messageId === request.messageId ? {...m, status: 'sent'} : m);
         // Whatever had already streamed to the screen stays there as the answer
-        // (incomplete, but real) -- only an empty stream falls back to the
-        // "stopped, edit or resend" notice, since there's nothing to show instead.
+        // (incomplete, but real) -- on top of, not instead of, the usual "stopped,
+        // edit or resend" notice and input restore, so it's still clear the
+        // answer was cut off and the question is still there to tweak or resend.
         const streamedText = request.streamingMarkdown;
-        const stopped = streamedText ? [...sentMessages, {
-          messageId: `${request.messageId}_stopped`,
-          sessionId: sendingSessionId,
-          userId,
-          role: 'assistant',
-          content: streamedText,
-          timestamp: new Date().toISOString(),
-          status: 'sent',
-          traceId: null,
-          toolCalls: [],
-          stats: null,
-          appetizerData: request.appetizerData ? {...request.appetizerData} : null,
-          noEntryAnimation: true,
-          feedback: request.pendingFeedback
-        }] : withStoppedTurns(sentMessages.map(m => m.messageId === request.messageId
-          ? {...m, processingState: 'cancelled'} : m));
+        const cancelledMessages = sentMessages.map(m => m.messageId === request.messageId
+          ? {...m, processingState: 'cancelled'} : m);
+        // withStoppedTurns inserts the notice right after the cancelled question --
+        // the cancelled message is always the last one here, so the notice ends up
+        // last too. When there's a partial answer, move it ahead of that notice so
+        // the notice reads as explaining the answer, not sitting before it.
+        const stopped = withStoppedTurns(cancelledMessages);
+        if (streamedText) {
+          const notice = stopped.pop();
+          stopped.push({
+            messageId: `${request.messageId}_partial`,
+            sessionId: sendingSessionId,
+            userId,
+            role: 'assistant',
+            content: streamedText,
+            timestamp: new Date().toISOString(),
+            status: 'sent',
+            traceId: null,
+            toolCalls: [],
+            stats: null,
+            appetizerData: request.appetizerData ? {...request.appetizerData} : null,
+            noEntryAnimation: true,
+            feedback: request.pendingFeedback
+          }, notice);
+        }
         conversationCache[sendingSessionId] = {...cached, messages: stopped};
         setStorage(STORAGE_KEYS.MESSAGES + ':' + sendingSessionId, stopped);
-        if (!streamedText) {
-          conversationDrafts[sendingSessionId] = text;
-          setStorage(STORAGE_KEYS.DRAFT + ':' + sendingSessionId, {text});
-        }
+        conversationDrafts[sendingSessionId] = text;
+        setStorage(STORAGE_KEYS.DRAFT + ':' + sendingSessionId, {text});
         if (sessionId === sendingSessionId) {
           messages = stopped;
-          if (!streamedText) {
-            inputText = text;
-            // Phones: glide to the stop notice above the text box, once the restored question
-            // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
-            if (isFullscreen) pinChatToBottom(() => messageListRef);
-          }
+          inputText = text;
+          // Phones: glide to the stop notice above the text box, once the restored question
+          // has grown the box (pinChatToBottom holds off the chat-area resize effect meanwhile)
+          if (isFullscreen) pinChatToBottom(() => messageListRef);
         }
         track('assistant_response_stopped');
       } else if (e?.status === 403 && e?.code === 'login_required') {
