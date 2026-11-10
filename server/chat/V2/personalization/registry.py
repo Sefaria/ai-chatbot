@@ -3,11 +3,30 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from pathlib import Path
 
 from .types import SlotDef, Value
 
 _SLOTS_PATH = Path(__file__).parent / "slots.json"
+
+
+_BRACKETS = str.maketrans({"<": "‹", ">": "›"})
+
+
+def clean_text(value: str) -> str:
+    """Make free text safe to place in a prompt: no control characters, no line breaks, no tags.
+
+    Whitespace and control characters collapse to single spaces (or vanish), and angle brackets
+    become single guillemets, so a value can never close `</learner_profile>` or open a tag.
+    """
+    chars = []
+    for ch in value:
+        if ch.isspace() or unicodedata.category(ch) in ("Zl", "Zp"):
+            chars.append(" ")
+        elif unicodedata.category(ch) != "Cc":
+            chars.append(ch)
+    return " ".join("".join(chars).translate(_BRACKETS).split())
 
 
 class SlotRegistry:
@@ -47,7 +66,7 @@ class SlotRegistry:
             return kept or None
         if not isinstance(value, str):
             return None
-        text = " ".join(value.split())
+        text = clean_text(value)
         if slot.max_chars:
             text = text[: slot.max_chars].rstrip()
         return text or None

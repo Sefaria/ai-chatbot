@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .registry import SlotRegistry
+from .registry import SlotRegistry, clean_text
 from .types import SlotValue
 
 DEFAULT_MAX_CHARS = 1600
 
 
 def _format_value(value: str | list[str]) -> str:
-    return ", ".join(value) if isinstance(value, list) else value
+    # Cleaned again here: a stored value is data, and must never reach the prompt with a tag in it.
+    items = value if isinstance(value, list) else [value]
+    return ", ".join(clean_text(str(item)) for item in items)
 
 
 def render_profile(
