@@ -114,17 +114,19 @@ def is_sensitive(text: str) -> bool:
 # Matching too much is the accepted cost: a matched turn is classified, and one that cannot be
 # classified is only quarantined. Hebrew words may carry the one-letter "and" prefix.
 _INSTRUCTION = re.compile(
-    r"\b(?:from now on|always|never|going forward|no more|ignore|skip|avoid|exclude)\b"
+    r"\b(?:from now on|always|never|going forward|no more|ignore|skip|avoid|exclude"
+    r"|hide|omit|filter|remove|leave out|keep away|(?:rather )?not see)\b"
     r"|\bdo(?:n['’]t| not)\b"
     r"|\bstop\s+\w+ing\b"
     r"|\bonly\s+(?:show|use|give|include|cite)\w*"
     r"|(?:^|[,;]\s*|\band\s+)without\b"
-    r"|(?<!\w)ו?(?:מעכשיו|תמיד|אף פעם|לעולם|תפסיקי?|תתעלמי?)(?!\w)"
+    r"|(?<!\w)ו?(?:מעכשיו|תמיד|אף פעם|לעולם|תפסיקי?|תתעלמי?|הסתר|תסתירי?|השמט|סנן)(?!\w)"
     r"|(?<!\w)ו?אל\s+(?!תוך(?!\w))ת\w+"
     r"|(?<!\w)ו?רק\s+(?:תראי?|תשתמשי?|תציגי?|תני|תן|תביאי?|להראות|להשתמש)(?!\w)"
     r"|(?:^|[,;]\s*|(?<!\w)ו)בלי(?!\w)",
     re.IGNORECASE,
 )
+MAX_DETECT_CHARS = 1000
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 _JOIN = re.compile(r"(?:\b(?:and|but|then)|[,;])\s*$", re.IGNORECASE)
 _TRAILING_JOIN = re.compile(r"\s*(?:\b(?:and|but|then)|[,;])\s*$", re.IGNORECASE)
@@ -157,7 +159,8 @@ def _clauses(sentence: str) -> list[str]:
 def find_standing_instructions(text: str) -> list[str]:
     """Every sentence or clause of `text` that carries a standing instruction (empty when none)."""
     found: list[str] = []
-    for sentence in _SENTENCE_SPLIT.split(text):
+    # Prompts reach a model cut to this length, so detection looks at no more than that.
+    for sentence in _SENTENCE_SPLIT.split(text[:MAX_DETECT_CHARS]):
         found.extend(_clauses(sentence))
     return found
 

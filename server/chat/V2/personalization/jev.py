@@ -106,10 +106,13 @@ class HttpJevClient:
                 data = json.load(response)
         except urllib.error.HTTPError as exc:  # status only: the request carries the key
             raise JevError(f"Jev HTTP {exc.code}") from None
-        except (urllib.error.URLError, TimeoutError, ValueError):
+        except (OSError, ValueError, RecursionError):  # URLError and TimeoutError are OSErrors
             raise JevError("Jev network or response error") from None
         latency_ms = int((time.perf_counter() - started) * 1000)
-        return parse_response(data, latency_ms, self.model)
+        try:
+            return parse_response(data, latency_ms, self.model)
+        except RecursionError:
+            raise JevError("Jev response malformed") from None
 
 
 def _number(value: object, *, unit: bool = False) -> float | None:

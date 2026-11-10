@@ -84,12 +84,47 @@ ORDINARY = [
     "הולך הנהר אל הים - מה פירוש הפסוק בקהלת",
     "Which verse says that only the firstborn inherits a double portion?",
 ]
+# Ordinary questions the detector flags today. Over-matching is accepted (a flagged turn is only
+# classified or quarantined), but it must stay visible: the count is asserted exactly.
+KNOWN_OVERMATCH = [
+    "Which verses talk about the only son, Isaac, without naming him?",
+    "Is it always forbidden to carry on Shabbat?",
+    "Why did the Rabbis never explain this verse?",
+    "What does 'do not murder' mean in the Decalogue?",
+]
 
 
 def test_plain_study_question_is_not_an_instruction():
     flagged = [q for q in ORDINARY if find_standing_instructions(q)]
     print(f"over-matching: {len(flagged)} of {len(ORDINARY)} ordinary questions flagged")
     assert flagged == []
+
+
+def test_known_overmatch_is_exactly_the_listed_questions():
+    flagged = [q for q in KNOWN_OVERMATCH if find_standing_instructions(q)]
+    print(f"known over-match: {len(flagged)} of {len(KNOWN_OVERMATCH)}")
+    assert flagged == KNOWN_OVERMATCH and len(flagged) == 4
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hide Reform sources",
+        "Please leave out Reform commentaries",
+        "Keep away from Reform sources",
+        "Omit the Zohar",
+        "Filter out Kabbalah",
+        "Remove Reform sources",
+        "I'd rather not see Reform sources",
+        "הסתר מקורות רפורמיים",
+        "תסתיר את הזוהר",
+        "תסתירי מקורות רפורמיים",
+        "השמט את הקבלה",
+        "סנן מקורות רפורמיים",
+    ],
+)
+def test_hiding_verbs_are_detected(text):
+    assert find_standing_instructions(text)
 
 
 # -- the turn rule --------------------------------------------------------------------------------
@@ -363,3 +398,96 @@ def test_rejecting_a_proposal_quarantines_its_source_in_the_same_write(store):
     (row,) = store.observations("u1", include_quarantined=True)
     assert row.quarantined and row.text == "" and row.signals == {}
     assert store.observations("u1") == []
+
+
+# -- only cleared clauses are released -----------------------------------------------------------
+
+LEAKS = [
+    "Always keep it brief. Keep away from Reform sources",
+    "תמיד תקצר. הסתר מקורות רפורמיים",
+    "I'd rather not see Reform sources. Always be brief.",
+    "Please keep answers short and leave out Reform commentaries",
+]
+HIDDEN = ("Reform", "רפורמ")
+
+
+def everything_sent(store, strategy, llm, jev):
+    """All text that reached a store row, a proposal, a model call or a Jev request."""
+    strategy.run_batch(NOW)
+    parts = [o.text for o in store.observations("u1", include_quarantined=True)]
+    parts += [p.value if isinstance(p.value, str) else "" for p in store.proposals("u1")]
+    parts += [p.quote for p in store.proposals("u1")]
+    parts += [c["user"] for c in llm.calls if "Recent prompts" in c["user"]]
+    if jev is not None:
+        # the classification request must carry the clause it judges; the others never may
+        parts += [json.dumps(s, ensure_ascii=False) for s, _ in jev.calls if "message" not in s]
+        parts += [o.text for o in strategy.window_observations("u1", NOW)]
+    return " ".join(parts)
+
+
+@pytest.mark.parametrize("name", BOTH)
+@pytest.mark.parametrize("text", LEAKS)
+def test_no_hiding_text_reaches_a_window_proposal_or_request(store, registry, name, text):
+    jev = jev_for()
+    strategy, llm, _ = make_strategy(
+        name, store, registry, style_reply_or_plan, jev=jev if name == "hybrid_jev" else None
+    )
+    strategy.on_turn(make_turn(text), NOW)
+    strategy.on_turn(make_turn("Explain Berakhot 2a", message="m2", session="s2"), NOW)
+    sent = everything_sent(store, strategy, llm, jev if name == "hybrid_jev" else None)
+    assert not any(word in sent for word in HIDDEN)
+
+
+def style_reply_or_plan(system, user):
+    if "Recent prompts" in user:
+        return json.dumps({"updates": [], "clear": []})
+    return style_reply(system, user)
+
+
+@pytest.mark.parametrize("name", BOTH)
+def test_an_undetected_sentence_is_not_released_with_the_cleared_clause(store, registry, name):
+    text = "Always keep it brief. Please steer clear of Reform sources."
+    assert find_standing_instructions(text) == ["Always keep it brief."]
+    jev = jev_for()
+    strategy, llm, _ = make_strategy(
+        name, store, registry, style_reply_or_plan, jev=jev if name == "hybrid_jev" else None
+    )
+    result = strategy.on_turn(make_turn(text), NOW)
+    assert result.skipped_reason != "instruction_excludes_sources"
+    (row,) = store.observations("u1")
+    assert row.text == "Always keep it brief." and row.signals["language"] == "en"
+    strategy.on_turn(make_turn("Explain Berakhot 2a", message="m2", session="s2"), NOW)
+    sent = everything_sent(store, strategy, llm, jev if name == "hybrid_jev" else None)
+    assert "Reform" not in sent
+
+
+@pytest.mark.parametrize("name", BOTH)
+def test_more_than_five_clauses_are_quarantined(store, registry, name):
+    def many(n):
+        return " ".join(f"Always be brief number {i}." for i in range(n))
+
+    strategy, _, _ = build(name, store, registry)
+    strategy.on_turn(make_turn(many(5), message="m1"), NOW)
+    assert [o.message_id for o in store.observations("u1")] == ["m1"]
+    result = strategy.on_turn(make_turn(many(6), message="m2"), NOW)
+    assert result.skipped_reason == "instruction_unclassified"
+    assert [o.message_id for o in quarantined(store)] == ["m2"]
+
+
+@pytest.mark.parametrize("error", [RecursionError, OSError])
+def test_jev_body_read_errors_become_jev_error(monkeypatch, error):
+    from unittest.mock import patch
+
+    from chat.V2.personalization.jev import HttpJevClient
+
+    monkeypatch.setenv("JEV_API_KEY", "k")
+    client = HttpJevClient()
+    import chat.V2.personalization.jev as jev_module
+
+    monkeypatch.setenv(jev_module.KEY_ENV, "k")
+    with (
+        patch("chat.V2.personalization.jev.json.load", side_effect=error),
+        patch("chat.V2.personalization.jev.urllib.request.urlopen"),
+    ):
+        with pytest.raises(JevError):
+            client.ask({}, {})

@@ -32,6 +32,7 @@ from ..types import Evidence, InstructionVerdict, Observation, Proposal, Turn, W
 logger = logging.getLogger(__name__)
 
 MAX_PROMPT_CHARS = 1000
+MAX_CLAUSES = 5  # standing-instruction clauses classified per turn; the rest are UNKNOWN
 
 # Writes that keep the turn ledger (observations); they are not counted in `writes_applied`.
 LEDGER = "ledger"
@@ -115,16 +116,20 @@ def classify_turn(
     `UNKNOWN`; a single item that is not a verdict makes only that one `UNKNOWN`.
     """
     unknown = [InstructionVerdict.UNKNOWN] * len(instructions)
+    over = unknown[MAX_CLAUSES:]  # clauses beyond the cap are never cleared
+    instructions = instructions[:MAX_CLAUSES]
+    unknown = unknown[:MAX_CLAUSES]
     try:
         verdicts = classifier(list(instructions))
     except Exception:
         logger.exception("instruction classification failed")
-        return unknown
+        return unknown + over
     if not isinstance(verdicts, list) or len(verdicts) != len(instructions):
-        return unknown
-    return [
+        return unknown + over
+    checked = [
         v if isinstance(v, InstructionVerdict) else InstructionVerdict.UNKNOWN for v in verdicts
     ]
+    return checked + over
 
 
 def is_clean(verdicts: list[InstructionVerdict]) -> bool:
@@ -292,13 +297,15 @@ class MemoryStrategy:
         )
         return None if logged.applied else (logged.reason or "observation_refused")
 
-    def keep_turn(self, turn: Turn) -> WriteResult:
-        """A turn whose instructions were all cleared keeps its text: lift the quarantine that
-        `start_turn` put on it."""
-        text = turn.user_message
+    def keep_turn(self, turn: Turn, cleared: list[str]) -> WriteResult:
+        """A turn whose instructions were all cleared keeps only those clauses as its text: the
+        rest of the message was never classified and stays out of inference. The language signal
+        comes from the whole message (a number, not text)."""
+        text = " ".join(cleared)
+        full = turn.user_message
         signals = {
-            "language": detect_language(text),
-            "hebrew_ratio": round(hebrew_ratio(text), 3),
+            "language": detect_language(full),
+            "hebrew_ratio": round(hebrew_ratio(full), 3),
             "cited_categories": cited_categories(text),
         }
         return self.write(

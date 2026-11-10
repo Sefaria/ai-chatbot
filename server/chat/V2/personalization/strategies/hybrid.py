@@ -112,7 +112,7 @@ class HybridStrategy(NightlyStrategy):
                     else "instruction_unclassified"
                 )
                 return result
-            if not self.keep_turn(turn).applied:
+            if not self.keep_turn(turn, instructions).applied:
                 result.skipped_reason = "observation_not_kept"
                 return result
             for instruction, (slot, value) in mapped.items():
