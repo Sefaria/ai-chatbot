@@ -7,11 +7,13 @@ quotes must be verbatim, and prompts are truncated before they are sent.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from ..jev import JevClient
 from ..llm import LLMClient, LLMResult, UsageLedger
+from ..parsing import locate_quote, parse_json_object
 from ..registry import SlotRegistry
 from ..signals import is_sensitive
 from ..store import ProfileStore
@@ -57,6 +59,8 @@ class MemoryStrategy:
         self.llm = llm
         self.ledger = ledger
         self.model = model
+        # Why updates were dropped (and how many were applied), by reason.
+        self.diagnostics: Counter = Counter()
 
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         raise NotImplementedError
@@ -79,6 +83,22 @@ class MemoryStrategy:
         self.ledger.record(self.name, phase, user_id, self.model, result)
         return result
 
+    def parse_reply(self, text: str) -> dict | None:
+        """Parse a model reply to a JSON object, counting repairs and failures."""
+        parsed = parse_json_object(text, self.diagnostics)
+        if parsed is None:
+            self.diagnostics["reply_unparsable"] += 1
+        return parsed
+
+    def model_evidence(
+        self, quote: object, text: str, session_id: str, message_id: str, at: datetime
+    ) -> Evidence | None:
+        """Evidence for a model-supplied quote; a quote that is not in `text` is counted."""
+        proof = verbatim_evidence(quote, text, session_id, message_id, at)
+        if proof is None:
+            self.diagnostics["quote_not_verbatim"] += 1
+        return proof
+
     def apply_update(
         self,
         user_id: str,
@@ -92,22 +112,36 @@ class MemoryStrategy:
         """Validate and write an inferred value. True only when the profile changed."""
         slot = self.registry.get(slot_key)
         normalized = self.registry.validate(slot_key, value) if slot else None
-        if normalized is None or (require_evidence and not evidence):
+        if normalized is None:
+            self.diagnostics["value_invalid"] += 1
+            return False
+        if require_evidence and not evidence:
+            self.diagnostics["no_valid_evidence"] += 1
             return False
         current = self.store.get_profile(user_id).get(slot_key)
         if current and current.value == normalized:
+            self.diagnostics["unchanged"] += 1
             return False
         expires_at = now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
-        return self.store.set_inferred(user_id, slot_key, normalized, evidence, now, expires_at)
+        if not self.store.set_inferred(user_id, slot_key, normalized, evidence, now, expires_at):
+            self.diagnostics["stated_locked"] += 1
+            return False
+        self.diagnostics["applied"] += 1
+        return True
 
 
 def verbatim_evidence(
     quote: object, text: str, session_id: str, message_id: str, at: datetime
 ) -> Evidence | None:
-    """Evidence only when `quote` is a verbatim substring of a message the strategy saw."""
-    if not isinstance(quote, str) or not quote.strip() or quote not in text:
+    """Evidence only when `quote` occurs in a message the strategy saw.
+
+    The match ignores Unicode form, whitespace runs and Hebrew or curly quote marks; the stored
+    quote is the learner's own substring.
+    """
+    if not isinstance(quote, str):
         return None
-    return Evidence(quote, session_id, message_id, at)
+    found = locate_quote(quote, text)
+    return Evidence(found, session_id, message_id, at) if found else None
 
 
 def build_strategy(

@@ -24,6 +24,8 @@ turn and the current profile, and you return only the profile updates this turn 
 {_COMMON_RULES}
 
 Return {{"updates": [{{"slot": "<slot key>", "value": <value>, "quote": "<verbatim learner words>"}}]}}.
+For text_categories return only categories supported by the prompts shown; do not carry over \
+categories from the current profile that the prompts shown do not support.
 Return {{"updates": []}} when the turn shows nothing new."""
 
 CONSOLIDATION_SYSTEM = f"""\
@@ -35,6 +37,8 @@ prompts grouped by session, each with a date and a message id.
 Do not infer from a single odd prompt. Each slot lists how many distinct sessions of evidence it \
 needs; only update a slot when that many sessions support it. A slot the profile marks as stated \
 was set by the learner; do not touch it.
+For text_categories return only categories supported by the prompts shown; do not carry over \
+categories from the current profile that the prompts shown do not support.
 Add a slot to "clear" only when the recent prompts clearly contradict an inferred value.
 
 Return {{"updates": [{{"slot": "<slot key>", "value": <value>, "evidence": [{{"message_id": "<id>", \
@@ -47,7 +51,12 @@ of the profile slots below, or say it fits none.
 
 {_COMMON_RULES}
 
-Return {{"slot": "<slot key>", "value": <value>}} when it fits a slot, otherwise {{"slot": null}}."""
+Set "excludes_sources" to true when the instruction asks to hide, exclude or filter out sources, \
+authors, denominations or movements; such an instruction is never stored, so use {{"slot": null}} \
+with it.
+
+Return {{"slot": "<slot key>", "value": <value>, "excludes_sources": false}} when it fits a slot, \
+otherwise {{"slot": null, "excludes_sources": <true or false>}}."""
 
 
 def slot_definitions(

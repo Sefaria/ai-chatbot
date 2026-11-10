@@ -22,10 +22,9 @@ def test_language_is_set_in_code_without_a_model_call(store, registry):
     assert llm.calls == [] and len(store.observations("u1")) == 1
     assert store.get_profile("u1")["preferred_language"].value == "en"
     strategy.on_turn(make_turn("מה זה סוגיה", session="s2", message="m2"), NOW)
-    assert store.get_profile("u1")["preferred_language"].value == "mixed"
+    assert store.get_profile("u1")["preferred_language"].value == "en"  # one Hebrew session
     strategy.on_turn(make_turn("מה זה גמרא", session="s3", message="m3"), NOW)
-    strategy.on_turn(make_turn("מה זה משנה", session="s3", message="m4"), NOW)
-    assert store.get_profile("u1")["preferred_language"].value == "he"
+    assert store.get_profile("u1")["preferred_language"].value == "he"  # two in a row
 
 
 def test_standing_instruction_becomes_a_pending_proposal_not_a_write(store, registry):

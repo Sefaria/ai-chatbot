@@ -9,14 +9,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from ..parsing import parse_json_object
 from ..signals import (
     cited_categories,
     detect_language,
     hebrew_ratio,
     is_sensitive,
-    profile_language,
-    session_language,
+    profile_language_v2,
+    session_vote,
 )
 from ..types import Evidence, Observation, Turn
 from .base import BatchResult, MemoryStrategy, TurnResult, truncate_prompt, verbatim_evidence
@@ -39,7 +38,15 @@ class NightlyStrategy(MemoryStrategy):
         self.log_observation(turn)
         return TurnResult()
 
-    def log_observation(self, turn: Turn) -> None:
+    def log_observation(self, turn: Turn, *, excluded: bool = False) -> None:
+        """Append the prompt. `excluded` marks it out of every later window, input and evidence."""
+        signals = {
+            "language": detect_language(turn.user_message),
+            "hebrew_ratio": round(hebrew_ratio(turn.user_message), 3),
+            "cited_categories": cited_categories(turn.user_message),
+        }
+        if excluded:
+            signals["excluded"] = True
         self.store.add_observation(
             Observation(
                 user_id=turn.user_id,
@@ -47,15 +54,20 @@ class NightlyStrategy(MemoryStrategy):
                 message_id=turn.message_id,
                 text=turn.user_message,
                 at=turn.at,
-                signals={
-                    "language": detect_language(turn.user_message),
-                    "hebrew_ratio": round(hebrew_ratio(turn.user_message), 3),
-                    "cited_categories": cited_categories(turn.user_message),
-                },
+                signals=signals,
             )
         )
 
+    def window_observations(self, user_id: str, now: datetime) -> list[Observation]:
+        """Observations of the last 30 days a model or a language vote may see."""
+        return [
+            o
+            for o in self.store.observations(user_id, since=now - timedelta(days=WINDOW_DAYS))
+            if not is_sensitive(o.text) and not o.signals.get("excluded")
+        ]
+
     def run_batch(self, now: datetime, user_ids: list[str] | None = None) -> BatchResult:
+        self.store.expire(now)  # before any profile is read, so stale slots are not merged back
         result = BatchResult()
         for user_id in self.store.users_with_pending() if user_ids is None else user_ids:
             try:
@@ -66,21 +78,25 @@ class NightlyStrategy(MemoryStrategy):
         self.store.expire(now)
         return result
 
-    def set_language_now(self, turn: Turn, now: datetime) -> bool:
-        """preferred_language from every session observed so far, in code."""
+    def update_language(self, user_id: str, observations: list[Observation], now: datetime) -> bool:
+        """preferred_language in code: per-session votes, then the v2 rule against the current value."""
+        if not observations:
+            return False
         sessions: dict[str, list[str]] = {}
-        for obs in self.store.observations(turn.user_id, since=now - timedelta(days=WINDOW_DAYS)):
+        for obs in observations:
             sessions.setdefault(obs.session_id, []).append(obs.text)
-        language = profile_language([session_language(texts) for texts in sessions.values()])
-        message = truncate_prompt(turn.user_message)
-        proof = verbatim_evidence(
-            message.strip()[:80], message, turn.session_id, turn.message_id, now
+        current = self.store.get_profile(user_id).get("preferred_language")
+        language = profile_language_v2(
+            [session_vote(texts) for texts in sessions.values()], current.value if current else None
         )
-        return bool(
-            language
-            and self.apply_update(
-                turn.user_id, "preferred_language", language, [proof] if proof else [], now
-            )
+        if language is None:
+            return False
+        last = observations[-1]
+        proof = verbatim_evidence(
+            last.text.strip()[:80], last.text, last.session_id, last.message_id, last.at
+        )
+        return self.apply_update(
+            user_id, "preferred_language", language, [proof] if proof else [], now
         )
 
     def blocked_slots(self, user_id: str) -> set[str]:
@@ -93,18 +109,15 @@ class NightlyStrategy(MemoryStrategy):
         if not self.store.get_settings(user_id).store_enabled:
             self.store.mark_consumed(user_id, now)
             return
-        recent = [
-            o
-            for o in self.store.observations(user_id, since=now - timedelta(days=WINDOW_DAYS))
-            if not is_sensitive(o.text)
-        ][-MAX_OBSERVATIONS:]
+        self.store.expire(now)
+        recent = self.window_observations(user_id, now)[-MAX_OBSERVATIONS:]
         if not recent:
             self.store.mark_consumed(user_id, now)
             return
         blocked = self.blocked_slots(user_id)
 
-        if "preferred_language" not in blocked:
-            self.set_language_from(user_id, recent, now, result)
+        if "preferred_language" not in blocked and self.update_language(user_id, recent, now):
+            result.updated_slots.append((user_id, "preferred_language"))
 
         seen = {o.message_id: o for o in recent}
         profile = self.store.get_profile(user_id)
@@ -115,18 +128,25 @@ class NightlyStrategy(MemoryStrategy):
         )
         reply = self.call_model("batch", user_id, system, user)
         result.llm_calls += 1
-        data = parse_json_object(reply.text) or {}
+        data = self.parse_reply(reply.text) or {}
 
         for update in data.get("updates") or []:
             if not isinstance(update, dict):
                 continue
             slot = self.registry.get(str(update.get("slot")))
-            if slot is None or slot.deterministic or slot.key in blocked:
+            if slot is None or slot.deterministic:
+                self.diagnostics["value_invalid"] += 1
                 continue
-            if self.batch_slots is not None and slot.key not in self.batch_slots:
+            if slot.key in blocked or (
+                self.batch_slots is not None and slot.key not in self.batch_slots
+            ):
                 continue
             evidence = self.validated_evidence(update.get("evidence"), seen)
+            if not evidence:
+                self.diagnostics["no_valid_evidence"] += 1
+                continue
             if len({e.session_id for e in evidence}) < slot.min_sessions:
+                self.diagnostics["below_min_sessions"] += 1
                 continue
             if self.apply_update(user_id, slot.key, update.get("value"), evidence, now):
                 result.updated_slots.append((user_id, slot.key))
@@ -146,25 +166,6 @@ class NightlyStrategy(MemoryStrategy):
         self.store.mark_consumed(user_id, now)
         result.users_processed += 1
 
-    def set_language_from(
-        self, user_id: str, observations: list[Observation], now: datetime, result: BatchResult
-    ) -> None:
-        """preferred_language is computed in code from per-session languages."""
-        sessions: dict[str, list[Observation]] = {}
-        for obs in observations:
-            sessions.setdefault(obs.session_id, []).append(obs)
-        language = profile_language(
-            [session_language([o.text for o in rows]) for rows in sessions.values()]
-        )
-        last = observations[-1]
-        proof = verbatim_evidence(
-            last.text.strip()[:80], last.text, last.session_id, last.message_id, last.at
-        )
-        if language and self.apply_update(
-            user_id, "preferred_language", language, [proof] if proof else [], now
-        ):
-            result.updated_slots.append((user_id, "preferred_language"))
-
     @staticmethod
     def format_sessions(observations: list[Observation]) -> str:
         sessions: dict[str, list[Observation]] = {}
@@ -177,15 +178,15 @@ class NightlyStrategy(MemoryStrategy):
             blocks.append("\n".join(lines))
         return "\n\n".join(blocks)
 
-    @staticmethod
-    def validated_evidence(raw: object, seen: dict[str, Observation]) -> list[Evidence]:
+    def validated_evidence(self, raw: object, seen: dict[str, Observation]) -> list[Evidence]:
         """Keep only quotes that are verbatim substrings of the message they cite."""
         evidence = []
         for item in raw if isinstance(raw, list) else []:
             obs = seen.get(str(item.get("message_id"))) if isinstance(item, dict) else None
             if obs is None:
+                self.diagnostics["quote_not_verbatim"] += 1  # cites a message it was not shown
                 continue
-            proof = verbatim_evidence(
+            proof = self.model_evidence(
                 item.get("quote"), truncate_prompt(obs.text), obs.session_id, obs.message_id, obs.at
             )
             if proof:

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..parsing import parse_json_object
 from ..signals import detect_language
 from ..types import Turn
 from .base import BatchResult, MemoryStrategy, TurnResult, truncate_prompt, verbatim_evidence
@@ -23,14 +22,15 @@ class RealtimeStrategy(MemoryStrategy):
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
+        self.store.expire(now)  # an expired slot must not reach the model or be merged back
         message = truncate_prompt(turn.user_message)
         result = TurnResult()
 
-        language = detect_language(message)
+        language = detect_language(message)  # a 'mixed' prompt casts no vote
         proof = verbatim_evidence(
             message.strip()[:80], message, turn.session_id, turn.message_id, now
         )
-        if language and self.apply_update(
+        if language in ("en", "he") and self.apply_update(
             turn.user_id, "preferred_language", language, [proof] if proof else [], now
         ):
             result.updated_slots.append("preferred_language")
@@ -42,13 +42,14 @@ class RealtimeStrategy(MemoryStrategy):
         )
         reply = self.call_model("turn", turn.user_id, system, user)
         result.llm_calls = 1
-        for update in (parse_json_object(reply.text) or {}).get("updates") or []:
+        for update in (self.parse_reply(reply.text) or {}).get("updates") or []:
             if not isinstance(update, dict):
                 continue
             slot = self.registry.get(str(update.get("slot")))
             if slot is None or slot.deterministic:
+                self.diagnostics["value_invalid"] += 1
                 continue
-            evidence = verbatim_evidence(
+            evidence = self.model_evidence(
                 update.get("quote"), message, turn.session_id, turn.message_id, now
             )
             if self.apply_update(

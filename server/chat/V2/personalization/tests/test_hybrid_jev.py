@@ -180,7 +180,7 @@ def test_lasting_style_instruction_becomes_a_pending_proposal(store, registry):
         "pending",
     )
     assert "answer_style" not in store.get_profile("u1")
-    assert len(jev.calls) == 2 and jev.calls[1][0] == {"message": STYLE_TEXT}
+    assert len(jev.calls) == 2 and jev.calls[0][0] == {"message": STYLE_TEXT}
     assert len(ledger.entries) == 2
 
 

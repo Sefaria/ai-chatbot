@@ -43,14 +43,50 @@ def session_language(texts: list[str]) -> str | None:
     return ranked[0][0]
 
 
-def profile_language(per_session_languages: list[str | None]) -> str | None:
-    """One session: that language. Else the last two sessions if they agree, otherwise 'mixed'."""
+def profile_language_v1(per_session_languages: list[str | None]) -> str | None:
+    """Iteration 1 rule, kept so that run stays reproducible.
+
+    One session: that language. Else the last two sessions if they agree, otherwise 'mixed'.
+    """
     sessions = [lang for lang in per_session_languages if lang]
     if not sessions:
         return None
     if len(sessions) == 1:
         return sessions[0]
     return sessions[-1] if sessions[-1] == sessions[-2] else "mixed"
+
+
+def session_vote(texts: list[str]) -> str | None:
+    """A session's language: the majority of its voting prompts; a tie or no votes is no vote.
+
+    A prompt whose own detection is 'mixed' (or that has no letters) casts no vote, so one pasted
+    Hebrew passage inside an English prompt does not count.
+    """
+    counts = Counter(lang for lang in map(detect_language, texts) if lang in ("en", "he"))
+    ranked = counts.most_common()
+    if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):
+        return None
+    return ranked[0][0]
+
+
+def profile_language_v2(session_votes: list[str | None], current: str | None) -> str | None:
+    """Profile language from per-session votes (oldest first) and the current slot value.
+
+    No current value: the first session vote wins. With one: of the last 4 votes, if both 'he'
+    and 'en' appear at least twice the answer is 'mixed'; else if the last 2 votes agree on a
+    language different from the current one, switch to it; else keep the current value.
+    """
+    votes = [v for v in session_votes if v]
+    if not votes:
+        return current
+    if current is None:
+        return votes[0]
+    recent = Counter(votes[-4:])
+    if recent["he"] >= 2 and recent["en"] >= 2:
+        return "mixed"
+    if len(votes) >= 2 and votes[-1] == votes[-2] and votes[-1] != current:
+        return votes[-1]
+    return current
 
 
 _SENSITIVE_EN = re.compile(

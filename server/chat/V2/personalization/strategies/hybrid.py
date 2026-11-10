@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from ..parsing import parse_json_object
 from ..registry import SlotRegistry
 from ..signals import find_standing_instruction
 from ..store import ProfileStore
@@ -74,27 +73,39 @@ class HybridStrategy(NightlyStrategy):
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
-        self.log_observation(turn)
+        self.store.expire(now)
         result = TurnResult()
-        if self.set_language_now(turn, now):
-            result.updated_slots.append("preferred_language")
-
         instruction = find_standing_instruction(truncate_prompt(turn.user_message))
-        if instruction is None:
-            return result
-        system = f"{INSTRUCTION_SYSTEM}\n\nSlots:\n{slot_definitions(self.registry, include_deterministic=True)}"
-        reply = self.call_model("turn", turn.user_id, system, instruction)
-        result.llm_calls = 1
-        mapped = parse_json_object(reply.text) or {}
-        proposal = handle_propose_memory_update(
-            self.store, self.registry, turn.user_id, str(mapped.get("slot")), mapped.get("value"),
-            instruction, now,
-        )  # fmt: skip
-        if proposal is None:
-            result.skipped_reason = "instruction_needs_settings"
-        else:
-            result.proposals.append(proposal)
+        proposal = None
+        if instruction is not None:
+            mapped = self.map_instruction(turn, instruction)
+            result.llm_calls = 1
+            if mapped.get("excludes_sources") is True:
+                # Never stored: no slot inference, and the prompt stays out of every later window.
+                self.log_observation(turn, excluded=True)
+                result.skipped_reason = "instruction_excludes_sources"
+                return result
+            proposal = handle_propose_memory_update(
+                self.store, self.registry, turn.user_id, str(mapped.get("slot")),
+                mapped.get("value"), instruction, now,
+            )  # fmt: skip
+        self.log_observation(turn)
+        if self.update_language(turn.user_id, self.window_observations(turn.user_id, now), now):
+            result.updated_slots.append("preferred_language")
+        if instruction is not None:
+            if proposal is None:
+                result.skipped_reason = "instruction_needs_settings"
+            else:
+                result.proposals.append(proposal)
         return result
+
+    def map_instruction(self, turn: Turn, instruction: str) -> dict:
+        system = (
+            f"{INSTRUCTION_SYSTEM}\n\nSlots:\n"
+            f"{slot_definitions(self.registry, include_deterministic=True)}"
+        )
+        reply = self.call_model("turn", turn.user_id, system, instruction)
+        return self.parse_reply(reply.text) or {}
 
     def blocked_slots(self, user_id: str) -> set[str]:
         return {p.slot_key for p in self.store.proposals(user_id, "pending")}

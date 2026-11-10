@@ -6,8 +6,10 @@ from chat.V2.personalization.signals import (
     find_standing_instruction,
     hebrew_ratio,
     is_sensitive,
-    profile_language,
+    profile_language_v1,
+    profile_language_v2,
     session_language,
+    session_vote,
 )
 
 
@@ -41,15 +43,15 @@ def test_session_language_is_majority_and_tie_is_mixed():
     assert session_language(["123", ""]) is None
 
 
-def test_profile_language_rules():
-    assert profile_language([]) is None
-    assert profile_language([None]) is None
-    assert profile_language(["he"]) == "he"
-    assert profile_language(["en", "he", "he"]) == "he"
-    assert profile_language(["he", "en", "en"]) == "en"
-    assert profile_language(["en", "he"]) == "mixed"
-    assert profile_language(["en", "en", "he"]) == "mixed"
-    assert profile_language(["he", None, "he"]) == "he"
+def test_profile_language_v1_rules():
+    assert profile_language_v1([]) is None
+    assert profile_language_v1([None]) is None
+    assert profile_language_v1(["he"]) == "he"
+    assert profile_language_v1(["en", "he", "he"]) == "he"
+    assert profile_language_v1(["he", "en", "en"]) == "en"
+    assert profile_language_v1(["en", "he"]) == "mixed"
+    assert profile_language_v1(["en", "en", "he"]) == "mixed"
+    assert profile_language_v1(["he", None, "he"]) == "he"
 
 
 @pytest.mark.parametrize(
@@ -122,3 +124,47 @@ def test_cited_categories_hebrew():
     assert cited_categories("בגמרא במסכת ברכות") == ["Talmud"]
     assert cited_categories("שולחן ערוך וסידור") == ["Halakhah", "Liturgy"]
     assert cited_categories("הזוהר") == ["Kabbalah"]
+
+
+def test_session_vote_ignores_mixed_prompts_and_ties():
+    pasted = "I found this but can't read it: " + "שלא לאכול בשר בחלב שנאמר לא תבשל גדי בחלב אמו"
+    assert detect_language(pasted) == "mixed"
+    assert session_vote([pasted, "What does it say?", "Thank you"]) == "en"
+    assert session_vote([pasted]) is None  # no voting prompt
+    assert session_vote(["hello", "שלום"]) is None  # tie
+    assert session_vote(["מה זה סוגיה", "מה זה גמרא", "What is a daf?"]) == "he"
+    assert session_vote(["123"]) is None
+
+
+def test_profile_language_v2_first_vote_wins_without_a_current_value():
+    assert profile_language_v2([], None) is None
+    assert profile_language_v2([None], None) is None
+    assert profile_language_v2(["he", "en"], None) == "he"
+    assert profile_language_v2([None, "en"], None) == "en"
+    assert profile_language_v2([], "he") == "he"
+
+
+def test_profile_language_v2_one_pasted_passage_or_odd_prompt_does_not_flip():
+    # a session whose only Hebrew is a pasted passage casts no vote at all
+    assert profile_language_v2(["en", None], "en") == "en"
+    # one session in the other language mid-history is a single odd vote
+    assert profile_language_v2(["he", "he", "en"], "he") == "he"
+    assert profile_language_v2(["he", "en", "he"], "he") == "he"
+
+
+def test_profile_language_v2_genuine_switch_needs_two_consecutive_sessions():
+    assert profile_language_v2(["en", "en", "he"], "en") == "en"
+    assert profile_language_v2(["en", "he", "he"], "en") == "he"
+    assert profile_language_v2(["en", "en", "en", "he", "he", "he"], "en") == "he"
+    # with two sessions on each side in the last four the rule says mixed, before the switch
+    assert profile_language_v2(["en", "en", "he", "he"], "en") == "mixed"
+    assert profile_language_v2(["he", "he"], "he") == "he"
+
+
+def test_profile_language_v2_alternating_sessions_are_mixed():
+    assert profile_language_v2(["he", "en", "he", "en"], "he") == "mixed"
+    assert profile_language_v2(["en", "he", "en", "he"], "en") == "mixed"
+    assert profile_language_v2(["he", "he", "he", "en"], "he") == "he"
+    # 'mixed' is not sticky: two consecutive sessions in one language leave it
+    assert profile_language_v2(["he", "en", "he", "en", "en"], "mixed") == "en"
+    assert profile_language_v2(["he", "en", "he", "en"], "mixed") == "mixed"
