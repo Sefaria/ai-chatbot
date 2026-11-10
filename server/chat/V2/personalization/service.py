@@ -1,7 +1,8 @@
-"""Glue between the request path and the memory strategies (not wired into views yet)."""
+"""Glue between the request path and the memory strategies (the views reach it through runtime)."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -12,7 +13,17 @@ from .render import render_profile
 from .signals import KeywordSensitiveScreen, SensitiveScreen, value_is_sensitive
 from .store import ProfileStore
 from .strategies.base import MemoryStrategy, TurnResult
-from .types import Turn, Value, WriteResult
+from .types import SlotValue, Turn, Value, WriteResult
+
+
+@dataclass(frozen=True)
+class ProfileContext:
+    """What one request renders into the prompt, and what the trace records about it."""
+
+    text: str
+    slots_used: list[str] = field(default_factory=list)
+    revision: int | None = None
+    slot_set_version: str | None = None
 
 
 class PersonalizationService:
@@ -44,6 +55,21 @@ class PersonalizationService:
         if not self.store.get_settings(user_id).personalize_enabled:
             return "", []
         return render_profile(self.store.get_profile(user_id), self.registry, now)
+
+    def profile_snapshot(self, user_id: str | None, now: datetime) -> ProfileContext:
+        """`profile_context` plus the revision and slot-set version the trace records."""
+        text, slots = self.profile_context(user_id, now)
+        revision = self.store.revision(user_id) if text and user_id else None
+        return ProfileContext(text, slots, revision, self.registry.version)
+
+    def render_fixture(self, profile: dict[str, Value], now: datetime) -> ProfileContext:
+        """Render an ephemeral fixture profile (already validated); nothing is stored."""
+        slots = {
+            key: SlotValue(key, value, "inferred", [], now, slot_set_version=self.registry.version)
+            for key, value in profile.items()
+        }
+        text, used = render_profile(slots, self.registry, now)
+        return ProfileContext(text, used, None, self.registry.version)
 
     def after_turn(self, turn: Turn, now: datetime) -> TurnResult | None:
         """Feed a finished turn to the strategy. A no-op when the feature is off."""

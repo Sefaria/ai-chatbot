@@ -19,39 +19,41 @@ slots are never overwritten; model output goes through `SlotRegistry.validate`; 
 must be verbatim; prompts are cut to 1,000 characters; `store_enabled` and `personalize_enabled`
 are separate toggles.
 
-## Wiring it in (not done yet)
+## Wiring it in
 
-Build one `PersonalizationService(DjangoProfileStore(), SlotRegistry.load(), strategy)` at startup.
-The strategy depends on the mode: `off` builds none (`strategy=None`; `build_strategy` raises for
-it), `hybrid_jev` also needs a Jev client, and every other mode takes the same arguments:
+`chat_stream_v2` asks one server-side gate, `gate.resolve(settings, persistent_user_id, requested)`,
+what this request may do. With `PERSONALIZATION_MODE=off` and no honoured override the view calls
+nothing else in the package and reads no profile table; the prompt is byte-identical to `main`.
 
-```python
-mode = settings.PERSONALIZATION_MODE
-strategy = (
-    None
-    if mode == "off"
-    else build_strategy(
-        mode,
-        store,
-        registry,
-        AnthropicLLMClient(),
-        ledger,
-        settings.PERSONALIZATION_MODEL,
-        jev=HttpJevClient() if mode == "hybrid_jev" else None,
-    )
-)
-```
+- **Settings.** `PERSONALIZATION_MODE`, `PERSONALIZATION_INJECTION` (`always`, default),
+  `PERSONALIZATION_OVERRIDE_ENABLED` (only the exact value `true`) and
+  `PERSONALIZATION_OVERRIDE_USER_IDS` (comma-separated persistent user ids).
+- **Override.** The request `context` may carry `personalizationMode`, `personalizationInjection`,
+  `personalizationProfile` (an ephemeral fixture, validated by the registry, rendered for that
+  request only, never stored, no after-turn update) and `personalizationSubject` (up to 40 characters
+  of `[a-z0-9-]`, which keys the store on `<user>:eval:<subject>`). It is honoured only when the flag
+  is on, the `ENVIRONMENT` variable is set and not a production value (`prod`, `production`, `beta`),
+  and the user is on the allowlist; otherwise every field is ignored and the trace says
+  `personalization_override_refused`. `isStaff` and `labs` never open it.
+- **Before the agent runs**, `runtime.profile_for_request` reads the profile (inside a savepoint) and
+  sets `profile_text` and `profile_slots_used` on the `MessageContext`. Any failure, a missing table
+  included, is reported to Sentry and the turn goes on unpersonalized.
+- **After the turn is saved** (never for a stopped, failed or guardrail-refused turn),
+  `runtime.submit_after_turn` queues `service.after_turn` on a two-thread pool. Jobs of one learner
+  run one at a time in submission order; every exception is swallowed and reported. Each job gets its
+  own `RunState` because `collecting()` sets a context variable inside the worker thread.
+- **Trace metadata** on the root span (`personalized`, `personalization_mode`, `_injection`, `_source`,
+  `_override_refused`, `slots_used`, `slot_set_version`, `profile_revision`, `profile_text`,
+  `personalization_model`; with the feature off only `personalized: false` and
+  `personalization_source: "off"`). `profile_text` appears only for an honoured override. The update
+  runs under a `personalization-update` child span with the turn's `TurnResult` counts.
+- **Anonymous to registered.** `anon_claim_v2` calls `store.move` in its own savepoint when the mode
+  is not `off` or the override flag is on; a failed move is reported and the claim still succeeds.
 
-1. **Before the agent runs**, where `chat_stream_v2` builds the `MessageContext`: call
-   `service.profile_context(user_id, now)` and set `profile_text` and `profile_slots_used` on it.
-   `build_turn_prompt` and `BraintrustTraceLogger.log_input` already read them.
-2. **After the turn is saved**, right after `summary_service.update_summary(...)`: call
-   `service.after_turn(Turn(user_id, session_id, message_id, user_message, response, now), now)`,
-   off the request thread, and swallow its errors (a memory failure must never fail a chat turn).
-3. **Nightly** (`nightly`, `hybrid` and `hybrid_jev`): schedule `python manage.py personalization_batch`.
+Still to do: schedule `python manage.py personalization_batch` for `nightly`, `hybrid` and
+`hybrid_jev`; build `hybrid_jev` only where a Jev client is wanted (`runtime.get_service`).
 
-**Anonymous to registered.** When the claim endpoint attaches an anonymous session to a signed-in
-user, call `store.move(anonymous_user_id, registered_user_id)` in the same transaction. The target's
+**Move rules.** `store.move(anonymous_user_id, registered_user_id)` is one locked write. The target's
 `stated` slots win, otherwise the newer value wins; observations and proposals move with it, and an
 opt-out on either side stays in force.
 

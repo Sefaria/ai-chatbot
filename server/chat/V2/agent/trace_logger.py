@@ -37,7 +37,9 @@ class BraintrustTraceLogger:
         if context.turn_number is not None:
             span_metadata["turn_number"] = context.turn_number
 
-        if context.profile_text:
+        if context.personalization_meta is not None:
+            span_metadata.update(context.personalization_meta)
+        elif context.profile_text:
             span_metadata["personalized"] = True
             span_metadata["slots_used"] = context.profile_slots_used
 

@@ -301,7 +301,7 @@ class TurnOrchestrator:
             metrics=metrics,
         )
 
-        return build_agent_response(
+        response = build_agent_response(
             content=output,
             tool_calls=tool_calls_list,
             latency_ms=latency_ms,
@@ -312,3 +312,8 @@ class TurnOrchestrator:
             total_cost_usd=sdk_result.total_cost_usd,
             narration_segments=sdk_result.narration_segments,
         )
+        try:
+            response.span_export = bt_span.export()
+        except Exception:
+            response.span_export = None
+        return response
