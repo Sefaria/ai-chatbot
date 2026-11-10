@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.core.management import call_command
 
+from chat.V2.personalization.jev import FakeJevClient
 from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.service import PersonalizationService
 from chat.V2.personalization.strategies.base import build_strategy
@@ -47,8 +48,11 @@ def test_interview_respects_store_toggle(store, registry):
 
 
 def test_build_strategy_names(store, registry):
-    for name in ("realtime", "nightly", "hybrid", "explicit"):
-        assert make_strategy(name, store, registry)[0].name == name
+    jev = FakeJevClient(lambda state, questions: {})
+    for name in ("realtime", "nightly", "hybrid", "hybrid_jev", "explicit"):
+        assert make_strategy(name, store, registry, jev=jev)[0].name == name
+    with pytest.raises(ValueError, match="Jev client"):
+        make_strategy("hybrid_jev", store, registry)
     with pytest.raises(ValueError):
         build_strategy("bogus", store, registry, FakeLLMClient(lambda s, u: ""), None, "m")
 

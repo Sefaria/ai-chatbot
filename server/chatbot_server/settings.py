@@ -251,7 +251,7 @@ from .model_defaults import APPETIZER_MODEL as _APPETIZER_MODEL_DEFAULT
 from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
 from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
 
-# Learner-profile personalization (dark): off | realtime | nightly | hybrid | explicit.
+# Learner-profile personalization (dark): off | realtime | nightly | hybrid | hybrid_jev | explicit.
 PERSONALIZATION_MODE = os.environ.get("PERSONALIZATION_MODE", "off")
 PERSONALIZATION_MODEL = os.environ.get("PERSONALIZATION_MODEL", _GUARDRAIL_MODEL_DEFAULT)
 

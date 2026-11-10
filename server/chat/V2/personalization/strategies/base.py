@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from ..jev import JevClient
 from ..llm import LLMClient, LLMResult, UsageLedger
 from ..registry import SlotRegistry
 from ..signals import is_sensitive
@@ -25,6 +26,7 @@ class TurnResult:
     proposals: list[Proposal] = field(default_factory=list)
     llm_calls: int = 0
     skipped_reason: str | None = None
+    errors: int = 0  # memory-side failures swallowed so the chat turn never fails
 
 
 @dataclass
@@ -115,15 +117,28 @@ def build_strategy(
     llm: LLMClient,
     ledger: UsageLedger,
     model: str,
+    jev: JevClient | None = None,
 ) -> MemoryStrategy:
     from .explicit import ExplicitStrategy
     from .hybrid import HybridStrategy
+    from .hybrid_jev import HybridJevStrategy
     from .nightly import NightlyStrategy
     from .realtime import RealtimeStrategy
 
     classes = {
-        c.name: c for c in (RealtimeStrategy, NightlyStrategy, HybridStrategy, ExplicitStrategy)
+        c.name: c
+        for c in (
+            RealtimeStrategy,
+            NightlyStrategy,
+            HybridStrategy,
+            HybridJevStrategy,
+            ExplicitStrategy,
+        )
     }
     if name not in classes:
         raise ValueError(f"unknown strategy {name!r}; expected one of {sorted(classes)}")
+    if name == "hybrid_jev":
+        if jev is None:
+            raise ValueError("the hybrid_jev strategy needs a Jev client (jev=...)")
+        return HybridJevStrategy(store, registry, llm, ledger, model, jev)
     return classes[name](store, registry, llm, ledger, model)

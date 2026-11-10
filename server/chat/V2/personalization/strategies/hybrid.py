@@ -7,16 +7,16 @@ slots that have a pending proposal.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from ..parsing import parse_json_object
 from ..registry import SlotRegistry
-from ..signals import find_standing_instruction, profile_language, session_language
+from ..signals import find_standing_instruction
 from ..store import ProfileStore
 from ..types import Proposal, Turn, Value
-from .base import TurnResult, truncate_prompt, verbatim_evidence
-from .nightly import WINDOW_DAYS, NightlyStrategy
+from .base import TurnResult, truncate_prompt
+from .nightly import NightlyStrategy
 from .prompts import INSTRUCTION_SYSTEM, slot_definitions
 
 PROPOSE_MEMORY_UPDATE_TOOL: dict[str, Any] = {
@@ -95,23 +95,6 @@ class HybridStrategy(NightlyStrategy):
         else:
             result.proposals.append(proposal)
         return result
-
-    def set_language_now(self, turn: Turn, now: datetime) -> bool:
-        """preferred_language from every session observed so far, in code."""
-        sessions: dict[str, list[str]] = {}
-        for obs in self.store.observations(turn.user_id, since=now - timedelta(days=WINDOW_DAYS)):
-            sessions.setdefault(obs.session_id, []).append(obs.text)
-        language = profile_language([session_language(texts) for texts in sessions.values()])
-        message = truncate_prompt(turn.user_message)
-        proof = verbatim_evidence(
-            message.strip()[:80], message, turn.session_id, turn.message_id, now
-        )
-        return bool(
-            language
-            and self.apply_update(
-                turn.user_id, "preferred_language", language, [proof] if proof else [], now
-            )
-        )
 
     def blocked_slots(self, user_id: str) -> set[str]:
         return {p.slot_key for p in self.store.proposals(user_id, "pending")}

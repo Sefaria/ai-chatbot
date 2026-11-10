@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from chat.V2.personalization.jev import HttpJevClient
 from chat.V2.personalization.llm import AnthropicLLMClient, UsageLedger
 from chat.V2.personalization.registry import SlotRegistry
 from chat.V2.personalization.store import DjangoProfileStore
@@ -29,6 +30,7 @@ class Command(BaseCommand):
             AnthropicLLMClient(),
             ledger,
             settings.PERSONALIZATION_MODEL,
+            jev=HttpJevClient() if mode == "hybrid_jev" else None,
         )
         result = strategy.run_batch(timezone.now(), options["user_ids"])
         totals = ledger.totals()["all"] if ledger.entries else {}

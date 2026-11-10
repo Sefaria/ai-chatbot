@@ -30,6 +30,8 @@ MAX_OBSERVATIONS = 40
 
 class NightlyStrategy(MemoryStrategy):
     name = "nightly"
+    # Slots the consolidation call may touch (None: every non-deterministic slot).
+    batch_slots: frozenset[str] | None = None
 
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
@@ -64,6 +66,23 @@ class NightlyStrategy(MemoryStrategy):
         self.store.expire(now)
         return result
 
+    def set_language_now(self, turn: Turn, now: datetime) -> bool:
+        """preferred_language from every session observed so far, in code."""
+        sessions: dict[str, list[str]] = {}
+        for obs in self.store.observations(turn.user_id, since=now - timedelta(days=WINDOW_DAYS)):
+            sessions.setdefault(obs.session_id, []).append(obs.text)
+        language = profile_language([session_language(texts) for texts in sessions.values()])
+        message = truncate_prompt(turn.user_message)
+        proof = verbatim_evidence(
+            message.strip()[:80], message, turn.session_id, turn.message_id, now
+        )
+        return bool(
+            language
+            and self.apply_update(
+                turn.user_id, "preferred_language", language, [proof] if proof else [], now
+            )
+        )
+
     def blocked_slots(self, user_id: str) -> set[str]:
         """Slots the batch must leave alone (the hybrid strategy blocks pending proposals)."""
         return set()
@@ -89,7 +108,7 @@ class NightlyStrategy(MemoryStrategy):
 
         seen = {o.message_id: o for o in recent}
         profile = self.store.get_profile(user_id)
-        system = f"{CONSOLIDATION_SYSTEM}\n\nSlots:\n{slot_definitions(self.registry)}"
+        system = f"{CONSOLIDATION_SYSTEM}\n\nSlots:\n{slot_definitions(self.registry, only=self.batch_slots)}"
         user = (
             f"Current profile:\n{current_profile_text(profile)}\n\nRecent prompts by session:\n"
             f"{self.format_sessions(recent)}"
@@ -104,6 +123,8 @@ class NightlyStrategy(MemoryStrategy):
             slot = self.registry.get(str(update.get("slot")))
             if slot is None or slot.deterministic or slot.key in blocked:
                 continue
+            if self.batch_slots is not None and slot.key not in self.batch_slots:
+                continue
             evidence = self.validated_evidence(update.get("evidence"), seen)
             if len({e.session_id for e in evidence}) < slot.min_sessions:
                 continue
@@ -117,6 +138,7 @@ class NightlyStrategy(MemoryStrategy):
                 current
                 and current.status == "inferred"
                 and not slot.deterministic
+                and (self.batch_slots is None or key in self.batch_slots)
                 and key not in blocked
             ):
                 self.store.delete_slot(user_id, key)

@@ -50,11 +50,18 @@ of the profile slots below, or say it fits none.
 Return {{"slot": "<slot key>", "value": <value>}} when it fits a slot, otherwise {{"slot": null}}."""
 
 
-def slot_definitions(registry: SlotRegistry, *, include_deterministic: bool = False) -> str:
+def slot_definitions(
+    registry: SlotRegistry,
+    *,
+    include_deterministic: bool = False,
+    only: frozenset[str] | None = None,
+) -> str:
     """The slot catalogue sent to a model (deterministic slots are computed in code)."""
     lines = []
     for slot in registry.all():
         if slot.deterministic and not include_deterministic:
+            continue
+        if only is not None and slot.key not in only:
             continue
         lines.append(_describe(slot))
     return "\n".join(lines)

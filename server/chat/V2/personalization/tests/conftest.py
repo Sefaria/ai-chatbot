@@ -39,9 +39,10 @@ def make_turn(text, *, user="u1", session="s1", message="m1", at=NOW, reply="An 
     return Turn(user, session, message, text, reply, at)
 
 
-def make_strategy(name, store, registry, responder=lambda system, user: "{}"):
+def make_strategy(name, store, registry, responder=lambda system, user: "{}", jev=None):
     from chat.V2.personalization.llm import FakeLLMClient, UsageLedger
     from chat.V2.personalization.strategies.base import build_strategy
 
     llm, ledger = FakeLLMClient(responder), UsageLedger()
-    return build_strategy(name, store, registry, llm, ledger, "claude-haiku-5-5"), llm, ledger
+    strategy = build_strategy(name, store, registry, llm, ledger, "claude-haiku-5-5", jev=jev)
+    return strategy, llm, ledger
