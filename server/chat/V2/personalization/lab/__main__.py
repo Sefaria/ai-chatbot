@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .. import llm as llm_module
-from . import datasets, guard, manifest, results, runner, verdict
+from . import datasets, guard, manifest, render, results, runner, tree, verdict
 from .metrics import CASES_ROOT, METRICS, load_aspect_metrics, split_key
 from .replay import fake_responder
 
@@ -306,7 +306,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true")
     for name in ("verdict", "explain", "check"):
         sub.add_parser(name).add_argument("id")
+    p = sub.add_parser("tree")
+    p.add_argument("--remote", default="origin")
+    p.add_argument("--out", required=True)
+    p.add_argument("--with-prs", action="store_true")
+    p.add_argument("--repo", default=".")
+    p = sub.add_parser("render")
+    p.add_argument("--tree", required=True)
+    p.add_argument("--html", required=True)
+    p.add_argument("--wiki-dir", required=True)
     return parser
+
+
+def cmd_tree(args) -> int:
+    data = tree.write_tree(args.repo, args.remote, args.out, args.with_prs)
+    cases = sum(len(a["cases"]) for a in data["aspects"])
+    print(f"tree: {len(data['aspects'])} aspects, {cases} cases -> {args.out}")
+    return 0
+
+
+def cmd_render(args) -> int:
+    data = json.loads(Path(args.tree).read_text(encoding="utf-8"))
+    render.render(data, args.html, args.wiki_dir)
+    print(f"render: {args.html} and {args.wiki_dir}")
+    return 0
 
 
 def main(argv: list[str] | None = None, **deps) -> int:
@@ -316,6 +339,10 @@ def main(argv: list[str] | None = None, **deps) -> int:
         print("validate needs an id or --all")
         return 2
     try:
+        if args.command == "tree":
+            return cmd_tree(args)
+        if args.command == "render":
+            return cmd_render(args)
         if args.command == "validate":
             return cmd_validate(args, root)
         if args.command == "run":
