@@ -404,9 +404,10 @@ class InMemoryProfileStore:
             pending = self._pending(user_id, slot_key)
             if pending is not None and pending.value == value:
                 return _refused(DUPLICATE, pending)
-            if pending is not None:  # one confirmation per slot: it asks about the latest value
-                pending.value, pending.quote, pending.created_at = copy.deepcopy(value), quote, now
-                return _Outcome(proposal=pending)
+            if pending is not None:
+                # One confirmation per slot, about the latest value. The old row stops being
+                # pending, so the id the learner saw can no longer be resolved.
+                pending.status = "rejected"
             proposal = Proposal(
                 uuid.uuid4().hex, user_id, slot_key, copy.deepcopy(value), quote, "pending", now
             )
@@ -665,15 +666,17 @@ class DjangoProfileStore:
         }
 
         def fn(_locked):
-            if ProfileProposal.objects.filter(
-                user_id=user_id, slot_key=slot_key, status=ProfileProposal.Status.PENDING
-            ).exists():
-                return _refused(PENDING_PROPOSAL)
             row = (
                 ProfileSlot.objects.select_for_update()
                 .filter(user_id=user_id, slot_key=slot_key)
                 .first()
             )
+            if row is not None and row.status == ProfileSlot.Status.STATED:
+                return _refused(STATED_WINS)  # checked before a pending proposal, as in memory
+            if ProfileProposal.objects.filter(
+                user_id=user_id, slot_key=slot_key, status=ProfileProposal.Status.PENDING
+            ).exists():
+                return _refused(PENDING_PROPOSAL)
             if row is None:
                 row, created = ProfileSlot.objects.get_or_create(
                     user_id=user_id, slot_key=slot_key, defaults=fields
@@ -681,8 +684,8 @@ class DjangoProfileStore:
                 if created:
                     return APPLIED
                 row = ProfileSlot.objects.select_for_update().get(pk=row.pk)
-            if row.status == ProfileSlot.Status.STATED:
-                return _refused(STATED_WINS)
+                if row.status == ProfileSlot.Status.STATED:
+                    return _refused(STATED_WINS)
             for name, field_value in fields.items():
                 setattr(row, name, field_value)
             row.save(update_fields=list(fields))
@@ -809,10 +812,11 @@ class DjangoProfileStore:
             ).first()
             if pending is not None and pending.value == value:
                 return _refused(DUPLICATE, _proposal_from_row(pending))
-            if pending is not None:  # one confirmation per slot: it asks about the latest value
-                pending.value, pending.quote, pending.created_at = value, quote, now
-                pending.save(update_fields=["value", "quote", "created_at"])
-                return _Outcome(proposal=_proposal_from_row(pending))
+            if pending is not None:
+                # One confirmation per slot, about the latest value. The old row stops being
+                # pending, so the id the learner saw can no longer be resolved.
+                pending.status = ProfileProposal.Status.REJECTED
+                pending.save(update_fields=["status"])
             row = ProfileProposal.objects.create(
                 user_id=user_id, slot_key=slot_key, value=value, quote=quote, created_at=now
             )

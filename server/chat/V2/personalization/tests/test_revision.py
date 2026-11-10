@@ -359,3 +359,32 @@ def test_concurrent_turns_report_their_own_tokens(registry):
         assert results[user].llm_calls == 1
         assert results[user].input_tokens == expected
     assert results["alice"].input_tokens != results["bob"].input_tokens
+
+
+# -- review round fixes: replacement, parity, settings --------------------------------------------
+
+
+def test_replaced_proposal_cannot_be_accepted_by_its_old_id(store):
+    first = store.add_proposal("u1", "answer_style", "Be brief.", "q1", NOW).proposal
+    second = store.add_proposal("u1", "answer_style", "Be long.", "q2", NOW).proposal
+    assert second is not None and second.id != first.id
+    assert [p.id for p in store.proposals("u1", "pending")] == [second.id]
+    refused = store.resolve_proposal("u1", first.id, True, NOW)
+    assert not refused.applied
+    assert "answer_style" not in store.get_profile("u1")  # nothing the learner never saw
+    assert store.resolve_proposal("u1", second.id, True, NOW).applied
+    assert store.get_profile("u1")["answer_style"].value == "Be long."
+
+
+def test_stated_slot_with_pending_proposal_reports_stated_wins(store):
+    store.add_proposal("u1", "answer_style", "Be brief.", "q", NOW)
+    store.set_stated("u1", "answer_style", "Be formal.", NOW)
+    refused = store.set_inferred("u1", "answer_style", "Be long.", [evidence()], NOW)
+    assert (refused.applied, refused.reason) == (False, "stated_wins")
+
+
+def test_set_settings_does_not_undo_a_toggle_changed_in_between(store):
+    store.set_settings("u1", store_enabled=False)
+    store.set_settings("u1", personalize_enabled=False)
+    settings = store.get_settings("u1")
+    assert (settings.personalize_enabled, settings.store_enabled) == (False, False)
