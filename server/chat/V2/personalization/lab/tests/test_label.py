@@ -162,16 +162,15 @@ def test_label_malformed_reply_counted_not_written(tmp_path, monkeypatch):
         {"id": "v4", "text": "Fourth"},
     ]
     (v_dir / "items.json").write_text(json.dumps(items))
-    replies = iter(
-        [
-            '{"label": "academic"}',
-            "not json at all",
-            '{"label": "not_a_legal_label"}',
-            '{"label": "traditional"}',
-        ]
-    )
-    llm = FakeLLMClient(lambda s, u: next(replies))
+    replies = {
+        "v1": '{"label": "academic"}',
+        "v2": "not json at all",
+        "v3": '{"label": "not_a_legal_label"}',
+        "v4": '{"label": "traditional"}',
+    }
+    llm = FakeLLMClient(lambda s, u: replies[json.loads(u)["id"]])
     result = label.label_dataset("anon-vocab", llm=llm)
+    assert len(llm.calls) == 1 + 3 + 3 + 1  # malformed items get 3 attempts
     assert result["total"] == 4
     assert result["labeled"] == 2
     assert result["malformed"] == 2
@@ -197,3 +196,57 @@ def test_label_updates_sha256(tmp_path, monkeypatch):
     res2 = label.label_dataset("anon-vocab", llm=llm2)
     after2 = (v_dir / "sha256").read_text().strip()
     assert after2 != after1 and res2["sha256"] == after2
+
+
+def _vocab_dir(tmp_path, monkeypatch, n):
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(tmp_path))
+    v_dir = tmp_path / "anon-vocab"
+    v_dir.mkdir()
+    items = [{"id": f"v{i}", "text": f"Text {i}"} for i in range(n)]
+    (v_dir / "items.json").write_text(json.dumps(items))
+    return v_dir
+
+
+def test_label_workers_output_matches_serial(tmp_path, monkeypatch):
+    import random
+    import time
+
+    v_dir = _vocab_dir(tmp_path, monkeypatch, 24)
+    legal = ["academic", "traditional", "transliterated"]
+
+    def responder(system, user):
+        idx = int(json.loads(user)["id"][1:])
+        time.sleep(random.random() * 0.01)
+        if idx % 7 == 3:
+            return "not json"
+        return json.dumps({"label": legal[idx % 3]})
+
+    serial = label.label_dataset("anon-vocab", llm=FakeLLMClient(responder), workers=1)
+    serial_bytes = (v_dir / "labeled.jsonl").read_bytes()
+    parallel = label.label_dataset("anon-vocab", llm=FakeLLMClient(responder), workers=6)
+    assert (v_dir / "labeled.jsonl").read_bytes() == serial_bytes
+    assert parallel["labeled"] == serial["labeled"] and parallel["malformed"] == serial["malformed"]
+    assert parallel["malformed"] == 3
+    assert parallel["sha256"] == (v_dir / "sha256").read_text().strip()
+
+    ns = cli.build_parser().parse_args(["label", "anon-vocab"])
+    assert ns.workers == 4
+    assert cli.build_parser().parse_args(["label", "anon-vocab", "--workers", "2"]).workers == 2
+
+
+def test_label_retries_malformed_then_succeeds(tmp_path, monkeypatch):
+    v_dir = _vocab_dir(tmp_path, monkeypatch, 2)
+    attempts = {"v0": 0, "v1": 0}
+
+    def responder(system, user):
+        item_id = json.loads(user)["id"]
+        attempts[item_id] += 1
+        if item_id == "v0":
+            return "garbage" if attempts[item_id] < 3 else '{"label": "academic"}'
+        raise RuntimeError("model call failed")
+
+    result = label.label_dataset("anon-vocab", llm=FakeLLMClient(responder), workers=1)
+    assert attempts == {"v0": 3, "v1": 3}
+    assert result["labeled"] == 1 and result["malformed"] == 1
+    rows = [json.loads(x) for x in (v_dir / "labeled.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == ["v0"]

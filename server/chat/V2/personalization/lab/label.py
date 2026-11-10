@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .. import llm as llm_module
@@ -19,6 +20,7 @@ from . import datasets, validate_data
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 1500
+ATTEMPTS = 3
 BRIEFS_DIR = datasets.DATA_DIR / "briefs"
 BRIEF_FALLBACKS = {
     "anon-personas": ("anon-personas.md", "syn2.md"),
@@ -221,6 +223,7 @@ def label_dataset(
     limit: int | None = None,
     llm: llm_module.LLMClient | None = None,
     data_root: Path | None = None,
+    workers: int = 4,
 ) -> LabelResult:
     brief = load_brief(name)
     root = Path(data_root) if data_root is not None else datasets.data_dir()
@@ -239,22 +242,29 @@ def label_dataset(
         f"{brief.strip()}\n\n"
         "Label the single JSON item in the user message. Reply with one JSON object only."
     )
-    labeled_rows: list[dict] = []
-    malformed = 0
-    for item in items:
+
+    def label_one(item: dict) -> dict | None:
         user_prompt = json.dumps(item, ensure_ascii=False)
-        try:
-            response = client.complete(
-                system=system, user=user_prompt, model=model, max_tokens=MAX_TOKENS
-            )
-            parsed = parse_json_object(response.text)
-        except Exception:
-            parsed = None
-        merged = _apply_labels(name, item, parsed, slots)
-        if merged is None:
-            malformed += 1
-        else:
-            labeled_rows.append(merged)
+        for _ in range(ATTEMPTS):
+            try:
+                response = client.complete(
+                    system=system, user=user_prompt, model=model, max_tokens=MAX_TOKENS
+                )
+                parsed = parse_json_object(response.text)
+            except Exception:
+                parsed = None
+            merged = _apply_labels(name, item, parsed, slots)
+            if merged is not None:
+                return merged
+        return None
+
+    if workers > 1 and len(items) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            merged_rows = list(pool.map(label_one, items))
+    else:
+        merged_rows = [label_one(item) for item in items]
+    labeled_rows = [row for row in merged_rows if row is not None]
+    malformed = len(merged_rows) - len(labeled_rows)
 
     out_path = directory / "labeled.jsonl"
     content = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in labeled_rows)

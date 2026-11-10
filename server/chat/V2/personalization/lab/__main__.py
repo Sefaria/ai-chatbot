@@ -161,6 +161,23 @@ def _run_live(case, args, deps) -> int:
     return 0
 
 
+def _print_unlabeled_count(name: str) -> None:
+    """When labeled.jsonl has fewer rows than the unlabeled file, print how many are unlabeled."""
+    try:
+        directory = validate_data._resolve_dataset_dir(name, None)
+        labeled_path = directory / "labeled.jsonl"
+        if not labeled_path.is_file():
+            return
+        labeled = sum(
+            1 for ln in labeled_path.read_text(encoding="utf-8").splitlines() if ln.strip()
+        )
+        total = len(label._read_unlabeled_items(directory))
+    except (OSError, ValueError, label.LabelError, datasets.DatasetError):
+        return
+    if labeled < total:
+        print(f"{total - labeled} unlabeled of {total} items in {name}")
+
+
 def cmd_validate_data(args) -> int:
     try:
         problems, report = validate_data.validate_with_report(args.name)
@@ -174,6 +191,7 @@ def cmd_validate_data(args) -> int:
         print(f"INVALID {args.name}: {problem}")
     if len(problems) > 40:
         print(f"... and {len(problems) - 40} more")
+    _print_unlabeled_count(args.name)
     if problems:
         return 1
     print(f"ok {args.name} {json.dumps(report, sort_keys=True)}")
@@ -181,7 +199,13 @@ def cmd_validate_data(args) -> int:
 
 
 def cmd_label(args, deps) -> int:
-    result = label.label_dataset(args.name, model=args.model, limit=args.limit, llm=deps.get("llm"))
+    result = label.label_dataset(
+        args.name,
+        model=args.model,
+        limit=args.limit,
+        llm=deps.get("llm"),
+        workers=args.workers,
+    )
     print(
         f"labeled {args.name}: {result['labeled']}/{result['total']} "
         f"(malformed={result['malformed']}) sha256={result['sha256']}"
@@ -341,6 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.add_argument("--model", default=label.DEFAULT_MODEL)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--workers", type=int, default=4)
     p = sub.add_parser("run")
     p.add_argument("id")
     p.add_argument("--mock", action="store_true")

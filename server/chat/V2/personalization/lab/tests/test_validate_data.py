@@ -226,3 +226,53 @@ def test_cli_validate_data_exits_0_1_2_3_and_never_prints_item_text(tmp_path, mo
     out = capsys.readouterr().out
     assert "INVALID anon-vocab" in out
     assert "SECRET_TEXT_MUST_NEVER_LEAK" not in out
+
+
+def test_validate_reads_labeled_when_present(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(tmp_path))
+    vocab_dir = tmp_path / "anon-vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "items.json").write_text(json.dumps(make_vocab(60)))
+    assert cli.main(["validate-data", "anon-vocab"]) == 0
+    capsys.readouterr()
+
+    # labeled.jsonl is invalid (illegal label) while the unlabeled file is valid
+    labeled = make_vocab(60)[:50]
+    labeled[0]["label"] = "not_a_legal_label"
+    (vocab_dir / "labeled.jsonl").write_text("".join(json.dumps(r) + "\n" for r in labeled))
+    assert cli.main(["validate-data", "anon-vocab"]) == 1
+    out = capsys.readouterr().out
+    assert "INVALID anon-vocab" in out
+    assert "10 unlabeled" in out
+
+    # fully labeled: valid and no unlabeled count line
+    (vocab_dir / "labeled.jsonl").write_text("".join(json.dumps(r) + "\n" for r in make_vocab(60)))
+    assert cli.main(["validate-data", "anon-vocab"]) == 0
+    assert "unlabeled" not in capsys.readouterr().out
+
+
+def test_validate_exit_codes(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    server_dir = Path(vd.__file__).resolve().parents[4]
+    env = {**os.environ, "LA_LAB_DATA_DIR": str(tmp_path)}
+
+    def run(name):
+        return subprocess.run(
+            [sys.executable, "-m", "chat.V2.personalization.lab", "validate-data", name],
+            cwd=server_dir, env=env, capture_output=True, text=True,
+        ).returncode  # fmt: skip
+
+    vocab_dir = tmp_path / "anon-vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "items.json").write_text(json.dumps(make_vocab(60)))
+    assert run("anon-vocab") == 0
+    (vocab_dir / "items.json").write_text(json.dumps([{"id": "v-0", "text": "x", "extra": 1}]))
+    assert run("anon-vocab") == 1
+    visit_dir = tmp_path / "anon-visit"
+    visit_dir.mkdir()
+    (visit_dir / "meta.json").write_text(json.dumps({"blocked": "no column"}))
+    assert run("anon-visit") == 3
