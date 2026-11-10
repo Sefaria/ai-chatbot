@@ -88,6 +88,54 @@ export class AssistantPage {
     await expect(this.panel).toBeHidden();
   }
 
+  /** Move the open floating panel to the sidebar. */
+  async dock() {
+    await this.host.getByRole('button', { name: t('assistant.header.dock.tooltip'), exact: true }).click();
+    await expect(this.host.getByRole('button', { name: t('assistant.header.undock.tooltip'), exact: true })).toBeVisible();
+  }
+
+  /** Act as a Hebrew host page: interface-lang="he". */
+  async useHebrew() {
+    await this.host.evaluate((host) => host.setAttribute('interface-lang', 'he'));
+  }
+
+  // The host's own entry point (e.g. Sefaria's header pill)
+
+  /** Act as the host page's entry point: send chatbot:open, as Sefaria's header pill does. */
+  async actAsHostOpeningTheAssistant(detail = { source: 'header' }) {
+    await this.page.evaluate((d) => document.dispatchEvent(new CustomEvent('chatbot:open', { detail: d })), detail);
+  }
+
+  /**
+   * Act as the host's entry point while recording where the panel goes for the next
+   * second, relative to where it started (px, how far it went each way). The panel
+   * must be open. Found by role alone, so it works in any interface language.
+   */
+  async panelMovementWhenHostOpensTheAssistant(detail = { source: 'header' }) {
+    const panel = this.host.getByRole('dialog');
+    await panel.evaluate((el) =>
+      Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished))
+    );
+    return panel.evaluate((el, d) => new Promise((resolve) => {
+      const start = el.getBoundingClientRect();
+      const moves = [];
+      const began = performance.now();
+      document.dispatchEvent(new CustomEvent('chatbot:open', { detail: d }));
+      (function sample() {
+        const now = el.getBoundingClientRect();
+        moves.push({ x: now.left - start.left, y: now.top - start.top });
+        if (performance.now() - began < 1000) requestAnimationFrame(sample);
+        else resolve({
+          up: Math.max(0, ...moves.map((m) => -m.y)),
+          down: Math.max(0, ...moves.map((m) => m.y)),
+          left: Math.max(0, ...moves.map((m) => -m.x)),
+          right: Math.max(0, ...moves.map((m) => m.x)),
+          end: moves[moves.length - 1],
+        });
+      })();
+    }), detail);
+  }
+
   // The phone sheet's history entry (see src/lib/sheetHistory.js)
 
   /** Whether the browser is on the open sheet's history entry, as a host can tell. */
