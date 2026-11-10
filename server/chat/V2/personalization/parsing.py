@@ -12,35 +12,37 @@ _DECODER = json.JSONDecoder()
 _HEBREW_ACRONYM_QUOTE = re.compile(r"([֐-׿])\"(?=[֐-׿])")
 
 
-def _first_object(text: str) -> dict | None:
-    start = text.find("{")
-    while start != -1:
-        try:
-            value, _ = _DECODER.raw_decode(text, start)
-        except json.JSONDecodeError:
-            value = None
-        if isinstance(value, dict):
-            return value
-        start = text.find("{", start + 1)
-    return None
+def _braces(text: str) -> list[int]:
+    return [i for i, ch in enumerate(text) if ch == "{"]
+
+
+def _object_at(text: str, start: int) -> dict | None:
+    try:
+        value, _ = _DECODER.raw_decode(text, start)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def parse_json_object(text: str, diagnostics: Counter | None = None) -> dict | None:
     """Return the first JSON object in `text`, ignoring markdown fences and surrounding prose.
 
-    If nothing parses, try one repair (escape a bare double quote inside a Hebrew acronym) and
-    retry; a successful repair is counted as `reply_repaired` in `diagnostics`.
+    Candidates are tried outermost first (by position). For each one, a plain parse is tried, then
+    one repair (escape a bare double quote inside a Hebrew acronym), counted as `reply_repaired`;
+    only then does the scan move on to the next brace, so an outer envelope is not lost to a
+    nested object.
     """
     if not text:
         return None
-    parsed = _first_object(text)
-    if parsed is not None:
-        return parsed
     repaired = _HEBREW_ACRONYM_QUOTE.sub(r'\1\\"', text)
-    if repaired != text and (parsed := _first_object(repaired)) is not None:
-        if diagnostics is not None:
-            diagnostics["reply_repaired"] += 1
-        return parsed
+    # The repair adds no braces, so the n-th brace of one text is the n-th of the other.
+    for plain_at, repaired_at in zip(_braces(text), _braces(repaired), strict=True):
+        if (parsed := _object_at(text, plain_at)) is not None:
+            return parsed
+        if repaired != text and (parsed := _object_at(repaired, repaired_at)) is not None:
+            if diagnostics is not None:
+                diagnostics["reply_repaired"] += 1
+            return parsed
     return None
 
 
