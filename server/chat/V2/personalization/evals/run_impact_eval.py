@@ -128,7 +128,7 @@ def run_case(case, profiles, rendered, core, answer_llm, judge_llm, answer_model
         rubric_user = f"Learner profile:\n{text}\n\nPrompt:\n{prompt}\n\nAnswer:\n{answer['text']}"
         out["profiles"][pid] = {
             "slots_used": slots, "answer": answer,
-            "pairwise": {**pair, "answer_1": "baseline" if not swapped else "personalized", "winner": winner},
+            "pairwise": {**pair, "answer_1": "baseline" if swapped else "personalized", "winner": winner},
             "rubric": _judge(judge_llm, judge_model, RUBRIC_SYSTEM, rubric_user),
             "delta_input_tokens": answer["input_tokens"] - baseline["input_tokens"],
             "delta_output_tokens": answer["output_tokens"] - baseline["output_tokens"],
