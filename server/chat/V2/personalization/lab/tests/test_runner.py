@@ -9,7 +9,7 @@ from chat.V2.personalization.lab import judge, results
 from chat.V2.personalization.lab.datasets import Dataset, load_dataset
 from chat.V2.personalization.lab.manifest import load_case
 from chat.V2.personalization.lab.replay import StrategyPipeline, oracle_responder, strategy_pipeline
-from chat.V2.personalization.lab.runner import JevOnRealData, run_case
+from chat.V2.personalization.lab.runner import JevOnIdentifiableData, run_case
 from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.typed import JevTypedClient
 
@@ -91,12 +91,21 @@ def test_sensitive_turns_that_reach_a_model_are_counted_from_the_dataset_tags(tm
     assert leaked["privacy"]["sensitive_reached_model"] == 1
 
 
-def test_jev_on_real_dataset_refused(tmp_path):
+def test_jev_refused_on_non_anonymized_real(tmp_path):
     case = mock_case(tmp_path)
     typed = JevTypedClient(FakeJevClient(lambda state, questions: {}))
-    real = Dataset("real1", "real", "sha", [persona()])
-    with pytest.raises(JevOnRealData):
+    real = Dataset("real1", "real", "sha", [persona()], anonymized=False)
+    with pytest.raises(JevOnIdentifiableData):
         run(case, real, typed=typed)
+
+
+def test_jev_allowed_on_anonymized_real(tmp_path, monkeypatch):
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(tmp_path / "la-lab-data"))
+    case = mock_case(tmp_path)
+    typed = JevTypedClient(FakeJevClient(lambda state, questions: {}))
+    real = Dataset("anon-personas", "real", "sha", [persona()], anonymized=True)
+    result = run(case, real, typed=typed)
+    assert result["dataset"]["name"] == "anon-personas" and "per_item" not in result
 
 
 def test_a_real_run_has_numbers_only_and_progress_outside_the_repo(repo, tmp_path, monkeypatch):
@@ -299,6 +308,12 @@ def test_verdict_command_writes_verdict_json_and_keeps_the_note(tmp_path, capsys
 
 def test_secondary_dataset_keeps_privacy_and_invalid_in_also(repo, monkeypatch):
     work, cases = repo
+    real_reg = cli.datasets.registry
+    monkeypatch.setattr(
+        cli.datasets,
+        "registry",
+        lambda path=None: {**real_reg(path), "syn2": {"kind": "synthetic"}},
+    )
     directory = write_case(cases, datasets=["syn1", "syn2"])
     commit_and_push(work)
     breach = {"sensitive_reached_model": 0, "stated_overwritten": 0, "exclusion_stored": 1}

@@ -77,7 +77,7 @@ them; `load_dataset` raises `DatasetChanged` when they differ, and refuses a dat
 checksum yet. A real dataset is read only from `$LA_LAB_DATA_DIR/<name>/` (`items.json`, `sha256`),
 outside every repository. A real-dataset result carries numbers only (`results.write` raises
 `RealDataLeak` otherwise), run progress stays under `$LA_LAB_DATA_DIR/partial/<id>/`, and Jev is
-refused (`JevOnRealData`). Persona schema: see `data/syn1/personas.json`, plus optional
+refused on non-anonymized real data (`JevOnIdentifiableData`). Persona schema: see `data/syn1/personas.json`, plus optional
 `turns[].tags` and `golden_timeline`.
 
 ## Command line

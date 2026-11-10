@@ -32,6 +32,7 @@ class Dataset:
     kind: str  # "synthetic" | "real"
     sha256: str
     items: list
+    anonymized: bool = False
     files: dict = field(default_factory=dict, compare=False, repr=False)  # file stem -> parsed JSON
 
 
@@ -60,8 +61,39 @@ def data_dir() -> Path:
 
 def _items(parsed, key: str | None):
     if isinstance(parsed, dict):
-        return parsed[key] if key and key in parsed else next(iter(parsed.values()))
+        if key and key in parsed:
+            return parsed[key]
+        for k in ("items", "personas", "prompts", "fixtures"):
+            if k in parsed and isinstance(parsed[k], list):
+                return parsed[k]
+        for v in parsed.values():
+            if isinstance(v, list):
+                return v
+        return next(iter(parsed.values()))
     return parsed
+
+
+def _read_real_items(directory: Path) -> list:
+    labeled = directory / "labeled.jsonl"
+    if labeled.is_file():
+        return [
+            json.loads(line)
+            for line in labeled.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    for name in ("items.json", "personas.json", "prompts.json", "fixtures.json"):
+        path = directory / name
+        if path.is_file():
+            return _items(json.loads(path.read_text(encoding="utf-8")), "items")
+    for name in ("items.jsonl", "users.jsonl", "unlabeled.jsonl"):
+        path = directory / name
+        if path.is_file():
+            return [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+    raise DatasetError(f"no dataset items found in {directory}")
 
 
 def load_dataset(name: str, *, registry_path: Path | None = None) -> Dataset:
@@ -74,8 +106,10 @@ def load_dataset(name: str, *, registry_path: Path | None = None) -> Dataset:
         if not directory.is_dir():
             raise DatasetError(f"real dataset {name!r} is not in {directory}")
         sha = (directory / "sha256").read_text(encoding="utf-8").strip()
-        parsed = json.loads((directory / "items.json").read_text(encoding="utf-8"))
-        return Dataset(name, "real", sha, _items(parsed, "items"))
+        meta_path = directory / "meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+        anonymized = bool(meta.get("anonymized") is True)
+        return Dataset(name, "real", sha, _read_real_items(directory), anonymized=anonymized)
     directory = (registry_path.parent if registry_path else DATA_DIR) / entry["dir"]
     if not entry.get("sha256"):
         raise DatasetError(
@@ -91,4 +125,4 @@ def load_dataset(name: str, *, registry_path: Path | None = None) -> Dataset:
         for f in entry["files"]
     }
     primary = files[Path(entry["items_file"]).stem]
-    return Dataset(name, "synthetic", actual, _items(primary, entry.get("items_key")), files)
+    return Dataset(name, "synthetic", actual, _items(primary, entry.get("items_key")), files=files)

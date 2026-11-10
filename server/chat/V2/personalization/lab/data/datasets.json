@@ -10,46 +10,17 @@
     "items_key": "personas",
     "sha256": "377d7e13880684ea1afbe0273e276838fdda5c3b4245c89b5799dd8a0f4a6fab"
   },
-  "syn2": {
-    "kind": "synthetic",
-    "dir": "syn2",
-    "files": [
-      "personas.json"
-    ],
-    "items_file": "personas.json",
-    "items_key": "personas",
-    "sha256": null
+  "anon-personas": {
+    "kind": "real"
   },
-  "vocab1": {
-    "kind": "synthetic",
-    "dir": "vocab1",
-    "files": [
-      "items.json"
-    ],
-    "items_file": "items.json",
-    "items_key": null,
-    "sha256": null
+  "anon-vocab": {
+    "kind": "real"
   },
-  "visit1": {
-    "kind": "synthetic",
-    "dir": "visit1",
-    "files": [
-      "fixtures.json"
-    ],
-    "items_file": "fixtures.json",
-    "items_key": null,
-    "sha256": null
+  "anon-visit": {
+    "kind": "real"
   },
-  "impact2": {
-    "kind": "synthetic",
-    "dir": "impact2",
-    "files": [
-      "prompts.json",
-      "profiles.json"
-    ],
-    "items_file": "prompts.json",
-    "items_key": null,
-    "sha256": null
+  "anon-impact": {
+    "kind": "real"
   },
   "real1": {
     "kind": "real"

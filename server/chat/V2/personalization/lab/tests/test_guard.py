@@ -85,3 +85,38 @@ def test_a_case_never_committed_is_refused(repo):
     directory = write_case(cases)
     with pytest.raises(NotPreregistered):
         guard.assert_preregistered(directory)
+
+
+def test_jev_refused_on_non_anonymized_real(tmp_path):
+    from chat.V2.personalization.jev import FakeJevClient
+    from chat.V2.personalization.lab.datasets import Dataset
+    from chat.V2.personalization.lab.runner import JevOnIdentifiableData
+    from chat.V2.personalization.typed import JevTypedClient
+
+    case = load_case(write_case(tmp_path))
+    typed = JevTypedClient(FakeJevClient(lambda state, questions: {}))
+    real = Dataset("real1", "real", "sha", load_dataset("syn1").items[:1], anonymized=False)
+    with pytest.raises(JevOnIdentifiableData):
+        run_case(
+            case,
+            kind="mock",
+            run_no=0,
+            dataset=real,
+            llm=FakeLLMClient(lambda s, u: "{}"),
+            typed=typed,
+        )
+
+
+def test_jev_allowed_on_anonymized_real(tmp_path, monkeypatch):
+    from chat.V2.personalization.jev import FakeJevClient
+    from chat.V2.personalization.lab.datasets import Dataset
+    from chat.V2.personalization.typed import JevTypedClient
+
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(tmp_path / "la-lab-data"))
+    case = load_case(write_case(tmp_path))
+    typed = JevTypedClient(FakeJevClient(lambda state, questions: {}))
+    real = Dataset("anon-personas", "real", "sha", load_dataset("syn1").items[:1], anonymized=True)
+    result = run_case(
+        case, kind="mock", run_no=0, dataset=real, llm=FakeLLMClient(lambda s, u: "{}"), typed=typed
+    )
+    assert result["dataset"]["name"] == "anon-personas" and "per_item" not in result

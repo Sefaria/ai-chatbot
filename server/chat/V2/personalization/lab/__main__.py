@@ -10,7 +10,18 @@ import sys
 from pathlib import Path
 
 from .. import llm as llm_module
-from . import datasets, guard, manifest, render, results, runner, tree, verdict
+from . import (
+    datasets,
+    guard,
+    label,
+    manifest,
+    render,
+    results,
+    runner,
+    tree,
+    validate_data,
+    verdict,
+)
 from .metrics import CASES_ROOT, METRICS, load_aspect_metrics, split_key
 from .replay import fake_responder
 
@@ -57,8 +68,6 @@ def _live_llm(model: str):
 
 def _typed_for(case, dataset, llm):
     config = case.config
-    if dataset.kind == "real":
-        return None
     variants = config.get("variants") or []
     needs_jev = (
         config.get("typed") == "jev"
@@ -66,6 +75,8 @@ def _typed_for(case, dataset, llm):
         or config.get("strategy") == "hybrid_jev"
     )
     if needs_jev:
+        if dataset.kind == "real" and not dataset.anonymized:
+            return None
         if os.environ.get("PERSONALIZATION_ALLOW_JEV") != "true":
             return None
         try:
@@ -147,6 +158,34 @@ def _run_live(case, args, deps) -> int:
             print(
                 f"run {run_no} on {name}: {len(result['metrics'])} metrics, usd {result['cost']['usd']:.4f}"
             )
+    return 0
+
+
+def cmd_validate_data(args) -> int:
+    try:
+        problems, report = validate_data.validate_with_report(args.name)
+    except validate_data.DatasetBlocked as error:
+        print(f"blocked {args.name}: {error}")
+        return 3
+    except validate_data.ValidationUnavailable as error:
+        print(error)
+        return 2
+    for problem in problems[:40]:
+        print(f"INVALID {args.name}: {problem}")
+    if len(problems) > 40:
+        print(f"... and {len(problems) - 40} more")
+    if problems:
+        return 1
+    print(f"ok {args.name} {json.dumps(report, sort_keys=True)}")
+    return 0
+
+
+def cmd_label(args, deps) -> int:
+    result = label.label_dataset(args.name, model=args.model, limit=args.limit, llm=deps.get("llm"))
+    print(
+        f"labeled {args.name}: {result['labeled']}/{result['total']} "
+        f"(malformed={result['malformed']}) sha256={result['sha256']}"
+    )
     return 0
 
 
@@ -297,6 +336,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("id", nargs="?")
     p.add_argument("--all", action="store_true")
     p.add_argument("--min-cases", type=int, default=0)
+    sub.add_parser("validate-data").add_argument("name")
+    p = sub.add_parser("label")
+    p.add_argument("name")
+    p.add_argument("--model", default=label.DEFAULT_MODEL)
+    p.add_argument("--limit", type=int, default=None)
     p = sub.add_parser("run")
     p.add_argument("id")
     p.add_argument("--mock", action="store_true")
@@ -345,13 +389,17 @@ def main(argv: list[str] | None = None, **deps) -> int:
             return cmd_render(args)
         if args.command == "validate":
             return cmd_validate(args, root)
+        if args.command == "validate-data":
+            return cmd_validate_data(args)
+        if args.command == "label":
+            return cmd_label(args, deps)
         if args.command == "run":
             return cmd_run(args, root, deps)
         return {"verdict": cmd_verdict, "explain": cmd_explain, "check": cmd_check}[args.command](
             args, root
         )
     except (manifest.ManifestError, guard.NotPreregistered, datasets.DatasetError, datasets.DatasetChanged,
-            runner.JevOnRealData, runner.RunnerError, results.RealDataLeak) as error:  # fmt: skip
+            runner.JevOnIdentifiableData, runner.RunnerError, results.RealDataLeak, label.LabelError) as error:  # fmt: skip
         print(f"{type(error).__name__}: {error}")
         return 2
 

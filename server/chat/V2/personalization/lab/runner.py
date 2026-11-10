@@ -38,8 +38,8 @@ SCHEMA = 1
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 
-class JevOnRealData(RuntimeError):
-    """Jev receives synthetic text only; a real dataset never gets a Jev client."""
+class JevOnIdentifiableData(RuntimeError):
+    """Jev receives synthetic or anonymized text only; a non-anonymized real dataset never gets a Jev client."""
 
 
 class RunnerError(RuntimeError):
@@ -182,8 +182,14 @@ def run_case(
     if kind not in ("mock", "live"):
         raise RunnerError(f"kind must be 'mock' or 'live', not {kind!r}")
     real = dataset.kind == "real"
-    if real and (isinstance(typed, JevTypedClient) or getattr(typed, "jev", None) is not None):
-        raise JevOnRealData(f"dataset {dataset.name} is real; Jev gets synthetic text only")
+    if (
+        real
+        and not dataset.anonymized
+        and (isinstance(typed, JevTypedClient) or getattr(typed, "jev", None) is not None)
+    ):
+        raise JevOnIdentifiableData(
+            f"dataset {dataset.name} is real and not anonymized; Jev gets synthetic or anonymized text only"
+        )
     case_dir = case.dir or None
     if kind == "live" and not case_dir:
         raise RunnerError("a live run needs the case directory; refusing an unguarded live run")
