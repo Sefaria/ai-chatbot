@@ -59,6 +59,7 @@ class PersonaRun:
     turns: int = 0
     auto_accepted: int = 0
     batches: list[datetime] = field(default_factory=list)
+    diagnostics: dict = field(default_factory=dict)
 
 
 def parse_time(value: str) -> datetime:
@@ -167,5 +168,6 @@ def run_persona(
         for r in recorder.results
     )
     run.observations = [o.text for o in store.observations(user_id)]
+    run.diagnostics = dict(strategy.diagnostics)
     run.sent_texts = recorder.sent_texts + (jev_recorder.states if jev_recorder else [])
     return run

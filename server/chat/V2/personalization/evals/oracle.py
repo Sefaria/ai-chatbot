@@ -66,9 +66,12 @@ def oracle_responder(persona: dict):
 
     def instruction(user: str) -> str:
         stored = next((t for text, t in tags.items() if user.strip() in text), [])
-        if "must_not_store" in stored or "answer_style" not in golden:
-            return json.dumps({"slot": None})
-        return json.dumps({"slot": "answer_style", "value": golden_value(golden["answer_style"])})
+        if "must_not_store" in stored:
+            return json.dumps({"slot": None, "excludes_sources": True})
+        if "answer_style" not in golden:
+            return json.dumps({"slot": None, "excludes_sources": False})
+        value = golden_value(golden["answer_style"])
+        return json.dumps({"slot": "answer_style", "value": value, "excludes_sources": False})
 
     def respond(system: str, user: str) -> str:
         if system.startswith(REALTIME_SYSTEM[:60]):
