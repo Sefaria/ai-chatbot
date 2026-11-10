@@ -119,7 +119,11 @@ class HaikuTypedClient:
                 out.append(TypedAnswer(q.key, noul=_unit(raw.get("noul"))))
             else:
                 choice, confidence = raw.get("choice"), _unit(raw.get("confidence"))
-                if choice not in (q.criteria or {}) or confidence is None:
+                if (
+                    not isinstance(choice, str)
+                    or choice not in (q.criteria or {})
+                    or confidence is None
+                ):
                     out.append(TypedAnswer(q.key))
                 else:
                     out.append(TypedAnswer(q.key, choice=choice, confidence=confidence))

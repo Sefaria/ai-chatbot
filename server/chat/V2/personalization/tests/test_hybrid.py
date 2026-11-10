@@ -137,3 +137,12 @@ def test_handle_propose_memory_update_validates_and_dedupes(store, registry):
     assert propose("hebrew_fluency", "fluent", "I am fluent") is None
     assert propose("hebrew_fluency", "basic", "actually basic") is not None
     assert propose("hebrew_fluency", "basic", "x").user_id == "u1"
+
+
+def test_hybrid_proposal_cannot_set_deterministic_slot(store, registry):
+    assert registry.get("register").deterministic
+    strategy, _, _ = make_strategy("hybrid", store, registry, mapper("register", "academic"))
+    result = strategy.on_turn(make_turn(INSTRUCTION), NOW)
+    assert result.proposals == []
+    assert store.proposals("u1", "pending") == []
+    assert "register" not in store.get_profile("u1")

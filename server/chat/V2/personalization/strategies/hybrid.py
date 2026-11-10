@@ -158,7 +158,10 @@ class HybridStrategy(NightlyStrategy):
                 verdicts.append(InstructionVerdict.EXCLUSION)
             else:
                 verdicts.append(InstructionVerdict.SAFE_STYLE)
-                if "slot" in valid:
+                slot = self.registry.get(str(valid.get("slot")))
+                if slot is not None and slot.deterministic:
+                    self.diagnostics["value_invalid"] += 1
+                elif "slot" in valid:
                     mapped[instruction] = (valid["slot"], valid.get("value"))
         return verdicts
 

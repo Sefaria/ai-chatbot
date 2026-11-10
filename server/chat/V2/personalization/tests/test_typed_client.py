@@ -96,3 +96,17 @@ def test_hybrid_haiku_is_a_valid_mode():
     from chat.V2.personalization.gate import MODES
 
     assert "hybrid_haiku" in MODES
+
+
+def test_haiku_typed_non_string_choice_is_no_answer():
+    for choice in (["p"], {"x": 1}, 3):
+        reply = {
+            "answers": {
+                "hebrew_fluency": {"choice": choice, "confidence": 0.9},
+                "category:Talmud": {"noul": 0.5},
+            }
+        }
+        client, _ = haiku(reply)
+        first, second = client.answer("{}", QUESTIONS)
+        assert first.choice is None and first.confidence is None
+        assert second.noul == 0.5
