@@ -57,6 +57,9 @@ class MessageContext:
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
+    # Learner profile rendered for the prompt (dark feature, see chat/V2/personalization).
+    profile_text: str | None = None
+    profile_slots_used: list[str] = field(default_factory=list)
 
 
 @dataclass
