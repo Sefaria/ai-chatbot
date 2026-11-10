@@ -5,6 +5,8 @@ The case's `pipeline.py` is loaded from its directory. Its entry point depends o
 Optional hooks for `LAB run --mock`: `mock_llm()`, `mock_typed()`, `mock_items()`.
 Optional hook for every run: `select_items(items, config, dataset) -> items`, a reproducible
 subset of a dataset (for example a seeded sample), applied before the items are replayed.
+Optional hook for a `replay` case: `counts(variant_config, replays, llm) -> dict`, the `RunData.counts`
+of one variant (for the metrics read from counts, such as `overhead_tokens` and `recount_gap`).
 """
 
 from __future__ import annotations
@@ -280,6 +282,8 @@ def run_case(
                 ]
                 invalid += replay.diagnostics.get("invalid", 0)
             data = RunData(replays=replays, calls=[c for r in replays for c in r.calls])
+            if module is not None and hasattr(module, "counts"):
+                data.counts.update(module.counts(vconfig, replays, llm))
             datas[variant] = data
             if not real:
                 sent_sensitive += sensitive_reached_model(replays)

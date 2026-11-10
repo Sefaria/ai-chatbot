@@ -70,6 +70,10 @@ them the mock uses an empty fake model on the case's first dataset. Other option
 applied before every run) and `explain_lines(case, read) -> [str]` (extra lines for `LAB explain`;
 `read(name)` returns a result file or None).
 
+A `replay` pipeline module may also define `counts(variant_config, replays, llm) -> dict`, called once per
+variant, whose result becomes that variant's `RunData.counts` (a case that makes no extraction calls
+uses it for `overhead_tokens` and `recount_gap`).
+
 A pipeline for answer-side metrics reports `RunData.counts`: a ratio metric reads `counts[name]`
 over `counts[name + "_of"]`; a count metric reads `counts[name]`.
 

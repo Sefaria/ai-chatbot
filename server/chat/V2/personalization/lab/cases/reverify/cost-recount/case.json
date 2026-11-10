@@ -1,0 +1,134 @@
+{
+  "id": "reverify/cost-recount",
+  "question": "Is \"under $1 per 1,000 turns\" right on data the designs never saw, and was the 480-token overhead measured correctly?",
+  "why": "Mickey's action item for Yotam (recap). The 96%, the \"under $1\" and the 35 of 36 came from personas written by the designs' author, a design tuned on them, and prompts chosen to benefit.",
+  "source": "Mickey's action item for Yotam (recap)",
+  "hypothesis": "Yes within 15%",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-5-5",
+    "source_case": "reverify/heldout-personas",
+    "source_ref": "origin/lab/reverify/heldout-personas",
+    "source_dataset": "syn1",
+    "overhead_calls": 10,
+    "designs": [
+      "realtime",
+      "nightly",
+      "hybrid",
+      "explicit",
+      "hybrid_jev"
+    ],
+    "variants": [
+      "realtime",
+      "nightly",
+      "hybrid",
+      "explicit",
+      "hybrid_jev",
+      "realtime_h55",
+      "nightly_h55",
+      "hybrid_h55",
+      "explicit_h55",
+      "hybrid_jev_h55",
+      "total"
+    ]
+  },
+  "datasets": [
+    "syn1"
+  ],
+  "metrics": [
+    "usd_per_1000_turns@realtime",
+    "usd_per_1000_turns@nightly",
+    "usd_per_1000_turns@hybrid",
+    "usd_per_1000_turns@explicit",
+    "usd_per_1000_turns@hybrid_jev",
+    "usd_per_1000_turns@realtime_h55",
+    "usd_per_1000_turns@nightly_h55",
+    "usd_per_1000_turns@hybrid_h55",
+    "usd_per_1000_turns@explicit_h55",
+    "usd_per_1000_turns@hybrid_jev_h55",
+    "usd_vs_iter1@realtime",
+    "usd_vs_iter1@nightly",
+    "usd_vs_iter1@hybrid",
+    "usd_vs_iter1@explicit",
+    "usd_vs_iter1@hybrid_jev",
+    "overhead_tokens@total",
+    "recount_gap@total"
+  ],
+  "keep_if": [
+    {
+      "metric": "overhead_tokens@total",
+      "agg": "mean",
+      "op": ">=",
+      "value": 432
+    },
+    {
+      "metric": "overhead_tokens@total",
+      "agg": "mean",
+      "op": "<=",
+      "value": 528
+    },
+    {
+      "metric": "recount_gap@total",
+      "agg": "each",
+      "op": "<=",
+      "value": 0.01
+    },
+    {
+      "metric": "usd_per_1000_turns@hybrid_jev",
+      "agg": "mean",
+      "op": "<=",
+      "value": 1.0
+    },
+    {
+      "metric": "usd_vs_iter1@realtime",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.15
+    },
+    {
+      "metric": "usd_vs_iter1@nightly",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.15
+    },
+    {
+      "metric": "usd_vs_iter1@hybrid",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.15
+    },
+    {
+      "metric": "usd_vs_iter1@explicit",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.15
+    },
+    {
+      "metric": "usd_vs_iter1@hybrid_jev",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.15
+    }
+  ],
+  "cost_estimate": "30 small calls (10 empty-prompt headless Haiku 5.5 calls per run); no extraction calls",
+  "deviations": [
+    {
+      "date": "2026-11-10",
+      "from": "test tree row: per-call rows that heldout-personas saved for syn2",
+      "what": "Amendment A1 made syn2 into anon-personas, and the runner saves per-call rows only for non-real datasets, so this case recounts the syn1 rows: run n reads calls_run<n>.json and run<n>.json (the ledger's total) of reverify/heldout-personas from origin/lab/reverify/heldout-personas with git show (the plan's ref-style read). It refuses a dataset whose checksum differs from the one those rows were saved on.",
+      "cost": "The recount is of data iteration 1 tuned on (syn1), not of data the designs never saw; the anon-personas cost stays in heldout-personas' numbers-only results."
+    },
+    {
+      "date": "2026-11-10",
+      "from": "test tree row: Keep if, as five bars and two clauses",
+      "what": "A clause is registered as the bars it needs. \"overhead_tokens mean between 432 and 528\" is two bars (>= 432, <= 528). \"each design's figure within 15% of iteration 1's\" is five bars on usd_vs_iter1 (the reverify aspect metric: the absolute gap to iteration 1's usd_per_1000_turns_haiku45 as a share of it, <= 0.15). \"recount_gap <= 0.01 (each)\" is one bar, each of the three runs, on the sum of all five designs' rows against the ledger total. Metric keys carry the pseudo-design `total` (all designs' rows together) for the two metrics that are not per design."
+    },
+    {
+      "date": "2026-11-10",
+      "from": "test tree row: re-measure the headless overhead with 10 empty-prompt calls per run",
+      "what": "The 10 calls per run go through the existing ClaudeCodeLLMClient at claude-haiku-5-5 with the same trivial prompt as its calibrate (system \"x\", user \"x\"); overhead_tokens is the mean of their raw input tokens (cached and uncached). The saved rows are already net of the overhead (the client subtracts it once per call), so the recount does not subtract it again. The Haiku 5.5 prices are the same rows rewritten to claude-haiku-5-5 (variants ending _h55, reported with no bar); Jev rows keep the Jev price."
+    }
+  ],
+  "status": "planned"
+}
