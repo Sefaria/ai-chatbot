@@ -142,6 +142,9 @@ class ClaudeCodeLLMClient:
             "--setting-sources", "", "--output-format", "json", "--no-session-persistence",
         ]  # fmt: skip
         env = dict(os.environ)
+        # The production path is a plain Messages API call. Headless Claude Code turns extended
+        # thinking on by default, which multiplies output tokens and latency, so switch it off.
+        env["MAX_THINKING_TOKENS"] = "0"
         if config_dir := os.environ.get("PERSONALIZATION_CLAUDE_CONFIG_DIR"):
             env["CLAUDE_CONFIG_DIR"] = config_dir
         last_error = "no output"
