@@ -66,11 +66,13 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `hide-launcher` | `"true"` \| `"false"` | No | A logged-in user's saved "Hide Ask button" choice, from their account. Present, it wins over this browser's choice; absent (logged out), this browser's choice is used |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 
 ## Host Events
 
+- Dispatches `chatbot:launcher_visibility` (`detail = { hidden }`) on `document` whenever the visitor flips the "Show the Ask button" switch; Sefaria saves it to a logged-in user's profile (`settings.library_assistant_ask_button_hidden`) and passes it back as `hide-launcher`.
 - Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
 - Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is asked in a new chat, never added to the open conversation.
 - Listens for `chatbot:launcher` on `document`: `detail = { source, question }` relabels the closed pill with the widget's own label for that source (`search_no_results` → `assistant.floating_button.search_label`, "✦ Search with Library Assistant") and makes a click ask `question` as `chatbot:open` would (in a new chat). It asks once: later clicks with the same source and question (e.g. after closing the assistant, or on another empty tab of the same search) just reopen the assistant; `detail = null` puts the "✦ Ask" pill back. A `chatbot:open` with that same source and question (e.g. the link in Sefaria's no-results text) counts as a click on the relabelled pill, so the question is asked once whichever is clicked first.
@@ -79,6 +81,8 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 ## Launcher
 
 The closed widget is a "✦ Ask" pill in the corner, on phones and desktop. It is purple (`--lc-entry-bg*`, set on `.lc-chatbot-ask` in `AskLauncher.svelte`); once open, the assistant keeps the Sefaria blue theme. A reply that lands while the assistant is closed puts a badge on the pill and is announced to screen readers until the assistant is opened. The chat is rebuilt on every open, so opening lands on the start of an answer that arrived while closed, otherwise where the reader left that chat (recorded on close, so not after a reload), otherwise at the bottom (its latest message). A host can lift the closed widget above its own bottom bar by setting `--lc-launcher-bottom-offset` (a length) on `:root`; Sefaria sets it to its cookie banner's height at its mobile widths (up to 842px, where the banner is full width) until the banner is dismissed. The move always slides (0.2s), reduced motion included.
+
+The visitor can turn the pill off from the kebab menu ("Hide Ask button" / "Show Ask button", with an eye-off / eye icon, opens a switch in a modal that reuses the feedback modal's card). It's remembered in this browser (`lc_chatbot:hide_launcher`) and, for a logged-in user, in their account (see `hide-launcher` and `chatbot:launcher_visibility`), so it follows them across devices. The host's own entry points (Sefaria's header item and mobile menu, `chatbot:open`) still open the assistant, so the visitor can turn it back on there. A hidden pill also means no reply badge and no relabelled no-results pill (Sefaria's no-results text link still asks the search). Below the switch, one sentence with link placeholders says how to remove the assistant from Sefaria's main menu: logged out, {log_in} / {sign_up} (`/login`, `/register`, each with `?next=<this page>`); logged in, {account_settings} (`/settings/account#libraryAssistantSetting`, the on/off setting).
 
 ## Phones
 

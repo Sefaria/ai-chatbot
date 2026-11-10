@@ -56,8 +56,11 @@ export class AssistantPage {
    * sign-up, so one method covers both. Here: reopen the demo page with
    * ?user-id=<token>.
    */
-  async logIn() {
-    await this.page.goto(`/?user-id=${encodeURIComponent(LOGGED_IN_USER_ID)}`);
+  async logIn({ savedHideLauncher } = {}) {
+    // savedHideLauncher: the "Hide Ask button" choice saved to the user's account,
+    // which the host passes as the hide-launcher attribute.
+    const saved = savedHideLauncher === undefined ? '' : `&hide-launcher=${savedHideLauncher}`;
+    await this.page.goto(`/?user-id=${encodeURIComponent(LOGGED_IN_USER_ID)}${saved}`);
     await expect(this.host).toHaveCount(1);
   }
 
@@ -86,6 +89,64 @@ export class AssistantPage {
   async close() {
     await this.host.getByRole('button', { name: t('assistant.header.close.tooltip'), exact: true }).click();
     await expect(this.panel).toBeHidden();
+  }
+
+  /** Open the assistant the way the host's own entry points do (Sefaria's header and menu). */
+  async openFromHost() {
+    await this.page.evaluate(() =>
+      document.dispatchEvent(new CustomEvent('chatbot:open', { detail: { source: 'header' } }))
+    );
+    await expect(this.panel).toBeVisible();
+  }
+
+  // Ask button setting (kebab menu → Ask button)
+
+  get askButtonModal() {
+    return this.host.getByRole('dialog', { name: t('assistant.ask_button_modal.title') });
+  }
+
+  get askButtonSwitch() {
+    return this.askButtonModal.getByRole('switch', { name: t('assistant.ask_button_modal.toggle') });
+  }
+
+  get askButtonSignUpLink() {
+    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.sign_up'), exact: true });
+  }
+
+  get askButtonLogInLink() {
+    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.log_in'), exact: true });
+  }
+
+  get askButtonAccountSettingsLink() {
+    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.account_settings'), exact: true });
+  }
+
+  /** The kebab menu item: "Hide Ask button" while it shows, "Show Ask button" while hidden. */
+  askButtonMenuItem(action) {
+    return this.host.getByRole('menuitem', { name: t(`assistant.menu.${action}_ask_button`) });
+  }
+
+  async openAskButtonSetting(action = 'hide') {
+    await this.host.getByRole('button', { name: t('assistant.header.moreOptions') }).click();
+    await this.askButtonMenuItem(action).click();
+    await expect(this.askButtonModal).toBeVisible();
+  }
+
+  /** Record the "Ask button hidden" choices the assistant tells the host (to save to the account). */
+  async listenForLauncherVisibility() {
+    await this.page.evaluate(() => {
+      window.launcherVisibility = [];
+      document.addEventListener('chatbot:launcher_visibility', (e) => window.launcherVisibility.push(e.detail.hidden));
+    });
+  }
+
+  async launcherVisibilityEvents() {
+    return this.page.evaluate(() => window.launcherVisibility);
+  }
+
+  async closeAskButtonSetting() {
+    await this.askButtonModal.getByRole('button', { name: t('assistant.ask_button_modal.done') }).click();
+    await expect(this.askButtonModal).toBeHidden();
   }
 
   // The phone sheet's history entry (see src/lib/sheetHistory.js)

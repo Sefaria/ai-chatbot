@@ -64,6 +64,9 @@
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
+    // The logged-in user's saved "Hide Ask button" choice ("true"/"false"), from their
+    // account. Absent (logged out, or a host that doesn't save it): this browser's choice.
+    'hide-launcher': hideLauncherAttr = null,
     'interface-lang': interfaceLang = 'en'
   } = $props();
 
@@ -311,6 +314,14 @@
   // Menu state
   let showMenu = $state(false);
   let menuContainer = $state(null);
+  // The visitor can turn off the floating Ask button (kebab menu → Ask button); the host's
+  // own entry points (Sefaria's header and mobile menu) still open the assistant.
+  let launcherHidden = $state(
+    hideLauncherAttr == null
+      ? getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false)
+      : !!hideLauncherAttr && hideLauncherAttr !== 'false'
+  );
+  let showAskButtonModal = $state(false);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -2136,6 +2147,40 @@
     showMenu = false;
   }
 
+  // Kept in this browser, and the host is told so it can save it to a logged-in user's
+  // account (and pass it back as `hide-launcher` on their next page load, on any device).
+  function setLauncherHidden(hidden) {
+    launcherHidden = hidden;
+    setStorage(STORAGE_KEYS.HIDE_LAUNCHER, hidden);
+    dispatchEvent('launcher_visibility', { hidden });
+  }
+
+  // Sign-up returns the visitor to the page they were on
+  // Log-in and sign-up links that return the visitor to the page they were on
+  function accountUrl(path) {
+    return `${sefariaBase()}/${path}?next=${encodeURIComponent(location.pathname + location.search)}`;
+  }
+
+  // The note under the switch is one sentence with link placeholders ({log_in}, {sign_up},
+  // {account_settings}), so translators can order it freely; it's split into text and link
+  // parts so each link is its own <a>.
+  const ACCOUNT_LINKS = {
+    log_in: { href: () => accountUrl('login'), key: 'assistant.ask_button_modal.log_in' },
+    sign_up: { href: () => accountUrl('register'), key: 'assistant.ask_button_modal.sign_up' },
+    // Straight to the Library Assistant on/off setting on Sefaria's account settings page
+    account_settings: { href: () => `${sefariaBase()}/settings/account#libraryAssistantSetting`, key: 'assistant.ask_button_modal.account_settings' }
+  };
+  let askButtonNoteParts = $derived.by(() => {
+    const [key, names] = isLoggedIn
+      ? ['assistant.ask_button_modal.settings_note_link', ['account_settings']]
+      : ['assistant.ask_button_modal.header_note_links', ['log_in', 'sign_up']];
+    const values = Object.fromEntries(names.map(name => [name, `\u0000${name}\u0000`]));
+    return $_(key, { values })
+      .split('\u0000')
+      .filter(Boolean)
+      .map(part => ({ text: part, link: names.includes(part) ? ACCOUNT_LINKS[part] : null }));
+  });
+
   $effect(() => {
     if (!showMenu) return;
 
@@ -2382,7 +2427,9 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {#if !launcherHidden}
+      <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {/if}
   {:else}
     <!-- Chat Panel -->
     <div
@@ -2502,6 +2549,10 @@
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 {/if}
+                <button class="menu-item" onclick={() => { showAskButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_ask_button' : 'assistant.menu.hide_ask_button')}
+                </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2981,6 +3032,34 @@
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
                 {$_('assistant.feedback.modal.skip')}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      {#if showAskButtonModal}
+        <!-- Ask button settings: reuses the feedback modal's card -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay" onclick={() => { showAskButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showAskButtonModal = false)}>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="feedback-modal ask-button-modal" role="dialog" aria-labelledby="lc-ask-button-modal-title" onclick={(e) => e.stopPropagation()}>
+            <h3 class="feedback-modal-title" id="lc-ask-button-modal-title">{$_('assistant.ask_button_modal.title')}</h3>
+            <label class="ask-button-toggle">
+              <span>{$_('assistant.ask_button_modal.toggle')}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!launcherHidden}
+                onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
+              />
+            </label>
+            <p class="ask-button-modal-text">{$_('assistant.ask_button_modal.description')}</p>
+            <p class="ask-button-modal-text">
+              {#each askButtonNoteParts as part}{#if part.link}<a href={part.link.href()}>{$_(part.link.key)}</a>{:else}{part.text}{/if}{/each}
+            </p>
+            <div class="feedback-modal-actions">
+              <button class="feedback-modal-btn submit" onclick={() => { showAskButtonModal = false; }}>
+                {$_('assistant.ask_button_modal.done')}
               </button>
             </div>
           </div>
@@ -4998,6 +5077,82 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  .ask-button-modal .feedback-modal-title {
+    font-size: var(--lc-font-size-lg);
+    margin-bottom: var(--global-dimension-200);
+  }
+
+  .ask-button-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--global-dimension-200);
+    min-height: 44px;
+    margin-bottom: var(--global-dimension-200);
+    font-size: var(--lc-font-size);
+    color: var(--lc-text);
+    cursor: pointer;
+  }
+
+  /* A switch: a 44×24 track with a 20px knob */
+  .ask-button-toggle input {
+    appearance: none;
+    flex: 0 0 auto;
+    position: relative;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border-radius: 12px;
+    background: var(--core-neutral-gray-300, #ccc);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .ask-button-toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--core-base-white, #fff);
+    transition: transform 0.15s ease;
+  }
+
+  .ask-button-toggle input:checked {
+    background: var(--semantic-action-primary);
+  }
+
+  .ask-button-toggle input:checked::after {
+    transform: translateX(20px);
+  }
+
+  .interface-hebrew .ask-button-toggle input:checked::after {
+    transform: translateX(-20px);
+  }
+
+  .ask-button-toggle input:focus-visible {
+    outline: 2px solid var(--semantic-action-primary);
+    outline-offset: 2px;
+  }
+
+  .ask-button-modal-text {
+    font-size: var(--lc-font-size);
+    line-height: 1.45;
+    color: var(--lc-text-secondary);
+    margin: 0 0 var(--global-dimension-150);
+  }
+
+  .ask-button-modal-text a {
+    color: var(--semantic-text-link);
+    text-decoration: underline;
+  }
+
+  .ask-button-modal .feedback-modal-actions {
+    margin-top: var(--global-dimension-300);
   }
 
   .feedback-modal-title {

@@ -79,5 +79,7 @@ export const STORAGE_KEYS = {
   ANON_RESPONSES_REMAINING: 'anon_responses_remaining',
   // Whether the signed-in user had saved chats last time history loaded, so its search
   // button starts out enabled or disabled before the list arrives
-  HAS_CONVERSATIONS: 'has_conversations'
+  HAS_CONVERSATIONS: 'has_conversations',
+  // The visitor turned off the floating Ask button (kebab menu → Ask button)
+  HIDE_LAUNCHER: 'hide_launcher'
 };
