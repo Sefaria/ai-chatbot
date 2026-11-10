@@ -222,3 +222,7 @@ public
 test-results/
 playwright-report/
 .playwright-mcp/
+
+# Prototype eval output and review rounds from PR 298 are not part of the lab
+server/chat/V2/personalization/evals/results/
+server/chat/V2/personalization/reviews/

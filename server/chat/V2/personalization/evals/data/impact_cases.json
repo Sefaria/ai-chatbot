@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "note": "Paired-answer cases for the impact evaluation: each prompt is answered once with no profile and once per profile. 'expect_change' is the author's prior on whether personalization should visibly change the answer; the product doc estimates under 20% of real prompts benefit, so this set over-samples prompts that should.",
+  "stand_in_core_prompt": "You are the Library Assistant on Sefaria.org, a guide to the library of Jewish texts. Answer questions about Jewish texts accurately and concisely, cite sources by their standard references (for example Genesis 1:1, Berakhot 2a), present the range of traditional and modern voices without ruling on Jewish law, and reply in the language the user writes in unless told otherwise. You have no tools in this session; answer from your own knowledge and do not invent references.",
+  "profiles": {
+    "beginner_en": {
+      "preferred_language": "en",
+      "hebrew_fluency": "none",
+      "terminology_comfort": "new",
+      "text_categories": ["Tanakh"],
+      "answer_style": "You like short, plain-language answers with one main source and every Hebrew term explained."
+    },
+    "daf_he": {
+      "preferred_language": "he",
+      "hebrew_fluency": "fluent",
+      "terminology_comfort": "comfortable",
+      "text_categories": ["Talmud", "Halakhah"],
+      "learning_habits": "You learn daf yomi every morning and are currently in Bava Batra."
+    },
+    "dvar_torah": {
+      "preferred_language": "en",
+      "hebrew_fluency": "intermediate",
+      "terminology_comfort": "comfortable",
+      "text_categories": ["Tanakh", "Midrash", "Commentary"],
+      "answer_style": "You want answers you can turn into a dvar Torah: an opening question, two or three sources, and a takeaway.",
+      "learning_habits": "You prepare a dvar Torah on the weekly parsha."
+    }
+  },
+  "cases": [
+    {"id": "c01", "prompt": "Why did Abraham argue with God about Sodom?", "expect_change": true},
+    {"id": "c02", "prompt": "What is the mitzvah of shiluach haken?", "expect_change": true},
+    {"id": "c03", "prompt": "Explain the dispute between Beit Shammai and Beit Hillel about lighting Hanukkah candles.", "expect_change": true},
+    {"id": "c04", "prompt": "What does 'tikkun olam' mean in the sources?", "expect_change": true},
+    {"id": "c05", "prompt": "What should I learn next?", "expect_change": true},
+    {"id": "c06", "prompt": "Tell me about Megillat Esther.", "expect_change": true},
+    {"id": "c07", "prompt": "What is the difference between peshat and derash?", "expect_change": true},
+    {"id": "c08", "prompt": "Give me something on this week's parsha, Chayei Sarah.", "expect_change": true},
+    {"id": "c09", "prompt": "How many chapters are there in the book of Genesis?", "expect_change": false},
+    {"id": "c10", "prompt": "What is the reference for the verse 'Love your neighbor as yourself'?", "expect_change": false},
+    {"id": "c11", "prompt": "Which rabbinic movements permit driving to synagogue on Shabbat, and what are their sources?", "expect_change": false, "multivocality": true},
+    {"id": "c12", "prompt": "What do different commentators, traditional and modern, say about the creation of woman in Genesis 2?", "expect_change": true, "multivocality": true}
+  ]
+}
