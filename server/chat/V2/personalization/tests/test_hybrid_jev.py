@@ -169,7 +169,7 @@ def test_jev_error_is_swallowed_and_counted(store, registry):
     assert ledger.entries == [] and "preferred_language" not in store.get_profile("u1")
     (marker,) = store.observations("u1")  # held back as a content-free marker, not logged as input
     assert marker.text == "" and marker.signals == {"excluded": True}
-    assert s.diagnostics["jev_error"] == 1
+    assert result.diagnostics["jev_error"] == 1
 
 
 def test_closed_set_jev_error_on_a_plain_turn_is_counted(store, registry):
@@ -193,8 +193,10 @@ def test_lasting_style_instruction_becomes_a_pending_proposal(store, registry):
         "pending",
     )
     assert "answer_style" not in store.get_profile("u1")
-    assert len(jev.calls) == 2 and jev.calls[0][0] == {"message": STYLE_TEXT}
-    assert len(ledger.entries) == 2
+    # The instruction turn is logged as a content-free marker, so the window is empty and no
+    # closed-set request follows.
+    assert len(jev.calls) == 1 and jev.calls[0][0] == {"message": STYLE_TEXT}
+    assert len(ledger.entries) == 1
 
 
 def test_long_instruction_is_truncated_by_the_registry(store, registry):

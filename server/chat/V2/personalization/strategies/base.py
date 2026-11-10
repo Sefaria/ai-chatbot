@@ -7,7 +7,10 @@ quotes must be verbatim, and prompts are truncated before they are sent.
 
 from __future__ import annotations
 
+import contextvars
 from collections import Counter
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -15,11 +18,20 @@ from ..jev import JevClient
 from ..llm import LLMClient, LLMResult, UsageLedger
 from ..parsing import locate_quote, parse_json_object
 from ..registry import SlotRegistry
-from ..signals import find_standing_instruction, is_sensitive
-from ..store import ProfileStore
-from ..types import Evidence, Proposal, Turn
+from ..signals import (
+    cited_categories,
+    detect_language,
+    find_standing_instruction,
+    hebrew_ratio,
+    is_sensitive,
+)
+from ..store import STALE_REVISION, ProfileStore
+from ..types import Evidence, Observation, Proposal, Turn, WriteResult
 
 MAX_PROMPT_CHARS = 1000
+
+# Writes that keep the turn ledger (observations); they are not counted in `writes_applied`.
+LEDGER = "ledger"
 
 
 @dataclass
@@ -29,6 +41,13 @@ class TurnResult:
     llm_calls: int = 0
     skipped_reason: str | None = None
     errors: int = 0  # memory-side failures swallowed so the chat turn never fails
+    # Everything below is for this turn only.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    writes_applied: int = 0  # profile writes (slots, proposals); the observation is not counted
+    writes_refused: dict[str, int] = field(default_factory=dict)  # by reason
+    diagnostics: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -37,6 +56,45 @@ class BatchResult:
     updated_slots: list[tuple[str, str]] = field(default_factory=list)  # (user_id, slot_key)
     llm_calls: int = 0
     errors: int = 0
+    # Everything below is for this batch only.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    writes_applied: int = 0
+    writes_refused: dict[str, int] = field(default_factory=dict)
+    diagnostics: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class RunState:
+    """Per-call state of one `on_turn` or `run_batch`. It lives in a context variable, never on
+    the strategy instance, so one strategy can serve concurrent turns."""
+
+    diagnostics: Counter = field(default_factory=Counter)
+    writes_refused: Counter = field(default_factory=Counter)
+    writes_applied: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    revisions: dict[str, int] = field(default_factory=dict)  # the expected revision, per user
+    stale: set[str] = field(default_factory=set)  # users whose run ended on a stale revision
+
+    def add_usage(self, input_tokens: int, output_tokens: int, cost_usd: float) -> None:
+        self.input_tokens += input_tokens
+        self.output_tokens += output_tokens
+        self.cost_usd += cost_usd
+
+    def fill(self, result: TurnResult | BatchResult) -> None:
+        result.input_tokens, result.output_tokens = self.input_tokens, self.output_tokens
+        result.cost_usd = self.cost_usd
+        result.writes_applied = self.writes_applied
+        result.writes_refused = dict(self.writes_refused)
+        result.diagnostics = dict(self.diagnostics)
+
+
+_current_run: contextvars.ContextVar[RunState | None] = contextvars.ContextVar(
+    "personalization_run", default=None
+)
 
 
 def truncate_prompt(text: str) -> str:
@@ -44,6 +102,9 @@ def truncate_prompt(text: str) -> str:
 
 
 class MemoryStrategy:
+    """Subclasses implement `_on_turn` and `_run_batch`; the public `on_turn` and `run_batch`
+    wrap them in a fresh `RunState` and copy its counts into the result."""
+
     name = "base"
 
     def __init__(
@@ -59,14 +120,79 @@ class MemoryStrategy:
         self.llm = llm
         self.ledger = ledger
         self.model = model
-        # Why updates were dropped (and how many were applied), by reason.
-        self.diagnostics: Counter = Counter()
 
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
-        raise NotImplementedError
+        with self.collecting() as run:
+            result = self._on_turn(turn, now)
+        run.fill(result)
+        return result
 
     def run_batch(self, now: datetime, user_ids: list[str] | None = None) -> BatchResult:
+        with self.collecting() as run:
+            result = self._run_batch(now, user_ids)
+        run.fill(result)
+        return result
+
+    def _on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         raise NotImplementedError
+
+    def _run_batch(self, now: datetime, user_ids: list[str] | None = None) -> BatchResult:
+        raise NotImplementedError
+
+    # -- per-call state -----------------------------------------------------------------
+
+    @staticmethod
+    @contextmanager
+    def collecting() -> Iterator[RunState]:
+        """A fresh RunState for the calls inside the block."""
+        run = RunState()
+        token = _current_run.set(run)
+        try:
+            yield run
+        finally:
+            _current_run.reset(token)
+
+    @property
+    def run(self) -> RunState:
+        """The current call's state; a throwaway one when a helper is called on its own."""
+        return _current_run.get() or RunState()
+
+    @property
+    def diagnostics(self) -> Counter:
+        return self.run.diagnostics
+
+    def begin(self, user_id: str) -> None:
+        """Read the user's revision once, before the first model or Jev call for this user."""
+        run = self.run
+        run.revisions[user_id] = self.store.revision(user_id)
+        run.stale.discard(user_id)
+
+    def is_stale(self, user_id: str) -> bool:
+        return user_id in self.run.stale
+
+    def write(
+        self, user_id: str, call: Callable[[int | None], WriteResult], kind: str = "profile"
+    ) -> WriteResult:
+        """Run one store write with the expected revision and carry the new revision forward.
+
+        After a `stale_revision` refusal the run has ended for this user: later writes are
+        skipped (and not counted again).
+        """
+        run = self.run
+        if user_id in run.stale:
+            return WriteResult(False, STALE_REVISION, run.revisions.get(user_id, 0))
+        result = call(run.revisions.get(user_id))
+        if result.applied:
+            if kind != LEDGER:
+                run.writes_applied += 1
+            if user_id in run.revisions:
+                run.revisions[user_id] = result.revision
+        elif result.reason:
+            run.writes_refused[result.reason] += 1
+            run.diagnostics[result.reason] += 1
+            if result.reason == STALE_REVISION:
+                run.stale.add(user_id)
+        return result
 
     # -- shared rules -------------------------------------------------------------------
 
@@ -78,9 +204,49 @@ class MemoryStrategy:
             return "store_disabled"
         return None
 
+    def log_observation(
+        self, turn: Turn, now: datetime, *, excluded: bool = False, consumed: bool = False
+    ) -> WriteResult:
+        """Append the turn to the ledger. `excluded` stores only a content-free marker: no text,
+        no signals about the content, and it stays out of every later window, input and evidence.
+        `consumed` is for strategies that never consolidate the row later."""
+        if excluded:
+            text, signals = "", {"excluded": True}
+        else:
+            text = turn.user_message
+            signals = {
+                "language": detect_language(text),
+                "hebrew_ratio": round(hebrew_ratio(text), 3),
+                "cited_categories": cited_categories(text),
+            }
+        observation = Observation(
+            user_id=turn.user_id,
+            session_id=turn.session_id,
+            message_id=turn.message_id,
+            text=text,
+            at=turn.at,
+            signals=signals,
+            consumed_at=now if consumed else None,
+        )
+        return self.write(
+            turn.user_id,
+            lambda expected: self.store.add_observation(observation, expected),
+            kind=LEDGER,
+        )
+
+    def start_turn(
+        self, turn: Turn, now: datetime, *, excluded: bool = False, consumed: bool = False
+    ) -> str | None:
+        """Read the revision, then log the turn. Returns why the run ends here (`duplicate` for a
+        retried message, `stale_revision`, `store_disabled`), or None to go on."""
+        self.begin(turn.user_id)
+        logged = self.log_observation(turn, now, excluded=excluded, consumed=consumed)
+        return None if logged.applied else (logged.reason or "observation_refused")
+
     def call_model(self, phase: str, user_id: str, system: str, user: str) -> LLMResult:
         result = self.llm.complete(system=system, user=user, model=self.model)
         self.ledger.record(self.name, phase, user_id, self.model, result)
+        self.run.add_usage(result.input_tokens, result.output_tokens, result.cost_usd)
         return result
 
     def parse_reply(self, text: str) -> dict | None:
@@ -99,10 +265,6 @@ class MemoryStrategy:
             self.diagnostics["quote_not_verbatim"] += 1
         return proof
 
-    def note_refusal(self, user_id: str, expected_generation: int | None, default: str) -> None:
-        """Count why the store refused a write: a stale generation, withdrawn consent, or `default`."""
-        self.diagnostics[self.store.refusal_reason(user_id, expected_generation) or default] += 1
-
     def apply_update(
         self,
         user_id: str,
@@ -112,12 +274,11 @@ class MemoryStrategy:
         now: datetime,
         *,
         require_evidence: bool = True,
-        expected_generation: int | None = None,
     ) -> bool:
         """Validate and write an inferred value. True only when the profile changed.
 
         Reconfirming the same inferred value with valid new evidence refreshes its evidence and
-        shelf life but counts as `unchanged`.
+        shelf life but counts as `unchanged`. A refusal is counted by its reason (`write`).
         """
         slot = self.registry.get(slot_key)
         normalized = self.registry.validate(slot_key, value) if slot else None
@@ -129,6 +290,12 @@ class MemoryStrategy:
             return False
         current = self.store.get_profile(user_id).get(slot_key)
         expires_at = now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
+
+        def set_inferred(expected: int | None) -> WriteResult:
+            return self.store.set_inferred(
+                user_id, slot_key, normalized, evidence, now, expires_at, expected
+            )
+
         if current and current.value == normalized:
             self.diagnostics["unchanged"] += 1
             # A standing instruction may be one the learner asked us never to keep (for example
@@ -139,15 +306,9 @@ class MemoryStrategy:
                 and evidence
                 and not any(find_standing_instruction(q) for q in quotes)
             ):
-                if not self.store.set_inferred(
-                    user_id, slot_key, normalized, evidence, now, expires_at, expected_generation
-                ):
-                    self.note_refusal(user_id, expected_generation, "stated_locked")
+                self.write(user_id, set_inferred)
             return False
-        if not self.store.set_inferred(
-            user_id, slot_key, normalized, evidence, now, expires_at, expected_generation
-        ):
-            self.note_refusal(user_id, expected_generation, "stated_locked")
+        if not self.write(user_id, set_inferred).applied:
             return False
         self.diagnostics["applied"] += 1
         return True

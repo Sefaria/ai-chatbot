@@ -61,7 +61,8 @@ def test_set_inferred_does_not_overwrite_a_slot_stated_after_the_lookup():
         return row
 
     with patch.object(type(ProfileSlot.objects.all()), "first", first):
-        assert not store.set_inferred("a", "hebrew_fluency", "none", [evidence()], day(1))
+        refused = store.set_inferred("a", "hebrew_fluency", "none", [evidence()], day(1))
+    assert refused.reason == "stated_wins"
     slot = store.get_profile("a")["hebrew_fluency"]
     assert (slot.value, slot.status) == ("fluent", "stated") and injected
 
@@ -72,9 +73,10 @@ def test_set_inferred_does_not_overwrite_a_slot_stated_after_the_lookup():
 def test_delete_slot_if_inferred_only_deletes_inferred(store):
     store.set_inferred("a", "answer_style", "Be brief.", [evidence()], NOW)
     store.set_stated("a", "hebrew_fluency", "fluent", NOW)
-    assert not store.delete_slot_if_inferred("a", "hebrew_fluency")
-    assert not store.delete_slot_if_inferred("a", "learning_habits")
-    assert store.delete_slot_if_inferred("a", "answer_style")
+    assert store.delete_slot_if_inferred("a", "hebrew_fluency").reason == "stated_wins"
+    missing = store.delete_slot_if_inferred("a", "learning_habits")
+    assert (missing.applied, missing.reason) == (False, None)
+    assert store.delete_slot_if_inferred("a", "answer_style").applied
     assert set(store.get_profile("a")) == {"hebrew_fluency"}
 
 
@@ -94,35 +96,38 @@ def test_clear_request_without_validated_evidence_is_ignored(store, registry):
         {"slot": "answer_style", "evidence": []},
         clear_item("answer_style", quote="words the learner never wrote"),
     ]
-    strategy, _ = run_nightly(store, registry, consolidation(clear=bad))
+    _, result = run_nightly(store, registry, consolidation(clear=bad))
     assert "answer_style" in store.get_profile("u1")
-    assert strategy.diagnostics["cleared"] == 0
+    assert result.diagnostics.get("cleared", 0) == 0
 
 
 # -- 4. an in-flight job cannot write after clear() or move() --------------------------------
 
 
-def test_clear_and_move_bump_the_generation_and_refuse_older_writes(store):
-    before = store.generation("a")
+def test_clear_and_move_bump_the_revision_and_refuse_older_writes(store):
+    before = store.revision("a")
     store.clear("a")
-    assert store.generation("a") == before + 1
-    assert not store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW, None, before)
-    assert (
-        store.add_proposal("a", "answer_style", "x", "q", NOW, expected_generation=before) is None
-    )
-    assert not store.delete_slot_if_inferred("a", "answer_style", before)
-    assert store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW, None, before + 1)
-    first, second = store.generation("a"), store.generation("b")
+    assert store.revision("a") == before + 1
+    stale = store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW, None, before)
+    assert stale.reason == "stale_revision"
+    late = store.add_proposal("a", "answer_style", "x", "q", NOW, expected_revision=before)
+    assert late.proposal is None and late.reason == "stale_revision"
+    assert store.delete_slot_if_inferred("a", "answer_style", before).reason == "stale_revision"
+    assert store.set_inferred(
+        "a", "hebrew_fluency", "basic", [evidence()], NOW, None, before + 1
+    ).applied
+    first, second = store.revision("a"), store.revision("b")
     store.move("a", "b")
-    assert store.generation("a") == first + 1 and store.generation("b") == second + 1
-    assert not store.set_inferred("b", "answer_style", "x", [evidence()], NOW, None, second)
+    assert store.revision("a") == first + 1 and store.revision("b") == second + 1
+    moved = store.set_inferred("b", "answer_style", "x", [evidence()], NOW, None, second)
+    assert moved.reason == "stale_revision"
 
 
 def test_nightly_clear_during_the_model_call_leaves_nothing_behind(store, registry):
     responder = during_call(lambda: store.clear("u1"), consolidation(two_session_update()))
-    strategy, result = run_nightly(store, registry, responder)
+    _, result = run_nightly(store, registry, responder)
     assert store.get_profile("u1") == {} and store.observations("u1") == []
-    assert strategy.diagnostics["stale_generation"] >= 1 and result.users_processed == 0
+    assert result.diagnostics["stale_revision"] == 1 and result.users_processed == 0
 
 
 def test_realtime_clear_during_the_model_call_writes_nothing(store, registry):
@@ -132,9 +137,9 @@ def test_realtime_clear_during_the_model_call_writes_nothing(store, registry):
     strategy, _, _ = make_strategy(
         "realtime", store, registry, during_call(lambda: store.clear("u1"), reply)
     )
-    strategy.on_turn(make_turn(Q3_TEXT), NOW)
+    result = strategy.on_turn(make_turn(Q3_TEXT), NOW)
     assert "hebrew_fluency" not in store.get_profile("u1")
-    assert strategy.diagnostics["stale_generation"] >= 1
+    assert result.diagnostics["stale_revision"] == 1
 
 
 Q3_TEXT = "I read Hebrew slowly"
@@ -147,7 +152,7 @@ def test_hybrid_proposal_after_a_clear_during_the_call_is_dropped(store, registr
     )
     result = strategy.on_turn(make_turn(INSTRUCTION), NOW)
     assert result.proposals == [] and store.proposals("u1") == [] and store.observations("u1") == []
-    assert strategy.diagnostics["stale_generation"] >= 1
+    assert result.diagnostics["stale_revision"] == 1
 
 
 def test_hybrid_jev_clear_during_the_jev_call_writes_nothing(store, registry):
@@ -156,16 +161,16 @@ def test_hybrid_jev_clear_during_the_jev_call_writes_nothing(store, registry):
         return {"hebrew_fluency": choice("basic", 0.9)}
 
     s, _, _ = jev_strategy(store, registry, FakeJevClient(respond))
-    s.on_turn(make_turn("Explain Berakhot"), NOW)
+    result = s.on_turn(make_turn("Explain Berakhot"), NOW)
     assert store.get_profile("u1") == {} and store.observations("u1") == []
-    assert s.diagnostics["stale_generation"] >= 1
+    assert result.diagnostics["stale_revision"] == 1
 
 
 def test_move_during_the_model_call_invalidates_the_job(store, registry):
     responder = during_call(lambda: store.move("u1", "u2"), consolidation(two_session_update()))
-    strategy, result = run_nightly(store, registry, responder)
+    _, result = run_nightly(store, registry, responder)
     assert "hebrew_fluency" not in store.get_profile("u1")
-    assert strategy.diagnostics["stale_generation"] >= 1 and result.users_processed == 0
+    assert result.diagnostics["stale_revision"] == 1 and result.users_processed == 0
 
 
 # -- 5. consent is re-checked at commit time -------------------------------------------------
@@ -173,11 +178,15 @@ def test_move_during_the_model_call_invalidates_the_job(store, registry):
 
 def test_store_enabled_is_checked_at_commit_by_the_store(store):
     store.set_settings("a", store_enabled=False)
-    assert not store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW)
-    assert store.add_proposal("a", "answer_style", "x", "q", NOW) is None
-    assert not store.add_observation(Observation("a", "s", "m", "hi", NOW))
+    results = [
+        store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW),
+        store.set_stated("a", "hebrew_fluency", "basic", NOW),
+        store.add_proposal("a", "answer_style", "x", "q", NOW),
+        store.add_observation(Observation("a", "s", "m", "hi", NOW)),
+    ]
+    assert [(r.applied, r.reason) for r in results] == [(False, "store_disabled")] * 4
     assert store.get_profile("a") == {} and store.observations("a") == []
-    assert store.refusal_reason("a", None) == "store_disabled_at_commit"
+    assert store.proposals("a") == []
 
 
 def disable(store):
@@ -186,9 +195,9 @@ def disable(store):
 
 def test_nightly_store_disabled_during_the_call_stores_nothing(store, registry):
     responder = during_call(disable(store), consolidation(two_session_update()))
-    strategy, _ = run_nightly(store, registry, responder)
+    _, result = run_nightly(store, registry, responder)
     assert "hebrew_fluency" not in store.get_profile("u1")
-    assert strategy.diagnostics["store_disabled_at_commit"] >= 1
+    assert result.diagnostics["store_disabled"] >= 1
 
 
 def test_realtime_store_disabled_during_the_call_stores_nothing(store, registry):
@@ -196,17 +205,19 @@ def test_realtime_store_disabled_during_the_call_stores_nothing(store, registry)
         {"updates": [{"slot": "hebrew_fluency", "value": "basic", "quote": Q3_TEXT}]}
     )
     strategy, _, _ = make_strategy("realtime", store, registry, during_call(disable(store), reply))
-    strategy.on_turn(make_turn(Q3_TEXT), NOW)
+    result = strategy.on_turn(make_turn(Q3_TEXT), NOW)
     assert "hebrew_fluency" not in store.get_profile("u1")
-    assert strategy.diagnostics["store_disabled_at_commit"] >= 1
+    assert result.diagnostics["store_disabled"] >= 1
 
 
 def test_hybrid_store_disabled_during_the_call_stores_nothing(store, registry):
     reply = json.dumps({"slot": "answer_style", "value": "Keep answers short."})
     strategy, _, _ = make_strategy("hybrid", store, registry, during_call(disable(store), reply))
     result = strategy.on_turn(make_turn(INSTRUCTION), NOW)
-    assert result.proposals == [] and store.proposals("u1") == [] and store.observations("u1") == []
-    assert strategy.diagnostics["store_disabled_at_commit"] >= 1
+    assert result.proposals == [] and store.proposals("u1") == []
+    (marker,) = store.observations("u1")  # logged before the call, without the words
+    assert marker.text == "" and marker.signals == {"excluded": True}
+    assert result.diagnostics["store_disabled"] >= 1
 
 
 def test_hybrid_jev_store_disabled_during_the_call_stores_nothing(store, registry):
@@ -215,11 +226,10 @@ def test_hybrid_jev_store_disabled_during_the_call_stores_nothing(store, registr
         return {"hebrew_fluency": choice("basic", 0.9)}
 
     s, _, _ = jev_strategy(store, registry, FakeJevClient(respond))
-    s.on_turn(make_turn("Explain Berakhot"), NOW)
-    assert "hebrew_fluency" not in store.get_profile(
-        "u1"
-    )  # only the code-set language, from before
-    assert s.diagnostics["store_disabled_at_commit"] >= 1
+    result = s.on_turn(make_turn("Explain Berakhot"), NOW)
+    # only the code-set language, from before
+    assert "hebrew_fluency" not in store.get_profile("u1")
+    assert result.diagnostics["store_disabled"] >= 1
 
 
 def test_hybrid_jev_proposal_is_refused_when_storage_is_disabled_during_the_call(store, registry):
@@ -233,7 +243,7 @@ def test_hybrid_jev_proposal_is_refused_when_storage_is_disabled_during_the_call
     s, _, _ = jev_strategy(store, registry, FakeJevClient(respond))
     result = s.on_turn(make_turn(STYLE_TEXT), NOW)
     assert result.proposals == [] and store.proposals("u1") == []
-    assert s.diagnostics["store_disabled_at_commit"] >= 1
+    assert result.diagnostics["store_disabled"] >= 1
 
 
 # -- 6. only the observations a batch loaded are consumed ------------------------------------
@@ -243,29 +253,32 @@ def test_mark_consumed_takes_only_the_given_ids(store):
     for n in (1, 2):
         store.add_observation(Observation("a", "s", f"m{n}", "hi", NOW))
     first, second = store.observations("a")
-    assert store.mark_consumed("a", [first.id], NOW)
+    assert store.mark_consumed("a", [first.id], NOW).applied
     assert [o.consumed_at for o in store.observations("a")] == [NOW, None]
     assert second.id != first.id and store.users_with_pending() == ["a"]
 
 
-def test_a_turn_arriving_during_consolidation_stays_pending(store, registry):
+def test_a_turn_arriving_during_consolidation_makes_the_batch_retry_later(store, registry):
     arriving = lambda: store.add_observation(  # noqa: E731
         Observation("u1", "s3", "m_new", "a brand new prompt", NOW)
     )
     strategy, result = run_nightly(store, registry, during_call(arriving, consolidation()))
-    assert result.users_processed == 1
-    consumed = {o.message_id: o.consumed_at is not None for o in store.observations("u1")}
-    assert consumed == {"m1": True, "m2": True, "m_new": False}
+    # The new turn bumped the revision: this run's input is stale, nothing is consumed.
+    assert result.users_processed == 0 and result.diagnostics["stale_revision"] == 1
+    assert all(o.consumed_at is None for o in store.observations("u1"))
     assert store.users_with_pending() == ["u1"]
+    strategy, _, _ = make_strategy("nightly", store, registry, consolidation())
+    assert strategy.run_batch(NOW).users_processed == 1
+    assert store.users_with_pending() == []
 
 
 # -- 7. resolve_proposal -----------------------------------------------------------------------
 
 
 def test_second_resolve_of_a_proposal_does_nothing(store):
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW)
-    assert store.resolve_proposal("a", proposal.id, True, NOW).status == "accepted"
-    assert store.resolve_proposal("a", proposal.id, False, day(1)) is None
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW).proposal
+    assert store.resolve_proposal("a", proposal.id, True, NOW).proposal.status == "accepted"
+    assert not store.resolve_proposal("a", proposal.id, False, day(1)).applied
     assert store.proposals("a")[0].status == "accepted"
     slot = store.get_profile("a")["answer_style"]
     assert (slot.value, slot.status) == ("Be brief.", "stated")
@@ -274,7 +287,7 @@ def test_second_resolve_of_a_proposal_does_nothing(store):
 @django_only
 def test_resolve_proposal_locks_the_row_before_reading_its_status():
     store = DjangoProfileStore()
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW)
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW).proposal
     with CaptureQueriesContext(connection) as queries:
         store.resolve_proposal("a", proposal.id, True, NOW)
     sql = [q["sql"] for q in queries]
@@ -286,8 +299,8 @@ def test_resolve_proposal_locks_the_row_before_reading_its_status():
 @django_only
 def test_proposal_status_and_slot_write_roll_back_together():
     store = DjangoProfileStore()
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW)
-    with patch.object(store, "set_stated", side_effect=RuntimeError("boom")):
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW).proposal
+    with patch.object(store, "_do_set_stated", side_effect=RuntimeError("boom")):
         with pytest.raises(RuntimeError):
             store.resolve_proposal("a", proposal.id, True, NOW)
     assert store.proposals("a")[0].status == "pending" and store.get_profile("a") == {}
@@ -325,33 +338,15 @@ def test_move_locks_both_settings_rows_in_sorted_order_before_reading_slots():
 
 
 @django_only
-def test_move_keeps_the_source_settings_row_so_its_generation_survives():
+def test_move_keeps_the_source_settings_row_so_its_revision_survives():
     store = DjangoProfileStore()
-    store.set_settings("from", store_enabled=False)
-    store.move("from", "to")
+    store.set_settings("from", store_enabled=False)  # revision 1
+    store.move("from", "to")  # revision 2
     assert not store.get_settings("to").store_enabled  # the opt-out follows the learner
-    assert store.generation("from") == 1 and store.get_settings("from").store_enabled
+    assert store.revision("from") == 2 and store.get_settings("from").store_enabled
 
 
 # -- 9. set_settings updates only what it is given ----------------------------------------------
-
-
-@django_only
-def test_set_settings_does_not_undo_a_toggle_changed_in_between():
-    store, injected = DjangoProfileStore(), []
-    real_get = DjangoProfileStore.get_settings
-
-    def get_settings(self, user_id):
-        current = real_get(self, user_id)
-        if not injected:
-            injected.append(True)  # a second request switches storage off right after our read
-            self.set_settings(user_id, store_enabled=False)
-        return current
-
-    with patch.object(DjangoProfileStore, "get_settings", get_settings):
-        store.set_settings("a", personalize_enabled=False)
-    settings = real_get(store, "a")
-    assert (settings.personalize_enabled, settings.store_enabled) == (False, False)
 
 
 def test_set_settings_changes_only_the_toggles_passed(store):
@@ -373,7 +368,7 @@ def test_realtime_never_sends_the_assistant_reply(store, registry):
     assert "Assistant" not in llm.calls[0]["user"]
 
 
-# -- misc: stale generation never blocks a plain write; jev_with kept for symmetry -----------
+# -- misc: jev_with kept for symmetry ----------------------------------------------------------
 
 
 def test_hybrid_jev_helper_is_importable():

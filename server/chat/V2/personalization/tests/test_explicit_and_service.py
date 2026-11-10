@@ -12,13 +12,16 @@ from chat.V2.personalization.strategies.base import build_strategy
 from .conftest import NOW, make_strategy, make_turn
 
 
-def test_explicit_makes_no_model_calls_and_stores_nothing(store, registry):
+def test_explicit_makes_no_model_calls_and_stores_no_text(store, registry):
     strategy, llm, ledger = make_strategy("explicit", store, registry)
     result = strategy.on_turn(make_turn("I read Hebrew fluently. From now on be brief."), NOW)
     batch = strategy.run_batch(NOW)
     assert llm.calls == [] and ledger.entries == []
     assert result.llm_calls == 0 and result.updated_slots == [] and batch.llm_calls == 0
-    assert store.get_profile("u1") == {} and store.observations("u1") == []
+    assert store.get_profile("u1") == {}
+    # Only the turn ledger's content-free marker, already consumed (a retry is then a no-op).
+    (marker,) = store.observations("u1")
+    assert marker.text == "" and marker.signals == {"excluded": True} and marker.consumed_at
 
 
 def test_interview_writes_validated_stated_slots(store, registry):
@@ -37,7 +40,7 @@ def test_interview_writes_validated_stated_slots(store, registry):
     assert profile["text_categories"].value == ["Talmud", "Musar"]
     assert profile["answer_style"].value == "Short answers"
     assert llm.calls == []
-    assert not store.set_inferred("u1", "hebrew_fluency", "none", [], NOW)
+    assert store.set_inferred("u1", "hebrew_fluency", "none", [], NOW).reason == "stated_wins"
 
 
 def test_interview_respects_store_toggle(store, registry):

@@ -41,26 +41,27 @@ class HybridJevStrategy(NightlyStrategy):
         super().__init__(store, registry, llm, ledger, model)
         self.jev = jev
 
-    def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
+    def _on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
         self.store.expire_user(turn.user_id, now)
-        generation = self.store.generation(turn.user_id)
-        result = TurnResult()
         instruction = find_standing_instruction(truncate_prompt(turn.user_message))
-        proposal = None
+        # A turn holding a standing instruction is logged as a content-free marker: its words
+        # reach the profile only through a proposal the learner confirms.
+        if reason := self.start_turn(turn, now, excluded=instruction is not None):
+            return TurnResult(skipped_reason=reason)
+        result = TurnResult()
         if instruction is not None:
             try:
-                decision, proposal = self.judge_instruction(turn, instruction, now, generation)
+                decision, proposal = self.judge_instruction(turn, instruction, now)
             except JevError as exc:
                 logger.warning("Jev instruction request failed: %s", exc)
                 self.diagnostics["jev_error"] += 1
                 result.errors += 1
-                decision = "unclassified"
+                decision, proposal = "unclassified", None
             if decision in ("excludes_sources", "unclassified"):
-                # Never stored: a content-free marker only, so the prompt stays out of every later
-                # window. An instruction Jev could not classify is held back the same way.
-                self.log_observation(turn, excluded=True, expected_generation=generation)
+                # Never stored beyond the marker. An instruction Jev could not classify is held
+                # back the same way.
                 result.skipped_reason = (
                     "instruction_excludes_sources"
                     if decision == "excludes_sources"
@@ -71,13 +72,15 @@ class HybridJevStrategy(NightlyStrategy):
                 result.proposals.append(proposal)
             else:
                 result.skipped_reason = "instruction_needs_settings"
-        if not self.log_observation(turn, expected_generation=generation):
+        if self.is_stale(turn.user_id):
             return result
         window = self.window_observations(turn.user_id, now)
-        if self.update_language(turn.user_id, window, now, generation):
+        if self.update_language(turn.user_id, window, now):
             result.updated_slots.append("preferred_language")
+        if not window or self.is_stale(turn.user_id):
+            return result  # nothing new for Jev to read
         try:
-            result.updated_slots += self.judge_closed_slots(turn, window, now, generation)
+            result.updated_slots += self.judge_closed_slots(turn, window, now)
         except JevError as exc:
             logger.warning("Jev request failed on the hot path: %s", exc)
             self.diagnostics["jev_error"] += 1
@@ -91,6 +94,7 @@ class HybridJevStrategy(NightlyStrategy):
             self.name, "turn", user_id, q.JEV_MODEL,
             LLMResult("", response.input_tokens, 0, cost, response.latency_ms),
         )  # fmt: skip
+        self.run.add_usage(response.input_tokens, 0, cost)
         return response
 
     # -- closed-set slots ---------------------------------------------------------------
@@ -118,9 +122,7 @@ class HybridJevStrategy(NightlyStrategy):
                 return [proof] if proof else []
         return []
 
-    def judge_closed_slots(
-        self, turn: Turn, window: list[Observation], now: datetime, generation: int | None = None
-    ) -> list[str]:
+    def judge_closed_slots(self, turn: Turn, window: list[Observation], now: datetime) -> list[str]:
         questions = {**q.choice_questions(self.registry), **q.category_questions(self.registry)}
         state = {"learner_prompts": self.learner_prompts(window)}
         answers = self.ask_jev(turn.user_id, state, questions).answers
@@ -130,9 +132,7 @@ class HybridJevStrategy(NightlyStrategy):
 
         for key in q.CHOICE_SLOTS:
             value = self.decide_choice(key, answers.get(key), profile.get(key))
-            if value and self.apply_update(
-                turn.user_id, key, value, evidence, now, expected_generation=generation
-            ):
+            if value and self.apply_update(turn.user_id, key, value, evidence, now):
                 updated.append(key)
 
         scored = [
@@ -145,10 +145,7 @@ class HybridJevStrategy(NightlyStrategy):
         ]
         if not chosen and any(UNCERTAIN_LOW <= score <= UNCERTAIN_HIGH for score, _ in scored):
             self.diagnostics["jev_uncertain"] += 1
-        if chosen and self.apply_update(
-            turn.user_id, "text_categories", chosen[:3], evidence, now,
-            expected_generation=generation,
-        ):  # fmt: skip
+        if chosen and self.apply_update(turn.user_id, "text_categories", chosen[:3], evidence, now):
             updated.append("text_categories")
         return updated
 
@@ -175,9 +172,7 @@ class HybridJevStrategy(NightlyStrategy):
 
     # -- standing instructions ----------------------------------------------------------
 
-    def judge_instruction(
-        self, turn: Turn, instruction: str, now: datetime, generation: int | None = None
-    ):
+    def judge_instruction(self, turn: Turn, instruction: str, now: datetime):
         """(decision, proposal): decision is 'excludes_sources', 'style' or None."""
         answers = self.ask_jev(
             turn.user_id, {"message": instruction}, q.instruction_questions()
@@ -204,8 +199,7 @@ class HybridJevStrategy(NightlyStrategy):
                 instruction,
                 instruction,
                 now,
-                generation,
-                self.diagnostics,
+                submit=lambda call: self.write(turn.user_id, call),
             )
             return "style", proposal
         return None, None

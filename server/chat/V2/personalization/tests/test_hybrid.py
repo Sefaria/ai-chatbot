@@ -96,12 +96,12 @@ def test_batch_enforces_min_sessions_like_nightly(store, registry):
 
 
 def test_batch_skips_slots_with_a_pending_proposal(store, registry):
+    store.set_inferred("u1", "hebrew_fluency", "none", [], day(-9))
     store.add_proposal("u1", "hebrew_fluency", "fluent", "I am fluent", NOW)
     upd = update("hebrew_fluency", "basic", ("m1", Q1), ("m2", Q2))
     strategy, _, _ = make_strategy(
         "hybrid", store, registry, consolidation(upd, clear=[clear_item("hebrew_fluency")])
     )
-    store.set_inferred("u1", "hebrew_fluency", "none", [], day(-9))
     log_turns(strategy, [("s1", "m1", Q1, day(-2)), ("s2", "m2", Q2, day(-1))])
     strategy.run_batch(NOW)
     assert store.get_profile("u1")["hebrew_fluency"].value == "none"

@@ -85,3 +85,25 @@ class Turn:
 class ProfileSettingsData:
     personalize_enabled: bool = True
     store_enabled: bool = True
+
+
+WriteReason = Literal[
+    "stale_revision", "store_disabled", "duplicate", "stated_wins", "pending_proposal", "sensitive"
+]
+
+
+@dataclass(frozen=True)
+class WriteResult:
+    """What a store write did. `revision` is the user's revision after the call.
+
+    It has no truth value on purpose: write `result.applied`, never `if result`.
+    `proposal` is set by `add_proposal` and `resolve_proposal`.
+    """
+
+    applied: bool
+    reason: WriteReason | None
+    revision: int
+    proposal: Proposal | None = None
+
+    def __bool__(self) -> bool:
+        raise TypeError("WriteResult has no truth value; use .applied")

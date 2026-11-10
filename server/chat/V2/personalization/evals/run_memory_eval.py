@@ -207,7 +207,8 @@ def _pct(value: float | None) -> str:
 
 DIAGNOSTIC_KEYS = [
     "reply_unparsable", "reply_repaired", "value_invalid", "quote_not_verbatim",
-    "no_valid_evidence", "below_min_sessions", "stated_locked", "unchanged",
+    "no_valid_evidence", "below_min_sessions", "stated_wins", "pending_proposal",
+    "stale_revision", "store_disabled", "duplicate", "unchanged",
     "jev_uncertain", "jev_below_change_threshold", "jev_error", "applied",
 ]  # fmt: skip
 

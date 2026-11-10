@@ -338,7 +338,7 @@ class ProfileSlot(models.Model):
     evidence = models.JSONField(default=list, blank=True)
     slot_set_version = models.CharField(max_length=16, default="v1")
     updated_at = models.DateTimeField()
-    expires_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [
@@ -363,6 +363,12 @@ class ProfileObservation(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
         indexes = [models.Index(fields=["user_id", "created_at"])]
+        constraints = [
+            # A retried turn is observed once.
+            models.UniqueConstraint(
+                fields=["user_id", "message_id"], name="uniq_profile_observation_user_message"
+            )
+        ]
 
 
 def new_proposal_id() -> str:
@@ -387,6 +393,14 @@ class ProfileProposal(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+        constraints = [
+            # One pending confirmation per slot.
+            models.UniqueConstraint(
+                fields=["user_id", "slot_key"],
+                condition=models.Q(status="pending"),
+                name="uniq_pending_proposal_user_slot",
+            )
+        ]
 
 
 class ProfileSettings(models.Model):
@@ -395,5 +409,6 @@ class ProfileSettings(models.Model):
     user_id = models.CharField(max_length=100, unique=True)
     personalize_enabled = models.BooleanField(default=True)
     store_enabled = models.BooleanField(default=True)
-    # Bumped by clear() and move() so a model call started before them cannot write afterwards.
-    generation = models.PositiveIntegerField(default=0)
+    # Bumped by every applied profile write (store._locked_write), so a write computed from an
+    # older profile is refused as stale.
+    revision = models.PositiveIntegerField(default=0)

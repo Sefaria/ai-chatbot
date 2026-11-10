@@ -129,13 +129,14 @@ def test_nightly_unparsable_reply_is_an_error_and_keeps_observations_pending(sto
 def test_reconfirming_an_inferred_value_refreshes_evidence_and_expiry(store, registry):
     strategy, _, _ = make_strategy("nightly", store, registry)
     old = evidence("old words", "s1", "m1", day(-30))
-    assert strategy.apply_update("u1", "text_categories", ["Talmud"], [old], day(-30))
-    before = store.get_profile("u1")["text_categories"]
-    new = evidence("new words", "s2", "m2", NOW)
-    assert not strategy.apply_update("u1", "text_categories", ["Talmud"], [new], NOW)
+    with strategy.collecting() as run:
+        assert strategy.apply_update("u1", "text_categories", ["Talmud"], [old], day(-30))
+        before = store.get_profile("u1")["text_categories"]
+        new = evidence("new words", "s2", "m2", NOW)
+        assert not strategy.apply_update("u1", "text_categories", ["Talmud"], [new], NOW)
     after = store.get_profile("u1")["text_categories"]
     assert after.evidence[0].quote == "new words" and after.expires_at > before.expires_at
-    assert strategy.diagnostics["unchanged"] == 1 and strategy.diagnostics["applied"] == 1
+    assert run.diagnostics["unchanged"] == 1 and run.diagnostics["applied"] == 1
 
 
 def test_reconfirming_does_not_copy_a_standing_instruction_into_evidence(store, registry):
@@ -159,7 +160,7 @@ def test_reconfirming_a_stated_value_changes_nothing(store, registry):
 def test_expire_user_touches_only_that_user(store):
     for user in ("a", "b"):
         store.set_inferred(user, "text_categories", ["Talmud"], [evidence()], day(-70), day(-10))
-    assert store.expire_user("a", NOW) == 1
+    assert store.expire_user("a", NOW).applied
     assert store.get_profile("a") == {} and "text_categories" in store.get_profile("b")
     assert store.expire(NOW) == 1
 
@@ -178,12 +179,12 @@ def test_reads_are_detached_copies_and_writes_copy_their_input():
     store.get_profile("a")["text_categories"].value.append("x")
     slot = store.get_profile("a")["text_categories"]
     assert (slot.value, slot.status) == (["Talmud"], "inferred")
-    assert store.set_inferred("a", "text_categories", ["Musar"], [evidence()], NOW)
+    assert store.set_inferred("a", "text_categories", ["Musar"], [evidence()], NOW).applied
     obs = Observation("a", "s", "m", "text", NOW)
     store.add_observation(obs)
     store.observations("a")[0].text = "changed"
     assert store.observations("a")[0].text == "text" and obs.id is None
-    proposal = store.add_proposal("a", "answer_style", "x", "q", NOW)
+    proposal = store.add_proposal("a", "answer_style", "x", "q", NOW).proposal
     proposal.status = "accepted"
     assert store.proposals("a", "pending")
 

@@ -131,12 +131,13 @@ def run_persona(
     user_id = persona["user_id"]
     turns = persona_turns(persona)
     events = persona.get("stated_events", [])
+    diagnostics: Counter = Counter()  # summed from each turn's and each batch's result
 
     def snap(kind, turn_id, at):
         run.snapshots.append(_snapshot(store, user_id, kind, turn_id, at, len(run.snapshots)))
 
     def batch(at):
-        strategy.run_batch(at)
+        diagnostics.update(strategy.run_batch(at).diagnostics)
         run.batches.append(at)
         snap("batch", None, at)
 
@@ -147,6 +148,7 @@ def run_persona(
         if i and turn.at.date() > turns[i - 1].at.date():
             batch(batch_time(turns[i - 1].at))
         result = strategy.on_turn(turn, turn.at)
+        diagnostics.update(result.diagnostics)
         run.turns += 1
         if result.skipped_reason:
             run.skips[result.skipped_reason] += 1
@@ -168,6 +170,6 @@ def run_persona(
         for r in recorder.results
     )
     run.observations = [o.text for o in store.observations(user_id)]
-    run.diagnostics = dict(strategy.diagnostics)
+    run.diagnostics = dict(diagnostics)
     run.sent_texts = recorder.sent_texts + (jev_recorder.states if jev_recorder else [])
     return run

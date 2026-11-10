@@ -58,9 +58,30 @@ opt-out on either side stays in force.
 **Settings and deletion.** `store.set_settings(user_id, personalize_enabled=..., store_enabled=...)`
 backs the two toggles; `store.clear(user_id)` deletes slots, observations and proposals in one transaction.
 
-**Concurrency.** Each user has a `generation` that `clear` and `move` bump. A strategy reads it
-before a model or Jev call and passes it to its writes; a write from before the bump, or after
-`store_enabled` was switched off, is refused (diagnostics `stale_generation`,
-`store_disabled_at_commit`). Free-text values are cleaned (no control characters, `<` and `>` become
+**Concurrency.** Every profile write goes through one store helper, `_locked_write`. It takes the
+user's lock once (the user's `ProfileSettings` row `FOR UPDATE` in Postgres, a per-user lock in
+memory; `move` locks both users in sorted `user_id` order, so two moves cannot deadlock), refuses
+with `store_disabled` when the write needs storage consent and it is off (slots, observations,
+proposals, accepting a proposal), refuses with `stale_revision` when the caller's
+`expected_revision` is not the user's current `revision`, runs the write, and adds 1 to each locked
+user's `revision`. Every mutating method returns a `WriteResult(applied, reason, revision)`, which
+has no truth value: callers read `.applied`. Other reasons: `duplicate` (an observation for a
+`message_id` already logged, or the same pending proposal), `stated_wins` (an inferred write never
+replaces a stated slot), `pending_proposal` (an inferred write to a slot awaiting the learner's
+confirmation). A public method never calls another public mutating method, so one call bumps the
+revision once. The database backs this with unique constraints on `(user_id, message_id)` for
+observations and on `(user_id, slot_key)` for pending proposals.
+
+A strategy reads `store.revision(user_id)` once, before its first model or Jev call, and after each
+of its own applied writes carries `result.revision` forward as the next `expected_revision`. A
+`stale_revision` refusal ends that run for the user: the remaining writes are skipped and the
+observations stay pending for the next batch. Every turn starts by logging its observation (a
+content-free marker, stored consumed, for `realtime` and `explicit`; a marker for any turn holding a
+standing instruction), so a retried `messageId` ends as `duplicate` under every mode. Per-turn
+counts (tokens, cost, `writes_applied`, `writes_refused`, `diagnostics`) come back on the
+`TurnResult` (and `BatchResult`); the strategy instance keeps no per-turn state, so one instance
+serves concurrent turns.
+
+Free-text values are cleaned (no control characters, `<` and `>` become
 `‹` and `›`) when validated and again when rendered. A pending
 `Proposal` is accepted or rejected with `store.resolve_proposal`; accepting writes a `stated` slot.

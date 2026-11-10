@@ -36,6 +36,7 @@ class Command(BaseCommand):
         totals = ledger.totals()["all"] if ledger.entries else {}
         self.stdout.write(
             f"{mode}: {result.users_processed} users, {len(result.updated_slots)} slots updated, "
+            f"{result.writes_applied} writes applied, refused {result.writes_refused}, "
             f"{result.llm_calls} model calls, {result.errors} errors, usage {totals}"
         )
         if result.errors:

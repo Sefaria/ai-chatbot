@@ -74,8 +74,9 @@ def test_learning_habits_needs_three_sessions(store, registry):
     assert "learning_habits" not in store.get_profile("u1")
     three = update("learning_habits", "Daf Yomi.", ("m1", Q1), ("m2", Q2), ("m3", Q3))
     strategy, _, _ = make_strategy("nightly", store, registry, consolidation(three))
-    log_turns(strategy, [("s1", "m1", Q1, day(-3)), ("s2", "m2", Q2, day(-2))])
-    log_turns(strategy, [("s3", "m3", Q3, day(-1))])
+    # m1 to m3 are already logged (a retried message is not logged twice); a new turn makes the
+    # user pending again and the window still holds all three.
+    log_turns(strategy, [("s4", "m4", "another prompt", day(-1))])
     strategy.run_batch(day(1))
     assert store.get_profile("u1")["learning_habits"].value == "Daf Yomi."
 

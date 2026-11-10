@@ -2,6 +2,7 @@
 diagnostics and tolerant quote matching."""
 
 import json
+from collections import Counter
 
 from chat.V2.personalization.evals import run_memory_eval
 from chat.V2.personalization.jev import FakeJevClient, JevAnswer, JevError
@@ -112,12 +113,14 @@ def test_jev_evidence_skips_prompts_with_a_standing_instruction(store, registry)
     strategy.on_turn(make_turn("Always give me sources first", message="m2", at=day(-1)), day(-1))
     (quote,) = [e.quote for e in store.get_profile("u1")["text_categories"].evidence]
     assert quote == "Explain Berakhot 2a"
-    # when every prompt in the window holds an instruction there is no evidence and no write
+    # when every prompt holds an instruction the window is empty (each is a content-free
+    # marker): no closed-set request is made and nothing is written
     store.clear("u1")
-    strategy, _, _ = make_strategy("hybrid_jev", store, registry, jev=jev_with(answers, (0.9, 0.0)))
+    only_instructions = jev_with(answers, (0.9, 0.0))
+    strategy, _, _ = make_strategy("hybrid_jev", store, registry, jev=only_instructions)
     strategy.on_turn(make_turn("Always give me sources first", at=day(-1)), day(-1))
     assert "text_categories" not in store.get_profile("u1")
-    assert strategy.diagnostics["no_valid_evidence"] >= 1
+    assert all("message" in state for state, _ in only_instructions.calls)
 
 
 def test_hybrid_mapper_flags_excluded_instructions(store, registry):
@@ -180,32 +183,30 @@ def test_diagnostics_applied_unchanged_and_invalid_value(store, registry):
         }
     )
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: reply)
-    strategy.on_turn(make_turn(Q1), NOW)
-    strategy.on_turn(make_turn(Q1, message="m2"), NOW)
-    d = strategy.diagnostics
+    first = strategy.on_turn(make_turn(Q1), NOW).diagnostics
+    second = strategy.on_turn(make_turn(Q1, message="m2"), NOW).diagnostics
+    d = Counter(first) + Counter(second)
     assert d["applied"] == 2  # the language and the fluency
     assert d["value_invalid"] == 2 and d["unchanged"] >= 2
 
 
 def test_diagnostics_unparsable_reply_and_fabricated_quote(store, registry):
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: "no json at all")
-    strategy.on_turn(make_turn(Q1), NOW)
-    assert strategy.diagnostics["reply_unparsable"] == 1
+    assert strategy.on_turn(make_turn(Q1), NOW).diagnostics["reply_unparsable"] == 1
     fabricated = json.dumps(
         {"updates": [{"slot": "hebrew_fluency", "value": "basic", "quote": "x y"}]}
     )
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: fabricated)
-    strategy.on_turn(make_turn(Q1, message="m2"), NOW)
-    assert strategy.diagnostics["quote_not_verbatim"] == 1
-    assert strategy.diagnostics["no_valid_evidence"] == 1
+    d = strategy.on_turn(make_turn(Q1, message="m2"), NOW).diagnostics
+    assert d["quote_not_verbatim"] == 1
+    assert d["no_valid_evidence"] == 1
 
 
-def test_diagnostics_stated_locked(store, registry):
+def test_diagnostics_stated_wins(store, registry):
     store.set_stated("u1", "hebrew_fluency", "none", day(-1))
     reply = json.dumps({"updates": [{"slot": "hebrew_fluency", "value": "fluent", "quote": Q1}]})
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: reply)
-    strategy.on_turn(make_turn(Q1), NOW)
-    assert strategy.diagnostics["stated_locked"] == 1
+    assert strategy.on_turn(make_turn(Q1), NOW).diagnostics["stated_wins"] == 1
 
 
 def test_diagnostics_below_min_sessions_and_missing_evidence(store, registry):
@@ -215,10 +216,10 @@ def test_diagnostics_below_min_sessions_and_missing_evidence(store, registry):
         "nightly", store, registry, consolidation(one_session, no_evidence)
     )
     log_turns(strategy, [("s1", "m1", Q1, day(-2)), ("s1", "m2", Q2, day(-1))])
-    strategy.run_batch(NOW)
-    assert strategy.diagnostics["below_min_sessions"] == 1
-    assert strategy.diagnostics["quote_not_verbatim"] == 1
-    assert strategy.diagnostics["no_valid_evidence"] == 1
+    d = strategy.run_batch(NOW).diagnostics
+    assert d["below_min_sessions"] == 1
+    assert d["quote_not_verbatim"] == 1
+    assert d["no_valid_evidence"] == 1
 
 
 def test_diagnostics_jev_reasons(store, registry):
@@ -231,16 +232,14 @@ def test_diagnostics_jev_reasons(store, registry):
         }
     )
     strategy, _, _ = make_strategy("hybrid_jev", store, registry, jev=jev)
-    strategy.on_turn(make_turn("hello"), NOW)
-    d = strategy.diagnostics
+    d = strategy.on_turn(make_turn("hello"), NOW).diagnostics
     assert d["jev_below_change_threshold"] == 1 and d["jev_uncertain"] == 2
 
     def boom(state, questions):
         raise JevError("Jev HTTP 500")
 
     strategy, _, _ = make_strategy("hybrid_jev", store, registry, jev=FakeJevClient(boom))
-    strategy.on_turn(make_turn("hello", message="m2"), NOW)
-    assert strategy.diagnostics["jev_error"] == 1
+    assert strategy.on_turn(make_turn("hello", message="m2"), NOW).diagnostics["jev_error"] == 1
 
 
 def test_a_hebrew_acronym_reply_is_repaired_and_applied(store, registry):
@@ -249,11 +248,8 @@ def test_a_hebrew_acronym_reply_is_repaired_and_applied(store, registry):
         '{"updates": [{"slot": "hebrew_fluency", "value": "fluent", "quote": "איך הרשב"ם מסביר"}]}'
     )
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: reply)
-    strategy.on_turn(make_turn(text), NOW)
-    assert (
-        strategy.diagnostics["reply_repaired"] == 1
-        and strategy.diagnostics["reply_unparsable"] == 0
-    )
+    d = strategy.on_turn(make_turn(text), NOW).diagnostics
+    assert d["reply_repaired"] == 1 and d.get("reply_unparsable", 0) == 0
     slot = store.get_profile("u1")["hebrew_fluency"]
     assert slot.value == "fluent" and slot.evidence[0].quote == "איך הרשב״ם מסביר"  # learner's own
 
@@ -268,9 +264,9 @@ def test_quote_check_tolerates_quote_marks_whitespace_and_unicode_form(store, re
         }
     )
     strategy, _, _ = make_strategy("realtime", store, registry, lambda s, u: reply)
-    strategy.on_turn(make_turn(text), NOW)
+    d = strategy.on_turn(make_turn(text), NOW).diagnostics
     assert store.get_profile("u1")["answer_style"].evidence[0].quote == "said “read it”   slowly,"
-    assert strategy.diagnostics["quote_not_verbatim"] == 0
+    assert d.get("quote_not_verbatim", 0) == 0
 
 
 # -- 5. harness ----------------------------------------------------------------------------

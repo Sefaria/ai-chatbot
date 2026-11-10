@@ -8,14 +8,14 @@ slots that have a pending proposal.
 from __future__ import annotations
 
 import logging
-from collections import Counter
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from ..registry import SlotRegistry
 from ..signals import find_standing_instruction
 from ..store import ProfileStore
-from ..types import Proposal, Turn, Value
+from ..types import Proposal, Turn, Value, WriteResult
 from .base import TurnResult, truncate_prompt
 from .nightly import NightlyStrategy
 from .prompts import INSTRUCTION_SYSTEM, slot_definitions
@@ -57,37 +57,43 @@ def handle_propose_memory_update(
     value: object,
     quote: str,
     now: datetime,
-    expected_generation: int | None = None,
-    diagnostics: Counter | None = None,
+    expected_revision: int | None = None,
+    *,
+    submit: Callable[[Callable[[int | None], WriteResult]], WriteResult] | None = None,
 ) -> Proposal | None:
-    """Create a pending proposal, or None when it is invalid, already stored, or a duplicate."""
+    """Create a pending proposal, or None when it is invalid, already stored, or refused.
+
+    A duplicate is resolved by the store, inside the user's lock: the pending proposal for the
+    slot is returned. `submit` runs the store call (a strategy passes its `write`, which supplies
+    the expected revision and counts the outcome).
+    """
     normalized: Value | None = registry.validate(slot, value)
     if normalized is None or not str(quote).strip():
         return None
     current = store.get_profile(user_id).get(slot)
     if current and current.status == "stated" and current.value == normalized:
         return None
-    for pending in store.proposals(user_id, "pending"):
-        if pending.slot_key == slot and pending.value == normalized:
-            return pending
-    proposal = store.add_proposal(
-        user_id, slot, normalized, str(quote)[:300], now, expected_generation
-    )
-    if proposal is None and diagnostics is not None:
-        diagnostics[store.refusal_reason(user_id, expected_generation) or "proposal_refused"] += 1
-    return proposal
+
+    def add(expected: int | None) -> WriteResult:
+        return store.add_proposal(user_id, slot, normalized, str(quote)[:300], now, expected)
+
+    result = submit(add) if submit is not None else add(expected_revision)
+    return result.proposal
 
 
 class HybridStrategy(NightlyStrategy):
     name = "hybrid"
 
-    def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
+    def _on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
         self.store.expire_user(turn.user_id, now)
-        generation = self.store.generation(turn.user_id)
-        result = TurnResult()
         instruction = find_standing_instruction(truncate_prompt(turn.user_message))
+        # A turn holding a standing instruction is logged as a content-free marker: its words
+        # reach the profile only through a proposal the learner confirms.
+        if reason := self.start_turn(turn, now, excluded=instruction is not None):
+            return TurnResult(skipped_reason=reason)
+        result = TurnResult()
         proposal = None
         if instruction is not None:
             result.llm_calls = 1
@@ -100,20 +106,18 @@ class HybridStrategy(NightlyStrategy):
                 self.diagnostics["instruction_unclassified"] += 1
                 result.errors += 1
             if mapped is None or mapped.get("excludes_sources") is True:
-                # Never stored: a content-free marker only, so the prompt stays out of every later
-                # window. An instruction that could not be classified is held back the same way.
-                self.log_observation(turn, excluded=True, expected_generation=generation)
+                # Never stored beyond the marker. An instruction that could not be classified is
+                # held back the same way.
                 result.skipped_reason = (
                     "instruction_unclassified" if mapped is None else "instruction_excludes_sources"
                 )
                 return result
             proposal = handle_propose_memory_update(
                 self.store, self.registry, turn.user_id, str(mapped.get("slot")),
-                mapped.get("value"), instruction, now, generation, self.diagnostics,
+                mapped.get("value"), instruction, now,
+                submit=lambda call: self.write(turn.user_id, call),
             )  # fmt: skip
-        if self.log_observation(turn, expected_generation=generation) and self.update_language(
-            turn.user_id, self.window_observations(turn.user_id, now), now, generation
-        ):
+        if self.update_language(turn.user_id, self.window_observations(turn.user_id, now), now):
             result.updated_slots.append("preferred_language")
         if instruction is not None:
             if proposal is None:

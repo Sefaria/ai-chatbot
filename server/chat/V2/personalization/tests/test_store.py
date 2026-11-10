@@ -10,7 +10,7 @@ def obs(user, session="s1", message="m1", text="hello", at=NOW):
 
 
 def test_set_and_get_inferred(store):
-    assert store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW)
+    assert store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], NOW).applied
     slot = store.get_profile("a")["hebrew_fluency"]
     assert (slot.value, slot.status, slot.evidence[0].quote) == ("basic", "inferred", "q")
     assert slot.updated_at == NOW
@@ -32,15 +32,16 @@ def test_users_are_isolated(store):
 
 
 def test_proposal_of_one_user_cannot_be_resolved_by_another(store):
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW)
-    assert store.resolve_proposal("b", proposal.id, True, NOW) is None
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW).proposal
+    assert not store.resolve_proposal("b", proposal.id, True, NOW).applied
     assert store.get_profile("b") == {}
     assert store.proposals("a", "pending")
 
 
 def test_stated_lock_refuses_inferred_writes(store):
     store.set_stated("a", "hebrew_fluency", "fluent", NOW)
-    assert not store.set_inferred("a", "hebrew_fluency", "none", [evidence()], day(1))
+    refused = store.set_inferred("a", "hebrew_fluency", "none", [evidence()], day(1))
+    assert (refused.applied, refused.reason) == (False, "stated_wins")
     slot = store.get_profile("a")["hebrew_fluency"]
     assert (slot.value, slot.status) == ("fluent", "stated")
 
@@ -50,7 +51,7 @@ def test_release_returns_slot_to_inferred_and_keeps_value(store):
     store.release("a", "hebrew_fluency", day(1))
     assert store.get_profile("a")["hebrew_fluency"].status == "inferred"
     assert store.get_profile("a")["hebrew_fluency"].value == "fluent"
-    assert store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], day(2))
+    assert store.set_inferred("a", "hebrew_fluency", "basic", [evidence()], day(2)).applied
 
 
 def test_evidence_is_capped_at_three(store):
@@ -97,9 +98,9 @@ def test_users_with_pending_lists_only_users_with_unconsumed(store):
 
 
 def test_proposal_accept_writes_stated_slot(store):
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "keep it short", NOW)
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "keep it short", NOW).proposal
     assert proposal.status == "pending"
-    resolved = store.resolve_proposal("a", proposal.id, True, day(1))
+    resolved = store.resolve_proposal("a", proposal.id, True, day(1)).proposal
     assert resolved.status == "accepted"
     slot = store.get_profile("a")["answer_style"]
     assert (slot.value, slot.status) == ("Be brief.", "stated")
@@ -108,10 +109,11 @@ def test_proposal_accept_writes_stated_slot(store):
 
 
 def test_proposal_reject_writes_nothing(store):
-    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW)
-    assert store.resolve_proposal("a", proposal.id, False, NOW).status == "rejected"
+    proposal = store.add_proposal("a", "answer_style", "Be brief.", "q", NOW).proposal
+    assert store.resolve_proposal("a", proposal.id, False, NOW).proposal.status == "rejected"
     assert store.get_profile("a") == {}
-    assert store.resolve_proposal("a", proposal.id, True, NOW) is None
+    again = store.resolve_proposal("a", proposal.id, True, NOW)
+    assert (again.applied, again.proposal) == (False, None)
 
 
 def test_move_merges_with_stated_target_winning_then_newer(store):
