@@ -8,6 +8,7 @@ from the environment (and, only when `allow_keychain=True`, from the macOS Keych
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import time
@@ -21,6 +22,7 @@ URL = "https://api.typesafe.ai/v1/systemone"
 KEY_ENV = "TYPESAFE_API_KEY"
 KEYCHAIN_ITEM = "typesafe-api-key"
 DEFAULT_MODEL = "jev-1.13.0"
+ANSWER_TYPES = ("noul", "choice")
 
 
 class JevError(Exception):
@@ -107,17 +109,55 @@ class HttpJevClient:
         except (urllib.error.URLError, TimeoutError, ValueError):
             raise JevError("Jev network or response error") from None
         latency_ms = int((time.perf_counter() - started) * 1000)
-        answers = {}
-        for key, raw in (data.get("answers") or {}).items():
-            answers[key] = JevAnswer(
-                type=raw.get("type", ""),
-                choice=raw.get("choice"),
-                confidence=raw.get("confidence"),
-                probabilities=raw.get("probabilities"),
-                noul=raw.get("noul"),
-            )
-        tokens = (data.get("usage") or {}).get("input_tokens", 0)
-        return JevResponse(answers, tokens, latency_ms, data.get("model", self.model))
+        return parse_response(data, latency_ms, self.model)
+
+
+def _number(value: object, *, unit: bool = False) -> float | None:
+    """A finite real number (a bool is not one); with `unit`, within [0, 1]. Else JevError."""
+    ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if not ok or (unit and not 0 <= value <= 1):
+        raise JevError("Jev response malformed")
+    return float(value)
+
+
+def parse_response(data: object, latency_ms: int, default_model: str) -> JevResponse:
+    """Validate a decoded Jev reply; anything malformed raises JevError (never AttributeError)."""
+    if not isinstance(data, dict) or not isinstance(data.get("answers"), dict):
+        raise JevError("Jev response malformed")
+    answers = {}
+    for key, raw in data["answers"].items():
+        if (
+            not isinstance(key, str)
+            or not isinstance(raw, dict)
+            or raw.get("type") not in ANSWER_TYPES
+        ):
+            raise JevError("Jev response malformed")
+        choice, probabilities = raw.get("choice"), raw.get("probabilities")
+        if choice is not None and not isinstance(choice, str):
+            raise JevError("Jev response malformed")
+        if probabilities is not None:
+            if not isinstance(probabilities, dict):
+                raise JevError("Jev response malformed")
+            probabilities = {str(k): _number(v, unit=True) for k, v in probabilities.items()}
+        answers[key] = JevAnswer(
+            type=raw["type"],
+            choice=choice,
+            confidence=None
+            if raw.get("confidence") is None
+            else _number(raw["confidence"], unit=True),
+            probabilities=probabilities,
+            noul=None if raw.get("noul") is None else _number(raw["noul"], unit=True),
+        )
+    usage = data.get("usage")
+    if usage is not None and not isinstance(usage, dict):
+        raise JevError("Jev response malformed")
+    tokens = (usage or {}).get("input_tokens", 0)
+    if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+        raise JevError("Jev response malformed")
+    model = data.get("model", default_model)
+    return JevResponse(
+        answers, tokens, latency_ms, model if isinstance(model, str) else default_model
+    )
 
 
 @dataclass
