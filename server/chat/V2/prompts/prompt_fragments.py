@@ -38,6 +38,8 @@ SECTION_SEPARATOR = "\n\n"
 
 CONVERSATION_SUMMARY_SECTION = "Conversation summary:\n{summary_text}"
 
+_PROFILE_BRACKETS = str.maketrans({"<": "‹", ">": "›"})
+
 LEARNER_PROFILE_SECTION = (
     "<learner_profile>\n{profile_text}\n</learner_profile>\n"
     "The learner profile above lists hints inferred from past chats or set by the learner. "
@@ -82,7 +84,9 @@ def build_prompt(
     summary_included = False
 
     if profile_text:
-        parts.append(LEARNER_PROFILE_SECTION.format(profile_text=profile_text))
+        # Whatever the caller passes, the profile text can never close or open a tag.
+        safe_profile = profile_text.translate(_PROFILE_BRACKETS)
+        parts.append(LEARNER_PROFILE_SECTION.format(profile_text=safe_profile))
     if summary_text:
         parts.append(CONVERSATION_SUMMARY_SECTION.format(summary_text=summary_text))
         summary_included = True
