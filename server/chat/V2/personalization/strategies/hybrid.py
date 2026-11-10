@@ -12,11 +12,12 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+from ..parsing import validate_envelope
 from ..registry import SlotRegistry
-from ..signals import find_standing_instruction
+from ..signals import find_standing_instructions
 from ..store import ProfileStore
-from ..types import Proposal, Turn, Value, WriteResult
-from .base import TurnResult, truncate_prompt
+from ..types import InstructionVerdict, Proposal, Turn, Value, WriteResult
+from .base import TurnResult, classify_turn, is_clean, truncate_prompt
 from .nightly import NightlyStrategy
 from .prompts import INSTRUCTION_SYSTEM, slot_definitions
 
@@ -59,6 +60,7 @@ def handle_propose_memory_update(
     now: datetime,
     expected_revision: int | None = None,
     *,
+    source_message_id: str = "",
     submit: Callable[[Callable[[int | None], WriteResult]], WriteResult] | None = None,
 ) -> Proposal | None:
     """Create a pending proposal, or None when it is invalid, already stored, or refused.
@@ -75,7 +77,9 @@ def handle_propose_memory_update(
         return None
 
     def add(expected: int | None) -> WriteResult:
-        return store.add_proposal(user_id, slot, normalized, str(quote)[:300], now, expected)
+        return store.add_proposal(
+            user_id, slot, normalized, str(quote)[:300], now, expected, source_message_id
+        )
 
     result = submit(add) if submit is not None else add(expected_revision)
     return result.proposal
@@ -88,51 +92,83 @@ class HybridStrategy(NightlyStrategy):
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
         self.store.expire_user(turn.user_id, now)
-        instruction = find_standing_instruction(truncate_prompt(turn.user_message))
-        # A turn holding a standing instruction is logged as a content-free marker: its words
-        # reach the profile only through a proposal the learner confirms.
-        if reason := self.start_turn(turn, now, excluded=instruction is not None):
+        instructions = find_standing_instructions(turn.user_message)
+        # A turn holding a standing instruction is quarantined from the start; it keeps its text
+        # only once every instruction in it has been classified as a safe style preference.
+        if reason := self.start_turn(turn, now, quarantined=bool(instructions)):
             return TurnResult(skipped_reason=reason)
         result = TurnResult()
-        proposal = None
-        if instruction is not None:
-            result.llm_calls = 1
-            try:
-                mapped = self.map_instruction(turn, instruction)
-            except Exception:
-                logger.exception("instruction classification failed")
-                mapped = None
-            if mapped is None:
-                self.diagnostics["instruction_unclassified"] += 1
-                result.errors += 1
-            if mapped is None or mapped.get("excludes_sources") is True:
-                # Never stored beyond the marker. An instruction that could not be classified is
-                # held back the same way.
+        mapped: dict[str, tuple[str, object]] = {}
+        if instructions:
+            verdicts = classify_turn(
+                instructions, lambda items: self.classify_instructions(turn, items, mapped, result)
+            )
+            if not is_clean(verdicts):
+                if InstructionVerdict.UNKNOWN in verdicts:
+                    self.diagnostics["instruction_unclassified"] += 1
                 result.skipped_reason = (
-                    "instruction_unclassified" if mapped is None else "instruction_excludes_sources"
+                    "instruction_excludes_sources"
+                    if InstructionVerdict.EXCLUSION in verdicts
+                    else "instruction_unclassified"
                 )
                 return result
-            proposal = handle_propose_memory_update(
-                self.store, self.registry, turn.user_id, str(mapped.get("slot")),
-                mapped.get("value"), instruction, now,
-                submit=lambda call: self.write(turn.user_id, call),
-            )  # fmt: skip
+            if not self.keep_turn(turn).applied:
+                result.skipped_reason = "observation_not_kept"
+                return result
+            for instruction, (slot, value) in mapped.items():
+                proposal = handle_propose_memory_update(
+                    self.store, self.registry, turn.user_id, slot, value, instruction, now,
+                    source_message_id=turn.message_id,
+                    submit=lambda call: self.write(turn.user_id, call),
+                )  # fmt: skip
+                if proposal is not None:
+                    result.proposals.append(proposal)
         if self.update_language(turn.user_id, self.window_observations(turn.user_id, now), now):
             result.updated_slots.append("preferred_language")
-        if instruction is not None:
-            if proposal is None:
-                result.skipped_reason = "instruction_needs_settings"
-            else:
-                result.proposals.append(proposal)
+        if instructions and not result.proposals:
+            result.skipped_reason = "instruction_needs_settings"
         return result
 
+    def classify_instructions(
+        self,
+        turn: Turn,
+        instructions: list[str],
+        mapped: dict[str, tuple[str, object]],
+        result: TurnResult,
+    ) -> list[InstructionVerdict]:
+        """One model call per instruction. A reply that is not exactly the expected shape, or a
+        failed call, leaves that instruction `UNKNOWN`. Mappings to a slot go into `mapped`."""
+        verdicts = []
+        for instruction in instructions:
+            result.llm_calls += 1
+            try:
+                reply = self.map_instruction(turn, instruction)
+            except Exception:
+                logger.exception("instruction classification failed")
+                reply = None
+            if isinstance(reply, dict) and reply.get("slot") is None:
+                reply = {k: v for k, v in reply.items() if k not in ("slot", "value")}
+            valid = validate_envelope(
+                reply, {"excludes_sources": bool}, {"slot": str, "value": object}
+            )
+            if valid is None:
+                result.errors += 1
+                verdicts.append(InstructionVerdict.UNKNOWN)
+            elif valid["excludes_sources"]:
+                verdicts.append(InstructionVerdict.EXCLUSION)
+            else:
+                verdicts.append(InstructionVerdict.SAFE_STYLE)
+                if "slot" in valid:
+                    mapped[instruction] = (valid["slot"], valid.get("value"))
+        return verdicts
+
     def map_instruction(self, turn: Turn, instruction: str) -> dict | None:
-        """The model's mapping, or None when the reply cannot be parsed."""
+        """The model's reply for one instruction, or None when it cannot be parsed."""
         system = (
             f"{INSTRUCTION_SYSTEM}\n\nSlots:\n"
             f"{slot_definitions(self.registry, include_deterministic=True)}"
         )
-        reply = self.call_model("turn", turn.user_id, system, instruction)
+        reply = self.call_model("turn", turn.user_id, system, truncate_prompt(instruction))
         return self.parse_reply(reply.text)
 
     def blocked_slots(self, user_id: str) -> set[str]:

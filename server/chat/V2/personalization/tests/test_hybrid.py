@@ -12,7 +12,9 @@ INSTRUCTION = "From now on keep your answers short."
 
 
 def mapper(slot, value=None):
-    return lambda system, user: json.dumps({"slot": slot, "value": value})
+    return lambda system, user: json.dumps(
+        {"slot": slot, "value": value, "excludes_sources": False}
+    )
 
 
 def test_language_is_set_in_code_without_a_model_call(store, registry):
@@ -47,7 +49,9 @@ def test_standing_instruction_becomes_a_pending_proposal_not_a_write(store, regi
 
 
 def test_unmapped_instruction_needs_settings(store, registry):
-    strategy, _, _ = make_strategy("hybrid", store, registry, lambda s, u: '{"slot": null}')
+    strategy, _, _ = make_strategy(
+        "hybrid", store, registry, lambda s, u: '{"slot": null, "excludes_sources": false}'
+    )
     result = strategy.on_turn(make_turn("Always be nice to my cat"), NOW)
     assert result.skipped_reason == "instruction_needs_settings" and result.proposals == []
     assert store.proposals("u1") == []

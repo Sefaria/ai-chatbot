@@ -80,3 +80,36 @@ def locate_quote(quote: str, text: str) -> str | None:
     if at < 0:
         return None
     return source[origin[at] : origin[at + len(wanted) - 1] + 1]
+
+
+def validate_envelope(
+    reply: object,
+    required: dict[str, type],
+    optional: dict[str, type] | None = None,
+    *,
+    allow_extra: bool = False,
+) -> dict | None:
+    """The reply when it is a dict with every required key of the right type, else None.
+
+    `optional` keys may be absent but must have the right type when present. Unknown keys fail
+    unless `allow_extra`. A bool is never accepted for `int` or `float`, and `{}` fails whenever
+    something is required.
+    """
+    if not isinstance(reply, dict):
+        return None
+    allowed = {**(optional or {}), **required}
+
+    def fits(value: object, kind: type) -> bool:
+        if kind is object:
+            return True
+        if kind is bool:
+            return isinstance(value, bool)
+        return isinstance(value, kind) and not isinstance(value, bool)
+
+    if any(key not in reply or not fits(reply[key], kind) for key, kind in required.items()):
+        return None
+    if any(key in reply and not fits(reply[key], kind) for key, kind in (optional or {}).items()):
+        return None
+    if not allow_extra and set(reply) - set(allowed):
+        return None
+    return reply

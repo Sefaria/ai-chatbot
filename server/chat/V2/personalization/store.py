@@ -74,7 +74,17 @@ class ProfileStore(Protocol):
     def add_observation(
         self, observation: Observation, expected_revision: int | None = None
     ) -> WriteResult: ...
-    def observations(self, user_id: str, since: datetime | None = None) -> list[Observation]: ...
+    def observations(
+        self, user_id: str, since: datetime | None = None, include_quarantined: bool = False
+    ) -> list[Observation]: ...
+    def release_observation(
+        self,
+        user_id: str,
+        message_id: str,
+        text: str,
+        signals: dict,
+        expected_revision: int | None = None,
+    ) -> WriteResult: ...
     def mark_consumed(
         self,
         user_id: str,
@@ -91,6 +101,7 @@ class ProfileStore(Protocol):
         quote: str,
         now: datetime,
         expected_revision: int | None = None,
+        source_message_id: str = "",
     ) -> WriteResult: ...
     def proposals(self, user_id: str, status: str | None = None) -> list[Proposal]: ...
     def resolve_proposal(
@@ -241,11 +252,19 @@ class InMemoryProfileStore:
         with self._data:
             return self._revisions.get(user_id, 0)
 
-    def observations(self, user_id, since=None):
+    def observations(self, user_id, since=None, include_quarantined=False):
         with self._data:
             rows = self._observations.get(user_id, [])
             return copy.deepcopy(
-                sorted((o for o in rows if since is None or o.at >= since), key=lambda o: o.at)
+                sorted(
+                    (
+                        o
+                        for o in rows
+                        if (since is None or o.at >= since)
+                        and (include_quarantined or not o.quarantined)
+                    ),
+                    key=lambda o: o.at,
+                )
             )
 
     def users_with_pending(self):
@@ -388,6 +407,24 @@ class InMemoryProfileStore:
             fn=fn,
         )
 
+    def release_observation(self, user_id, message_id, text, signals, expected_revision=None):
+        def fn():
+            for obs in self._observations.get(user_id, []):
+                if obs.message_id == message_id and obs.quarantined:
+                    obs.quarantined, obs.text, obs.signals = False, text, copy.deepcopy(signals)
+                    obs.consumed_at = None  # a kept turn is consolidated like any other
+                    return APPLIED
+            return NOTHING
+
+        return self._locked_write(
+            (user_id,), expected_revision=expected_revision, needs_store_enabled=True, fn=fn
+        )
+
+    def _do_quarantine(self, user_id, message_id) -> None:
+        for obs in self._observations.get(user_id, []):
+            if obs.message_id == message_id:
+                obs.quarantined, obs.text, obs.signals = True, "", {}
+
     def mark_consumed(self, user_id, observation_ids, now, expected_revision=None):
         def fn():
             wanted = set(observation_ids)
@@ -399,17 +436,29 @@ class InMemoryProfileStore:
             (user_id,), expected_revision=expected_revision, needs_store_enabled=False, fn=fn
         )
 
-    def add_proposal(self, user_id, slot_key, value, quote, now, expected_revision=None):
+    def add_proposal(
+        self, user_id, slot_key, value, quote, now, expected_revision=None, source_message_id=""
+    ):
         def fn():
             pending = self._pending(user_id, slot_key)
             if pending is not None and pending.value == value:
                 return _refused(DUPLICATE, pending)
             if pending is not None:
                 # One confirmation per slot, about the latest value. The old row stops being
-                # pending, so the id the learner saw can no longer be resolved.
+                # pending, so the id the learner saw can no longer be resolved, and its words
+                # were never accepted.
                 pending.status = "rejected"
+                if pending.source_message_id and pending.source_message_id != source_message_id:
+                    self._do_quarantine(user_id, pending.source_message_id)
             proposal = Proposal(
-                uuid.uuid4().hex, user_id, slot_key, copy.deepcopy(value), quote, "pending", now
+                uuid.uuid4().hex,
+                user_id,
+                slot_key,
+                copy.deepcopy(value),
+                quote,
+                "pending",
+                now,
+                source_message_id,
             )
             self._proposals.setdefault(user_id, []).append(proposal)
             return _Outcome(proposal=proposal)
@@ -425,6 +474,8 @@ class InMemoryProfileStore:
                     proposal.status = "accepted" if accept else "rejected"
                     if accept:
                         self._do_set_stated(user_id, proposal.slot_key, proposal.value, now)
+                    elif proposal.source_message_id:
+                        self._do_quarantine(user_id, proposal.source_message_id)
                     return _Outcome(proposal=proposal)
             return NOTHING
 
@@ -587,10 +638,12 @@ class DjangoProfileStore:
             or 0
         )
 
-    def observations(self, user_id, since=None):
+    def observations(self, user_id, since=None, include_quarantined=False):
         from chat.models import ProfileObservation
 
         rows = ProfileObservation.objects.filter(user_id=user_id)
+        if not include_quarantined:
+            rows = rows.filter(quarantined=False)
         if since is not None:
             rows = rows.filter(created_at__gte=since)
         return [_observation_from_row(r) for r in rows.order_by("created_at", "id")]
@@ -779,6 +832,7 @@ class DjangoProfileStore:
                         signals=observation.signals,
                         created_at=observation.at,
                         consumed_at=observation.consumed_at,
+                        quarantined=observation.quarantined,
                     )
             except IntegrityError:
                 return _refused(DUPLICATE)
@@ -789,6 +843,27 @@ class DjangoProfileStore:
             expected_revision=expected_revision,
             needs_store_enabled=True,
             fn=fn,
+        )
+
+    def release_observation(self, user_id, message_id, text, signals, expected_revision=None):
+        from chat.models import ProfileObservation
+
+        def fn(_locked):
+            kept = ProfileObservation.objects.filter(
+                user_id=user_id, message_id=message_id, quarantined=True
+            ).update(quarantined=False, text=text, signals=signals, consumed_at=None)
+            return APPLIED if kept else NOTHING
+
+        return self._locked_write(
+            (user_id,), expected_revision=expected_revision, needs_store_enabled=True, fn=fn
+        )
+
+    @staticmethod
+    def _do_quarantine(user_id, message_id) -> None:
+        from chat.models import ProfileObservation
+
+        ProfileObservation.objects.filter(user_id=user_id, message_id=message_id).update(
+            quarantined=True, text="", signals={}
         )
 
     def mark_consumed(self, user_id, observation_ids, now, expected_revision=None):
@@ -803,7 +878,9 @@ class DjangoProfileStore:
             (user_id,), expected_revision=expected_revision, needs_store_enabled=False, fn=fn
         )
 
-    def add_proposal(self, user_id, slot_key, value, quote, now, expected_revision=None):
+    def add_proposal(
+        self, user_id, slot_key, value, quote, now, expected_revision=None, source_message_id=""
+    ):
         from chat.models import ProfileProposal
 
         def fn(_locked):
@@ -817,8 +894,15 @@ class DjangoProfileStore:
                 # pending, so the id the learner saw can no longer be resolved.
                 pending.status = ProfileProposal.Status.REJECTED
                 pending.save(update_fields=["status"])
+                if pending.source_message_id and pending.source_message_id != source_message_id:
+                    self._do_quarantine(user_id, pending.source_message_id)
             row = ProfileProposal.objects.create(
-                user_id=user_id, slot_key=slot_key, value=value, quote=quote, created_at=now
+                user_id=user_id,
+                slot_key=slot_key,
+                value=value,
+                quote=quote,
+                created_at=now,
+                source_message_id=source_message_id,
             )
             return _Outcome(proposal=_proposal_from_row(row))
 
@@ -843,6 +927,8 @@ class DjangoProfileStore:
             row.save(update_fields=["status"])
             if accept:
                 self._do_set_stated(user_id, row.slot_key, row.value, now)
+            elif row.source_message_id:
+                self._do_quarantine(user_id, row.source_message_id)
             return _Outcome(proposal=_proposal_from_row(row))
 
         return self._locked_write(
@@ -988,10 +1074,18 @@ def _observation_from_row(row) -> Observation:
         row.signals or {},
         row.consumed_at,
         row.id,
+        row.quarantined,
     )
 
 
 def _proposal_from_row(row) -> Proposal:
     return Proposal(
-        row.id, row.user_id, row.slot_key, row.value, row.quote, row.status, row.created_at
+        row.id,
+        row.user_id,
+        row.slot_key,
+        row.value,
+        row.quote,
+        row.status,
+        row.created_at,
+        row.source_message_id,
     )

@@ -20,8 +20,8 @@ def test_explicit_makes_no_model_calls_and_stores_no_text(store, registry):
     assert result.llm_calls == 0 and result.updated_slots == [] and batch.llm_calls == 0
     assert store.get_profile("u1") == {}
     # Only the turn ledger's content-free marker, already consumed (a retry is then a no-op).
-    (marker,) = store.observations("u1")
-    assert marker.text == "" and marker.signals == {"excluded": True} and marker.consumed_at
+    (marker,) = store.observations("u1", include_quarantined=True)  # it held an instruction
+    assert marker.text == "" and marker.quarantined and marker.consumed_at
 
 
 def test_interview_writes_validated_stated_slots(store, registry):

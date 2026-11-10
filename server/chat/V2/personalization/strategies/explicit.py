@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from ..signals import find_standing_instructions
 from ..types import Turn
 from .base import BatchResult, MemoryStrategy, TurnResult
 
@@ -16,7 +17,10 @@ class ExplicitStrategy(MemoryStrategy):
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
         # The ledger row is a content-free marker, stored consumed: it only makes retries no-ops.
-        if reason := self.start_turn(turn, now, excluded=True, consumed=True):
+        quarantine = bool(find_standing_instructions(turn.user_message))
+        if reason := self.start_turn(
+            turn, now, excluded=True, consumed=True, quarantined=quarantine
+        ):
             return TurnResult(skipped_reason=reason)
         return TurnResult(skipped_reason="explicit_only")
 

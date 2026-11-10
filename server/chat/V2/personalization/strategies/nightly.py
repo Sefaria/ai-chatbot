@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from ..signals import is_sensitive, profile_language_v2, session_vote
+from ..signals import find_standing_instructions, is_sensitive, profile_language_v2, session_vote
 from ..types import Evidence, Observation, Turn
 from .base import (
     LEDGER,
@@ -35,22 +35,41 @@ class NightlyStrategy(MemoryStrategy):
     def _on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
-        if reason := self.start_turn(turn, now):
+        # Nothing here classifies an instruction, so a turn that holds one is quarantined.
+        quarantine = bool(find_standing_instructions(turn.user_message))
+        if reason := self.start_turn(turn, now, quarantined=quarantine):
             return TurnResult(skipped_reason=reason)
-        return TurnResult()
+        return TurnResult(skipped_reason="instruction_quarantined" if quarantine else None)
 
     @staticmethod
-    def in_window(observations: list[Observation], now: datetime) -> list[Observation]:
-        """Observations of the last 30 days that a model or a language vote may see."""
+    def in_window(
+        observations: list[Observation],
+        now: datetime,
+        held: set[str] | frozenset[str] = frozenset(),
+    ) -> list[Observation]:
+        """Observations of the last 30 days that a model or a language vote may see: not
+        sensitive, not quarantined, and not the source of a proposal still waiting for the learner."""
         since = now - timedelta(days=WINDOW_DAYS)
         return [
             o
             for o in observations
-            if o.at >= since and not is_sensitive(o.text) and not o.signals.get("excluded")
+            if o.at >= since
+            and not o.quarantined
+            and not is_sensitive(o.text)
+            and not o.signals.get("excluded")
+            and o.message_id not in held
         ]
 
+    def pending_sources(self, user_id: str) -> set[str]:
+        """Message ids of the observations behind pending proposals (excluded until accepted)."""
+        return {
+            p.source_message_id
+            for p in self.store.proposals(user_id, "pending")
+            if p.source_message_id
+        }
+
     def window_observations(self, user_id: str, now: datetime) -> list[Observation]:
-        return self.in_window(self.store.observations(user_id), now)
+        return self.in_window(self.store.observations(user_id), now, self.pending_sources(user_id))
 
     def _run_batch(self, now: datetime, user_ids: list[str] | None = None) -> BatchResult:
         self.store.expire(now)  # once per batch, before any profile is read
@@ -100,7 +119,7 @@ class NightlyStrategy(MemoryStrategy):
         if not self.store.get_settings(user_id).store_enabled:
             self.consume(user_id, loaded_ids, now, result)
             return
-        recent = self.in_window(loaded, now)[-MAX_OBSERVATIONS:]
+        recent = self.in_window(loaded, now, self.pending_sources(user_id))[-MAX_OBSERVATIONS:]
         if not recent:
             self.consume(user_id, loaded_ids, now, result)
             return
@@ -121,6 +140,8 @@ class NightlyStrategy(MemoryStrategy):
         reply = self.call_model("batch", user_id, system, user)
         result.llm_calls += 1
         data = self.parse_reply(reply.text)
+        if data is not None:
+            data = self.envelope(data, {"updates": list}, {"clear": list}, allow_extra=True)
         if data is None:  # not a validated empty answer: leave the observations pending
             result.errors += 1
             return

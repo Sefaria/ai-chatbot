@@ -8,6 +8,7 @@ quotes must be verbatim, and prompts are truncated before they are sent.
 from __future__ import annotations
 
 import contextvars
+import logging
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -16,17 +17,19 @@ from datetime import datetime, timedelta
 
 from ..jev import JevClient
 from ..llm import LLMClient, LLMResult, UsageLedger
-from ..parsing import locate_quote, parse_json_object
+from ..parsing import locate_quote, parse_json_object, validate_envelope
 from ..registry import SlotRegistry
 from ..signals import (
     cited_categories,
     detect_language,
-    find_standing_instruction,
+    find_standing_instructions,
     hebrew_ratio,
     is_sensitive,
 )
 from ..store import STALE_REVISION, ProfileStore
-from ..types import Evidence, Observation, Proposal, Turn, WriteResult
+from ..types import Evidence, InstructionVerdict, Observation, Proposal, Turn, WriteResult
+
+logger = logging.getLogger(__name__)
 
 MAX_PROMPT_CHARS = 1000
 
@@ -99,6 +102,34 @@ _current_run: contextvars.ContextVar[RunState | None] = contextvars.ContextVar(
 
 def truncate_prompt(text: str) -> str:
     return text[:MAX_PROMPT_CHARS]
+
+
+def classify_turn(
+    instructions: list[str],
+    classifier: Callable[[list[str]], list[InstructionVerdict]],
+) -> list[InstructionVerdict]:
+    """One verdict per standing instruction, `UNKNOWN` for anything that cannot be trusted.
+
+    `classifier` returns one verdict per instruction. A client error, a reply that is not a list
+    of verdicts, or a count that differs from the number of instructions makes every instruction
+    `UNKNOWN`; a single item that is not a verdict makes only that one `UNKNOWN`.
+    """
+    unknown = [InstructionVerdict.UNKNOWN] * len(instructions)
+    try:
+        verdicts = classifier(list(instructions))
+    except Exception:
+        logger.exception("instruction classification failed")
+        return unknown
+    if not isinstance(verdicts, list) or len(verdicts) != len(instructions):
+        return unknown
+    return [
+        v if isinstance(v, InstructionVerdict) else InstructionVerdict.UNKNOWN for v in verdicts
+    ]
+
+
+def is_clean(verdicts: list[InstructionVerdict]) -> bool:
+    """A turn keeps its text only when it has no instruction or every one is `SAFE_STYLE`."""
+    return all(v is InstructionVerdict.SAFE_STYLE for v in verdicts)
 
 
 class MemoryStrategy:
@@ -205,12 +236,21 @@ class MemoryStrategy:
         return None
 
     def log_observation(
-        self, turn: Turn, now: datetime, *, excluded: bool = False, consumed: bool = False
+        self,
+        turn: Turn,
+        now: datetime,
+        *,
+        excluded: bool = False,
+        consumed: bool = False,
+        quarantined: bool = False,
     ) -> WriteResult:
         """Append the turn to the ledger. `excluded` stores only a content-free marker: no text,
         no signals about the content, and it stays out of every later window, input and evidence.
-        `consumed` is for strategies that never consolidate the row later."""
-        if excluded:
+        `quarantined` stores an empty, flagged row for a turn holding a standing instruction (the
+        store hides it from reads). `consumed` is for strategies that never consolidate the row."""
+        if quarantined:
+            text, signals, consumed = "", {}, True
+        elif excluded:
             text, signals = "", {"excluded": True}
         else:
             text = turn.user_message
@@ -227,6 +267,7 @@ class MemoryStrategy:
             at=turn.at,
             signals=signals,
             consumed_at=now if consumed else None,
+            quarantined=quarantined,
         )
         return self.write(
             turn.user_id,
@@ -235,13 +276,51 @@ class MemoryStrategy:
         )
 
     def start_turn(
-        self, turn: Turn, now: datetime, *, excluded: bool = False, consumed: bool = False
+        self,
+        turn: Turn,
+        now: datetime,
+        *,
+        excluded: bool = False,
+        consumed: bool = False,
+        quarantined: bool = False,
     ) -> str | None:
         """Read the revision, then log the turn. Returns why the run ends here (`duplicate` for a
         retried message, `stale_revision`, `store_disabled`), or None to go on."""
         self.begin(turn.user_id)
-        logged = self.log_observation(turn, now, excluded=excluded, consumed=consumed)
+        logged = self.log_observation(
+            turn, now, excluded=excluded, consumed=consumed, quarantined=quarantined
+        )
         return None if logged.applied else (logged.reason or "observation_refused")
+
+    def keep_turn(self, turn: Turn) -> WriteResult:
+        """A turn whose instructions were all cleared keeps its text: lift the quarantine that
+        `start_turn` put on it."""
+        text = turn.user_message
+        signals = {
+            "language": detect_language(text),
+            "hebrew_ratio": round(hebrew_ratio(text), 3),
+            "cited_categories": cited_categories(text),
+        }
+        return self.write(
+            turn.user_id,
+            lambda expected: self.store.release_observation(
+                turn.user_id, turn.message_id, text, signals, expected
+            ),
+            kind=LEDGER,
+        )
+
+    def envelope(
+        self,
+        reply: dict | None,
+        required: dict[str, type],
+        optional: dict[str, type] | None = None,
+        **kwargs,
+    ) -> dict | None:
+        """The validated reply, or None with `invalid_envelope` counted."""
+        valid = validate_envelope(reply, required, optional, **kwargs)
+        if valid is None:
+            self.diagnostics["invalid_envelope"] += 1
+        return valid
 
     def call_model(self, phase: str, user_id: str, system: str, user: str) -> LLMResult:
         result = self.llm.complete(system=system, user=user, model=self.model)
@@ -304,7 +383,7 @@ class MemoryStrategy:
             if (
                 current.status == "inferred"
                 and evidence
-                and not any(find_standing_instruction(q) for q in quotes)
+                and not any(find_standing_instructions(q) for q in quotes)
             ):
                 self.write(user_id, set_inferred)
             return False

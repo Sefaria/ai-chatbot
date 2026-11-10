@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..signals import detect_language
+from ..signals import detect_language, find_standing_instructions
 from ..types import Turn
 from .base import BatchResult, MemoryStrategy, TurnResult, truncate_prompt, verbatim_evidence
 from .prompts import REALTIME_SYSTEM, current_profile_text, slot_definitions
@@ -23,8 +23,15 @@ class RealtimeStrategy(MemoryStrategy):
             return TurnResult(skipped_reason=reason)
         self.store.expire_user(turn.user_id, now)  # a stale slot must not reach the model
         # Nothing is consolidated later: the ledger row is a content-free marker, stored consumed.
-        if reason := self.start_turn(turn, now, excluded=True, consumed=True):
+        # A turn that holds a standing instruction is quarantined and never sent to the model: this
+        # strategy has no classifier to clear it.
+        quarantine = bool(find_standing_instructions(turn.user_message))
+        if reason := self.start_turn(
+            turn, now, excluded=True, consumed=True, quarantined=quarantine
+        ):
             return TurnResult(skipped_reason=reason)
+        if quarantine:
+            return TurnResult(skipped_reason="instruction_quarantined")
         message = truncate_prompt(turn.user_message)
         result = TurnResult()
 
@@ -46,7 +53,12 @@ class RealtimeStrategy(MemoryStrategy):
         )
         reply = self.call_model("turn", turn.user_id, system, user)
         result.llm_calls = 1
-        for update in (self.parse_reply(reply.text) or {}).get("updates") or []:
+        parsed = self.parse_reply(reply.text)
+        if parsed is not None:
+            parsed = self.envelope(parsed, {"updates": list}, allow_extra=True)
+            if parsed is None:
+                result.errors += 1
+        for update in (parsed or {}).get("updates") or []:
             if self.is_stale(turn.user_id):
                 break
             if not isinstance(update, dict):

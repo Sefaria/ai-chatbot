@@ -167,8 +167,8 @@ def test_jev_error_is_swallowed_and_counted(store, registry):
     assert result.errors == 1 and result.proposals == []
     assert result.skipped_reason == "instruction_unclassified"
     assert ledger.entries == [] and "preferred_language" not in store.get_profile("u1")
-    (marker,) = store.observations("u1")  # held back as a content-free marker, not logged as input
-    assert marker.text == "" and marker.signals == {"excluded": True}
+    (marker,) = store.observations("u1", include_quarantined=True)  # held back, not logged as input
+    assert marker.text == "" and marker.quarantined
     assert result.diagnostics["jev_error"] == 1
 
 
@@ -216,7 +216,7 @@ def test_exclude_sources_instruction_is_never_stored(store, registry):
     assert store.proposals("u1") == []
 
 
-@pytest.mark.parametrize("scores", [(0.64, 0.0), (0.5, 0.5), (0.0, 0.0)])
+@pytest.mark.parametrize("scores", [(0.64, 0.0), (0.5, 0.0), (0.0, 0.0)])
 def test_uncertain_or_unrelated_instruction_needs_settings(store, registry, scores):
     s, _, _ = strategy(store, registry, jev_with(instruction=scores))
     result = s.on_turn(make_turn("Always bring me coffee."), NOW)

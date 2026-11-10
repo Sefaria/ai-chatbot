@@ -114,10 +114,15 @@ class HttpJevClient:
 
 def _number(value: object, *, unit: bool = False) -> float | None:
     """A finite real number (a bool is not one); with `unit`, within [0, 1]. Else JevError."""
-    ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-    if not ok or (unit and not 0 <= value <= 1):
-        raise JevError("Jev response malformed")
-    return float(value)
+    try:
+        ok = (
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        )
+        if not ok or (unit and not 0 <= value <= 1):
+            raise JevError("Jev response malformed")
+        return float(value)
+    except (OverflowError, ValueError):  # an integer too large for a float
+        raise JevError("Jev response malformed") from None
 
 
 def parse_response(data: object, latency_ms: int, default_model: str) -> JevResponse:

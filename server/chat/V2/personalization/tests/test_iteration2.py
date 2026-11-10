@@ -86,8 +86,8 @@ def test_hybrid_jev_exclude_instruction_skips_inference_and_marks_the_observatio
     assert result.skipped_reason == "instruction_excludes_sources" and result.proposals == []
     assert len(jev.calls) == 1 and "message" in jev.calls[0][0]  # no slot inference
     assert store.get_profile("u1") == {}
-    (obs,) = store.observations("u1")
-    assert obs.signals["excluded"] is True
+    (obs,) = store.observations("u1", include_quarantined=True)
+    assert obs.quarantined and obs.text == ""
 
 
 def test_excluded_prompt_never_reaches_a_window_or_an_evidence_line(store, registry):
@@ -130,8 +130,8 @@ def test_hybrid_mapper_flags_excluded_instructions(store, registry):
     assert result.skipped_reason == "instruction_excludes_sources" and result.llm_calls == 1
     assert "excludes_sources" in llm.calls[0]["system"]
     assert store.get_profile("u1") == {} and store.proposals("u1") == []
-    (obs,) = store.observations("u1")
-    assert obs.signals["excluded"] is True
+    (obs,) = store.observations("u1", include_quarantined=True)
+    assert obs.quarantined and obs.text == ""
     strategy.on_turn(make_turn("Explain Berakhot", message="m2", at=day(-1)), day(-1))
     strategy.run_batch(NOW)
     assert all("Reform" not in call["user"] for call in llm.calls[1:])

@@ -3,7 +3,7 @@ import pytest
 from chat.V2.personalization.signals import (
     cited_categories,
     detect_language,
-    find_standing_instruction,
+    find_standing_instructions,
     hebrew_ratio,
     is_sensitive,
     profile_language_v1,
@@ -99,13 +99,13 @@ def test_is_sensitive_passes_ordinary_study(text):
         ("אף פעם אל תתרגם", "אף פעם אל תתרגם"),
     ],
 )
-def test_find_standing_instruction(text, expected):
-    assert find_standing_instruction(text) == expected
+def test_finds_standing_instructions(text, expected):
+    assert find_standing_instructions(text) == [expected]
 
 
 def test_find_standing_instruction_none():
-    assert find_standing_instruction("What does Rashi say here?") is None
-    assert find_standing_instruction("Is this alwaysly true") is None
+    assert find_standing_instructions("What does Rashi say here?") == []
+    assert find_standing_instructions("Is this alwaysly true") == []
 
 
 def test_cited_categories_english():

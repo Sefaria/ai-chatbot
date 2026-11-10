@@ -359,6 +359,8 @@ class ProfileObservation(models.Model):
     signals = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField()
     consumed_at = models.DateTimeField(null=True, blank=True)
+    # A turn holding a standing instruction that was not cleared as safe: the text is emptied.
+    quarantined = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -388,6 +390,8 @@ class ProfileProposal(models.Model):
     slot_key = models.CharField(max_length=64)
     value = models.JSONField()
     quote = models.TextField(blank=True, default="")
+    # The observation it came from is the row with the same (user_id, message_id).
+    source_message_id = models.CharField(max_length=100, blank=True, default="")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     created_at = models.DateTimeField()
 

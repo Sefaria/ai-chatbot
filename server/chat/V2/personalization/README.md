@@ -76,11 +76,22 @@ A strategy reads `store.revision(user_id)` once, before its first model or Jev c
 of its own applied writes carries `result.revision` forward as the next `expected_revision`. A
 `stale_revision` refusal ends that run for the user: the remaining writes are skipped and the
 observations stay pending for the next batch. Every turn starts by logging its observation (a
-content-free marker, stored consumed, for `realtime` and `explicit`; a marker for any turn holding a
-standing instruction), so a retried `messageId` ends as `duplicate` under every mode. Per-turn
+content-free marker, stored consumed, for `realtime` and `explicit`; a quarantined, empty row for any
+turn holding a standing instruction), so a retried `messageId` ends as `duplicate` under every mode. Per-turn
 counts (tokens, cost, `writes_applied`, `writes_refused`, `diagnostics`) come back on the
 `TurnResult` (and `BatchResult`); the strategy instance keeps no per-turn state, so one instance
 serves concurrent turns.
+
+Standing instructions are quarantined by default. `signals.find_standing_instructions` returns every
+instruction clause of a message (English and Hebrew; it over-matches on purpose). `hybrid` and
+`hybrid_jev` classify each one (`classify_turn`: `SAFE_STYLE`, `EXCLUSION` or `UNKNOWN`; any invalid
+reply, missing key or client error is `UNKNOWN`). Only a turn with no instruction, or with all
+`SAFE_STYLE`, keeps its text; any other turn stays a `quarantined` row with empty text, hidden from
+`store.observations()` unless `include_quarantined=True`, and creates no proposal. `realtime`,
+`nightly` and `explicit` have no classifier and quarantine every instruction turn. A proposal records
+its `source_message_id`; that observation stays out of inference windows while the proposal is
+pending, and rejecting (or replacing) the proposal quarantines it. A consolidation reply that is not
+`{"updates": [...], "clear": [...]}` is a failed call (`invalid_envelope`) and consumes nothing.
 
 Free-text values are cleaned (no control characters, `<` and `>` become
 `‹` and `›`) when validated and again when rendered. A pending

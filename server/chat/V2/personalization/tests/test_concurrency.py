@@ -146,7 +146,9 @@ Q3_TEXT = "I read Hebrew slowly"
 
 
 def test_hybrid_proposal_after_a_clear_during_the_call_is_dropped(store, registry):
-    reply = json.dumps({"slot": "answer_style", "value": "Keep answers short."})
+    reply = json.dumps(
+        {"slot": "answer_style", "value": "Keep answers short.", "excludes_sources": False}
+    )
     strategy, _, _ = make_strategy(
         "hybrid", store, registry, during_call(lambda: store.clear("u1"), reply)
     )
@@ -211,12 +213,14 @@ def test_realtime_store_disabled_during_the_call_stores_nothing(store, registry)
 
 
 def test_hybrid_store_disabled_during_the_call_stores_nothing(store, registry):
-    reply = json.dumps({"slot": "answer_style", "value": "Keep answers short."})
+    reply = json.dumps(
+        {"slot": "answer_style", "value": "Keep answers short.", "excludes_sources": False}
+    )
     strategy, _, _ = make_strategy("hybrid", store, registry, during_call(disable(store), reply))
     result = strategy.on_turn(make_turn(INSTRUCTION), NOW)
     assert result.proposals == [] and store.proposals("u1") == []
-    (marker,) = store.observations("u1")  # logged before the call, without the words
-    assert marker.text == "" and marker.signals == {"excluded": True}
+    (marker,) = store.observations("u1", include_quarantined=True)  # logged before the call
+    assert marker.text == "" and marker.quarantined
     assert result.diagnostics["store_disabled"] >= 1
 
 

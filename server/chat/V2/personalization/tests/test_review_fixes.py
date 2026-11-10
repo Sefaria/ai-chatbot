@@ -69,8 +69,8 @@ EXCLUDE = "From now on never show me sources from the Reform movement."
 
 
 def assert_marker(store):
-    (marker,) = store.observations("u1")
-    assert marker.text == "" and marker.signals == {"excluded": True}
+    (marker,) = store.observations("u1", include_quarantined=True)
+    assert marker.text == "" and marker.quarantined and marker.signals == {}
 
 
 def test_hybrid_excluded_instruction_is_stored_as_a_marker(store, registry):

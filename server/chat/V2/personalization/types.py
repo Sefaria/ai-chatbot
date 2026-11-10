@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 SlotValueType = Literal["enum", "list", "text"]
@@ -48,6 +49,16 @@ class SlotValue:
     slot_set_version: str = "v1"
 
 
+class InstructionVerdict(StrEnum):
+    """What a classifier decided about one standing instruction in a learner's message.
+
+    Only SAFE_STYLE keeps the turn's text; EXCLUSION and UNKNOWN quarantine it."""
+
+    SAFE_STYLE = "safe_style"
+    EXCLUSION = "exclusion"
+    UNKNOWN = "unknown"
+
+
 @dataclass
 class Observation:
     user_id: str
@@ -58,6 +69,7 @@ class Observation:
     signals: dict[str, Any] = field(default_factory=dict)
     consumed_at: datetime | None = None
     id: int | str | None = None  # set by the store
+    quarantined: bool = False  # holds a standing instruction not cleared as safe: text is empty
 
 
 @dataclass
@@ -69,6 +81,7 @@ class Proposal:
     quote: str
     status: ProposalStatus
     created_at: datetime
+    source_message_id: str = ""  # the observation (same user, this message id) it came from
 
 
 @dataclass

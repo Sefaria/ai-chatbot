@@ -111,18 +111,55 @@ def is_sensitive(text: str) -> bool:
     return bool(_SENSITIVE_EN.search(text) or _SENSITIVE_HE.search(text))
 
 
+# Matching too much is the accepted cost: a matched turn is classified, and one that cannot be
+# classified is only quarantined. Hebrew words may carry the one-letter "and" prefix.
 _INSTRUCTION = re.compile(
-    r"\b(from now on|always|never|going forward)\b|מעכשיו|תמיד|אף פעם", re.IGNORECASE
+    r"\b(?:from now on|always|never|going forward|no more|ignore|skip|avoid|exclude)\b"
+    r"|\bdo(?:n['’]t| not)\b"
+    r"|\bstop\s+\w+ing\b"
+    r"|\bonly\s+(?:show|use|give|include|cite)\w*"
+    r"|(?:^|[,;]\s*|\band\s+)without\b"
+    r"|(?<!\w)ו?(?:מעכשיו|תמיד|אף פעם|לעולם|תפסיקי?|תתעלמי?)(?!\w)"
+    r"|(?<!\w)ו?אל\s+(?!תוך(?!\w))ת\w+"
+    r"|(?<!\w)ו?רק\s+(?:תראי?|תשתמשי?|תציגי?|תני|תן|תביאי?|להראות|להשתמש)(?!\w)"
+    r"|(?:^|[,;]\s*|(?<!\w)ו)בלי(?!\w)",
+    re.IGNORECASE,
 )
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+_JOIN = re.compile(r"(?:\b(?:and|but|then)|[,;])\s*$", re.IGNORECASE)
+_TRAILING_JOIN = re.compile(r"\s*(?:\b(?:and|but|then)|[,;])\s*$", re.IGNORECASE)
 
 
-def find_standing_instruction(text: str) -> str | None:
-    """The first sentence that reads like a standing instruction, or None."""
+def _clauses(sentence: str) -> list[str]:
+    """Split one sentence into the instruction clauses it carries.
+
+    Two instruction phrases are two instructions when words between them end in a join ("and",
+    "but", a comma) or the second starts with the Hebrew "and" prefix; "from now on, always X" and
+    "אף פעם אל תתרגם" stay one."""
+    matches = list(_INSTRUCTION.finditer(sentence))
+    if not matches:
+        return []
+    cuts = [0]
+    for previous, match in zip(matches, matches[1:], strict=False):
+        gap = sentence[previous.end() : match.start()]
+        if re.search(r"\w", gap) and (_JOIN.search(gap) or match.group().startswith("ו")):
+            cuts.append(match.start())
+        elif match.group().startswith("ו"):
+            cuts.append(match.start())
+    cuts.append(len(sentence))
+    clauses = (
+        _TRAILING_JOIN.sub("", sentence[a:b]).strip(" ,;")
+        for a, b in zip(cuts, cuts[1:], strict=False)
+    )
+    return [clause for clause in clauses if clause]
+
+
+def find_standing_instructions(text: str) -> list[str]:
+    """Every sentence or clause of `text` that carries a standing instruction (empty when none)."""
+    found: list[str] = []
     for sentence in _SENTENCE_SPLIT.split(text):
-        if _INSTRUCTION.search(sentence):
-            return sentence.strip()
-    return None
+        found.extend(_clauses(sentence))
+    return found
 
 
 # fmt: off

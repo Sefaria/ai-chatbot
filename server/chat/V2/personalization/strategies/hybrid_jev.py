@@ -17,11 +17,11 @@ from datetime import datetime
 from ..jev import JevClient, JevError, JevQuestion, JevResponse
 from ..llm import LLMResult, estimate_cost
 from ..registry import SlotRegistry
-from ..signals import find_standing_instruction
+from ..signals import find_standing_instructions
 from ..store import ProfileStore
-from ..types import Evidence, Observation, SlotValue, Turn
+from ..types import Evidence, InstructionVerdict, Observation, SlotValue, Turn
 from . import jev_questions as q
-from .base import TurnResult, truncate_prompt, verbatim_evidence
+from .base import TurnResult, classify_turn, is_clean, verbatim_evidence
 from .hybrid import handle_propose_memory_update
 from .nightly import NightlyStrategy
 
@@ -45,32 +45,42 @@ class HybridJevStrategy(NightlyStrategy):
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
         self.store.expire_user(turn.user_id, now)
-        instruction = find_standing_instruction(truncate_prompt(turn.user_message))
-        # A turn holding a standing instruction is logged as a content-free marker: its words
-        # reach the profile only through a proposal the learner confirms.
-        if reason := self.start_turn(turn, now, excluded=instruction is not None):
+        instructions = find_standing_instructions(turn.user_message)
+        # A turn holding a standing instruction is quarantined from the start; it keeps its text
+        # only once Jev has cleared every instruction in it as a safe style preference.
+        if reason := self.start_turn(turn, now, quarantined=bool(instructions)):
             return TurnResult(skipped_reason=reason)
         result = TurnResult()
-        if instruction is not None:
-            try:
-                decision, proposal = self.judge_instruction(turn, instruction, now)
-            except JevError as exc:
-                logger.warning("Jev instruction request failed: %s", exc)
-                self.diagnostics["jev_error"] += 1
-                result.errors += 1
-                decision, proposal = "unclassified", None
-            if decision in ("excludes_sources", "unclassified"):
-                # Never stored beyond the marker. An instruction Jev could not classify is held
-                # back the same way.
+        if instructions:
+            styled: set[str] = set()
+            verdicts = classify_turn(
+                instructions, lambda items: self.judge_instructions(turn, items, styled, result)
+            )
+            if not is_clean(verdicts):
+                # Never stored beyond the quarantined row. An instruction Jev could not classify
+                # is held back the same way.
+                if InstructionVerdict.UNKNOWN in verdicts:
+                    self.diagnostics["instruction_unclassified"] += 1
                 result.skipped_reason = (
                     "instruction_excludes_sources"
-                    if decision == "excludes_sources"
+                    if InstructionVerdict.EXCLUSION in verdicts
                     else "instruction_unclassified"
                 )
                 return result
-            if proposal is not None:
-                result.proposals.append(proposal)
-            else:
+            if not self.keep_turn(turn).applied:
+                result.skipped_reason = "observation_not_kept"
+                return result
+            for instruction in instructions:
+                if instruction not in styled:
+                    continue
+                proposal = handle_propose_memory_update(
+                    self.store, self.registry, turn.user_id, "answer_style", instruction,
+                    instruction, now, source_message_id=turn.message_id,
+                    submit=lambda call: self.write(turn.user_id, call),
+                )  # fmt: skip
+                if proposal is not None:
+                    result.proposals.append(proposal)
+            if not result.proposals:
                 result.skipped_reason = "instruction_needs_settings"
         if self.is_stale(turn.user_id):
             return result
@@ -115,7 +125,7 @@ class HybridJevStrategy(NightlyStrategy):
         """Jev cannot quote, so the evidence is the first 80 characters of the most recent prompt in
         the window that is not excluded and holds no standing instruction."""
         for obs in reversed(window[-q.WINDOW_PROMPTS :]):
-            if find_standing_instruction(obs.text) is None:
+            if not find_standing_instructions(obs.text):
                 proof = verbatim_evidence(
                     obs.text.strip()[:80], obs.text, obs.session_id, obs.message_id, obs.at
                 )
@@ -172,37 +182,44 @@ class HybridJevStrategy(NightlyStrategy):
 
     # -- standing instructions ----------------------------------------------------------
 
-    def judge_instruction(self, turn: Turn, instruction: str, now: datetime):
-        """(decision, proposal): decision is 'excludes_sources', 'style' or None."""
-        answers = self.ask_jev(
-            turn.user_id, {"message": instruction}, q.instruction_questions()
-        ).answers
-
-        def score(key: str) -> float:
-            answer = answers.get(key)
-            return answer.noul if answer and answer.noul is not None else 0.0
-
-        exclude, style = score(q.EXCLUDE_KEY), score(q.STYLE_KEY)
-        if (
-            UNCERTAIN_LOW <= exclude < q.INSTRUCTION_MIN_NOUL
-            or UNCERTAIN_LOW <= style < q.INSTRUCTION_MIN_NOUL
-        ):
-            self.diagnostics["jev_uncertain"] += 1
-        if exclude >= q.INSTRUCTION_MIN_NOUL:
-            return "excludes_sources", None
-        if style >= q.INSTRUCTION_MIN_NOUL:
-            proposal = handle_propose_memory_update(
-                self.store,
-                self.registry,
-                turn.user_id,
-                "answer_style",
-                instruction,
-                instruction,
-                now,
-                submit=lambda call: self.write(turn.user_id, call),
-            )
-            return "style", proposal
-        return None, None
+    def judge_instructions(
+        self, turn: Turn, instructions: list[str], styled: set[str], result: TurnResult
+    ) -> list[InstructionVerdict]:
+        """One Jev request per instruction. Both answers must be present with a score; a missing
+        answer, an uncertain exclusion score or a Jev error is `UNKNOWN`, never a zero.
+        Instructions that are a lasting style preference go into `styled`."""
+        verdicts = []
+        for instruction in instructions:
+            try:
+                answers = self.ask_jev(
+                    turn.user_id, {"message": instruction}, q.instruction_questions()
+                ).answers
+            except JevError as exc:
+                logger.warning("Jev instruction request failed: %s", exc)
+                self.diagnostics["jev_error"] += 1
+                result.errors += 1
+                verdicts.append(InstructionVerdict.UNKNOWN)
+                continue
+            scores = [answers.get(q.EXCLUDE_KEY), answers.get(q.STYLE_KEY)]
+            if any(a is None or a.noul is None for a in scores):
+                self.diagnostics["jev_missing_answer"] += 1
+                verdicts.append(InstructionVerdict.UNKNOWN)
+                continue
+            exclude, style = scores[0].noul, scores[1].noul
+            if (
+                UNCERTAIN_LOW <= exclude < q.INSTRUCTION_MIN_NOUL
+                or UNCERTAIN_LOW <= style < q.INSTRUCTION_MIN_NOUL
+            ):
+                self.diagnostics["jev_uncertain"] += 1
+            if exclude >= q.INSTRUCTION_MIN_NOUL:
+                verdicts.append(InstructionVerdict.EXCLUSION)
+            elif exclude >= UNCERTAIN_LOW:
+                verdicts.append(InstructionVerdict.UNKNOWN)  # exclusion not ruled out
+            else:
+                verdicts.append(InstructionVerdict.SAFE_STYLE)
+                if style >= q.INSTRUCTION_MIN_NOUL:
+                    styled.add(instruction)
+        return verdicts
 
     def blocked_slots(self, user_id: str) -> set[str]:
         return {p.slot_key for p in self.store.proposals(user_id, "pending")}
