@@ -104,6 +104,11 @@ class AnthropicLLMClient:
         )
 
 
+class LLMCallError(RuntimeError):
+    """A headless model call failed. The message is a fixed phrase and an exit code at most:
+    never the command line, the prompts or the process's stderr."""
+
+
 class ClaudeCodeLLMClient:
     """Evaluation-only client: headless `claude -p` with no tools, no MCP, no settings.
 
@@ -150,9 +155,13 @@ class ClaudeCodeLLMClient:
         last_error = "no output"
         for _ in range(2):
             with tempfile.TemporaryDirectory() as cwd:
-                proc = subprocess.run(
-                    argv, capture_output=True, text=True, timeout=self.timeout, cwd=cwd, env=env
-                )
+                try:
+                    proc = subprocess.run(
+                        argv, capture_output=True, text=True, timeout=self.timeout, cwd=cwd, env=env
+                    )
+                except subprocess.TimeoutExpired:
+                    last_error = "timed out"
+                    continue
             if proc.returncode == 0:
                 data = _last_json_line(proc.stdout)
                 if data is not None and "result" in data:
@@ -168,8 +177,8 @@ class ClaudeCodeLLMClient:
                     return data["result"], raw_in, usage.get("output_tokens", 0) or 0
                 last_error = "unparsable output"
             else:
-                last_error = f"exit code {proc.returncode}: {proc.stderr[-200:]}"
-        raise RuntimeError(f"claude -p failed: {last_error}")
+                last_error = f"exit code {proc.returncode}"
+        raise LLMCallError(f"claude -p failed: {last_error}")
 
 
 def _last_json_line(stdout: str) -> dict | None:
