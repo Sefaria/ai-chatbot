@@ -9,9 +9,8 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from chat.V2.personalization.evals import run_impact_eval
 from chat.V2.personalization.jev import FakeJevClient, JevError, parse_response
-from chat.V2.personalization.llm import ClaudeCodeLLMClient, FakeLLMClient, LLMCallError
+from chat.V2.personalization.llm import ClaudeCodeLLMClient, LLMCallError
 from chat.V2.personalization.parsing import parse_json_object
 from chat.V2.personalization.render import render_profile
 from chat.V2.personalization.store import cap_evidence
@@ -303,36 +302,6 @@ def test_batch_command_fails_loudly_when_a_user_errors(settings):
         with pytest.raises(CommandError, match="2 consolidation error"):
             call_command("personalization_batch", stdout=out)
     assert "2 errors" in out.getvalue()
-
-
-# -- impact eval: saved label matches what the judge saw -------------------------------------
-
-
-def test_impact_answer_1_label_matches_the_answer_the_judge_saw_first():
-    seen = []
-
-    def judge(system, user):
-        if "Answer 1:" in user:
-            seen.append(user)
-        return json.dumps({"better": 1})
-
-    answer = FakeLLMClient(
-        lambda s, u: "PERSONALIZED text" if "<learner_profile>" in s else "BASELINE text"
-    )
-    labels = []
-    for i in range(10):
-        case = {"id": f"c{i}", "prompt": "Why?", "expect_change": True}
-        rendered = {"p": ("- Preferred language: en", ["preferred_language"])}
-        out = run_impact_eval.run_case(
-            case, {"p": {}}, rendered, "CORE", answer, FakeLLMClient(judge), "a", "j"
-        )
-        pair = out["profiles"]["p"]["pairwise"]
-        labels.append((pair["answer_1"], pair["winner"]))
-    first_seen = ["personalized" if "Answer 1:\nPERSONALIZED" in u else "baseline" for u in seen]
-    assert [label for label, _ in labels] == first_seen
-    assert {"baseline", "personalized"} == set(first_seen)  # both orders were exercised
-    # better=1 means the answer shown first won, so the winner is whatever answer_1 says.
-    assert all(label == winner for label, winner in labels)
 
 
 def test_build_prompt_neutralizes_tags_in_profile_text_from_any_caller():

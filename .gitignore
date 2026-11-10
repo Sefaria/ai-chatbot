@@ -226,3 +226,7 @@ playwright-report/
 # Prototype eval output and review rounds from PR 298 are not part of the lab
 server/chat/V2/personalization/evals/results/
 server/chat/V2/personalization/reviews/
+
+# Lab kit: run progress of synthetic datasets, and local output
+**/results/.partial/
+.lab-out/

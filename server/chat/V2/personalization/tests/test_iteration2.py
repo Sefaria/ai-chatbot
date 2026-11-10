@@ -4,7 +4,6 @@ diagnostics and tolerant quote matching."""
 import json
 from collections import Counter
 
-from chat.V2.personalization.evals import run_memory_eval
 from chat.V2.personalization.jev import FakeJevClient, JevAnswer, JevError
 from chat.V2.personalization.strategies.prompts import CONSOLIDATION_SYSTEM, REALTIME_SYSTEM
 
@@ -271,58 +270,3 @@ def test_quote_check_tolerates_quote_marks_whitespace_and_unicode_form(store, re
 
 
 # -- 5. harness ----------------------------------------------------------------------------
-
-
-def test_results_carry_diagnostics_and_the_why_table(tmp_path):
-    out = tmp_path / "d"
-    assert (
-        run_memory_eval.main(
-            ["--llm", "oracle", "--out", str(out), "--personas", "tamar-instruction,noam-stale"]
-        )
-        == 0
-    )
-    data = json.loads((out / "memory_results.json").read_text())
-    realtime = data["strategies"]["realtime"]
-    assert realtime["diagnostics"]["applied"] > 0
-    assert set(realtime["personas"]["noam-stale"]["diagnostics"]) <= set(
-        run_memory_eval.DIAGNOSTIC_KEYS
-    )
-    assert "Why updates were dropped" in (out / "memory_results.md").read_text()
-
-
-def test_runs_argument_writes_per_run_results_and_a_summary(tmp_path):
-    out = tmp_path / "r"
-    args = ["--llm", "oracle", "--runs", "2", "--out", str(out), "--personas", "rachel-anon"]
-    assert run_memory_eval.main(args) == 0
-    data = json.loads((out / "memory_results.json").read_text())
-    assert data["meta"]["runs"] == 2 and len(data["runs"]) == 2
-    assert (out / "memory_results_run1.json").exists() and (
-        out / "memory_results_run2.json"
-    ).exists()
-    stat = data["summary"]["realtime"]["slot_accuracy"]
-    assert set(stat) == {"mean", "min", "max"} and stat["min"] <= stat["mean"] <= stat["max"]
-    assert list(data["summary"]) == list(data["strategies"])
-
-
-def test_aggregate_shows_mean_and_range():
-    def fake_run(accuracy, passed):
-        return {
-            "strategies": {
-                "s": {
-                    "slot_accuracy": {"accuracy": accuracy, "per_slot": {"a": {"accuracy": accuracy}}},
-                    "checks": {"t": {"passed": passed, "total": 4}},
-                    "in_session": [{"passed": True}],
-                    "cost": dict.fromkeys(("calls_per_turn", "jev_requests_per_turn", "jev_input_tokens_per_turn", "jev_avg_latency_ms", "tokens_per_turn"), 1.0)
-                    | {"usd_per_1000_turns": {"claude-haiku-4-5": 1.0, "claude-haiku-5-5": 0.1}},
-                    "diagnostics": {"applied": 2},
-                }
-            }
-        }  # fmt: skip
-
-    summary = run_memory_eval.aggregate([fake_run(0.5, 2), fake_run(0.9, 4)])
-    s = summary["s"]
-    assert s["slot_accuracy"] == {"mean": 0.7, "min": 0.5, "max": 0.9}
-    assert s["checks_passed"] == {"mean": 3.0, "min": 2, "max": 4}
-    assert s["diagnostics"]["applied"] == 4
-    table = run_memory_eval.summary_table({"summary": summary})
-    assert "70% (50%-90%)" in table and "3 (2-4)/4" in table

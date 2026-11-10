@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from chat.V2.personalization.evals.scoring import evaluate_check, score_slot
+from chat.V2.personalization.lab.scoring import evaluate_check, score_slot
 
 
 def slot(value, status="inferred", evidence=()):
