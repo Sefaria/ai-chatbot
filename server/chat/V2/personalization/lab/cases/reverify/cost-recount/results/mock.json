@@ -1,0 +1,232 @@
+{
+ "case_sha": "5263822fb00e95e504fd1a41be3daea8cbb1ad49",
+ "cost": {
+  "calls": 69,
+  "in_tokens": 57000,
+  "out_tokens": 4200,
+  "typed_requests": 15,
+  "usd": 0.04473000000000002
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 2,
+  "name": "mock",
+  "sha256": "757f27ec67222d515a02c93d32ea5f099b0ab825a6de130b947dd530e0af2d3f"
+ },
+ "git_sha": "a1dda63c400e74213204919dcac1ad341e3a83e8",
+ "id": "reverify/cost-recount",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "overhead_tokens@total": 480,
+  "recount_gap@total": 4.907279988618973e-16,
+  "usd_per_1000_turns@explicit": 0.0,
+  "usd_per_1000_turns@explicit_h55": 0.0,
+  "usd_per_1000_turns@hybrid": 1.05,
+  "usd_per_1000_turns@hybrid_h55": 0.105,
+  "usd_per_1000_turns@hybrid_jev": 0.7920000000000001,
+  "usd_per_1000_turns@hybrid_jev_h55": 0.11699999999999999,
+  "usd_per_1000_turns@nightly": 0.9000000000000001,
+  "usd_per_1000_turns@nightly_h55": 0.09,
+  "usd_per_1000_turns@realtime": 1.5,
+  "usd_per_1000_turns@realtime_h55": 0.15,
+  "usd_vs_iter1@explicit": 0.0,
+  "usd_vs_iter1@hybrid": 0.06060606060606066,
+  "usd_vs_iter1@hybrid_jev": 0.1647058823529413,
+  "usd_vs_iter1@nightly": 0.05263157894736824,
+  "usd_vs_iter1@realtime": 0.3043478260869566
+ },
+ "model": "claude-haiku-5-5",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "realtime"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "realtime"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "nightly"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "nightly"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "explicit"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "explicit"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "total"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 2,
+   "variant": "total"
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {},
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-10T21:52:51+00:00",
+ "steps": [
+  {
+   "n_in": 5,
+   "n_out": 5,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 45,
+   "n_out": 45,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": 9,
+   "n_out": 9,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": 15,
+   "n_out": 15,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 2,
+   "n_out": 17,
+   "name": "score"
+  }
+ ]
+}

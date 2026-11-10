@@ -1,0 +1,270 @@
+{
+ "note": "Invented fixture for the mock; no real text. Per-call rows have known token counts, so every cost is known.",
+ "personas": [
+  {
+   "id": "ava",
+   "user_id": "mock:ava",
+   "trap": "fixture",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ava-s1",
+     "turns": [
+      {
+       "id": "ava-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "invented prompt ava 1",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "invented prompt ava 2",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "invented prompt ava 3",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {},
+   "checks": []
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "fixture",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "invented prompt ben 1",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "invented prompt ben 2",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {},
+   "checks": []
+  }
+ ],
+ "rows": [
+  {
+   "variant": "realtime",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "realtime",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "realtime",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "realtime",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "realtime",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "nightly",
+   "persona": "ava",
+   "step": "extract_batch",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 2000,
+   "out_tokens": 200
+  },
+  {
+   "variant": "nightly",
+   "persona": "ben",
+   "step": "extract_batch",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid",
+   "persona": "ava",
+   "step": "extract_batch",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 1000,
+   "out_tokens": 100
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "typed_questions",
+   "model": "jev-1.13.0",
+   "in_tokens": 1000,
+   "out_tokens": 0
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "typed_questions",
+   "model": "jev-1.13.0",
+   "in_tokens": 1000,
+   "out_tokens": 0
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ava",
+   "step": "typed_questions",
+   "model": "jev-1.13.0",
+   "in_tokens": 1000,
+   "out_tokens": 0
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ben",
+   "step": "typed_questions",
+   "model": "jev-1.13.0",
+   "in_tokens": 1000,
+   "out_tokens": 0
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ben",
+   "step": "extract_turn",
+   "model": "claude-haiku-4-5-20251001",
+   "in_tokens": 500,
+   "out_tokens": 50
+  },
+  {
+   "variant": "hybrid_jev",
+   "persona": "ben",
+   "step": "typed_questions",
+   "model": "jev-1.13.0",
+   "in_tokens": 1000,
+   "out_tokens": 0
+  }
+ ],
+ "ledger_usd": 0.02121,
+ "dataset_sha": "mock-sha",
+ "overhead_raw": [
+  470,
+  475,
+  480,
+  480,
+  480,
+  480,
+  480,
+  485,
+  490,
+  480
+ ]
+}

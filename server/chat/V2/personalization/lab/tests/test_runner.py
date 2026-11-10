@@ -408,3 +408,21 @@ def test_explain_lines_hook_is_printed_by_explain(tmp_path, capsys):
     )
     assert cli.main(["--cases-root", str(tmp_path), "explain", "a/x"]) == 0
     assert "hook a/x None" in capsys.readouterr().out
+
+
+def test_a_replay_pipeline_module_may_report_counts_per_variant(tmp_path):
+    seen = []
+
+    def counts(vconfig, replays, llm):
+        seen.append((vconfig["variant"], len(replays)))
+        return {"overhead_tokens": 480, "recount_gap": 0.0}
+
+    module = types.SimpleNamespace(build=strategy_pipeline, counts=counts)
+    case = mock_case(
+        tmp_path, config={"variants": ["realtime", "explicit"]},
+        metrics=["overhead_tokens@realtime", "recount_gap@explicit"],
+        keep_if=[{"metric": "overhead_tokens@realtime", "op": "<=", "value": 528}],
+    )  # fmt: skip
+    result = run(case, pipeline_module=module)
+    assert seen == [("realtime", 1), ("explicit", 1)]
+    assert result["metrics"] == {"overhead_tokens@realtime": 480, "recount_gap@explicit": 0.0}
