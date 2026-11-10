@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
@@ -30,6 +31,18 @@ class RecordingLLMClient:
     @property
     def sent_texts(self) -> list[str]:
         return [text for pair in self.sent for text in pair]
+
+
+class RecordingJevClient:
+    """Wraps a Jev client and keeps every state sent (for the privacy checks)."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.states: list[str] = []
+
+    def ask(self, state, questions):
+        self.states.append(json.dumps(state, ensure_ascii=False))
+        return self.inner.ask(state, questions)
 
 
 @dataclass
@@ -100,11 +113,19 @@ def _snapshot(
 
 
 def run_persona(
-    strategy_name: str, persona: dict, llm: LLMClient, model: str, registry: SlotRegistry
+    strategy_name: str,
+    persona: dict,
+    llm: LLMClient,
+    model: str,
+    registry: SlotRegistry,
+    jev=None,
 ) -> PersonaRun:
     store, ledger = InMemoryProfileStore(), UsageLedger()
     recorder = RecordingLLMClient(llm)
-    strategy = build_strategy(strategy_name, store, registry, recorder, ledger, model)
+    jev_recorder = RecordingJevClient(jev) if jev is not None else None
+    strategy = build_strategy(
+        strategy_name, store, registry, recorder, ledger, model, jev=jev_recorder
+    )
     run = PersonaRun(strategy_name, persona)
     user_id = persona["user_id"]
     turns = persona_turns(persona)
@@ -128,7 +149,7 @@ def run_persona(
         run.turns += 1
         if result.skipped_reason:
             run.skips[result.skipped_reason] += 1
-        if strategy_name == "hybrid":
+        if strategy_name in ("hybrid", "hybrid_jev"):
             for proposal in result.proposals:  # simulates the learner tapping "yes"
                 store.resolve_proposal(user_id, proposal.id, True, turn.at)
                 run.auto_accepted += 1
@@ -146,5 +167,5 @@ def run_persona(
         for r in recorder.results
     )
     run.observations = [o.text for o in store.observations(user_id)]
-    run.sent_texts = recorder.sent_texts
+    run.sent_texts = recorder.sent_texts + (jev_recorder.states if jev_recorder else [])
     return run

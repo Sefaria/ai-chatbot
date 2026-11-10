@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 
+from ..jev import JevAnswer
 from ..strategies.prompts import CONSOLIDATION_SYSTEM, INSTRUCTION_SYSTEM, REALTIME_SYSTEM
 
 EMPTY_REPLY = json.dumps({"updates": [], "clear": []})
@@ -77,5 +78,43 @@ def oracle_responder(persona: dict):
         if system.startswith(INSTRUCTION_SYSTEM[:60]):
             return instruction(user)
         return EMPTY_REPLY
+
+    return respond
+
+
+def fake_jev_responder(state: dict, questions: dict) -> dict:
+    """A Jev that is never sure: unclear choices and zero noul."""
+    return {
+        key: JevAnswer("choice", choice="unclear", confidence=1.0)
+        if question.type == "choice"
+        else JevAnswer("noul", noul=0.0)
+        for key, question in questions.items()
+    }
+
+
+def oracle_jev_responder(persona: dict):
+    """Answers from the golden profile (choices and categories) and from the turn tags (instructions)."""
+    golden = persona["golden"]
+    tagged = {t["user"]: t.get("tags", []) for s in persona["sessions"] for t in s["turns"]}
+    categories = golden.get("text_categories") or {}
+    wanted = set(categories.get("must_include", [])) | set(categories.get("any_include", []))
+
+    def respond(state: dict, questions: dict) -> dict:
+        tags: list[str] = []
+        if "message" in state:
+            tags = next((t for text, t in tagged.items() if state["message"] in text), [])
+        answers = {}
+        for key, question in questions.items():
+            if question.type == "choice":
+                want = (golden.get(key) or {}).get("value")
+                answers[key] = JevAnswer("choice", choice=want or "unclear", confidence=1.0)
+            elif key.startswith("category:"):
+                score = 0.95 if key.split(":", 1)[1] in wanted else 0.02
+                answers[key] = JevAnswer("noul", noul=score)
+            elif key == "asks_to_exclude_sources":
+                answers[key] = JevAnswer("noul", noul=0.97 if "must_not_store" in tags else 0.02)
+            else:
+                answers[key] = JevAnswer("noul", noul=0.95 if "instruction" in tags else 0.02)
+        return answers
 
     return respond

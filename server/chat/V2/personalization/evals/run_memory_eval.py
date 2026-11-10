@@ -13,14 +13,17 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
+from ..jev import FakeJevClient, HttpJevClient
 from ..llm import ClaudeCodeLLMClient, FakeLLMClient, estimate_cost
 from ..registry import SlotRegistry
-from .oracle import fake_responder, oracle_responder
+from ..strategies import jev_questions
+from .oracle import fake_jev_responder, fake_responder, oracle_jev_responder, oracle_responder
 from .runner import PersonaRun, run_persona
 from .scoring import VERDICTS, evaluate_check, score_slot
 
 DATA = Path(__file__).parent / "data"
-ALL_STRATEGIES = ["realtime", "nightly", "hybrid", "explicit"]
+ALL_STRATEGIES = ["realtime", "nightly", "hybrid", "hybrid_jev", "explicit"]
+JEV_MODEL = jev_questions.JEV_MODEL
 PRICE_MODELS = ["claude-haiku-4-5", "claude-haiku-5-5"]
 ASSUMPTIONS = [
     "Hybrid: every pending proposal is auto-accepted right after the turn that created it, "
@@ -29,6 +32,9 @@ ASSUMPTIONS = [
     "Explicit: the persona's interview answers are written as stated slots before the first turn.",
     "Stated events (a learner setting a slot) apply to every strategy after the named turn.",
     "Personas are synthetic; accuracy is against a golden profile written by the dataset author.",
+    "hybrid_jev: Jev requests are priced at the Jev rate in both cost scenarios; Jev never writes "
+    "free text, so answer_style and learning_habits come only from the LLM batch or an accepted "
+    "proposal. Auto-accept applies here too.",
     "Oracle runs answer with golden values on every prompt: scores show the pipeline ceiling.",
 ]
 
@@ -62,23 +68,40 @@ def _accuracy(counts: dict) -> float | None:
     return counts["correct"] / scored if scored else None
 
 
+def _is_jev(entry) -> bool:
+    return entry.model.startswith("jev")
+
+
 def _cost(runs: list[PersonaRun]) -> dict:
     entries = [e for r in runs for e in r.ledger_entries]
+    llm_entries = [e for e in entries if not _is_jev(e)]
+    jev_entries = [e for e in entries if _is_jev(e)]
     turns = sum(r.turns for r in runs) or 1
-    tokens_in = sum(e.input_tokens for e in entries)
-    tokens_out = sum(e.output_tokens for e in entries)
-    usd = {m: estimate_cost(m, tokens_in, tokens_out) for m in PRICE_MODELS}
+    tokens_in = sum(e.input_tokens for e in llm_entries)
+    tokens_out = sum(e.output_tokens for e in llm_entries)
+    jev_usd = sum(estimate_cost(e.model, e.input_tokens, e.output_tokens) for e in jev_entries)
+    usd = {m: estimate_cost(m, tokens_in, tokens_out) + jev_usd for m in PRICE_MODELS}
     return {
-        "llm_calls": len(entries),
-        "calls_hot": sum(e.phase == "turn" for e in entries),
-        "calls_batch": sum(e.phase == "batch" for e in entries),
+        "llm_calls": len(llm_entries),
+        "calls_hot": sum(e.phase == "turn" for e in llm_entries),
+        "calls_batch": sum(e.phase == "batch" for e in llm_entries),
         "input_tokens": tokens_in,
         "output_tokens": tokens_out,
         "raw_input_tokens": sum(r.raw_input_tokens for r in runs),
-        "calls_per_turn": len(entries) / turns,
+        "calls_per_turn": len(llm_entries) / turns,
         "tokens_per_turn": (tokens_in + tokens_out) / turns,
         "tokens_per_user": (tokens_in + tokens_out) / (len(runs) or 1),
-        "avg_latency_ms": sum(e.latency_ms for e in entries) / len(entries) if entries else 0,
+        "avg_latency_ms": sum(e.latency_ms for e in llm_entries) / len(llm_entries)
+        if llm_entries
+        else 0,
+        "jev_requests": len(jev_entries),
+        "jev_requests_per_turn": len(jev_entries) / turns,
+        "jev_input_tokens": sum(e.input_tokens for e in jev_entries),
+        "jev_input_tokens_per_turn": sum(e.input_tokens for e in jev_entries) / turns,
+        "jev_avg_latency_ms": sum(e.latency_ms for e in jev_entries) / len(jev_entries)
+        if jev_entries
+        else 0,
+        "jev_usd": jev_usd,
         "turns": turns,
         "usd": usd,
         "usd_per_1000_turns": {m: v / turns * 1000 for m, v in usd.items()},
@@ -131,6 +154,8 @@ def run_eval(
     model: str,
     workers: int = 4,
     claude_client: ClaudeCodeLLMClient | None = None,
+    jev_kind: str = "fake",
+    jev_client: HttpJevClient | None = None,
 ) -> dict:
     registry = SlotRegistry.load()
 
@@ -140,10 +165,20 @@ def run_eval(
         responder = oracle_responder(persona) if llm_kind == "oracle" else fake_responder
         return FakeLLMClient(responder)
 
+    def jev_for(persona):
+        if jev_kind == "http":
+            return jev_client
+        return FakeJevClient(
+            oracle_jev_responder(persona) if jev_kind == "oracle" else fake_jev_responder
+        )
+
     jobs = [(s, p) for s in strategies for p in personas]
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         runs = list(
-            pool.map(lambda j: run_persona(j[0], j[1], llm_for(j[1]), model, registry), jobs)
+            pool.map(
+                lambda j: run_persona(j[0], j[1], llm_for(j[1]), model, registry, jev_for(j[1])),
+                jobs,
+            )
         )
     by_strategy = {s: [r for r in runs if r.strategy == s] for s in strategies}
     return {
@@ -153,6 +188,9 @@ def run_eval(
             "llm": llm_kind,
             "harness_overhead_tokens": dict(claude_client.overhead) if claude_client else {},
             "slot_set_version": registry.version,
+            "jev": jev_kind,
+            "jev_model": JEV_MODEL,
+            "jev_thresholds": jev_questions.thresholds(),
             "personas": [p["id"] for p in personas],
             "assumptions": ASSUMPTIONS,
         },
@@ -166,9 +204,10 @@ def _pct(value: float | None) -> str:
 
 def summary_table(results: dict) -> str:
     rows = [
-        "| strategy | slot accuracy | checks passed | in-session | calls/turn | tokens/turn "
+        "| strategy | slot accuracy | checks passed | in-session | model calls/turn "
+        "| Jev requests/turn | Jev input tokens/turn | Jev avg latency ms | model tokens/turn "
         "| $/1k turns (haiku-4-5) | $/1k turns (haiku-5-5) |",
-        "|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for name, s in results["strategies"].items():
         passed = sum(c["passed"] for c in s["checks"].values())
@@ -179,8 +218,9 @@ def summary_table(results: dict) -> str:
         rows.append(
             f"| {name} | {_pct(s['slot_accuracy']['accuracy'])} | {passed}/{total} "
             f"| {ins}/{len(s['in_session'])} | {cost['calls_per_turn']:.2f} "
-            f"| {cost['tokens_per_turn']:.0f} | ${per_1k['claude-haiku-4-5']:.3f} "
-            f"| ${per_1k['claude-haiku-5-5']:.3f} |"
+            f"| {cost['jev_requests_per_turn']:.2f} | {cost['jev_input_tokens_per_turn']:.0f} "
+            f"| {cost['jev_avg_latency_ms']:.0f} | {cost['tokens_per_turn']:.0f} "
+            f"| ${per_1k['claude-haiku-4-5']:.3f} | ${per_1k['claude-haiku-5-5']:.3f} |"
         )
     return "\n".join(rows)
 
@@ -236,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm", choices=["fake", "oracle", "claude-code"], default="fake")
     parser.add_argument("--model", default="claude-haiku-4-5-20251001")
     parser.add_argument("--personas", default="")
+    parser.add_argument("--jev", choices=["fake", "oracle", "http"], default=None)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
@@ -244,6 +285,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.llm == "claude-code":
         client = ClaudeCodeLLMClient()
         client.calibrate(args.model)
+    jev_kind = args.jev or {"fake": "fake", "oracle": "oracle", "claude-code": "http"}[args.llm]
+    jev_client = HttpJevClient(allow_keychain=True) if jev_kind == "http" else None
     results = run_eval(
         args.strategies.split(","),
         load_personas([p for p in args.personas.split(",") if p]),
@@ -251,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         args.model,
         args.workers,
         client,
+        jev_kind,
+        jev_client,
     )
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

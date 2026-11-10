@@ -120,7 +120,7 @@ def test_sensitive_turns_do_not_reach_the_recorded_model_texts():
 def test_memory_eval_fake_end_to_end(tmp_path):
     assert run_memory_eval.main(["--llm", "fake", "--out", str(tmp_path)]) == 0
     data = json.loads((tmp_path / "memory_results.json").read_text())
-    assert list(data["strategies"]) == ["realtime", "nightly", "hybrid", "explicit"]
+    assert list(data["strategies"]) == ["realtime", "nightly", "hybrid", "hybrid_jev", "explicit"]
     assert data["meta"]["llm"] == "fake" and data["meta"]["assumptions"]
     assert data["strategies"]["realtime"]["cost"]["usd"].keys() == {
         "claude-haiku-4-5",
@@ -189,3 +189,34 @@ def test_impact_pairwise_order_is_seeded_and_blind():
     assert {"baseline", "personalized"} == set(
         order(run_impact_eval.run_impact("fake", "a", "j", 1, 12))
     )
+
+
+def test_memory_eval_five_strategies_and_jev_numbers(tmp_path):
+    assert run_memory_eval.main(["--llm", "oracle", "--out", str(tmp_path)]) == 0
+    data = json.loads((tmp_path / "memory_results.json").read_text())
+    assert list(data["strategies"]) == ["realtime", "nightly", "hybrid", "hybrid_jev", "explicit"]
+    assert (
+        data["meta"]["jev_model"] == "jev-1.13.0"
+        and "CATEGORY_MIN_NOUL" in data["meta"]["jev_thresholds"]
+    )
+    jev = data["strategies"]["hybrid_jev"]
+    assert jev["slot_accuracy"]["accuracy"] >= 0.9 and jev["cost"]["jev_requests"] > 0
+    assert jev["cost"]["usd"]["claude-haiku-4-5"] >= jev["cost"]["jev_usd"] > 0
+    assert data["strategies"]["realtime"]["cost"]["jev_requests"] == 0
+    assert "Jev requests/turn" in (tmp_path / "memory_results.md").read_text()
+
+
+def test_jev_states_are_recorded_for_never_stored_scope_all():
+    from chat.V2.personalization.evals.run_memory_eval import load_personas
+    from chat.V2.personalization.jev import FakeJevClient
+    from chat.V2.personalization.registry import SlotRegistry
+
+    p = load_personas(["yossi-sensitive"])[0]
+    p["sessions"][0]["turns"][0]["user"] = "Zehirut in Mesillat Yesharim, said Noa"
+    jev = FakeJevClient(lambda state, questions: {})
+    result = run_persona(
+        "hybrid_jev", p, FakeLLMClient(lambda s, u: "{}"), "m", SlotRegistry.load(), jev
+    )
+    check = {"type": "never_stored", "phrases": ["Noa"], "scope": "all"}
+    assert not evaluate_check(check, result)["passed"]
+    assert any("Noa" in text for text in result.sent_texts)
