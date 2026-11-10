@@ -433,3 +433,93 @@ def test_visit_blocked_when_fields_unmapped(tmp_path):
     row0 = items(mapped, "anon-visit")[0]
     assert row0["site"] == "en" and row0["browser_lang"] == "en" and row0["country"] == "US"
     assert "text" in row0 and "blocked" not in read_meta(mapped, "anon-visit")
+
+
+def _rows_named(n=4):
+    return [
+        row("learner-7", i, f"Question {i} about Rashi on Genesis", f"Answer {i} about Genesis")
+        for i in range(n)
+    ]
+
+
+def test_name_pass_retries_then_succeeds():
+    from chat.V2.personalization.lab.real.scrub import scrub_names
+
+    replies = iter(["not json", '{"spans": ["Dana Cohen"', '{"spans": ["Dana Cohen"]}'])
+    llm = FakeLLMClient(lambda system, user: next(replies))
+    text, count, ok = scrub_names("Dana Cohen asked", llm)
+    assert (text, count, ok) == ("[name] asked", 1, True)
+    assert len(llm.calls) == 3
+
+    boom = {"n": 0}
+
+    def flaky(system, user):
+        boom["n"] += 1
+        if boom["n"] < 3:
+            raise TimeoutError("slow")
+        return '{"spans": []}'
+
+    _, _, ok = scrub_names("hello", FakeLLMClient(flaky))
+    assert ok is True and boom["n"] == 3
+
+
+def test_name_pass_gives_up_after_three_attempts():
+    from chat.V2.personalization.lab.real.scrub import scrub_names
+
+    llm = FakeLLMClient(lambda system, user: "garbage")
+    text, count, ok = scrub_names("Dana Cohen asked", llm)
+    assert (text, count, ok) == ("Dana Cohen asked", 0, False)
+    assert len(llm.calls) == 3
+
+    def boom(system, user):
+        raise RuntimeError("down")
+
+    llm2 = FakeLLMClient(boom)
+    assert scrub_names("x", llm2)[2] is False
+    assert len(llm2.calls) == 3
+
+
+def test_name_pass_failures_counted_in_summary(tmp_path):
+    def respond(system, user):
+        return "garbage" if "Question 1 " in user else '{"spans": []}'
+
+    out = go(tmp_path, _rows_named(), llm=FakeLLMClient(respond))
+    # one user text fails; its assistant text is separate and succeeds
+    for name in ("anon-personas", "anon-vocab", "anon-visit", "anon-impact"):
+        summary = read_summary(out, name)
+        assert summary["name_pass_failures"] == 1
+        assert isinstance(summary["name_pass_failures"], int)
+        assert read_meta(out, name)["anonymized"] is False
+
+    clean = go(tmp_path, _rows_named(), out=tmp_path / "out2")
+    assert read_summary(clean, "anon-personas")["name_pass_failures"] == 0
+    assert read_meta(clean, "anon-personas")["anonymized"] is True
+
+
+def test_empty_dataset_not_anonymized(tmp_path):
+    out = go(tmp_path, [])
+    for name in ("anon-personas", "anon-vocab", "anon-visit", "anon-impact"):
+        assert read_summary(out, name)["name_pass_failures"] == 0
+        assert read_meta(out, name)["anonymized"] is False
+
+
+def test_workers_output_matches_serial(tmp_path):
+    def respond(system, user):
+        return '{"spans": ["Dana"]}' if "Dana" in user else '{"spans": []}'
+
+    rows = []
+    for u in ("a", "b", "c"):
+        rows += [
+            row(u, i, f"Dana {u}{i} asks about Genesis", f"Answer {u}{i}", conversation=f"c-{u}")
+            for i in range(4)
+        ]
+    serial = go(tmp_path, rows, llm=FakeLLMClient(respond), out=tmp_path / "s", workers=1)
+    parallel = go(tmp_path, rows, llm=FakeLLMClient(respond), out=tmp_path / "p", workers=8)
+    for name in ("anon-vocab", "anon-visit", "anon-impact"):
+        assert items(serial, name) == items(parallel, name)
+
+    def strip(persona_rows):
+        return [[(t["at"], t["user"], t["assistant"]) for t in turns_of(p)] for p in persona_rows]
+
+    assert strip(personas(serial)) == strip(personas(parallel))
+    assert read_summary(serial, "anon-personas") == read_summary(parallel, "anon-personas")

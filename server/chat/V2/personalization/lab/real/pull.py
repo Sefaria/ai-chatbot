@@ -9,6 +9,7 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -206,6 +207,7 @@ def run(
     llm: LLMClient | None = None,
     screen: SensitiveScreen | None = None,
     model: str = scrub.DEFAULT_SCRUB_MODEL,
+    workers: int = 4,
     **_unused: Any,
 ) -> dict[str, dict[str, Any]]:
     """Run the anonymized real-data pull and write the four datasets under `out`."""
@@ -291,7 +293,7 @@ def run(
     # Pass 4: pseudonymize and scrub every kept turn once.
     pseudonyms = scrub.Pseudonymizer()
     scrub_hits: Counter[str] = Counter({"email": 0, "phone": 0, "url": 0, "number": 0, "name": 0})
-    name_pass_failed = False
+    name_pass_failures = 0
 
     personas_rows: list[dict[str, Any]] = []
     vocab_rows: list[dict[str, Any]] = []
@@ -303,6 +305,28 @@ def run(
     short_replies = 0
     total_kept_turns = 0
 
+    # Deterministic scrub first, then the name pass over every text (parallel; order preserved).
+    clean_texts: list[str] = []
+    for _, turns in kept_users:
+        for turn in turns:
+            user_clean, u_hits = scrub.scrub_text(turn["user"])
+            assistant_clean, a_hits = scrub.scrub_text(turn["assistant"])
+            for k in ("email", "phone", "url", "number"):
+                scrub_hits[k] += u_hits.get(k, 0) + a_hits.get(k, 0)
+            clean_texts.append(user_clean)
+            clean_texts.append(assistant_clean)
+
+    def name_pass(text: str) -> tuple[str, int, bool]:
+        return scrub.scrub_names(text, llm_client, model=model)
+
+    if workers > 1 and len(clean_texts) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            named_results = list(pool.map(name_pass, clean_texts))
+    else:
+        named_results = [name_pass(t) for t in clean_texts]
+    name_pass_failures = sum(1 for _, _, ok in named_results if not ok)
+    text_idx = 0
+
     for uid, turns in kept_users:
         pseudo_uid = pseudonyms.user_id(uid)
         sessions_by_id: dict[str, list[dict[str, Any]]] = {}
@@ -312,18 +336,10 @@ def run(
             total_kept_turns += 1
             prompt_counter += 1
 
-            user_clean, u_hits = scrub.scrub_text(turn["user"])
-            assistant_clean, a_hits = scrub.scrub_text(turn["assistant"])
-            for k in ("email", "phone", "url", "number"):
-                scrub_hits[k] += u_hits.get(k, 0) + a_hits.get(k, 0)
-
-            user_named, u_names, u_ok = scrub.scrub_names(user_clean, llm_client, model=model)
-            assistant_named, a_names, a_ok = scrub.scrub_names(
-                assistant_clean, llm_client, model=model
-            )
+            user_named, u_names, _ = named_results[text_idx]
+            assistant_named, a_names, _ = named_results[text_idx + 1]
+            text_idx += 2
             scrub_hits["name"] += u_names + a_names
-            if not (u_ok and a_ok):
-                name_pass_failed = True
 
             if _HEBREW_RE.search(user_named):
                 hebrew_prompts += 1
@@ -395,6 +411,7 @@ def run(
             "unreadable_dropped": unreadable_dropped,
             "scrub_hits": dict(scrub_hits),
             "residual_hits": res_hits,
+            "name_pass_failures": name_pass_failures,
         }
 
     unmapped_visit = [
@@ -409,14 +426,18 @@ def run(
             "users.jsonl",
             personas_rows,
             persona_residual,
-            {"anonymized": persona_residual == 0 and not name_pass_failed},
+            {
+                "anonymized": persona_residual == 0
+                and name_pass_failures == 0
+                and bool(personas_rows)
+            },
         ),
         (
             "anon-vocab",
             "items.jsonl",
             vocab_rows,
             prompt_residual,
-            {"anonymized": prompt_residual == 0 and not name_pass_failed},
+            {"anonymized": prompt_residual == 0 and name_pass_failures == 0 and bool(vocab_rows)},
         ),
         (
             "anon-visit",
@@ -424,7 +445,7 @@ def run(
             visit_rows,
             prompt_residual,
             {
-                "anonymized": prompt_residual == 0 and not name_pass_failed,
+                "anonymized": prompt_residual == 0 and name_pass_failures == 0 and bool(visit_rows),
                 **(
                     {"blocked": f"unmapped fields: {', '.join(unmapped_visit)}"}
                     if unmapped_visit
@@ -437,7 +458,7 @@ def run(
             "items.jsonl",
             impact_rows,
             prompt_residual,
-            {"anonymized": prompt_residual == 0 and not name_pass_failed},
+            {"anonymized": prompt_residual == 0 and name_pass_failures == 0 and bool(impact_rows)},
         ),
     ]
 
@@ -462,6 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-users", type=int, default=200)
     parser.add_argument("--out", default=os.environ.get("LA_LAB_DATA_DIR", ""))
     parser.add_argument("--model", default=scrub.DEFAULT_SCRUB_MODEL)
+    parser.add_argument("--workers", type=int, default=4)
     return parser
 
 
@@ -480,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
             target_users=args.target_users,
             out=args.out,
             model=args.model,
+            workers=args.workers,
         )
     except (PullError, OSError, json.JSONDecodeError) as error:
         print(f"PullError: {error}", file=sys.stderr)

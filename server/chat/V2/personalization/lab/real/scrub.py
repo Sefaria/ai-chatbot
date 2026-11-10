@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from ...llm import LLMClient
 
 DEFAULT_SCRUB_MODEL = "claude-haiku-4-5-20251001"
+NAME_PASS_ATTEMPTS = 3
+NAME_PASS_MAX_TOKENS = 1000
 
 NAME_SYSTEM_PROMPT = (
     "You are an anonymization filter for Jewish-texts study conversations. "
@@ -78,23 +80,27 @@ def scrub_names(
 ) -> tuple[str, int, bool]:
     """Identify private person names via `llm` and replace each span with `[name]`.
 
-    Returns `(scrubbed_text, replacement_count, ok)`. A malformed LLM reply sets `ok=False`.
+    Returns `(scrubbed_text, replacement_count, ok)`. An exception or malformed reply is retried (3 attempts in all) before `ok=False`.
     """
-    try:
-        response = llm.complete(
-            system=NAME_SYSTEM_PROMPT,
-            user=text,
-            model=model,
-            max_tokens=300,
-        )
-    except Exception:
-        return text, 0, False
-
-    parsed = parse_json_object(response.text)
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("spans"), list):
-        return text, 0, False
-    spans = parsed["spans"]
-    if any(not isinstance(span, str) for span in spans):
+    spans: list[str] | None = None
+    for _ in range(NAME_PASS_ATTEMPTS):
+        try:
+            response = llm.complete(
+                system=NAME_SYSTEM_PROMPT,
+                user=text,
+                model=model,
+                max_tokens=NAME_PASS_MAX_TOKENS,
+            )
+        except Exception:
+            continue
+        parsed = parse_json_object(response.text)
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("spans"), list):
+            continue
+        if any(not isinstance(span, str) for span in parsed["spans"]):
+            continue
+        spans = parsed["spans"]
+        break
+    if spans is None:
         return text, 0, False
 
     out = text

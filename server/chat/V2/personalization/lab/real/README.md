@@ -38,8 +38,12 @@ python -m chat.V2.personalization.lab.real.pull \
   --min-turns 4 \
   --max-turns 8 \
   --target-users 200 \
+  --workers 4 \
   --out "$LA_LAB_DATA_DIR"
 ```
+
+`--workers N` (default 4) runs the name pass over all texts in a thread pool; output order and
+contents are the same as `--workers 1`.
 
 The export is a JSON list of rows, or an object `{"data": [rows]}`.
 
@@ -55,7 +59,7 @@ Under `--out`:
 - `anon-visit/items.jsonl` — the same, plus `site`, `browser_lang`, and `country` when those paths are mapped
 
 Each directory also gets `summary.json` (counts and shares only), `meta.json`
-(`anonymized` true only when the residual scan finds nothing and every name-pass call parsed),
+(`anonymized` true only when the residual scan finds nothing, `name_pass_failures` is 0, and the dataset has at least one row),
 and `sha256` over those files.
 
 ## Scrub
@@ -64,12 +68,13 @@ On user and assistant text, in order: email addresses become `[email]`, URLs tha
 string become `[url]`, phone numbers become `[phone]`, digit runs of 6 or more become `[number]`.
 A headless Claude pass (`ClaudeCodeLLMClient`, which already uses `claude -p --no-session-persistence`)
 returns exact spans that are names of private persons. Those spans become `[name]`. Rabbis,
-biblical and historical figures, authors, and book titles are not requested. A reply that is not
-a JSON list of exact spans counts as a failure for that text; the deterministically scrubbed text
+biblical and historical figures, authors, and book titles are not requested. A call that raises or returns a reply that is not
+a JSON list of exact spans is retried up to 2 more times (3 attempts, `max_tokens` 1000); if all
+fail it counts as a failure for that text, tallied as `name_pass_failures` in every `summary.json`; the deterministically scrubbed text
 is still kept.
 
 The residual scan runs those same four patterns over the scrubbed user and assistant text.
-`meta.json` sets `"anonymized": true` only when that count is 0 and no name-pass call failed.
+`meta.json` sets `"anonymized": true` only when that count is 0, no name-pass text failed, and the dataset is not empty.
 
 ## Known limits
 
