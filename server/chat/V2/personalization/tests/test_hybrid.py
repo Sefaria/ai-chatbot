@@ -117,7 +117,7 @@ def test_propose_tool_schema_has_the_tool_schemas_shape(registry):
     assert schema["properties"]["slot"]["enum"] == [s.key for s in registry.all()]
     from chat.V2.agent.tool_schemas import ALL_TOOLS
 
-    assert "propose_memory_update" not in {t["name"] for t in ALL_TOOLS}
+    assert "propose_memory_update" not in ALL_TOOLS
 
 
 def test_handle_propose_memory_update_validates_and_dedupes(store, registry):
