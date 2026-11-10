@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from ..signals import find_standing_instructions
+from ..signals import KeywordSensitiveScreen, find_standing_instructions, value_is_sensitive
 from ..types import Turn
 from .base import BatchResult, MemoryStrategy, TurnResult
 
 
 class ExplicitStrategy(MemoryStrategy):
     name = "explicit"
+    screen = KeywordSensitiveScreen()
 
     def _on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
@@ -34,6 +35,8 @@ class ExplicitStrategy(MemoryStrategy):
         written = []
         for key, answer in answers.items():
             value = self.registry.validate(key, answer)
-            if value is not None and self.store.set_stated(user_id, key, value, now).applied:
+            if value is None or value_is_sensitive(self.screen, value):
+                continue
+            if self.store.set_stated(user_id, key, value, now).applied:
                 written.append(key)
         return written

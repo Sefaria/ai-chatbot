@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from django.conf import settings
 
 from .registry import SlotRegistry
 from .render import render_profile
+from .signals import KeywordSensitiveScreen, SensitiveScreen, value_is_sensitive
 from .store import ProfileStore
 from .strategies.base import MemoryStrategy, TurnResult
-from .types import Turn
+from .types import Turn, Value, WriteResult
 
 
 class PersonalizationService:
@@ -20,11 +22,13 @@ class PersonalizationService:
         registry: SlotRegistry,
         strategy: MemoryStrategy | None,
         mode: str | None = None,
+        screen: SensitiveScreen | None = None,
     ):
         self.store = store
         self.registry = registry
         self.strategy = strategy
         self._mode = mode
+        self.screen = screen or KeywordSensitiveScreen()
 
     @property
     def mode(self) -> str:
@@ -46,3 +50,21 @@ class PersonalizationService:
         if self.mode == "off" or self.strategy is None or not turn.user_id:
             return None
         return self.strategy.on_turn(turn, now)
+
+    def set_stated(self, user_id: str, slot: str, value: Value, now: datetime) -> WriteResult:
+        """The one way to write a stated value from outside the store (the profile API included).
+
+        A sensitive free-text value is refused with reason `sensitive` before the store is
+        touched; the store itself still checks consent and stated-wins."""
+        if value_is_sensitive(self.screen, value):
+            return WriteResult(False, "sensitive", self.store.revision(user_id))
+        return self.store.set_stated(user_id, slot, value, now)
+
+    def apply_interview(self, user_id: str, answers: dict[str, Any], now: datetime) -> list[str]:
+        """Validate each answer, screen it, and store it as stated. Returns the slots written."""
+        written = []
+        for key, answer in answers.items():
+            value = self.registry.validate(key, answer)
+            if value is not None and self.set_stated(user_id, key, value, now).applied:
+                written.append(key)
+        return written

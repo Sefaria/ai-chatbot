@@ -289,6 +289,7 @@ def test_plain_nested_objects_still_found_after_prose():
 # -- batch command ----------------------------------------------------------------------------
 
 
+@pytest.mark.django_db
 def test_batch_command_fails_loudly_when_a_user_errors(settings):
     from chat.V2.personalization.strategies.base import BatchResult
 

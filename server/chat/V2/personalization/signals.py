@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import Protocol
 
 _HEBREW = re.compile(r"[֐-׿]")
 _LATIN = re.compile(r"[A-Za-z]")
@@ -109,6 +110,30 @@ _SENSITIVE_HE = re.compile(
 def is_sensitive(text: str) -> bool:
     """True when the text touches mourning, illness, conversion or personal halakhic status."""
     return bool(_SENSITIVE_EN.search(text) or _SENSITIVE_HE.search(text))
+
+
+class SensitiveScreen(Protocol):
+    """Decides whether a free-text value may be stored. The service takes one, so a better
+    screen can be plugged in. (A guardrail-based screen needs a change to the guardrail itself:
+    `GuardrailResult` carries only `allowed` and `reason`.)"""
+
+    def is_sensitive(self, text: str) -> bool: ...
+
+
+class KeywordSensitiveScreen:
+    """The only implementation: the prototype keyword lists above."""
+
+    def is_sensitive(self, text: str) -> bool:
+        return is_sensitive(text)
+
+
+def value_is_sensitive(screen: SensitiveScreen, value: object) -> bool:
+    """True when any free-text part of a slot value is sensitive."""
+    if isinstance(value, str):
+        return screen.is_sensitive(value)
+    if isinstance(value, list):
+        return any(value_is_sensitive(screen, item) for item in value)
+    return False
 
 
 # Matching too much is the accepted cost: a matched turn is classified, and one that cannot be

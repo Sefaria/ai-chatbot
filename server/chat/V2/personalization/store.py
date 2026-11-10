@@ -75,8 +75,13 @@ class ProfileStore(Protocol):
         self, observation: Observation, expected_revision: int | None = None
     ) -> WriteResult: ...
     def observations(
-        self, user_id: str, since: datetime | None = None, include_quarantined: bool = False
+        self,
+        user_id: str,
+        since: datetime | None = None,
+        include_quarantined: bool = False,
+        limit: int | None = None,
     ) -> list[Observation]: ...
+    def purge_observations(self, older_than: datetime) -> int: ...
     def release_observation(
         self,
         user_id: str,
@@ -148,7 +153,10 @@ def _refusal(
 
 
 def _winner(source: SlotValue, target: SlotValue) -> SlotValue:
-    """Merge rule for `move`: the target's stated slot wins, otherwise the newer value."""
+    """Merge rule for `move`: a stated value on either side beats any inferred value; between
+    two stated values the target's wins; between two inferred values the newer wins."""
+    if (source.status == "stated") != (target.status == "stated"):
+        return source if source.status == "stated" else target
     if target.status == "stated":
         return target
     return source if source.updated_at > target.updated_at else target
@@ -252,20 +260,32 @@ class InMemoryProfileStore:
         with self._data:
             return self._revisions.get(user_id, 0)
 
-    def observations(self, user_id, since=None, include_quarantined=False):
+    def observations(self, user_id, since=None, include_quarantined=False, limit=None):
+        """Oldest first; with `limit`, the newest `limit` rows (still returned oldest first)."""
         with self._data:
             rows = self._observations.get(user_id, [])
-            return copy.deepcopy(
-                sorted(
-                    (
-                        o
-                        for o in rows
-                        if (since is None or o.at >= since)
-                        and (include_quarantined or not o.quarantined)
-                    ),
-                    key=lambda o: o.at,
-                )
+            kept = sorted(
+                (
+                    o
+                    for o in rows
+                    if (since is None or o.at >= since)
+                    and (include_quarantined or not o.quarantined)
+                ),
+                key=lambda o: o.at,
             )
+            if limit is not None:
+                kept = kept[max(len(kept) - limit, 0) :] if limit > 0 else []
+            return copy.deepcopy(kept)
+
+    def purge_observations(self, older_than):
+        """Delete every user's observations older than `older_than`; returns how many."""
+        with self._data:
+            deleted = 0
+            for user_id, rows in self._observations.items():
+                kept = [o for o in rows if o.at >= older_than]
+                deleted += len(rows) - len(kept)
+                self._observations[user_id] = kept
+            return deleted
 
     def users_with_pending(self):
         with self._data:
@@ -638,7 +658,8 @@ class DjangoProfileStore:
             or 0
         )
 
-    def observations(self, user_id, since=None, include_quarantined=False):
+    def observations(self, user_id, since=None, include_quarantined=False, limit=None):
+        """Oldest first; with `limit`, the newest `limit` rows (still returned oldest first)."""
         from chat.models import ProfileObservation
 
         rows = ProfileObservation.objects.filter(user_id=user_id)
@@ -646,7 +667,17 @@ class DjangoProfileStore:
             rows = rows.filter(quarantined=False)
         if since is not None:
             rows = rows.filter(created_at__gte=since)
-        return [_observation_from_row(r) for r in rows.order_by("created_at", "id")]
+        if limit is None:
+            return [_observation_from_row(r) for r in rows.order_by("created_at", "id")]
+        newest = rows.order_by("-created_at", "-id")[: max(limit, 0)]
+        return [_observation_from_row(r) for r in reversed(list(newest))]
+
+    def purge_observations(self, older_than):
+        """Delete every user's observations older than `older_than` in one statement."""
+        from chat.models import ProfileObservation
+
+        deleted, _ = ProfileObservation.objects.filter(created_at__lt=older_than).delete()
+        return deleted
 
     def users_with_pending(self):
         from chat.models import ProfileObservation
