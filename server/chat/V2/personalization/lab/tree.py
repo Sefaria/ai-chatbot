@@ -38,7 +38,7 @@ def _show_json(repo, ref: str, path: str):
 
 def _case_sha(repo, ref: str, rel: str) -> str:
     """The lab's case hash (guard.case_sha) of a case directory on `ref`, without `results/`."""
-    out = _git(repo, "ls-tree", "-r", "-z", ref, "--", rel)
+    out = _git(repo, "ls-tree", "-r", "-z", "--full-tree", ref, "--", rel)
     if not out:
         return ""
     root: dict = {}
