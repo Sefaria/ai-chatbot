@@ -292,6 +292,10 @@ def cmd_explain(args, root) -> int:
                 f"{name} (dataset {result['dataset']['name']}): "
                 + json.dumps(result["metrics"], sort_keys=True)
             )
+    if (Path(case.dir) / "pipeline.py").is_file():
+        hook = getattr(runner.load_pipeline(case.dir), "explain_lines", None)
+        for line in hook(case, lambda name: results.read(case.dir, name)) if hook else []:
+            print(line)
     final = results.read(case.dir, "verdict.json")
     if final:
         print(f"Verdict: {final['verdict']}" + (f" ({final['note']})" if final.get("note") else ""))

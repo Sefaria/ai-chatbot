@@ -3,6 +3,8 @@
 The case's `pipeline.py` is loaded from its directory. Its entry point depends on `case.task`:
 `replay` -> `build(config, llm, typed=None) -> Pipeline`; `label` -> `predict(item, config, llm)`.
 Optional hooks for `LAB run --mock`: `mock_llm()`, `mock_typed()`, `mock_items()`.
+Optional hook for every run: `select_items(items, config, dataset) -> items`, a reproducible
+subset of a dataset (for example a seeded sample), applied before the items are replayed.
 """
 
 from __future__ import annotations
@@ -203,7 +205,11 @@ def run_case(
     module = pipeline_module or (load_pipeline(case_dir) if case_dir else None)
     config = {**case.config}
     model = config.get("model", DEFAULT_MODEL)
-    items = list(dataset.items if items is None else items)
+    if items is None:
+        items = list(dataset.items)
+        if module is not None and hasattr(module, "select_items"):
+            items = list(module.select_items(items, config, dataset))
+    items = list(items)
     variants: list[str | None] = list(config.get("variants") or [None])
     part = results_mod.partial_dir(case.id, case_dir, real) if (case_dir or real) else None
 

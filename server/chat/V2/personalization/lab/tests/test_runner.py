@@ -385,3 +385,26 @@ def test_live_run_without_case_dir_refused():
     case = dataclasses.replace(load_case(write_case(Path(tempfile.mkdtemp()))), dir="")
     with pytest.raises(RunnerError, match="case_dir|case dir"):
         run(case, kind="live", run_no=1)
+
+
+def test_select_items_hook_picks_the_replayed_items(tmp_path):
+    case = mock_case(tmp_path, metrics=["slot_accuracy"])
+    module = types.SimpleNamespace(
+        build=strategy_pipeline, select_items=lambda items, config, dataset: items[:1]
+    )
+    first, second = persona(), {**persona(), "id": "other", "user_id": "anon:other"}
+    dataset = Dataset("fixture", "synthetic", "sha", [first, second])
+    result = run(case, dataset, pipeline_module=module)
+    assert result["dataset"]["n"] == 1
+    assert len(result["per_item"]) == 1
+
+
+def test_explain_lines_hook_is_printed_by_explain(tmp_path, capsys):
+    directory = write_case(tmp_path, metrics=["slot_accuracy"])
+    (directory / "pipeline.py").write_text(
+        "from chat.V2.personalization.lab.replay import strategy_pipeline as build\n"
+        "def explain_lines(case, read):\n    return [f'hook {case.id} {read(\"mock.json\")}']\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["--cases-root", str(tmp_path), "explain", "a/x"]) == 0
+    assert "hook a/x None" in capsys.readouterr().out
