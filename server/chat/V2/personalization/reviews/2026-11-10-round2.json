@@ -1,0 +1,122 @@
+{
+  "verdict": "NEEDS_CHANGES",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 564,
+      "rule": "Code Review for AI Agents, Rules 11.4 and 11.9 (p. 12): consistent lock order and transactional writes.",
+      "fix": "Acquire the user's settings lock before locking a proposal. Currently clear() can delete slots, then wait for a proposal locked by resolve_proposal(); the resolver can insert a stated slot before clear finishes, leaving memory behind after deletion. With an existing slot, the opposite proposal/slot lock order can deadlock instead. Coordinate all stated writes with the same user lock."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 39,
+      "rule": "Code Review for AI Agents, Rules 11.2 and 11.10 (p. 12): atomic checks and read-modify-write protection.",
+      "fix": "Capture the user's generation before processing the turn and pass it to log_observation(). NightlyStrategy currently passes no generation, so clear() or move() between the initial checks and observation insertion cannot invalidate the write. Reproduced an old prompt being inserted immediately after clear()."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/strategies/hybrid.py",
+      "line": 134,
+      "rule": "Code Review for AI Agents, Rule 8.10 (p. 9): enforce postconditions.",
+      "fix": "Keep proposal instructions out of inference windows unless their use has been authorized, including after rejection. Both hybrid implementations block only pending proposals while retaining their original observation. Reproduced rejecting an answer_style proposal and having the next batch silently save the same instruction as inferred. Marking the observation consumed is insufficient because windows include consumed observations."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/strategies/hybrid.py",
+      "line": 102,
+      "rule": "Code Review for AI Agents, Rules 12.8 (p. 13) and 8.10 (p. 9): validate external input before sensitive sinks.",
+      "fix": "Validate the instruction-classifier response schema and require an explicit boolean exclusion decision before retaining the turn. A parseable but incomplete response such as {} currently bypasses quarantine and stores the complete instruction. Reproduced this with a request to exclude Reform sources; quarantine malformed responses just like unparsable ones."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/strategies/hybrid_jev.py",
+      "line": 186,
+      "rule": "Code Review for AI Agents, Rules 12.8 (p. 13) and 8.10 (p. 9): validate external input and enforce contracts.",
+      "fix": "Require both instruction answers with the expected type and numeric payload, and quarantine unresolved exclusion judgments. Missing answers currently become zero; an empty answer map stores the instruction, and a style-only positive answer creates a proposal even though exclusion was never assessed. An uncertain exclusion score also permits a positive style decision. Reproduced both missing-answer cases."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/strategies/hybrid.py",
+      "line": 90,
+      "rule": "Code Review for AI Agents, Rule 12.8 (p. 13): validate all input reaching sensitive sinks.",
+      "fix": "Assess every standing instruction in the retained turn, or exclude text that was not assessed. Both hybrid strategies classify only the first matching sentence but store the entire message. Reproduced 'Always keep it brief. Never show me sources from the Reform movement.': classification sees only the harmless sentence and the exclusion request remains available to later inference."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 426,
+      "rule": "Code Review for AI Agents, Rule 11.10 (p. 12): protect read-modify-write cycles.",
+      "fix": "Add a profile revision or equivalent compare-and-set guard for inferred updates in both stores. The generation changes only on clear/move, so an older, slower extraction can overwrite a newer completed extraction under the same generation, even moving updated_at backwards. Row locking serializes commits but does not detect stale model inputs."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 433,
+      "rule": "Code Review for AI Agents, Rules 11.2 (p. 12) and 8.10 (p. 9): atomic consent checks and enforced preconditions.",
+      "fix": "Enforce storage consent atomically for stated writes in both implementations. A pending proposal can currently be accepted after store_enabled=False and still create a slot; reproduced this directly. apply_interview() also checks consent only once before multiple unconditional set_stated() calls, allowing a concurrent opt-out to be ignored."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 141,
+      "rule": "Code Review for AI Agents, Rule 11.2 (p. 12): check-then-act must be atomic.",
+      "fix": "Recheck pending-proposal restrictions atomically with each batch mutation. blocked_slots() is sampled before the model call; a proposal created while consolidation waits does not change generation and therefore cannot prevent the returning batch from updating or clearing that slot despite its now-pending confirmation."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/strategies/hybrid.py",
+      "line": 70,
+      "rule": "Code Review for AI Agents, Rule 11.2 (p. 12): check-then-act must be atomic.",
+      "fix": "Move pending-proposal deduplication into an atomic store operation, with an appropriate uniqueness guard. Two concurrent calls can both observe no matching proposal and then each insert one. Per-method store locks do not protect the surrounding read-and-insert sequence, leaving duplicate confirmations and independently resolvable copies."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 495,
+      "rule": "Code Review for AI Agents, Rule 11.13 (p. 12): batch/queue processors must be idempotent.",
+      "fix": "Make observation insertion idempotent by user and message identity in both stores, and add the database uniqueness constraint. Replaying after_turn() currently appends the same message again. Retries therefore duplicate persisted prompts, distort session voting, and crowd distinct messages out of the bounded inference windows."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 157,
+      "rule": "Code Review for AI Agents, Rule 8.10 (p. 9): enforce external-response postconditions.",
+      "fix": "Validate the consolidation envelope before consuming observations. Any JSON object currently counts as a successful response: {} or {\"updates\": \"invalid\"} skips processing and marks the loaded observations consumed. Require correctly typed updates/clear collections and retain pending observations on malformed envelopes so an unusable response can be retried."
+    },
+    {
+      "severity": "LOW",
+      "in_scope": true,
+      "confidence": 1,
+      "file": "server/chat/V2/personalization/jev.py",
+      "line": 117,
+      "rule": "Code Review for AI Agents, Rules 8.18 and 8.19 (p. 9): typed errors and consistent error signaling.",
+      "fix": "Reject out-of-range integers before calling math.isfinite(), or translate numeric conversion failures into JevError. Reproduced parse_response() raising OverflowError for noul=10**400. HybridJevStrategy catches only JevError, so this malformed response bypasses its normal error accounting and instruction-quarantine path."
+    }
+  ]
+}
