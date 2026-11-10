@@ -8,6 +8,7 @@ allowlist. `context.isStaff` and `context.labs` are client-supplied and never op
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from functools import lru_cache
 from typing import Any
 
 from .registry import SlotRegistry
+
+logger = logging.getLogger(__name__)
 
 MODES = frozenset({"off", "realtime", "nightly", "hybrid", "hybrid_jev", "explicit"})
 INJECTIONS = frozenset({"always", "router_gate", "tool"})
@@ -78,11 +81,20 @@ def _server_injection(settings) -> str:
     return value if value in INJECTIONS else "always"
 
 
+def _non_production_environment() -> bool:
+    """True only when ENVIRONMENT names a deployment that is not production; unset is refused."""
+    environment = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+    return bool(environment) and environment not in PRODUCTION_ENVIRONMENTS
+
+
+def _production_environment() -> bool:
+    return (os.environ.get("ENVIRONMENT") or "").strip().lower() in PRODUCTION_ENVIRONMENTS
+
+
 def override_allowed(settings, persistent_user_id: str) -> bool:
     if getattr(settings, "PERSONALIZATION_OVERRIDE_ENABLED", False) is not True:
         return False
-    environment = (os.environ.get("ENVIRONMENT") or "").strip().lower()
-    if not environment or environment in PRODUCTION_ENVIRONMENTS:
+    if not _non_production_environment():
         return False
     allowed = _allowlist(getattr(settings, "PERSONALIZATION_OVERRIDE_USER_IDS", ""))
     return bool(persistent_user_id) and persistent_user_id in allowed
@@ -147,10 +159,27 @@ def resolve(settings, persistent_user_id: str, requested: RequestedPersonalizati
 
 def memory_enabled(settings) -> bool:
     """Whether stored profiles can matter at all (the claim request carries no override)."""
+    if getattr(settings, "PERSONALIZATION_MODE", "off") != "off":
+        return True
+    # The override flag only counts on a non-production deployment, as in `override_allowed`.
     return (
-        getattr(settings, "PERSONALIZATION_MODE", "off") != "off"
-        or getattr(settings, "PERSONALIZATION_OVERRIDE_ENABLED", False) is True
+        getattr(settings, "PERSONALIZATION_OVERRIDE_ENABLED", False) is True
+        and _non_production_environment()
     )
+
+
+def warn_if_mode_set_outside_production(settings) -> None:
+    """A global PERSONALIZATION_MODE stores memory for every user. On a preview, use the override
+    and the allowlist instead."""
+    mode = getattr(settings, "PERSONALIZATION_MODE", "off")
+    if mode != "off" and mode in MODES and not _production_environment():
+        logger.warning(
+            "PERSONALIZATION_MODE=%s is set on a non-production deployment (ENVIRONMENT=%r): "
+            "it stores memory for every user. Never set it on a PR preview; use "
+            "PERSONALIZATION_OVERRIDE_ENABLED with PERSONALIZATION_OVERRIDE_USER_IDS.",
+            mode,
+            os.environ.get("ENVIRONMENT", ""),
+        )
 
 
 def trace_metadata(config: PersonalizationConfig, profile, model: str | None = None) -> dict:

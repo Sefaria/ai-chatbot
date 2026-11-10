@@ -28,6 +28,10 @@ nothing else in the package and reads no profile table; the prompt is byte-ident
 - **Settings.** `PERSONALIZATION_MODE`, `PERSONALIZATION_INJECTION` (`always`, default),
   `PERSONALIZATION_OVERRIDE_ENABLED` (only the exact value `true`) and
   `PERSONALIZATION_OVERRIDE_USER_IDS` (comma-separated persistent user ids).
+- **Never set `PERSONALIZATION_MODE` on a PR preview.** It applies to every user of that
+  deployment and stores memory for all of them. Previews use the override flag plus the allowlist,
+  so only the listed users get memory. The server logs a warning at startup when the mode is not
+  `off` and `ENVIRONMENT` is not a production value.
 - **Override.** The request `context` may carry `personalizationMode`, `personalizationInjection`,
   `personalizationProfile` (an ephemeral fixture, validated by the registry, rendered for that
   request only, never stored, no after-turn update) and `personalizationSubject` (up to 40 characters

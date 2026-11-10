@@ -9,7 +9,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 
 from django.conf import settings
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections, connections, transaction
 
 from chat.V2.sentry import capture_exception
 
@@ -148,6 +148,7 @@ def _run_after_turn(
     finally:
         try:
             close_old_connections()
+            connections.close_all()  # the pool thread owns its own connections; leave none open
         finally:
             _release_user_lock(turn.user_id)
 
