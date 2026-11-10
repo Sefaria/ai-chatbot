@@ -57,6 +57,26 @@ nothing else in the package and reads no profile table; the prompt is byte-ident
 Still to do: schedule `python manage.py personalization_batch` for `nightly`, `hybrid` and
 `hybrid_jev`; build `hybrid_jev` only where a Jev client is wanted (`runtime.get_service`).
 
+## Testing on a preview
+
+Preview 298 serves the chatbot at `https://298.ai-server.coolifydev.sefaria.org`. It needs
+`PERSONALIZATION_OVERRIDE_ENABLED=true`, `PERSONALIZATION_OVERRIDE_USER_IDS=<your persistent id>` and an
+`ENVIRONMENT` that is not `prod`, `production` or `beta`. Never set `PERSONALIZATION_MODE` there (it
+would store memory for every user). The profile tables must exist (the image does not run migrations).
+
+1. **Status** (any signed-in user; shows only your own id and whether the tables exist):
+   `CHATBOT_USER_TOKEN=... python3 scripts/personalization_cli.py --url https://298.ai-server.coolifydev.sefaria.org status`
+   Read `persistentUserId` for the allowlist, `tables` and `overrideAllowedForYou` (both should be true).
+2. **Widget.** Open `https://www.sefaria.org/texts?chatbot_version=298&la_personalization=hybrid`
+   (add `&la_injection=router_gate` or `tool` to move the profile; `la_personalization=clear` removes
+   both). The choice is kept for the browser session and rides in the request `context`.
+3. **Profile API** (a 404 unless you are on the allowlist), by command line:
+   `python3 scripts/personalization_cli.py --url <base> get | set preferred_language he | release preferred_language | clear | settings --no-store | resolve <proposal-id> accept | run-batch --mode nightly`
+   `--subject <name>` scopes any of them to a separate test profile. `--dry-run` prints the request
+   with `<token>` in place of your token and sends nothing.
+   The token comes only from the `CHATBOT_USER_TOKEN` environment variable: type
+   `export CHATBOT_USER_TOKEN=...` yourself, and do not put it in a file or an argument.
+
 **Move rules.** `store.move(anonymous_user_id, registered_user_id)` is one locked write. The target's
 `stated` slots win, otherwise the newer value wins; observations and proposals move with it, and an
 opt-out on either side stays in force.
