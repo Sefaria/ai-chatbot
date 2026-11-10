@@ -57,6 +57,7 @@ class Observation:
     at: datetime
     signals: dict[str, Any] = field(default_factory=dict)
     consumed_at: datetime | None = None
+    id: int | str | None = None  # set by the store
 
 
 @dataclass

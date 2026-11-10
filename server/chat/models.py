@@ -395,3 +395,5 @@ class ProfileSettings(models.Model):
     user_id = models.CharField(max_length=100, unique=True)
     personalize_enabled = models.BooleanField(default=True)
     store_enabled = models.BooleanField(default=True)
+    # Bumped by clear() and move() so a model call started before them cannot write afterwards.
+    generation = models.PositiveIntegerField(default=0)
