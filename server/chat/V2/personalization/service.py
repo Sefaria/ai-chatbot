@@ -31,7 +31,10 @@ class PersonalizationService:
         return self._mode if self._mode is not None else settings.PERSONALIZATION_MODE
 
     def profile_context(self, user_id: str | None, now: datetime) -> tuple[str, list[str]]:
-        """(profile text, slots used) for the prompt; empty when off, anonymous or opted out."""
+        """(profile text, slots used) for the prompt; empty when off, without a user id or opted out.
+
+        Anonymous users (`anon:<hash>` ids) do get a profile, by design.
+        """
         if self.mode == "off" or not user_id:
             return "", []
         if not self.store.get_settings(user_id).personalize_enabled:

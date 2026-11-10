@@ -1,7 +1,7 @@
 """Run the batch step of the configured personalization strategy (nightly, hybrid, ...)."""
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from chat.V2.personalization.jev import HttpJevClient
@@ -38,3 +38,5 @@ class Command(BaseCommand):
             f"{mode}: {result.users_processed} users, {len(result.updated_slots)} slots updated, "
             f"{result.llm_calls} model calls, {result.errors} errors, usage {totals}"
         )
+        if result.errors:
+            raise CommandError(f"{result.errors} consolidation error(s); see the log")
