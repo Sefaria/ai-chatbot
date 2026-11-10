@@ -145,3 +145,27 @@ def test_ref_bar_reads_sibling_branch(repo):
     out = verdict.compute(case, runs(0.3, 0.4, 0.4))
     assert out["bars"][0]["target"] == 0.4 and out["verdict"] == "keep"
     assert verdict.compute(case, runs(0.5, 0.5, 0.5))["verdict"] == "drop"
+
+
+def test_privacy_breach_on_secondary_dataset_forces_drop():
+    breach = {"sensitive_reached_model": 0, "stated_overwritten": 0, "exclusion_stored": 2}
+    rows = runs(0.99, 0.99, 0.99)
+    rows[1]["also"] = {
+        "syn2": {
+            "dataset": {"name": "syn2", "kind": "synthetic", "sha256": "t", "n": 10},
+            "metrics": {}, "ratios": {}, "invalid": 0, "privacy": breach,
+        }
+    }  # fmt: skip
+    out = verdict.compute(make_case(MEAN_BAR), rows)
+    assert out["verdict"] == "drop" and out["privacy"]["exclusion_stored"] == 2
+
+
+def test_invalid_on_secondary_dataset_makes_a_keep_inconclusive():
+    rows = runs(0.99, 0.99, 0.99)
+    rows[0]["also"] = {
+        "syn2": {
+            "dataset": {"name": "syn2", "kind": "synthetic", "sha256": "t", "n": 10},
+            "metrics": {}, "ratios": {}, "invalid": 5, "privacy": {},
+        }
+    }  # fmt: skip
+    assert verdict.compute(make_case(MEAN_BAR), rows)["verdict"] == "inconclusive"

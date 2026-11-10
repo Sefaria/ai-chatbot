@@ -129,12 +129,16 @@ def compute(case, results: list[dict], ref_reader: Callable | None = None) -> di
     rows = [evaluate_bar(bar, case, results, ref_reader) for bar in case.keep_if]
     privacy = {"sensitive_reached_model": 0, "stated_overwritten": 0, "exclusion_stored": 0}
     for result in results:
-        for key in privacy:
-            privacy[key] = max(privacy[key], (result.get("privacy") or {}).get(key) or 0)
+        for part in (result, *result.get("also", {}).values()):  # every dataset of the run
+            for key in privacy:
+                privacy[key] = max(privacy[key], (part.get("privacy") or {}).get(key) or 0)
     counted = [r for r in rows if not r["expected_to_fail"]]
     invalid_runs = [
         r for r in results
-        if r["dataset"]["n"] and r.get("invalid", 0) / r["dataset"]["n"] > INVALID_SHARE
+        if any(
+            p.get("dataset", {}).get("n") and p.get("invalid", 0) / p["dataset"]["n"] > INVALID_SHARE
+            for p in (r, *r.get("also", {}).values())
+        )
     ]  # fmt: skip
     notes = []
     if any(privacy.values()):

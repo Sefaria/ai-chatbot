@@ -453,6 +453,7 @@ _COUNTED = {
     "overhead_tokens": "tokens", "recount_gap": "fraction", "preferred_share_lift": "fraction",
 }  # fmt: skip
 
+# The formulas below are quoted from the test-tree rows `notices_per_learner` and `label_accuracy`.
 FORMULAS_EXTRA = {
     "notice_on_plain": "notices shown on plain answers (from the `notices_per_learner` row)",
     "label_wrong": 'items whose predicted label differs from the label, not counting "unknown" (from the `label_accuracy` row)',

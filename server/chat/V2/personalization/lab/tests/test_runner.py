@@ -99,25 +99,21 @@ def test_jev_on_real_dataset_refused(tmp_path):
         run(case, real, typed=typed)
 
 
-def test_a_real_run_has_numbers_only_and_progress_outside_the_repo(tmp_path, monkeypatch):
+def test_a_real_run_has_numbers_only_and_progress_outside_the_repo(repo, tmp_path, monkeypatch):
+    work, cases = repo
     data = tmp_path / "la-lab-data"
     monkeypatch.setenv("LA_LAB_DATA_DIR", str(data))
     real_persona = {"user_id": "u:real", "sessions": persona()["sessions"]}
-    case = load_case(
-        write_case(tmp_path / "repo-cases", metrics=["calls_per_turn", "sensitive_dropped_share"])
-    )
+    case = load_case(write_case(cases, metrics=["calls_per_turn", "sensitive_dropped_share"]))
+    commit_and_push(work)
     real = Dataset("real1", "real", "sha", [real_persona])
-    # the guard needs a pushed case, so run the same call through a case with no directory
-    import dataclasses
-
-    free = dataclasses.replace(case, dir="")
     result = run_case(
-        free, kind="live", run_no=1, dataset=real, llm=oracle_llm(), pipeline_module=MODULE
+        case, kind="live", run_no=1, dataset=real, llm=oracle_llm(), pipeline_module=MODULE
     )
     results.check_real(result)  # raises on per_item or free text
     assert "per_item" not in result and result["privacy"]["sensitive_reached_model"] is None
     assert (data / "partial" / "a" / "x" / "profiles_real1_run1.json").is_file()
-    assert not (tmp_path / "repo-cases" / "a" / "x" / "results").exists()
+    assert not (cases / "a" / "x" / "results").exists()
 
 
 def test_label_task_scores_predictions(tmp_path):
@@ -299,3 +295,78 @@ def test_verdict_command_writes_verdict_json_and_keeps_the_note(tmp_path, capsys
     assert again["verdict"] == "keep" and again["note"] == "read by Yotam"
     assert cli.main(["--cases-root", str(tmp_path), "explain", "a/x"]) == 0
     assert "Verdict: keep" in capsys.readouterr().out
+
+
+def test_secondary_dataset_keeps_privacy_and_invalid_in_also(repo, monkeypatch):
+    work, cases = repo
+    directory = write_case(cases, datasets=["syn1", "syn2"])
+    commit_and_push(work)
+    breach = {"sensitive_reached_model": 0, "stated_overwritten": 0, "exclusion_stored": 1}
+    real_load = cli.datasets.load_dataset
+    real_run = cli.runner.run_case
+
+    def load(name, **kw):
+        if name == "syn2":
+            return Dataset("syn2", "synthetic", "s2", [persona()])
+        return real_load(name, **kw)
+
+    def fake_run(case, *, dataset, **kw):
+        out = real_run(case, dataset=dataset, **kw)
+        if dataset.name == "syn2":
+            out = {**out, "privacy": breach, "invalid": 3}
+        return out
+
+    monkeypatch.setattr(cli.datasets, "load_dataset", load)
+    monkeypatch.setattr(cli.runner, "run_case", fake_run)
+    args = ["--cases-root", str(cases), "run", "a/x", "--live", "--runs", "1"]
+    assert cli.main(args, llm=oracle_llm()) == 0
+    also = results.read(directory, "run1.json")["also"]["syn2"]
+    assert also["privacy"] == breach and also["invalid"] == 3
+
+
+def _write_full_runs(directory, sha, sha256):
+    stub = {"case_sha": sha, "dataset": {"name": "syn1", "sha256": sha256}}
+    for name in ("mock.json", "run1.json", "run2.json", "run3.json", "verdict.json"):
+        results.write(directory, {**stub, "kind": "mock", "run": 0}, name)
+
+
+def test_check_fails_when_real_run_has_old_case_sha(repo, tmp_path, monkeypatch):
+    work, cases = repo
+    directory = write_case(cases)
+    commit_and_push(work)
+    from chat.V2.personalization.lab import guard
+
+    sha = guard.case_sha(directory)
+    _write_full_runs(directory, sha, load_dataset("syn1").sha256)
+    data = tmp_path / "lab-data"
+    (data / "real1").mkdir(parents=True)
+    (data / "real1" / "sha256").write_text("abc\n")
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(data))
+    real = {
+        "kind": "live",
+        "run": 1,
+        "dataset": {"name": "real1", "kind": "real", "sha256": "abc", "n": 1},
+    }
+    args = ["--cases-root", str(cases), "check", "a/x"]
+    results.write(directory, {**real, "case_sha": sha}, "real_run1.json")
+    assert cli.main(args) == 0
+    results.write(directory, {**real, "case_sha": "old"}, "real_run1.json")
+    assert cli.main(args) == 1
+    results.write(
+        directory,
+        {**real, "case_sha": sha, "dataset": {**real["dataset"], "sha256": "zzz"}},
+        "real_run1.json",
+    )
+    assert cli.main(args) == 1
+
+
+def test_live_run_without_case_dir_refused():
+    import dataclasses
+    import tempfile
+    from pathlib import Path
+
+    from chat.V2.personalization.lab.runner import RunnerError
+
+    case = dataclasses.replace(load_case(write_case(Path(tempfile.mkdtemp()))), dir="")
+    with pytest.raises(RunnerError, match="case_dir|case dir"):
+        run(case, kind="live", run_no=1)

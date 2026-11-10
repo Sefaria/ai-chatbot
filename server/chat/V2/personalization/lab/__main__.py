@@ -141,7 +141,7 @@ def _run_live(case, args, deps) -> int:
                     )
                     return 1
                 existing.setdefault("also", {})[name] = {
-                    k: result[k] for k in ("dataset", "metrics", "ratios", "invalid")
+                    k: result[k] for k in ("dataset", "metrics", "ratios", "invalid", "privacy")
                 }
                 results.write(case.dir, existing, file)
             print(
@@ -261,6 +261,28 @@ def cmd_check(args, root) -> int:
                 entry = registry.get(part["name"])
                 if entry and entry["kind"] == "synthetic" and entry.get("sha256") != part["sha256"]:
                     problems.append(f"{name}: dataset {part['name']} changed since the run")
+    for name in (f"real_run{n}.json" for n in range(1, LIVE_RUNS + 1)):
+        data = results.read(case.dir, name)
+        if data is None:
+            continue
+        if data.get("case_sha") != sha:
+            problems.append(f"{name} was made for another version of the case")
+        for part in [data["dataset"], *(p["dataset"] for p in data.get("also", {}).values())]:
+            if registry.get(part["name"], {}).get("kind") != "real":
+                continue
+            try:
+                current = (
+                    (datasets.data_dir() / part["name"] / "sha256")
+                    .read_text(encoding="utf-8")
+                    .strip()
+                )
+            except (OSError, datasets.DatasetError):
+                problems.append(
+                    f"{name}: real dataset {part['name']} cannot be read to compare its checksum"
+                )
+                continue
+            if current != part["sha256"]:
+                problems.append(f"{name}: dataset {part['name']} changed since the run")
     for line in problems:
         print(line)
     print(f"{case.id}: {'ok' if not problems else 'FAILED'}")

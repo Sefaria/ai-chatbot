@@ -185,7 +185,9 @@ def run_case(
     if real and (isinstance(typed, JevTypedClient) or getattr(typed, "jev", None) is not None):
         raise JevOnRealData(f"dataset {dataset.name} is real; Jev gets synthetic text only")
     case_dir = case.dir or None
-    if kind == "live" and case_dir:
+    if kind == "live" and not case_dir:
+        raise RunnerError("a live run needs the case directory; refusing an unguarded live run")
+    if kind == "live":
         guard.assert_preregistered(case_dir)
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
     known = {
