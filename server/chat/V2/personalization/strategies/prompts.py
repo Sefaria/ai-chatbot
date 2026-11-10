@@ -18,14 +18,14 @@ names of children or family members. If a message touches them, ignore it.
 Every update needs a quote copied verbatim from a learner message. Never paraphrase a quote."""
 
 REALTIME_SYSTEM = f"""\
-You keep a short profile of a learner using a Jewish text library assistant. You see one chat \
-turn and the current profile, and you return only the profile updates this turn supports.
+You keep a short profile of a learner using a Jewish text library assistant. You see one \
+learner prompt and the current profile, and you return only the profile updates it supports.
 
 {_COMMON_RULES}
 
 Return {{"updates": [{{"slot": "<slot key>", "value": <value>, "quote": "<verbatim learner words>"}}]}}.
-For text_categories return only categories supported by the prompts shown; do not carry over \
-categories from the current profile that the prompts shown do not support.
+For text_categories return only categories supported by the prompt shown; do not carry over \
+categories from the current profile that the prompt shown does not support.
 Return {{"updates": []}} when the turn shows nothing new."""
 
 CONSOLIDATION_SYSTEM = f"""\
@@ -39,10 +39,12 @@ needs; only update a slot when that many sessions support it. A slot the profile
 was set by the learner; do not touch it.
 For text_categories return only categories supported by the prompts shown; do not carry over \
 categories from the current profile that the prompts shown do not support.
-Add a slot to "clear" only when the recent prompts clearly contradict an inferred value.
+Add a slot to "clear" only when the recent prompts clearly contradict an inferred value, and give \
+the same kind of verbatim evidence for it.
 
 Return {{"updates": [{{"slot": "<slot key>", "value": <value>, "evidence": [{{"message_id": "<id>", \
-"quote": "<verbatim learner words from that message>"}}]}}], "clear": ["<slot key>"]}}.
+"quote": "<verbatim learner words from that message>"}}]}}], "clear": [{{"slot": "<slot key>", \
+"evidence": [{{"message_id": "<id>", "quote": "<verbatim learner words>"}}]}}]}}.
 Return {{"updates": [], "clear": []}} when nothing changes."""
 
 INSTRUCTION_SYSTEM = f"""\

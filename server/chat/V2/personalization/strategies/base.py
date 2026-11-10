@@ -15,7 +15,7 @@ from ..jev import JevClient
 from ..llm import LLMClient, LLMResult, UsageLedger
 from ..parsing import locate_quote, parse_json_object
 from ..registry import SlotRegistry
-from ..signals import is_sensitive
+from ..signals import find_standing_instruction, is_sensitive
 from ..store import ProfileStore
 from ..types import Evidence, Proposal, Turn
 
@@ -99,6 +99,10 @@ class MemoryStrategy:
             self.diagnostics["quote_not_verbatim"] += 1
         return proof
 
+    def note_refusal(self, user_id: str, expected_generation: int | None, default: str) -> None:
+        """Count why the store refused a write: a stale generation, withdrawn consent, or `default`."""
+        self.diagnostics[self.store.refusal_reason(user_id, expected_generation) or default] += 1
+
     def apply_update(
         self,
         user_id: str,
@@ -108,8 +112,13 @@ class MemoryStrategy:
         now: datetime,
         *,
         require_evidence: bool = True,
+        expected_generation: int | None = None,
     ) -> bool:
-        """Validate and write an inferred value. True only when the profile changed."""
+        """Validate and write an inferred value. True only when the profile changed.
+
+        Reconfirming the same inferred value with valid new evidence refreshes its evidence and
+        shelf life but counts as `unchanged`.
+        """
         slot = self.registry.get(slot_key)
         normalized = self.registry.validate(slot_key, value) if slot else None
         if normalized is None:
@@ -119,12 +128,26 @@ class MemoryStrategy:
             self.diagnostics["no_valid_evidence"] += 1
             return False
         current = self.store.get_profile(user_id).get(slot_key)
+        expires_at = now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
         if current and current.value == normalized:
             self.diagnostics["unchanged"] += 1
+            # A standing instruction may be one the learner asked us never to keep (for example
+            # "never show me X"): its words are not refreshed into evidence.
+            quotes = [e.quote for e in evidence]
+            if (
+                current.status == "inferred"
+                and evidence
+                and not any(find_standing_instruction(q) for q in quotes)
+            ):
+                if not self.store.set_inferred(
+                    user_id, slot_key, normalized, evidence, now, expires_at, expected_generation
+                ):
+                    self.note_refusal(user_id, expected_generation, "stated_locked")
             return False
-        expires_at = now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
-        if not self.store.set_inferred(user_id, slot_key, normalized, evidence, now, expires_at):
-            self.diagnostics["stated_locked"] += 1
+        if not self.store.set_inferred(
+            user_id, slot_key, normalized, evidence, now, expires_at, expected_generation
+        ):
+            self.note_refusal(user_id, expected_generation, "stated_locked")
             return False
         self.diagnostics["applied"] += 1
         return True

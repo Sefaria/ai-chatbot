@@ -84,7 +84,7 @@ def test_observations_since_and_consumed(store):
     assert [o.message_id for o in store.observations("a", since=day(-30))] == ["m2"]
     assert [o.message_id for o in store.observations("a")] == ["m1", "m2"]
     assert store.users_with_pending() == ["a"]
-    store.mark_consumed("a", NOW)
+    store.mark_consumed("a", [o.id for o in store.observations("a")], NOW)
     assert store.users_with_pending() == []
     assert all(o.consumed_at == NOW for o in store.observations("a"))
 
@@ -92,7 +92,7 @@ def test_observations_since_and_consumed(store):
 def test_users_with_pending_lists_only_users_with_unconsumed(store):
     store.add_observation(obs("a"))
     store.add_observation(obs("b"))
-    store.mark_consumed("b", NOW)
+    store.mark_consumed("b", [o.id for o in store.observations("b")], NOW)
     assert store.users_with_pending() == ["a"]
 
 

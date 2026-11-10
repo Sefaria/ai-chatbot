@@ -2,6 +2,7 @@
 
 This is the deliberately aggressive path: it writes after a single turn, so it shows how fast and
 how noisy per-turn memory is. `preferred_language` is computed by code, not asked of the model.
+The model sees only the learner's own prompt: the assistant reply is never sent to it.
 """
 
 from __future__ import annotations
@@ -13,8 +14,6 @@ from ..types import Turn
 from .base import BatchResult, MemoryStrategy, TurnResult, truncate_prompt, verbatim_evidence
 from .prompts import REALTIME_SYSTEM, current_profile_text, slot_definitions
 
-ASSISTANT_CHARS = 500
-
 
 class RealtimeStrategy(MemoryStrategy):
     name = "realtime"
@@ -22,7 +21,8 @@ class RealtimeStrategy(MemoryStrategy):
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
-        self.store.expire(now)  # an expired slot must not reach the model or be merged back
+        self.store.expire_user(turn.user_id, now)  # a stale slot must not reach the model
+        generation = self.store.generation(turn.user_id)
         message = truncate_prompt(turn.user_message)
         result = TurnResult()
 
@@ -31,14 +31,15 @@ class RealtimeStrategy(MemoryStrategy):
             message.strip()[:80], message, turn.session_id, turn.message_id, now
         )
         if language in ("en", "he") and self.apply_update(
-            turn.user_id, "preferred_language", language, [proof] if proof else [], now
-        ):
+            turn.user_id, "preferred_language", language, [proof] if proof else [], now,
+            expected_generation=generation,
+        ):  # fmt: skip
             result.updated_slots.append("preferred_language")
 
         system = f"{REALTIME_SYSTEM}\n\nSlots:\n{slot_definitions(self.registry)}"
         user = (
             f"Current profile:\n{current_profile_text(self.store.get_profile(turn.user_id))}\n\n"
-            f"This turn:\nLearner: {message}\nAssistant: {turn.assistant_response[:ASSISTANT_CHARS]}"
+            f"This turn:\nLearner: {message}"
         )
         reply = self.call_model("turn", turn.user_id, system, user)
         result.llm_calls = 1
@@ -53,8 +54,9 @@ class RealtimeStrategy(MemoryStrategy):
                 update.get("quote"), message, turn.session_id, turn.message_id, now
             )
             if self.apply_update(
-                turn.user_id, slot.key, update.get("value"), [evidence] if evidence else [], now
-            ):
+                turn.user_id, slot.key, update.get("value"), [evidence] if evidence else [], now,
+                expected_generation=generation,
+            ):  # fmt: skip
                 result.updated_slots.append(slot.key)
         return result
 

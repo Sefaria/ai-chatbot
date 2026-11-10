@@ -6,7 +6,7 @@ from chat.V2.personalization.strategies.hybrid import (
 )
 
 from .conftest import NOW, day, make_strategy, make_turn
-from .test_nightly import Q1, Q2, consolidation, log_turns, update
+from .test_nightly import Q1, Q2, clear_item, consolidation, log_turns, update
 
 INSTRUCTION = "From now on keep your answers short."
 
@@ -99,7 +99,7 @@ def test_batch_skips_slots_with_a_pending_proposal(store, registry):
     store.add_proposal("u1", "hebrew_fluency", "fluent", "I am fluent", NOW)
     upd = update("hebrew_fluency", "basic", ("m1", Q1), ("m2", Q2))
     strategy, _, _ = make_strategy(
-        "hybrid", store, registry, consolidation(upd, clear=["hebrew_fluency"])
+        "hybrid", store, registry, consolidation(upd, clear=[clear_item("hebrew_fluency")])
     )
     store.set_inferred("u1", "hebrew_fluency", "none", [], day(-9))
     log_turns(strategy, [("s1", "m1", Q1, day(-2)), ("s2", "m2", Q2, day(-1))])

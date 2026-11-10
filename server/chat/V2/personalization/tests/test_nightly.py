@@ -11,6 +11,10 @@ Q1, Q2, Q3 = (
 )
 
 
+def clear_item(key, message="m1", quote=Q1):
+    return {"slot": key, "evidence": [{"message_id": message, "quote": quote}]}
+
+
 def consolidation(*updates, clear=()):
     return lambda system, user: json.dumps({"updates": list(updates), "clear": list(clear)})
 
@@ -122,7 +126,10 @@ def test_stated_slot_survives_the_batch_and_clear_only_touches_inferred(store, r
     store.set_stated("u1", "hebrew_fluency", "none", day(-9))
     store.set_inferred("u1", "answer_style", "Be long.", [], day(-9))
     upd = update("hebrew_fluency", "basic", ("m1", Q1), ("m2", Q2))
-    responder = consolidation(upd, clear=["hebrew_fluency", "answer_style", "preferred_language"])
+    responder = consolidation(
+        upd,
+        clear=[clear_item(k) for k in ("hebrew_fluency", "answer_style", "preferred_language")],
+    )
     strategy, _, _ = make_strategy("nightly", store, registry, responder)
     log_turns(strategy, [("s1", "m1", Q1, day(-3)), ("s2", "m2", Q2, day(-1))])
     strategy.run_batch(NOW)
@@ -183,6 +190,15 @@ def test_model_failure_leaves_observations_pending(store, registry):
 
 def test_batch_for_given_users_and_unparsable_output(store, registry):
     strategy, llm, _ = make_strategy("nightly", store, registry, lambda s, u: "no json")
+    log_turns(strategy, [("s1", "m1", Q1, day(-1))])
+    strategy.on_turn(make_turn(Q2, user="u2"), day(-1))
+    result = strategy.run_batch(NOW, user_ids=["u2"])
+    assert result.users_processed == 0 and result.errors == 1 and len(llm.calls) == 1
+    assert store.users_with_pending() == ["u1", "u2"]  # u2's observation stays pending
+
+
+def test_batch_for_given_users_only_touches_those_users(store, registry):
+    strategy, llm, _ = make_strategy("nightly", store, registry, consolidation())
     log_turns(strategy, [("s1", "m1", Q1, day(-1))])
     strategy.on_turn(make_turn(Q2, user="u2"), day(-1))
     result = strategy.run_batch(NOW, user_ids=["u2"])

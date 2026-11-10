@@ -5,7 +5,7 @@ import pytest
 from chat.V2.personalization.jev import FakeJevClient, JevAnswer, JevError
 
 from .conftest import NOW, day, make_strategy, make_turn
-from .test_nightly import consolidation, log_turns, update
+from .test_nightly import clear_item, consolidation, log_turns, update
 
 STYLE_TEXT = "From now on keep your answers short and give sources first."
 
@@ -164,8 +164,21 @@ def test_jev_error_is_swallowed_and_counted(store, registry):
 
     s, _, ledger = strategy(store, registry, FakeJevClient(boom))
     result = s.on_turn(make_turn(STYLE_TEXT), NOW)
-    assert result.errors == 2 and result.proposals == []  # closed-set and instruction requests
-    assert len(store.observations("u1")) == 1 and ledger.entries == []
+    assert result.errors == 1 and result.proposals == []
+    assert result.skipped_reason == "instruction_unclassified"
+    assert ledger.entries == [] and "preferred_language" not in store.get_profile("u1")
+    (marker,) = store.observations("u1")  # held back as a content-free marker, not logged as input
+    assert marker.text == "" and marker.signals == {"excluded": True}
+    assert s.diagnostics["jev_error"] == 1
+
+
+def test_closed_set_jev_error_on_a_plain_turn_is_counted(store, registry):
+    def boom(state, questions):
+        raise JevError("Jev HTTP 500")
+
+    s, _, _ = strategy(store, registry, FakeJevClient(boom))
+    result = s.on_turn(make_turn("Explain Berakhot"), NOW)
+    assert result.errors == 1 and len(store.observations("u1")) == 1
     assert store.get_profile("u1")["preferred_language"].value == "en"  # the code path still ran
 
 
@@ -225,7 +238,10 @@ def test_batch_touches_only_the_text_slots(store, registry):
         store,
         registry,
         jev_with(),
-        consolidation(*updates, clear=["hebrew_fluency", "learning_habits"]),
+        consolidation(
+            *updates,
+            clear=[clear_item("hebrew_fluency", quote=q1), clear_item("learning_habits", quote=q1)],
+        ),
     )
     store.set_inferred("u1", "hebrew_fluency", "basic", [], day(-9))
     log_turns(s, [("s1", "m1", q1, day(-2)), ("s2", "m2", q2, day(-1))])

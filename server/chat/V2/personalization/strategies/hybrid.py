@@ -7,6 +7,8 @@ slots that have a pending proposal.
 
 from __future__ import annotations
 
+import logging
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +19,8 @@ from ..types import Proposal, Turn, Value
 from .base import TurnResult, truncate_prompt
 from .nightly import NightlyStrategy
 from .prompts import INSTRUCTION_SYSTEM, slot_definitions
+
+logger = logging.getLogger(__name__)
 
 PROPOSE_MEMORY_UPDATE_TOOL: dict[str, Any] = {
     "name": "propose_memory_update",
@@ -53,6 +57,8 @@ def handle_propose_memory_update(
     value: object,
     quote: str,
     now: datetime,
+    expected_generation: int | None = None,
+    diagnostics: Counter | None = None,
 ) -> Proposal | None:
     """Create a pending proposal, or None when it is invalid, already stored, or a duplicate."""
     normalized: Value | None = registry.validate(slot, value)
@@ -64,7 +70,12 @@ def handle_propose_memory_update(
     for pending in store.proposals(user_id, "pending"):
         if pending.slot_key == slot and pending.value == normalized:
             return pending
-    return store.add_proposal(user_id, slot, normalized, str(quote)[:300], now)
+    proposal = store.add_proposal(
+        user_id, slot, normalized, str(quote)[:300], now, expected_generation
+    )
+    if proposal is None and diagnostics is not None:
+        diagnostics[store.refusal_reason(user_id, expected_generation) or "proposal_refused"] += 1
+    return proposal
 
 
 class HybridStrategy(NightlyStrategy):
@@ -73,24 +84,36 @@ class HybridStrategy(NightlyStrategy):
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
-        self.store.expire(now)
+        self.store.expire_user(turn.user_id, now)
+        generation = self.store.generation(turn.user_id)
         result = TurnResult()
         instruction = find_standing_instruction(truncate_prompt(turn.user_message))
         proposal = None
         if instruction is not None:
-            mapped = self.map_instruction(turn, instruction)
             result.llm_calls = 1
-            if mapped.get("excludes_sources") is True:
-                # Never stored: no slot inference, and the prompt stays out of every later window.
-                self.log_observation(turn, excluded=True)
-                result.skipped_reason = "instruction_excludes_sources"
+            try:
+                mapped = self.map_instruction(turn, instruction)
+            except Exception:
+                logger.exception("instruction classification failed")
+                mapped = None
+            if mapped is None:
+                self.diagnostics["instruction_unclassified"] += 1
+                result.errors += 1
+            if mapped is None or mapped.get("excludes_sources") is True:
+                # Never stored: a content-free marker only, so the prompt stays out of every later
+                # window. An instruction that could not be classified is held back the same way.
+                self.log_observation(turn, excluded=True, expected_generation=generation)
+                result.skipped_reason = (
+                    "instruction_unclassified" if mapped is None else "instruction_excludes_sources"
+                )
                 return result
             proposal = handle_propose_memory_update(
                 self.store, self.registry, turn.user_id, str(mapped.get("slot")),
-                mapped.get("value"), instruction, now,
+                mapped.get("value"), instruction, now, generation, self.diagnostics,
             )  # fmt: skip
-        self.log_observation(turn)
-        if self.update_language(turn.user_id, self.window_observations(turn.user_id, now), now):
+        if self.log_observation(turn, expected_generation=generation) and self.update_language(
+            turn.user_id, self.window_observations(turn.user_id, now), now, generation
+        ):
             result.updated_slots.append("preferred_language")
         if instruction is not None:
             if proposal is None:
@@ -99,13 +122,14 @@ class HybridStrategy(NightlyStrategy):
                 result.proposals.append(proposal)
         return result
 
-    def map_instruction(self, turn: Turn, instruction: str) -> dict:
+    def map_instruction(self, turn: Turn, instruction: str) -> dict | None:
+        """The model's mapping, or None when the reply cannot be parsed."""
         system = (
             f"{INSTRUCTION_SYSTEM}\n\nSlots:\n"
             f"{slot_definitions(self.registry, include_deterministic=True)}"
         )
         reply = self.call_model("turn", turn.user_id, system, instruction)
-        return self.parse_reply(reply.text) or {}
+        return self.parse_reply(reply.text)
 
     def blocked_slots(self, user_id: str) -> set[str]:
         return {p.slot_key for p in self.store.proposals(user_id, "pending")}

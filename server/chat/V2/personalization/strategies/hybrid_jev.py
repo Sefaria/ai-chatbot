@@ -44,33 +44,40 @@ class HybridJevStrategy(NightlyStrategy):
     def on_turn(self, turn: Turn, now: datetime) -> TurnResult:
         if reason := self.turn_skip_reason(turn):
             return TurnResult(skipped_reason=reason)
-        self.store.expire(now)
+        self.store.expire_user(turn.user_id, now)
+        generation = self.store.generation(turn.user_id)
         result = TurnResult()
         instruction = find_standing_instruction(truncate_prompt(turn.user_message))
         proposal = None
         if instruction is not None:
             try:
-                decision, proposal = self.judge_instruction(turn, instruction, now)
+                decision, proposal = self.judge_instruction(turn, instruction, now, generation)
             except JevError as exc:
                 logger.warning("Jev instruction request failed: %s", exc)
                 self.diagnostics["jev_error"] += 1
                 result.errors += 1
-                decision = None
-            if decision == "excludes_sources":
-                # Never stored: no slot inference, and the prompt stays out of every later window.
-                self.log_observation(turn, excluded=True)
-                result.skipped_reason = "instruction_excludes_sources"
+                decision = "unclassified"
+            if decision in ("excludes_sources", "unclassified"):
+                # Never stored: a content-free marker only, so the prompt stays out of every later
+                # window. An instruction Jev could not classify is held back the same way.
+                self.log_observation(turn, excluded=True, expected_generation=generation)
+                result.skipped_reason = (
+                    "instruction_excludes_sources"
+                    if decision == "excludes_sources"
+                    else "instruction_unclassified"
+                )
                 return result
             if proposal is not None:
                 result.proposals.append(proposal)
-            elif decision is not None or result.errors == 0:
+            else:
                 result.skipped_reason = "instruction_needs_settings"
-        self.log_observation(turn)
+        if not self.log_observation(turn, expected_generation=generation):
+            return result
         window = self.window_observations(turn.user_id, now)
-        if self.update_language(turn.user_id, window, now):
+        if self.update_language(turn.user_id, window, now, generation):
             result.updated_slots.append("preferred_language")
         try:
-            result.updated_slots += self.judge_closed_slots(turn, window, now)
+            result.updated_slots += self.judge_closed_slots(turn, window, now, generation)
         except JevError as exc:
             logger.warning("Jev request failed on the hot path: %s", exc)
             self.diagnostics["jev_error"] += 1
@@ -111,7 +118,9 @@ class HybridJevStrategy(NightlyStrategy):
                 return [proof] if proof else []
         return []
 
-    def judge_closed_slots(self, turn: Turn, window: list[Observation], now: datetime) -> list[str]:
+    def judge_closed_slots(
+        self, turn: Turn, window: list[Observation], now: datetime, generation: int | None = None
+    ) -> list[str]:
         questions = {**q.choice_questions(self.registry), **q.category_questions(self.registry)}
         state = {"learner_prompts": self.learner_prompts(window)}
         answers = self.ask_jev(turn.user_id, state, questions).answers
@@ -121,7 +130,9 @@ class HybridJevStrategy(NightlyStrategy):
 
         for key in q.CHOICE_SLOTS:
             value = self.decide_choice(key, answers.get(key), profile.get(key))
-            if value and self.apply_update(turn.user_id, key, value, evidence, now):
+            if value and self.apply_update(
+                turn.user_id, key, value, evidence, now, expected_generation=generation
+            ):
                 updated.append(key)
 
         scored = [
@@ -134,7 +145,10 @@ class HybridJevStrategy(NightlyStrategy):
         ]
         if not chosen and any(UNCERTAIN_LOW <= score <= UNCERTAIN_HIGH for score, _ in scored):
             self.diagnostics["jev_uncertain"] += 1
-        if chosen and self.apply_update(turn.user_id, "text_categories", chosen[:3], evidence, now):
+        if chosen and self.apply_update(
+            turn.user_id, "text_categories", chosen[:3], evidence, now,
+            expected_generation=generation,
+        ):  # fmt: skip
             updated.append("text_categories")
         return updated
 
@@ -161,7 +175,9 @@ class HybridJevStrategy(NightlyStrategy):
 
     # -- standing instructions ----------------------------------------------------------
 
-    def judge_instruction(self, turn: Turn, instruction: str, now: datetime):
+    def judge_instruction(
+        self, turn: Turn, instruction: str, now: datetime, generation: int | None = None
+    ):
         """(decision, proposal): decision is 'excludes_sources', 'style' or None."""
         answers = self.ask_jev(
             turn.user_id, {"message": instruction}, q.instruction_questions()
@@ -188,6 +204,8 @@ class HybridJevStrategy(NightlyStrategy):
                 instruction,
                 instruction,
                 now,
+                generation,
+                self.diagnostics,
             )
             return "style", proposal
         return None, None

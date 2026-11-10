@@ -45,7 +45,7 @@ def test_model_sees_profile_slot_definitions_and_truncated_text(store, registry)
     system, user = llm.calls[0]["system"], llm.calls[0]["user"]
     assert "hebrew_fluency" in system and "Allowed values: none, basic" in system
     assert '"answer_style"' in user and "stated" in user
-    assert user.count("Q") == 1000 and user.count("Z") == 500
+    assert user.count("Q") == 1000 and "Z" not in user  # the reply is never sent
 
 
 def test_stated_slot_is_never_overwritten(store, registry):

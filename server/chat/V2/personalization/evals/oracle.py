@@ -41,7 +41,7 @@ def oracle_responder(persona: dict):
     tags = {t["user"]: t.get("tags", []) for s in persona["sessions"] for t in s["turns"]}
 
     def realtime(user: str) -> str:
-        message = user.split("Learner: ", 1)[1].rsplit("\nAssistant:", 1)[0]
+        message = user.split("Learner: ", 1)[1]
         quote = _quote(message)
         updates = [
             {"slot": key, "value": golden_value(g), "quote": quote} for key, g in golden.items()

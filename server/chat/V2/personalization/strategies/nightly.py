@@ -17,6 +17,7 @@ from ..signals import (
     profile_language_v2,
     session_vote,
 )
+from ..store import STALE_GENERATION
 from ..types import Evidence, Observation, Turn
 from .base import BatchResult, MemoryStrategy, TurnResult, truncate_prompt, verbatim_evidence
 from .prompts import CONSOLIDATION_SYSTEM, current_profile_text, slot_definitions
@@ -38,36 +39,50 @@ class NightlyStrategy(MemoryStrategy):
         self.log_observation(turn)
         return TurnResult()
 
-    def log_observation(self, turn: Turn, *, excluded: bool = False) -> None:
-        """Append the prompt. `excluded` marks it out of every later window, input and evidence."""
-        signals = {
-            "language": detect_language(turn.user_message),
-            "hebrew_ratio": round(hebrew_ratio(turn.user_message), 3),
-            "cited_categories": cited_categories(turn.user_message),
-        }
+    def log_observation(
+        self, turn: Turn, *, excluded: bool = False, expected_generation: int | None = None
+    ) -> bool:
+        """Append the prompt. `excluded` stores only a content-free marker: no text, no signals
+        about the content, and it stays out of every later window, input and evidence."""
         if excluded:
-            signals["excluded"] = True
-        self.store.add_observation(
+            text, signals = "", {"excluded": True}
+        else:
+            text = turn.user_message
+            signals = {
+                "language": detect_language(text),
+                "hebrew_ratio": round(hebrew_ratio(text), 3),
+                "cited_categories": cited_categories(text),
+            }
+        stored = self.store.add_observation(
             Observation(
                 user_id=turn.user_id,
                 session_id=turn.session_id,
                 message_id=turn.message_id,
-                text=turn.user_message,
+                text=text,
                 at=turn.at,
                 signals=signals,
-            )
+            ),
+            expected_generation,
         )
+        if not stored:
+            self.note_refusal(turn.user_id, expected_generation, "observation_refused")
+        return stored
 
-    def window_observations(self, user_id: str, now: datetime) -> list[Observation]:
-        """Observations of the last 30 days a model or a language vote may see."""
+    @staticmethod
+    def in_window(observations: list[Observation], now: datetime) -> list[Observation]:
+        """Observations of the last 30 days that a model or a language vote may see."""
+        since = now - timedelta(days=WINDOW_DAYS)
         return [
             o
-            for o in self.store.observations(user_id, since=now - timedelta(days=WINDOW_DAYS))
-            if not is_sensitive(o.text) and not o.signals.get("excluded")
+            for o in observations
+            if o.at >= since and not is_sensitive(o.text) and not o.signals.get("excluded")
         ]
 
+    def window_observations(self, user_id: str, now: datetime) -> list[Observation]:
+        return self.in_window(self.store.observations(user_id), now)
+
     def run_batch(self, now: datetime, user_ids: list[str] | None = None) -> BatchResult:
-        self.store.expire(now)  # before any profile is read, so stale slots are not merged back
+        self.store.expire(now)  # once per batch, before any profile is read
         result = BatchResult()
         for user_id in self.store.users_with_pending() if user_ids is None else user_ids:
             try:
@@ -75,10 +90,15 @@ class NightlyStrategy(MemoryStrategy):
             except Exception:
                 logger.exception("consolidation failed for a user; observations stay unconsumed")
                 result.errors += 1
-        self.store.expire(now)
         return result
 
-    def update_language(self, user_id: str, observations: list[Observation], now: datetime) -> bool:
+    def update_language(
+        self,
+        user_id: str,
+        observations: list[Observation],
+        now: datetime,
+        expected_generation: int | None = None,
+    ) -> bool:
         """preferred_language in code: per-session votes, then the v2 rule against the current value."""
         if not observations:
             return False
@@ -96,8 +116,9 @@ class NightlyStrategy(MemoryStrategy):
             last.text.strip()[:80], last.text, last.session_id, last.message_id, last.at
         )
         return self.apply_update(
-            user_id, "preferred_language", language, [proof] if proof else [], now
-        )
+            user_id, "preferred_language", language, [proof] if proof else [], now,
+            expected_generation=expected_generation,
+        )  # fmt: skip
 
     def blocked_slots(self, user_id: str) -> set[str]:
         """Slots the batch must leave alone (the hybrid strategy blocks pending proposals)."""
@@ -106,17 +127,22 @@ class NightlyStrategy(MemoryStrategy):
     # -- consolidation ------------------------------------------------------------------
 
     def consolidate(self, user_id: str, now: datetime, result: BatchResult) -> None:
+        generation = self.store.generation(user_id)
+        loaded = self.store.observations(user_id)
+        loaded_ids = [o.id for o in loaded if o.consumed_at is None]  # only these get consumed
         if not self.store.get_settings(user_id).store_enabled:
-            self.store.mark_consumed(user_id, now)
+            self.store.mark_consumed(user_id, loaded_ids, now, generation)
             return
-        self.store.expire(now)
-        recent = self.window_observations(user_id, now)[-MAX_OBSERVATIONS:]
+        self.store.expire_user(user_id, now)
+        recent = self.in_window(loaded, now)[-MAX_OBSERVATIONS:]
         if not recent:
-            self.store.mark_consumed(user_id, now)
+            self.store.mark_consumed(user_id, loaded_ids, now, generation)
             return
         blocked = self.blocked_slots(user_id)
 
-        if "preferred_language" not in blocked and self.update_language(user_id, recent, now):
+        if "preferred_language" not in blocked and self.update_language(
+            user_id, recent, now, generation
+        ):
             result.updated_slots.append((user_id, "preferred_language"))
 
         seen = {o.message_id: o for o in recent}
@@ -128,7 +154,10 @@ class NightlyStrategy(MemoryStrategy):
         )
         reply = self.call_model("batch", user_id, system, user)
         result.llm_calls += 1
-        data = self.parse_reply(reply.text) or {}
+        data = self.parse_reply(reply.text)
+        if data is None:  # not a validated empty answer: leave the observations pending
+            result.errors += 1
+            return
 
         for update in data.get("updates") or []:
             if not isinstance(update, dict):
@@ -148,23 +177,35 @@ class NightlyStrategy(MemoryStrategy):
             if len({e.session_id for e in evidence}) < slot.min_sessions:
                 self.diagnostics["below_min_sessions"] += 1
                 continue
-            if self.apply_update(user_id, slot.key, update.get("value"), evidence, now):
+            if self.apply_update(
+                user_id, slot.key, update.get("value"), evidence, now,
+                expected_generation=generation,
+            ):  # fmt: skip
                 result.updated_slots.append((user_id, slot.key))
 
-        for key in data.get("clear") or []:
-            current = profile.get(key) if isinstance(key, str) else None
+        for item in data.get("clear") or []:
+            key = item.get("slot") if isinstance(item, dict) else None
             slot = self.registry.get(key) if isinstance(key, str) else None
             if (
-                current
-                and current.status == "inferred"
-                and not slot.deterministic
-                and (self.batch_slots is None or key in self.batch_slots)
-                and key not in blocked
+                slot is None
+                or slot.deterministic
+                or (self.batch_slots is not None and key not in self.batch_slots)
+                or key in blocked
             ):
-                self.store.delete_slot(user_id, key)
+                self.diagnostics["clear_ignored"] += 1
+                continue
+            if not self.validated_evidence(item.get("evidence"), seen):
+                self.diagnostics["no_valid_evidence"] += 1
+                continue
+            if self.store.delete_slot_if_inferred(user_id, key, generation):
+                self.diagnostics["cleared"] += 1
+            elif self.store.refusal_reason(user_id, generation) == STALE_GENERATION:
+                self.diagnostics[STALE_GENERATION] += 1
 
-        self.store.mark_consumed(user_id, now)
-        result.users_processed += 1
+        if self.store.mark_consumed(user_id, loaded_ids, now, generation):
+            result.users_processed += 1
+        else:
+            self.diagnostics[STALE_GENERATION] += 1
 
     @staticmethod
     def format_sessions(observations: list[Observation]) -> str:
