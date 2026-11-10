@@ -2,8 +2,8 @@
   "user_id": "metadata.user_id",
   "conversation_id": "metadata.session_id",
   "timestamp": "created",
-  "user_text": "input",
-  "assistant_text": "output",
+  "user_text": "input.message",
+  "assistant_text": "output.content",
   "staff_marker": {
     "path": "metadata.is_staff",
     "staff_values": [true],
