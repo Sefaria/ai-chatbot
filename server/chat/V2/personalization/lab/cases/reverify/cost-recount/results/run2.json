@@ -1,0 +1,1882 @@
+{
+ "case_sha": "5263822fb00e95e504fd1a41be3daea8cbb1ad49",
+ "cost": {
+  "calls": 714,
+  "in_tokens": 742890,
+  "out_tokens": 69039,
+  "typed_requests": 228,
+  "usd": 0.5651122680000014
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 9,
+  "name": "syn1",
+  "sha256": "377d7e13880684ea1afbe0273e276838fdda5c3b4245c89b5799dd8a0f4a6fab"
+ },
+ "git_sha": "1316b57ef54652365b6a464bbfe52af52db28c2e",
+ "id": "reverify/cost-recount",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "overhead_tokens@total": 575.6,
+  "recount_gap@total": 0.0,
+  "usd_per_1000_turns@explicit": 0.0,
+  "usd_per_1000_turns@explicit_h55": 0.0,
+  "usd_per_1000_turns@hybrid": 0.9740135135135133,
+  "usd_per_1000_turns@hybrid_h55": 0.09740135135135138,
+  "usd_per_1000_turns@hybrid_jev": 0.649781837837838,
+  "usd_per_1000_turns@hybrid_jev_h55": 0.11583859459459458,
+  "usd_per_1000_turns@nightly": 0.9652162162162159,
+  "usd_per_1000_turns@nightly_h55": 0.09652162162162162,
+  "usd_per_1000_turns@realtime": 1.02327027027027,
+  "usd_per_1000_turns@realtime_h55": 0.10232702702702702,
+  "usd_vs_iter1@explicit": 0.0,
+  "usd_vs_iter1@hybrid": 0.01614796614796637,
+  "usd_vs_iter1@hybrid_jev": 0.04443847376788529,
+  "usd_vs_iter1@nightly": 0.016017069701279935,
+  "usd_vs_iter1@realtime": 0.11019976498237379
+ },
+ "model": "claude-haiku-5-5",
+ "per_item": [
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "realtime"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "nightly"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "explicit"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "realtime_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "nightly_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "hybrid_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "explicit_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "hybrid_jev_h55"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: missing",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: missing",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "not stated 'fluent' in snapshot 6",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {},
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 9 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "final None; earlier snapshot in old ['none']: False",
+     "passed": false,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final None; earlier snapshot in old ['new']: False",
+     "passed": false,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {},
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "never",
+     "detail": "captured_at: never",
+     "passed": false,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {},
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": "total"
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "unset in snapshot 3 (turn)",
+     "passed": false,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {},
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": "total"
+  },
+  {
+   "checks": [
+    {
+     "detail": "text_categories absent at the end",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {},
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": "total"
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {},
+ "run": 2,
+ "schema": 1,
+ "started_at": "2026-11-10T21:54:25+00:00",
+ "steps": [
+  {
+   "n_in": 74,
+   "n_out": 74,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 216,
+   "n_out": 216,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": 270,
+   "n_out": 270,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": 228,
+   "n_out": 228,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 9,
+   "n_out": 17,
+   "name": "score"
+  }
+ ]
+}

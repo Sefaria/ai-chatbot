@@ -1,0 +1,123 @@
+{
+ "bars": [
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "overhead_tokens@total",
+   "observed": 575.4,
+   "op": ">=",
+   "state": "holds",
+   "target": 432,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": false,
+   "metric": "overhead_tokens@total",
+   "observed": 575.4,
+   "op": "<=",
+   "state": "fails",
+   "target": 528,
+   "why": ""
+  },
+  {
+   "agg": "each",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "recount_gap@total",
+   "observed": 8.044428209417235e-16,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.01,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_per_1000_turns@hybrid_jev",
+   "observed": 0.6761917477477479,
+   "op": "<=",
+   "state": "holds",
+   "target": 1.0,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_vs_iter1@realtime",
+   "observed": 0.07557383470426937,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.15,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_vs_iter1@nightly",
+   "observed": 0.010706495969653743,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.15,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_vs_iter1@hybrid",
+   "observed": 0.013031213031213145,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.15,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_vs_iter1@explicit",
+   "observed": 0.0,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.15,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "syn1",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "usd_vs_iter1@hybrid_jev",
+   "observed": 0.024025278219395846,
+   "op": "<=",
+   "state": "holds",
+   "target": 0.15,
+   "why": ""
+  }
+ ],
+ "case_sha": "5263822fb00e95e504fd1a41be3daea8cbb1ad49",
+ "id": "reverify/cost-recount",
+ "note": "",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "reasons": [],
+ "runs": 3,
+ "verdict": "drop"
+}
