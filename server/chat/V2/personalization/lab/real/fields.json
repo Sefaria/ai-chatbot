@@ -1,0 +1,15 @@
+{
+  "user_id": "metadata.user_id",
+  "conversation_id": "metadata.session_id",
+  "timestamp": "created",
+  "user_text": "input",
+  "assistant_text": "output",
+  "staff_marker": {
+    "path": "metadata.is_staff",
+    "staff_values": [true],
+    "rule": "drop_user_if_any"
+  },
+  "site": null,
+  "browser_lang": null,
+  "country": null
+}
