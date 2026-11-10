@@ -807,7 +807,7 @@
     "preferred_language": {
      "value": "en"
     },
-    "hebrew_fluency": null,
+    "hebrew_fluency": {"value": "intermediate", "optional": true},
     "terminology_comfort": {
      "value": "some",
      "accept": [
