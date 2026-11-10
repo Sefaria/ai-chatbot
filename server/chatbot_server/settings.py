@@ -253,6 +253,7 @@ from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
 
 # Learner-profile personalization (dark): off | realtime | nightly | hybrid | explicit.
 PERSONALIZATION_MODE = os.environ.get("PERSONALIZATION_MODE", "off")
+PERSONALIZATION_MODEL = os.environ.get("PERSONALIZATION_MODEL", _GUARDRAIL_MODEL_DEFAULT)
 
 AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
 APPETIZER_MODEL = os.environ.get("APPETIZER_MODEL", _APPETIZER_MODEL_DEFAULT)
