@@ -97,3 +97,13 @@ def test_tree_marks_blocked_case(repo, tmp_path):
     y = next(c for c in written["aspects"][0]["cases"] if c["id"] == "a/y")
     assert y["status"] == "blocked"
     assert y["verdict"] is None
+
+
+def test_tree_case_sha_when_run_from_a_subdirectory(repo, tmp_path):
+    work, _ = repo
+    _fixture(work)
+    (work / "server").mkdir(exist_ok=True)
+    found = tree.build_tree(work / "server", "origin")
+    x = next(c for c in found["aspects"][0]["cases"] if c["id"] == "a/x")
+    git(work, "checkout", "-q", "-b", "look2", "origin/lab/a/x")
+    assert x["case_sha"] == guard.case_sha(work / CASES / "a" / "x")
