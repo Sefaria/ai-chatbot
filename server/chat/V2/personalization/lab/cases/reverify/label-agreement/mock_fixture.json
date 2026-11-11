@@ -1,0 +1,58 @@
+{
+  "personas": [
+    {
+      "id": "mock-a",
+      "user_id": "mock:a",
+      "description": "invented; the author's note, never sent to the labeller",
+      "sessions": [{"session_id": "a-s1", "turns": [
+        {"id": "a-1", "at": "2026-02-01T10:00:00Z", "user": "Invented question one about Genesis.", "assistant": "Invented answer one."},
+        {"id": "a-2", "at": "2026-02-01T10:05:00Z", "user": "Invented question two, shorter please.", "assistant": "Invented answer two."}
+      ]}],
+      "golden": {
+        "preferred_language": {"value": "en"},
+        "hebrew_fluency": {"value": "basic", "accept": ["basic", "none"]},
+        "terminology_comfort": {"value": "some"},
+        "register": {"value": "traditional"},
+        "text_categories": {"must_include": ["Tanakh"]},
+        "answer_style": {"any_of": ["short", "brief"], "optional": true},
+        "learning_habits": null
+      },
+      "opus_golden": {
+        "preferred_language": {"value": "en"},
+        "hebrew_fluency": {"value": "intermediate"},
+        "terminology_comfort": {"value": "some"},
+        "register": {"value": "academic"},
+        "text_categories": {"must_include": ["Tanakh"]},
+        "answer_style": {"any_of": ["Short", "source"], "optional": true},
+        "learning_habits": null
+      }
+    },
+    {
+      "id": "mock-b",
+      "user_id": "mock:b",
+      "description": "invented; the author's note, never sent to the labeller",
+      "sessions": [{"session_id": "b-s1", "turns": [
+        {"id": "b-1", "at": "2026-03-01T10:00:00Z", "user": "Invented question about Mishnah.", "assistant": "Invented answer."},
+        {"id": "b-2", "at": "2026-03-01T10:05:00Z", "user": "Invented follow-up about Talmud.", "assistant": "Invented answer."}
+      ]}],
+      "golden": {
+        "preferred_language": {"value": "he"},
+        "hebrew_fluency": null,
+        "terminology_comfort": {"value": "comfortable"},
+        "register": null,
+        "text_categories": {"must_include": ["Mishnah", "Talmud"]},
+        "answer_style": null,
+        "learning_habits": null
+      },
+      "opus_golden": {
+        "preferred_language": {"value": "he"},
+        "hebrew_fluency": null,
+        "terminology_comfort": {"value": "some"},
+        "register": null,
+        "text_categories": {"must_include": ["Mishnah", "Talmud"]},
+        "answer_style": {"any_of": ["short"], "optional": true},
+        "learning_habits": null
+      }
+    }
+  ]
+}
