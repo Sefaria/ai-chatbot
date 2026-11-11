@@ -253,6 +253,39 @@ class InMemoryProfileStore:
             for lock in reversed(locks):
                 lock.release()
 
+    # -- all-or-nothing for a caller's several writes ---------------------------------------
+
+    def snapshot_user(self, user_id: str) -> dict:
+        """What a multi-write caller (the job's apply) may touch: the user's slots, which
+        observations are consumed, the candidate and the revision. Postgres uses a transaction
+        instead; this is the in-memory store's rollback point."""
+        with self._data:
+            return {
+                "slots": copy.deepcopy(self._slots.get(user_id)),
+                "consumed": {o.id: o.consumed_at for o in self._observations.get(user_id, [])},
+                "candidate": copy.deepcopy(self._candidates.get(user_id)),
+                "revision": self._revisions.get(user_id),
+            }
+
+    def restore_user(self, user_id: str, saved: dict) -> None:
+        """Put a `snapshot_user` back exactly, revision included. It assigns the saved state
+        directly: no write method runs, so nothing bumps the revision on the way back."""
+        with self._data:
+            lock = self._user_locks.setdefault(user_id, threading.Lock())
+        with lock, self._data:
+            for table, key in ((self._slots, "slots"), (self._candidates, "candidate")):
+                if saved[key] is None:
+                    table.pop(user_id, None)
+                else:
+                    table[user_id] = copy.deepcopy(saved[key])
+            for obs in self._observations.get(user_id, []):
+                if obs.id in saved["consumed"]:
+                    obs.consumed_at = saved["consumed"][obs.id]
+            if saved["revision"] is None:
+                self._revisions.pop(user_id, None)
+            else:
+                self._revisions[user_id] = saved["revision"]
+
     # -- reads ----------------------------------------------------------------------------
 
     def _settings_of(self, user_id: str) -> ProfileSettingsData:

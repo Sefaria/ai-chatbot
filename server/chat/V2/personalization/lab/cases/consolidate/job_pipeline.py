@@ -61,7 +61,8 @@ class JobPipeline:
         self._conflicts: dict[str, list[dict]] = defaultdict(list)
         self._turns = 0
         self._jobs_with_call = 0
-        self._changes = 0
+        self._proposed = 0  # slot changes the job runs proposed
+        self._changes = 0  # of those, the ones written to the profile
 
     def on_turn(self, user_id: str, turn: Turn) -> None:
         if turn.user_id != user_id:
@@ -80,13 +81,15 @@ class JobPipeline:
         self._diagnostics["jobs"] += 1
         self._diagnostics.update({f"job_{k}": v for k, v in result.ignored.items()})
         self._jobs_with_call += result.llm_calls
+        self._proposed += len(result.changes)
         applied = result.applied
-        if self.mode == "candidate" and self.store.get_candidate(user_id) is not None:
+        # Only a candidate this press wrote: a leftover one is neither counted nor applied again.
+        if self.mode == "candidate" and result.candidate_written:
             self._diagnostics["candidates"] += 1
             outcome = apply_candidate(self.store, user_id, now=now, registry=self.registry)
             if outcome.applied:
                 self._diagnostics["applied_candidates"] += 1
-                applied = True
+                applied = bool(result.changes)  # a conflicts-only candidate writes no slot
             else:
                 self._diagnostics[f"apply_refused_{outcome.reason}"] += 1
         if applied:
@@ -148,7 +151,7 @@ class JobPipeline:
         return {
             "screen_sensitive": (self._turns, self._turns - self._skips["sensitive"]),
             "consolidate": (d["jobs"], self._jobs_with_call),
-            "write_profile": (self._jobs_with_call, self._changes),
+            "write_profile": (self._proposed, self._changes),
         }
 
 
