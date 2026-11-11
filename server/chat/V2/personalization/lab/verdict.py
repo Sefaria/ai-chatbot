@@ -6,6 +6,8 @@ Rules (test tree, top):
 - Each bar (not `expected_to_fail`) is `holds` (as written), `fails` (fails in every run, or fails
   on the mean or the pooled figure) or `mixed` (a min, max or each bar that fails while some run
   holds); a bar with no data, fewer than three runs or a missing reference is `inconclusive`.
+- A bar on a cross-run metric (`runs_identical`, `run_agreement`: defined over all three runs)
+  reads run 3's value; the bar's `agg` is ignored; no value in run 3 is `inconclusive`.
 - `drop` if a bar fails; else `inconclusive` if a bar is mixed or inconclusive, or any run has
   `invalid` above 5% of its items; else `keep`.
 A person can add a `note` to verdict.json; the computed verdict is not editable.
@@ -21,6 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .guard import repo_root
+from .metrics import metric_for
 
 OPS = {">=": operator.ge, "<=": operator.le, "==": lambda a, b: abs(a - b) < 1e-9, ">": operator.gt}
 INVALID_SHARE = 0.05
@@ -43,6 +46,21 @@ def _series(results: list[dict], dataset: str, metric: str):
         values.append(part["metrics"].get(metric))
         ratios.append(part.get("ratios", {}).get(metric))
     return values, ratios
+
+
+def _is_cross_run(metric: str) -> bool:
+    found = metric_for(metric)
+    return bool(found and found.cross_run)
+
+
+def _last_run_value(results: list[dict], dataset: str, metric: str):
+    """(value, ratio) of the run with the highest number that carries `dataset`."""
+    carrying = [(r.get("run", 0), _metrics_for(r, dataset)) for r in results]
+    carrying = [(n, part) for n, part in carrying if part is not None]
+    if not carrying:
+        return None, None
+    _n, part = max(carrying, key=lambda item: item[0])
+    return part["metrics"].get(metric), part.get("ratios", {}).get(metric)
 
 
 def aggregate(values: list, ratios: list, agg: str):
@@ -103,10 +121,19 @@ def evaluate_bar(bar, case, results: list[dict], ref_reader=None) -> dict:
     if len(values) < RUNS:
         row["why"] = f"{len(values)} of {RUNS} runs"
         return row
-    if any(v is None for v in values):
+    if any(v is None for v in values) and not _is_cross_run(bar.metric):
         row["why"] = "a run has no value for this metric"
         return row
     op = OPS[bar.op]
+    if _is_cross_run(bar.metric):
+        # defined over runs 1-3 only: the last run's value stands for the case, `agg` is ignored
+        last, _ratio = _last_run_value(results, bar.dataset, bar.metric)
+        if last is None:
+            row["why"] = "the last run has no value for this cross-run metric"
+            return row
+        holds = bool(op(last, target))
+        row.update(observed=last, holds=holds, state="holds" if holds else "fails")
+        return row
     per_run = [bool(op(v, target)) for v in values]
     if bar.agg == "each":
         observed = min(values) if bar.op in (">=", ">") else max(values)
