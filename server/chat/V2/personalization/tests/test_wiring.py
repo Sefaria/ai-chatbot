@@ -426,3 +426,61 @@ def test_claim_does_nothing_with_personalization_off():
     with patch.object(runtime, "get_store") as get_store:
         assert claim(anon_id).status_code == 200
     get_store.assert_not_called()
+
+
+# -- lab compare: the plain arm's session is hidden only on a lab deployment ----------------------
+
+COMPARE = {"personalizationMode": "off", "labCompare": True}
+
+
+def listed_sessions():
+    response = APIClient().get("/api/history/conversations", {"userId": TOKEN})
+    assert response.status_code == 200
+    return [c["sessionId"] for c in response.json()["conversations"]]
+
+
+@pytest.mark.django_db
+def test_lab_compare_session_is_hidden_when_honoured(honoured, agent, service, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
+    post(context=COMPARE, session="plain-arm")
+    session = ChatSession.objects.get(session_id="plain-arm")
+    assert session.is_deleted is True and session.deleted_at is not None
+    assert "plain-arm" not in listed_sessions()
+
+
+@pytest.mark.django_db
+def test_lab_compare_is_ignored_without_the_lab_flag(honoured, agent, service, monkeypatch):
+    monkeypatch.delenv("PERSONALIZATION_LAB_SEED", raising=False)
+    post(context=COMPARE, session="plain-arm")
+    session = ChatSession.objects.get(session_id="plain-arm")
+    assert session.is_deleted is False and session.deleted_at is None
+    assert "plain-arm" in listed_sessions()
+
+
+@pytest.mark.django_db
+def test_lab_compare_is_ignored_for_a_caller_without_the_override(
+    plain, agent, service, monkeypatch
+):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
+    post(context=COMPARE, session="plain-arm")
+    assert ChatSession.objects.get(session_id="plain-arm").is_deleted is False
+
+
+@pytest.mark.django_db
+def test_lab_compare_is_ignored_when_personalization_is_on(honoured, agent, service, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
+    post(context={"personalizationMode": "realtime", "labCompare": True}, session="p-arm")
+    assert ChatSession.objects.get(session_id="p-arm").is_deleted is False
+
+
+@pytest.mark.django_db
+def test_hidden_session_is_not_claimed(honoured, monkeypatch):
+    import uuid
+
+    from chat.auth.anonymous import anonymous_user_id
+
+    anon_id = uuid.uuid4()
+    ChatSession.objects.create(
+        session_id="hidden", user_id=anonymous_user_id(anon_id), is_deleted=True
+    )
+    assert claim(anon_id).json()["claimedSessions"] == 0

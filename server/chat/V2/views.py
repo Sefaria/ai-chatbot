@@ -24,6 +24,7 @@ import concurrent.futures
 import contextvars
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -345,6 +346,20 @@ def _resolve_personalization(persistent_user_id, context):
     return config, personalization_runtime.profile_for_request(config, timezone.now())
 
 
+def _lab_compare_hidden(persistent_user_id, context) -> bool:
+    """True when the plain arm of a lab compare asked for a hidden session and may have one.
+
+    Honoured only on a lab deployment, for a caller allowed the personalization override, on a
+    request that turns personalization off; anywhere else `labCompare` is ignored."""
+    if context.get("labCompare") is not True or context.get("personalizationMode") != "off":
+        return False
+    return (
+        os.environ.get("PERSONALIZATION_LAB_SEED") == "true"
+        and personalization_gate._non_production_environment()
+        and personalization_gate.override_allowed(settings, persistent_user_id)
+    )
+
+
 def _submit_personalization_update(config, turn, agent_response):
     """Queue the memory update for a saved turn: never for off, a fixture, or a refused reply."""
     if config.source == "off" or config.fixture_profile is not None or agent_response.refused:
@@ -510,7 +525,12 @@ def chat_stream_v2(request):
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
-    session, _ = create_or_get_session(data["sessionId"], actor)
+    hidden_defaults = (
+        {"is_deleted": True, "deleted_at": timezone.now()}
+        if _lab_compare_hidden(actor.user_id, context)
+        else {}
+    )
+    session, _ = create_or_get_session(data["sessionId"], actor, **hidden_defaults)
 
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
@@ -1257,7 +1277,9 @@ def anon_claim_v2(request):
 
     anon_user_id = anonymous_user_id(data["anonId"])
     with transaction.atomic():
-        claimed = ChatSession.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+        claimed = ChatSession.objects.filter(user_id=anon_user_id, is_deleted=False).update(
+            user_id=actor.user_id
+        )
         ChatMessage.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
         if personalization_gate.memory_enabled(settings):
             personalization_runtime.move_profile(anon_user_id, actor.user_id)

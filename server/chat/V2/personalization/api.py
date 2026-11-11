@@ -41,6 +41,8 @@ ACTIONS = (
     "discard_candidate",
     "seed_persona",
 )
+# Actions that exist only on a lab deployment (PERSONALIZATION_LAB_SEED on a non-production ENVIRONMENT).
+LAB_ONLY_ACTIONS = frozenset({"run_job", "apply_candidate", "discard_candidate", "seed_persona"})
 SEED_MAX_TURNS = 60
 SEED_MAX_CHARS = 4000
 SEED_WINDOW_DAYS = 29  # inside the job's 30-day window, with a day of margin
@@ -454,6 +456,12 @@ def _run(action: str, data: dict, store_user_id: str, mode: str):
     }
 
 
+def _lab_deployment() -> bool:
+    return (
+        os.environ.get("PERSONALIZATION_LAB_SEED") == "true" and gate._non_production_environment()
+    )
+
+
 @api_view(["POST"])
 def personalization_profile(request):
     """POST /api/v2/personalization/profile {userId, action, ...}: read or change your own profile."""
@@ -470,7 +478,7 @@ def personalization_profile(request):
     if not gate.override_allowed(settings, actor.user_id):
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    if data["action"] == "seed_persona" and os.environ.get("PERSONALIZATION_LAB_SEED") != "true":
+    if data["action"] in LAB_ONLY_ACTIONS and not _lab_deployment():
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     subject = data.get("personalizationSubject")

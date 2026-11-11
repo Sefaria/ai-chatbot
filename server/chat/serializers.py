@@ -25,6 +25,8 @@ class MessageContextSerializer(serializers.Serializer):
     personalizationInjection = serializers.CharField(max_length=40, required=False)
     personalizationProfile = serializers.DictField(required=False)
     personalizationSubject = serializers.CharField(max_length=100, required=False)
+    # Lab compare's plain arm: the server hides its session only on a lab deployment.
+    labCompare = serializers.BooleanField(required=False, default=False)
 
 
 class IdentitySerializerMixin(serializers.Serializer):

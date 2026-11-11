@@ -136,6 +136,25 @@ def test_seed_persona_404_without_its_flag(honoured, monkeypatch):
     assert profile("get").status_code == 200
 
 
+@pytest.mark.parametrize(
+    "action", ["run_job", "apply_candidate", "discard_candidate", "seed_persona"]
+)
+@pytest.mark.parametrize("flag", [None, "false"])
+def test_lab_actions_404_without_the_lab_flag_even_when_allowlisted(
+    honoured, monkeypatch, action, flag
+):
+    if flag is None:
+        monkeypatch.delenv("PERSONALIZATION_LAB_SEED", raising=False)
+    else:
+        monkeypatch.setenv("PERSONALIZATION_LAB_SEED", flag)
+    assert profile(action, turns=TURNS).status_code == 404
+
+
+def test_lab_actions_404_in_production_even_with_the_flag(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    assert profile("run_job").status_code == 404
+
+
 # -- seeding -------------------------------------------------------------------------------------
 
 
@@ -173,7 +192,7 @@ def test_seed_then_run_job_then_apply(honoured, seed_on):
     assert {s["slot"] for s in profile("get").data["slots"]} == set(slots)
 
 
-def test_run_job_with_nothing_seeded_is_empty(honoured):
+def test_run_job_with_nothing_seeded_is_empty(honoured, seed_on):
     with patch.object(runtime, "get_llm", return_value=stub_llm()):
         body = profile("run_job").data
     assert body["status"] == "empty" and body["changes"] == [] and body["observationsRead"] == 0

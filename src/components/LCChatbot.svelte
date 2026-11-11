@@ -123,7 +123,9 @@
   let conversationDrafts = $state({});
   let conversationNavigation = 0;
   let stopErrors = $state({});
-  let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
+  // Lab compare: the plain arm can outlive the main turn, so it is tracked by chat until it settles.
+  let plainArms = $state({});
+  let isCurrentSessionStopping = $derived(!!(activeRequests[sessionId]?.stopping || plainArms[sessionId]?.stopping));
   let isLoadingHistory = $state(false);
   // A chat picked in History is loading: the open one hides meanwhile (see openConversation)
   let isOpeningConversation = $state(false);
@@ -353,6 +355,8 @@
   // persistence) runs invisibly server-side and isn't something to wait on or
   // offer to stop -- only the stretch before that locks the composer.
   let isCurrentSessionFinalizing = $derived(isCurrentSessionSending && !streamTextDone);
+  // Stop stays on while either compare arm is still running.
+  let showStop = $derived(isCurrentSessionFinalizing || !!plainArms[sessionId]);
   let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
 
   // Menu state
@@ -1489,7 +1493,8 @@
 
   // Lab compare: the same question again with personalization off, in a throwaway session that
   // is never added to the history. Stop on the main turn stops this one too.
-  async function startPlainStream(request, text) {
+  async function startPlainStream(request, text, chatId) {
+    plainArms[chatId] = request;
     comparePlain = { ...comparePlain, [request.messageId]: { status: 'loading', markdown: '' } };
     // Its own session and message ids, kept so Stop can cancel this turn on the server too.
     request.plain = { sessionId: generateSessionId(), messageId: generateMessageId() };
@@ -1499,13 +1504,14 @@
         apiBaseUrl, userId, request.plain.sessionId, text, {}, promptSlugs, originProp, isModerator,
         promptSlugs.labs === true, { messageId: request.plain.messageId },
         interfaceLang,
-        { signal: request.controller.signal, contextOverrides: { personalizationMode: 'off' } }
+        { signal: request.controller.signal, contextOverrides: { personalizationMode: 'off', labCompare: true } }
       );
       outcome = { status: 'done', markdown: response.markdown || '' };
     } catch (e) {
       outcome = e?.name === 'AbortError' ? { status: 'stopped', markdown: '' } : { status: 'error', markdown: '' };
     }
     comparePlain = { ...comparePlain, [request.messageId]: outcome };
+    if (plainArms[chatId] === request) delete plainArms[chatId];
   }
 
   // `source`: where on the host page the question was asked from (only askInNewChat passes one)
@@ -1684,7 +1690,7 @@
       return new Promise((resolve) => { onStreamDrained = resolve; });
     }
 
-    if (request.compare) startPlainStream(request, text);
+    if (request.compare) startPlainStream(request, text, sendingSessionId);
 
     try {
       // Resolve location independently; Stop and chat switching remain responsive.
@@ -1997,11 +2003,23 @@
 
   async function handleStop() {
     const targetSessionId = sessionId;
-    const request = activeRequests[targetSessionId];
+    const mainRequest = activeRequests[targetSessionId];
+    const request = mainRequest || plainArms[targetSessionId];
     if (!request || request.stopping) return;
     request.stopping = true;
     stopThinkingMessages();
     delete stopErrors[targetSessionId];
+    if (!mainRequest) {
+      // The main turn already settled; only the lab's plain arm is still running.
+      try {
+        await cancelStream(apiBaseUrl, { userId, ...request.plain });
+      } catch {
+        // Fall through: aborting the stream below still ends it on this side.
+      }
+      request.controller.abort();
+      request.stopping = false;
+      return;
+    }
     if (request.plain) {
       // The lab's plain arm is its own server turn; best effort, the main cancel decides the UI.
       cancelStream(apiBaseUrl, { userId, ...request.plain }).catch(() => {});
@@ -3038,7 +3056,7 @@
             rows="1"
             disabled={isCurrentSessionFinalizing || limitReached}
           ></textarea>
-          {#if isCurrentSessionFinalizing}
+          {#if showStop}
             <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
               <button type="button" class="stop-btn" onclick={handleStop}
                 disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>

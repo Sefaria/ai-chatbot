@@ -77,6 +77,8 @@ test.describe('compare', () => {
     // Two streams; the plain one is "off" in its own session.
     expect(requests).toHaveLength(2);
     const off = requests.find((r) => r.context.personalizationMode === 'off');
+    expect(off.context.labCompare).toBe(true); // only the plain arm says so
+    expect(requests.filter((r) => r.context.labCompare)).toHaveLength(1);
     const normal = requests.find((r) => r.context.personalizationMode !== 'off');
     expect(off.sessionId).not.toBe(normal.sessionId);
     await expect(assistant.answers).toHaveCount(2); // personalized bubble + plain bubble, one turn
@@ -102,6 +104,32 @@ test.describe('compare', () => {
       );
     }
     expect(new Set(streams.map((s) => s.messageId)).size).toBe(2);
+  });
+
+  test('Stop stays available and cancels the plain arm when the personalized one finished first', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    const streams = [];
+    const cancels = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
+      if (r.url().endsWith('/v2/chat/cancel')) cancels.push(r.postDataJSON());
+    });
+    // The plain arm (personalization off) never answers; the personalized one uses the mock.
+    await page.route('**/chat/stream', (route) => {
+      if (route.request().postDataJSON().context?.personalizationMode === 'off') return;
+      return route.fallback();
+    });
+    await compareToggle(assistant).check();
+    await assistant.send('What is a mitzvah?');
+    await expect(assistant.host.getByTestId('lab-compare-personalized')).toContainText('Answer 1.');
+    const stop = assistant.host.getByRole('button', { name: 'Stop' });
+    await expect(stop).toBeVisible(); // the plain arm is still running
+    await stop.click();
+    const plainStream = streams.find((s) => s.context.personalizationMode === 'off');
+    await expect.poll(() => cancels).toContainEqual(
+      expect.objectContaining({ sessionId: plainStream.sessionId, messageId: plainStream.messageId }),
+    );
+    await expect(stop).toHaveCount(0);
   });
 
   test('without the toggle a question gets one normal answer', async ({ page, context }) => {
