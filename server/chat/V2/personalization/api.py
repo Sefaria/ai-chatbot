@@ -388,7 +388,7 @@ LAB_PAGE = """<!DOCTYPE html>
 </head>
 <body>
   <h1>LA personalization lab</h1>
-  <p>Synthetic personas only. Open the chat, then use the personalization panel.</p>
+  <p>Staff lab build. Each browser is a separate anonymous learner. Turn on Compare to see personalized and plain answers side by side; open the menu, Settings, Profile to load a learner, run the job and edit slots.</p>
   <lc-chatbot api-base-url="/api" default-open="true" placement="right" personalization-lab="true"></lc-chatbot>
   <script>
     // The widget reads its personalization mode from sessionStorage (or ?la_personalization=).
