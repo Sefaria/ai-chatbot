@@ -47,7 +47,8 @@ plus provider spending limits remain appropriate. Do not expose anonymous listen
 without an identity-resistant quota design.
 
 A 40-second lease spans two model calls with 12-second provider timeouts and no SDK
-retries. Stop clears the lease and payload; old workers cannot publish. Client requests
+retries. Calls pass no `temperature`: anthropic>=2 rejects sampling params with a
+TypeError (structured output via `output_config` keeps responses parseable). Stop clears the lease and payload; old workers cannot publish. Client requests
 time out after 35 seconds and retry with the same request ID. Recently completed
 request IDs (20) are cached; replay with changed payload is rejected. Older replay
 is not supported. Session state retains up to 30 suggestions, so semantic duplicate

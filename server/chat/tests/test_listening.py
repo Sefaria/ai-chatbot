@@ -210,7 +210,10 @@ def test_model_contract_rejects_ungrounded_or_truncated_output(client_factory):
     client.messages.create.return_value = response({"has_question": False}, "max_tokens")
     with pytest.raises(ValueError):
         model_service.detect(payload)
-    assert "tools" not in client.messages.create.call_args.kwargs
+    kwargs = client.messages.create.call_args.kwargs
+    assert "tools" not in kwargs
+    # anthropic>=2 raises TypeError on sampling kwargs before any request is sent.
+    assert not {"temperature", "top_p", "top_k"} & kwargs.keys()
 
 
 @patch("chat.listening.model_service.get_anthropic_client")

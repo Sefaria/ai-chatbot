@@ -55,7 +55,7 @@ def _json_call(client, model, prompt, payload, max_tokens, schema):
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        temperature=0,
+        # No temperature: anthropic>=2 rejects it (TypeError); see tracked_messages_create.
         output_config={"format": {"type": "json_schema", "schema": schema}},
         system=prompt,
         messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
