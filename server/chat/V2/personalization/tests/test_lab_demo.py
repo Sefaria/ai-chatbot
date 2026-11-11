@@ -203,3 +203,57 @@ def test_lab_page_served_with_flag(seed_on):
     html = response.content.decode()
     assert "<title>LA personalization lab</title>" in html
     assert "/static/js/lc-chatbot.umd.cjs" in html and "hybrid" in html
+
+
+# -- the lab origin ------------------------------------------------------------------------------
+
+LAB_HOST = "lab.example.test"
+LAB_ORIGIN = f"https://{LAB_HOST}"
+ANON_UUID = "3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b"
+
+
+def anon_post(origin):
+    from rest_framework.test import APIClient
+
+    return APIClient().post(
+        "/api/v2/personalization/profile",
+        {"anonId": ANON_UUID, "action": "get"},
+        format="json",
+        HTTP_ORIGIN=origin,
+    )
+
+
+@pytest.fixture
+def lab_env(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "lab")
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
+    monkeypatch.setenv("PERSONALIZATION_LAB_ORIGINS", LAB_HOST)
+    monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ANON", "true")
+    monkeypatch.delenv("CHATBOT_ALLOWED_SEFARIA_HOSTS", raising=False)
+
+
+@override_settings(PERSONALIZATION_OVERRIDE_ENABLED=True)
+def test_lab_origin_lets_anon_use_the_profile_api(lab_env):
+    assert anon_post(LAB_ORIGIN).status_code == 200
+    assert anon_post("https://other.example.test").status_code == 401
+
+
+@override_settings(PERSONALIZATION_OVERRIDE_ENABLED=True)
+def test_lab_origin_needs_the_seed_flag(lab_env, monkeypatch):
+    monkeypatch.delenv("PERSONALIZATION_LAB_SEED")
+    assert anon_post(LAB_ORIGIN).status_code == 401
+
+
+@override_settings(PERSONALIZATION_OVERRIDE_ENABLED=True)
+@pytest.mark.parametrize("environment", ["production", "prod", "beta", ""])
+def test_lab_origin_refused_in_production(lab_env, monkeypatch, environment):
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    assert anon_post(LAB_ORIGIN).status_code == 401
+
+
+def test_lab_origin_keeps_the_default_sefaria_base_url(lab_env):
+    from chat.sefaria_base_url import allowed_sefaria_base_url, lab_origin_allowed
+
+    assert lab_origin_allowed(LAB_ORIGIN) is True
+    assert allowed_sefaria_base_url(LAB_ORIGIN) is None  # tools and link checks use the default
+    assert lab_origin_allowed(f"https://user@{LAB_HOST}") is False
