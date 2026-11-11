@@ -369,3 +369,6 @@ LOGGING = {
         },
     },
 }
+
+# The widget bundle is a .cjs file that the lab page loads with a script tag.
+WHITENOISE_MIMETYPES = {".cjs": "application/javascript"}

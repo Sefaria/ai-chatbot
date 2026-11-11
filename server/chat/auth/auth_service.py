@@ -6,7 +6,7 @@ import logging
 
 from django.conf import settings
 
-from ..sefaria_base_url import request_sefaria_base_url
+from ..sefaria_base_url import lab_origin_allowed, request_sefaria_base_url
 from ..user_token_service import (
     UserTokenError,
     UserTokenExpiredError,
@@ -82,7 +82,9 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     # by SefariaBaseUrlMiddleware): other sites can't use the assistant for their
     # visitors. A script can still send a Sefaria Origin.
     if body_data and body_data.get("anonId"):
-        if request_sefaria_base_url() is None:
+        if request_sefaria_base_url() is None and not lab_origin_allowed(
+            request.headers.get("Origin")
+        ):
             raise AuthenticationRequired()
         return Actor(user_id=anonymous_user_id(body_data["anonId"]), is_anonymous=True)
 

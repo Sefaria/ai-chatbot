@@ -73,6 +73,35 @@ def allowed_sefaria_base_url(origin: str | None) -> str | None:
     return f"{parts.scheme}://{host}" + (f":{port}" if port else "")
 
 
+def lab_origin_allowed(origin: str | None) -> bool:
+    """True for an Origin whose host is in PERSONALIZATION_LAB_ORIGINS (same pattern syntax as
+    CHATBOT_ALLOWED_SEFARIA_HOSTS). Only for a lab deployment: PERSONALIZATION_LAB_SEED is "true"
+    and ENVIRONMENT is set and not production. It lets the lab page's own host use anonId; it never
+    sets the request's Sefaria base URL."""
+    if not origin or os.environ.get("PERSONALIZATION_LAB_SEED") != "true":
+        return False
+    environment = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+    if not environment or environment in ("prod", "production", "beta"):
+        return False
+    patterns = [
+        p.strip().lower()
+        for p in os.environ.get("PERSONALIZATION_LAB_ORIGINS", "").split(",")
+        if p.strip()
+    ]
+    try:
+        parts = urlsplit(origin.strip())
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not host:
+        return False
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        return False
+    if parts.username or parts.password:
+        return False
+    return _is_allowed_host(host, patterns)
+
+
 def _clear() -> None:
     # set(None), not reset(token): a stream may be consumed in a different context
     # than the one the value was set in, where reset() would raise.
