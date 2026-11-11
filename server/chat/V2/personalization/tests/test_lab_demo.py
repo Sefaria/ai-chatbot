@@ -51,6 +51,15 @@ def environment(monkeypatch):
     monkeypatch.delenv("PERSONALIZATION_OVERRIDE_ALLOW_ANON", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def clean_cache():
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
 @pytest.fixture
 def seed_on(monkeypatch):
     monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
@@ -142,7 +151,7 @@ def test_seed_persona_rejects_bad_input(honoured, seed_on):
 
 def test_seed_then_run_job_then_apply(honoured, seed_on):
     seeded = profile("seed_persona", turns=TURNS)
-    assert seeded.status_code == 200 and seeded.data == {"seeded": 2}
+    assert seeded.status_code == 200 and seeded.data == {"seeded": 2, "skipped": 0}
     assert profile("get").data["observations"] == 2
 
     with patch.object(runtime, "get_llm", return_value=stub_llm()):
@@ -189,11 +198,122 @@ def test_discard_candidate(honoured, seed_on):
     assert profile("apply_candidate").status_code == 404
 
 
+def test_seed_skips_sensitive_turns_and_drops_assistant_text(honoured, seed_on):
+    turns = [
+        {"user": "I am in mourning for my father", "assistant": "ASSISTANT-SECRET"},
+        {"user": "I enjoy reading Rashi", "assistant": "ASSISTANT-SECRET"},
+    ]
+    response = profile("seed_persona", turns=turns)
+    assert response.data == {"seeded": 1, "skipped": 1}
+    stored = runtime.get_store().observations(USER_ID, include_quarantined=True)
+    assert [o.text for o in stored] == ["I enjoy reading Rashi"]
+    assert "preceding_assistant" not in stored[0].signals
+    assert "ASSISTANT-SECRET" not in json.dumps(stored[0].signals)
+
+
+def test_seed_rebases_timestamps_keeping_order_and_spacing(honoured, seed_on):
+    turns = [
+        {"user": "first", "ts": "2020-01-01T00:00:00Z"},
+        {"user": "second", "ts": "2020-01-01T01:00:00Z"},
+        {"user": "third", "ts": "2020-01-01T04:00:00Z"},
+    ]
+    assert profile("seed_persona", turns=turns).data["seeded"] == 3
+    stored = sorted(runtime.get_store().observations(USER_ID), key=lambda o: o.text)
+    by_text = {o.text: o.at for o in stored}
+    from django.utils import timezone as tz
+
+    assert abs((tz.now() - by_text["third"]).total_seconds() - 60) < 30
+    assert (by_text["second"] - by_text["first"]).total_seconds() == 3600
+    assert (by_text["third"] - by_text["second"]).total_seconds() == 3 * 3600
+
+
+def test_seed_compresses_a_span_over_the_window(honoured, seed_on):
+    turns = [
+        {"user": "old", "ts": "2019-01-01T00:00:00Z"},
+        {"user": "mid", "ts": "2019-02-01T00:00:00Z"},
+        {"user": "new", "ts": "2019-03-01T00:00:00Z"},
+    ]
+    profile("seed_persona", turns=turns)
+    at = {o.text: o.at for o in runtime.get_store().observations(USER_ID)}
+    assert at["old"] < at["mid"] < at["new"]
+    from django.utils import timezone as tz
+
+    assert (tz.now() - at["old"]).days <= 29
+
+
+@pytest.mark.parametrize(
+    "ts", ["0000-00-00T00:00:00Z", "2026-13-45T00:00:00Z", "9999-12-31T23:59:59+99:00"]
+)
+def test_seed_bad_timestamp_is_400(honoured, seed_on, ts):
+    assert profile("seed_persona", turns=[{"user": "ok", "ts": ts}]).status_code == 400
+
+
+# -- run_job limits and the pending candidate -----------------------------------------------------
+
+
+def test_run_job_pending_candidate_is_returned_when_window_unchanged(honoured, seed_on):
+    profile("seed_persona", turns=TURNS)
+    assert profile("get").data["pendingCandidate"] is False
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        first = profile("run_job").data
+        again = profile("run_job").data
+    assert first["status"] == "candidate"
+    assert profile("get").data["pendingCandidate"] is True
+    assert again["status"] == "candidate" and again["changes"] == first["changes"]
+    profile("discard_candidate")
+    assert profile("get").data["pendingCandidate"] is False
+
+
+def test_run_job_per_hour_limit(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_JOB_PER_HOUR", "2")
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        assert profile("run_job").status_code == 200
+        assert profile("run_job").status_code == 200
+        limited = profile("run_job")
+    assert limited.status_code == 429 and limited.data == {"error": "rate_limited"}
+
+
+def test_run_job_per_day_limit_is_deployment_wide(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_JOB_PER_DAY", "1")
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        assert profile("run_job").status_code == 200
+        assert profile("run_job").status_code == 429
+
+
+def test_run_job_refuses_a_concurrent_call(honoured, seed_on):
+    from django.core.cache import cache
+
+    cache.add(f"lab-job-lock:{USER_ID}", 1, timeout=60)
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        response = profile("run_job")
+    assert response.status_code == 429 and response.data == {"error": "rate_limited"}
+    cache.delete(f"lab-job-lock:{USER_ID}")
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        assert profile("run_job").status_code == 200
+
+
+def test_run_job_releases_its_lock(honoured, seed_on):
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        profile("run_job")
+        assert profile("run_job").status_code == 200
+
+
 # -- the lab page --------------------------------------------------------------------------------
 
 
 def test_lab_page_404_without_flag(monkeypatch):
     monkeypatch.delenv("PERSONALIZATION_LAB_SEED", raising=False)
+    assert Client().get("/lab/").status_code == 404
+
+
+@pytest.mark.parametrize("environment", ["prod", "production", "beta", ""])
+def test_lab_page_404_in_production_or_unset_environment(seed_on, monkeypatch, environment):
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    assert Client().get("/lab/").status_code == 404
+
+
+def test_lab_page_404_when_environment_unset(seed_on, monkeypatch):
+    monkeypatch.delenv("ENVIRONMENT")
     assert Client().get("/lab/").status_code == 404
 
 
@@ -257,3 +377,17 @@ def test_lab_origin_keeps_the_default_sefaria_base_url(lab_env):
     assert lab_origin_allowed(LAB_ORIGIN) is True
     assert allowed_sefaria_base_url(LAB_ORIGIN) is None  # tools and link checks use the default
     assert lab_origin_allowed(f"https://user@{LAB_HOST}") is False
+
+
+@override_settings(PERSONALIZATION_OVERRIDE_ENABLED=True)
+def test_anon_run_batch_is_rate_limited(lab_env, monkeypatch):
+    from rest_framework.test import APIClient
+
+    monkeypatch.setenv("PERSONALIZATION_LAB_JOB_PER_HOUR", "0")
+    response = APIClient().post(
+        "/api/v2/personalization/profile",
+        {"anonId": ANON_UUID, "action": "run_batch", "mode": "hybrid"},
+        format="json",
+        HTTP_ORIGIN=LAB_ORIGIN,
+    )
+    assert response.status_code == 429 and response.data == {"error": "rate_limited"}

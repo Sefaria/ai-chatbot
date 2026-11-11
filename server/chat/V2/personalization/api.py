@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -24,6 +25,7 @@ from chat.serializers import IdentitySerializerMixin
 from chat.V2.sentry import capture_exception
 
 from . import gate, job, runtime
+from .signals import is_sensitive
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +44,11 @@ ACTIONS = (
 )
 SEED_MAX_TURNS = 60
 SEED_MAX_CHARS = 4000
-SEED_ASSISTANT_MAX_CHARS = 2000
 SEED_WINDOW_DAYS = 29  # inside the job's 30-day window, with a day of margin
 # The job's model call must not hold the request's database transaction open.
 UNATOMIC_ACTIONS = frozenset({"run_job"})
+JOB_PER_HOUR_DEFAULT = 10
+JOB_PER_DAY_DEFAULT = 300
 BATCH_MODES = sorted(gate.MODES - {"off"})
 
 
@@ -173,6 +176,7 @@ def _profile_json(store, store_user_id: str) -> dict:
         "proposals": [_proposal_json(p) for p in store.proposals(store_user_id)],
         "observations": len(observations) - quarantined,
         "quarantinedObservations": quarantined,
+        "pendingCandidate": job.pending_candidate(store, store_user_id) is not None,
     }
 
 
@@ -187,15 +191,59 @@ def _run_job(store, store_user_id: str, now) -> dict:
         registry=runtime.get_registry(),
         model=settings.PERSONALIZATION_MODEL,
     )
+    changes, status_text = result.changes, "candidate" if result.candidate_written else "empty"
+    if not result.candidate_written:
+        pending = job.pending_candidate(store, store_user_id)
+        if pending is not None:  # unchanged window, but a candidate still waits for the learner
+            changes, status_text = pending.get("changes") or [], "candidate"
     return {
-        "status": "candidate" if result.candidate_written else "empty",
-        "changes": result.changes,
+        "status": status_text,
+        "changes": changes,
         "conflicts": result.conflicts,
         "observationsRead": result.observations_read,
         "tokens": result.input_tokens + result.output_tokens,
         "costUsd": result.cost_usd,
         "revision": store.revision(store_user_id),
     }
+
+
+def _limit(name: str, default: int) -> int:
+    try:
+        return max(int(os.environ.get(name, "")), 0)
+    except ValueError:
+        return default
+
+
+def _rate_limited():
+    return Response({"error": "rate_limited"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+def _counter(key: str, ttl: int) -> int:
+    cache.add(key, 0, timeout=ttl)
+    try:
+        return cache.incr(key)
+    except ValueError:  # expired between add and incr
+        cache.set(key, 1, timeout=ttl)
+        return 1
+
+
+def _guarded_job_call(store_user_id: str, call):
+    """Run a model-calling action under the lab's cost limits: per store user, one at a time and
+    a number per hour; per deployment, a number per day. Over a limit is a 429 and no call."""
+    per_hour = _limit("PERSONALIZATION_LAB_JOB_PER_HOUR", JOB_PER_HOUR_DEFAULT)
+    per_day = _limit("PERSONALIZATION_LAB_JOB_PER_DAY", JOB_PER_DAY_DEFAULT)
+    now = timezone.now()
+    lock = f"lab-job-lock:{store_user_id}"
+    if not cache.add(lock, 1, timeout=300):
+        return _rate_limited()
+    try:
+        hour_key = f"lab-job-hour:{store_user_id}:{now:%Y%m%d%H}"
+        day_key = f"lab-job-day:{now:%Y%m%d}"
+        if _counter(hour_key, 3600) > per_hour or _counter(day_key, 86400) > per_day:
+            return _rate_limited()
+        return call()
+    finally:
+        cache.delete(lock)
 
 
 def _parse_turn(raw, index: int, now) -> tuple[dict | None, str | None]:
@@ -212,7 +260,10 @@ def _parse_turn(raw, index: int, now) -> tuple[dict | None, str | None]:
         return None, f"turn {index}: sessionId must be a string of at most 100"
     at = None
     if raw.get("ts") is not None:
-        at = parse_datetime(raw["ts"]) if isinstance(raw["ts"], str) else None
+        try:
+            at = parse_datetime(raw["ts"]) if isinstance(raw["ts"], str) else None
+        except (ValueError, OverflowError):
+            at = None
         if at is None:
             return None, f"turn {index}: ts must be an ISO datetime"
         if timezone.is_naive(at):
@@ -222,8 +273,8 @@ def _parse_turn(raw, index: int, now) -> tuple[dict | None, str | None]:
 
 def _seed_persona(data: dict, store, store_user_id: str, now):
     """Write a synthetic persona's prompts as observations, as the hybrid mode records a real
-    turn (same signals, same quarantine of a standing instruction). A turn time outside the job's
-    window is moved into it; a turn with no time is spread over the days before `now`."""
+    turn (same signals, same quarantine of a standing instruction). Assistant text is never stored. Turn times are
+    rebased into the job's window, keeping their order and spacing; a turn with no time is spread over the days before `now`."""
     from .signals import (
         cited_categories,
         detect_language,
@@ -244,19 +295,29 @@ def _seed_persona(data: dict, store, store_user_id: str, now):
             return _bad(error)
         parsed.append(turn)
     earliest, run_id = now - timedelta(days=SEED_WINDOW_DAYS), uuid.uuid4().hex[:8]
-    seeded = 0
+    timed = [t["at"] for t in parsed if t["at"] is not None]
+    newest_at = now - timedelta(minutes=1)
+    scale = 1.0
+    if timed:
+        newest, span = max(timed), max(timed) - min(timed)
+        if span > newest_at - earliest:
+            scale = (newest_at - earliest) / span
+    seeded = skipped = 0
     for index, turn in enumerate(parsed):
-        at = turn["at"] or earliest + (now - earliest) * (index + 1) / (len(parsed) + 1)
-        at = min(max(at, earliest), now)
         text = turn["user"]
+        if is_sensitive(text):
+            skipped += 1  # the screen the strategies use: a sensitive turn is not stored
+            continue
+        if turn["at"] is not None:
+            at = newest_at - (newest - turn["at"]) * scale
+        else:
+            at = earliest + (now - earliest) * (index + 1) / (len(parsed) + 1)
         quarantined = bool(find_standing_instructions(text))
         signals = {} if quarantined else {
             "language": detect_language(text),
             "hebrew_ratio": round(hebrew_ratio(text), 3),
             "cited_categories": cited_categories(text),
         }  # fmt: skip
-        if turn["assistant"] and not quarantined:
-            signals["preceding_assistant"] = turn["assistant"][:SEED_ASSISTANT_MAX_CHARS]
         observation = Observation(
             user_id=store_user_id,
             session_id=turn["session"] or f"seed-{run_id}",
@@ -269,7 +330,7 @@ def _seed_persona(data: dict, store, store_user_id: str, now):
         )
         if store.add_observation(observation).applied:
             seeded += 1
-    return {"seeded": seeded}
+    return {"seeded": seeded, "skipped": skipped}
 
 
 def _run(action: str, data: dict, store_user_id: str, mode: str):
@@ -278,7 +339,7 @@ def _run(action: str, data: dict, store_user_id: str, mode: str):
     if action == "get":
         return _profile_json(store, store_user_id)
     if action == "run_job":
-        return _run_job(store, store_user_id, now)
+        return _guarded_job_call(store_user_id, lambda: _run_job(store, store_user_id, now))
     if action == "apply_candidate":
         result = job.apply_candidate(store, store_user_id, now=now, registry=runtime.get_registry())
         if result.reason == "stale_revision":
@@ -322,7 +383,14 @@ def _run(action: str, data: dict, store_user_id: str, mode: str):
     service = runtime.get_service(data.get("mode") or mode)
     if service is None or service.strategy is None:
         return _bad("run_batch needs a mode other than off")
-    result = service.strategy.run_batch(now, [store_user_id])
+    if store_user_id.startswith(gate.ANON_PREFIX):
+        result = _guarded_job_call(
+            store_user_id, lambda: service.strategy.run_batch(now, [store_user_id])
+        )
+        if isinstance(result, Response):
+            return result
+    else:
+        result = service.strategy.run_batch(now, [store_user_id])
     return {
         "mode": service.mode,
         "usersProcessed": result.users_processed,
@@ -411,6 +479,9 @@ def lab_page(request):
     """GET /lab/: the widget with personalization mode hybrid. A 404 unless PERSONALIZATION_LAB_SEED."""
     from django.http import Http404, HttpResponse
 
-    if os.environ.get("PERSONALIZATION_LAB_SEED") != "true":
+    if (
+        os.environ.get("PERSONALIZATION_LAB_SEED") != "true"
+        or not gate._non_production_environment()
+    ):
         raise Http404
     return HttpResponse(LAB_PAGE, content_type="text/html; charset=utf-8")
