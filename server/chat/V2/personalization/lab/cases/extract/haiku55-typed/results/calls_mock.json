@@ -1,0 +1,146 @@
+[
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 979,
+  "out_tokens": 149
+ },
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 1001,
+  "out_tokens": 147
+ },
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 1025,
+  "out_tokens": 147
+ },
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "extract_batch",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 686,
+  "out_tokens": 7
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 972,
+  "out_tokens": 149
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 996,
+  "out_tokens": 150
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 1015,
+  "out_tokens": 150
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "extract_batch",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 678,
+  "out_tokens": 7
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 975,
+  "out_tokens": 148
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 996,
+  "out_tokens": 7
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 1016,
+  "out_tokens": 5
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "extract_batch",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 646,
+  "out_tokens": 7
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 977,
+  "out_tokens": 4
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 1002,
+  "out_tokens": 14
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "extract_batch",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 626,
+  "out_tokens": 7
+ },
+ {
+  "variant": "",
+  "persona": "eve",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 973,
+  "out_tokens": 149
+ },
+ {
+  "variant": "",
+  "persona": "eve",
+  "step": "typed_questions",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 990,
+  "out_tokens": 148
+ },
+ {
+  "variant": "",
+  "persona": "eve",
+  "step": "extract_batch",
+  "model": "claude-haiku-5-5",
+  "in_tokens": 632,
+  "out_tokens": 7
+ }
+]
