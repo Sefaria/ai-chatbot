@@ -171,9 +171,8 @@ def test_live_runs_three_times_and_history_metrics_read_the_earlier_runs(repo):
         )
         results.write(directory, result)
         seen.append(result["metrics"])
-    assert seen[0]["run_agreement"] is None and seen[1]["run_agreement"] is None  # needs 3 runs
-    assert seen[2]["run_agreement"] is not None
-    assert seen[0]["runs_identical"] is None and seen[1]["runs_identical"] is None
+    assert seen[0]["run_agreement"] is None and seen[1]["run_agreement"] is not None
+    assert seen[0]["runs_identical"] is None
     assert seen[2]["runs_identical"] == 1.0
     assert deps
 
@@ -219,7 +218,7 @@ def test_cross_run_values_on_a_real_dataset_use_progress_under_the_data_dir(
         [{"user_id": "u:real", "sessions": persona()["sessions"], "golden": persona()["golden"]}],
     )
     same = _three_runs(case, directory, real, oracle_llm())
-    assert same[0]["run_agreement"] is None and same[1]["run_agreement"] is None
+    assert same[0]["run_agreement"] is None and same[0]["runs_identical"] is None
     assert same[2]["run_agreement"] == 1.0 and same[2]["runs_identical"] == 1.0
     for n in (1, 2, 3):
         assert (data / "partial" / "a" / "x" / f"profiles_real1_run{n}.json").is_file()
