@@ -1,0 +1,15 @@
+{
+  "user_id": "learner.id",
+  "conversation_id": "chat.session",
+  "timestamp": "when",
+  "user_text": "prompt",
+  "assistant_text": "reply",
+  "staff_marker": {
+    "path": "learner.role",
+    "staff_values": ["staff"],
+    "rule": "drop_user_if_any"
+  },
+  "site": "context.site",
+  "browser_lang": null,
+  "country": "context.country"
+}
