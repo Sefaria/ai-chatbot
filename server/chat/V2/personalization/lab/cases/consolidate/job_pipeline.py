@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import random
 from collections import Counter, defaultdict
+from dataclasses import replace
 from datetime import datetime
 
 from chat.V2.personalization.job import apply_candidate, run_job
@@ -63,6 +64,8 @@ class JobPipeline:
         self._changes = 0
 
     def on_turn(self, user_id: str, turn: Turn) -> None:
+        if turn.user_id != user_id:
+            turn = replace(turn, user_id=user_id)
         result = self.logger.on_turn(turn, turn.at)
         self._turns += 1
         if result.skipped_reason:

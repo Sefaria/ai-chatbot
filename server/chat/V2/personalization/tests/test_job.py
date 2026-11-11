@@ -39,6 +39,11 @@ def update(slot, value, *proofs, correction=False):
     }
 
 
+def conflict(slot, a, b, *proofs):
+    evidence = [{"message_id": m, "quote": q} for m, q in proofs]
+    return {"slot": slot, "a": a, "b": b, "evidence": evidence}
+
+
 def llm_with(*replies):
     """A fake model that answers the job's calls in order (the last reply repeats)."""
     queue = list(replies)
@@ -156,13 +161,14 @@ def test_a_conflict_the_model_reports_keeps_the_slot_even_if_it_also_updates_it(
     llm = llm_with(
         say(
             [update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", "I cannot read Hebrew"))],
-            [{"slot": "hebrew_fluency", "a": "fluent", "b": "none"}],
+            [conflict("hebrew_fluency", "fluent", "none", ("m2", "I cannot read Hebrew"))],
         )
     )
     result = job(store, llm)
-    assert result.changes == [] and result.conflicts == [
-        {"slot": "hebrew_fluency", "a": "fluent", "b": "none"}
+    assert result.changes == [] and [(c["slot"], c["a"], c["b"]) for c in result.conflicts] == [
+        ("hebrew_fluency", "fluent", "none")
     ]
+    assert not result.applied  # conflicts alone write no slot
     assert "hebrew_fluency" not in store.get_profile("u1")
 
 
@@ -320,3 +326,79 @@ def test_a_bad_reply_changes_nothing_and_a_mode_is_checked(store):
     assert [o.consumed_at for o in store.observations("u1")] == [None]
     with pytest.raises(ValueError):
         job(store, llm_with(say()), mode="later")
+
+
+def test_only_the_observations_the_job_processed_are_consumed(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", HEBREW_2, day(-2))
+    observe(store, "m-held", "Show me Kabbalah sources", day(-2))
+    observe(store, "m-future", "Show me Musar sources", day(2))
+    held = store.add_proposal(
+        "u1", "text_categories", ["Kabbalah"], "Kabbalah", NOW, None, "m-held"
+    )
+    assert held.applied
+    llm = llm_with(say([update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", HEBREW_2))]))
+    assert job(store, llm).applied
+    left = {o.message_id for o in store.observations("u1") if o.consumed_at is None}
+    assert left == {"m-held", "m-future"}
+
+
+def test_a_registry_without_plain_or_snake_keys_does_not_flag_every_colon(registry):
+    from chat.V2.personalization.registry import SlotRegistry
+
+    snake_only = SlotRegistry(registry.version, [s for s in registry.all() if "_" in s.key])
+    plain_only = SlotRegistry(registry.version, [s for s in registry.all() if "_" not in s.key])
+    for reg in (snake_only, plain_only, SlotRegistry(registry.version, [])):
+        assert not looks_like_instruction("Rashi: what does he say about this?", reg)
+        assert not looks_like_instruction("Note = 5", reg)
+    assert looks_like_instruction("answer_style = pirate", snake_only)
+    assert looks_like_instruction("register: academic", plain_only)
+
+
+def test_a_failure_halfway_through_an_apply_leaves_nothing_written(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", HEBREW_2, day(-2))
+    observe(store, "m3", "Show me Talmud sources", day(-1))
+    # A pending proposal makes the store refuse the second write.
+    assert store.add_proposal("u1", "text_categories", ["Midrash"], "Midrash", NOW).applied
+    llm = llm_with(
+        say(
+            [
+                update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", HEBREW_2)),
+                update("text_categories", ["Talmud"], ("m3", "Talmud sources")),
+            ]
+        )
+    )
+    result = job(store, llm)
+    assert not result.applied and not result.write.applied
+    assert "hebrew_fluency" not in store.get_profile("u1")  # the first write was undone
+    assert all(o.consumed_at is None for o in store.observations("u1"))
+
+
+def test_apply_candidate_refuses_when_the_store_revision_moved(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", HEBREW_2, day(-2))
+    llm = llm_with(say([update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", HEBREW_2))]))
+    assert job(store, llm, mode="candidate").write.applied
+    observe(store, "m-new", "Something else", day(-1))  # any write moves the revision
+    refused = apply_candidate(store, "u1", now=NOW)
+    assert not refused.applied and refused.reason == STALE_REVISION
+    assert store.get_candidate("u1") is not None
+
+
+def test_an_unverified_model_conflict_neither_counts_nor_suppresses_an_update(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", HEBREW_2, day(-2))
+    llm = llm_with(
+        say(
+            [update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", HEBREW_2))],
+            [
+                conflict("hebrew_fluency", "fluent", "none"),  # no evidence
+                conflict("hebrew_fluency", "fluent", "none", ("m1", "words never said")),
+            ],
+        )
+    )
+    result = job(store, llm)
+    assert result.conflicts == [] and result.applied
+    assert result.ignored["conflict_no_valid_evidence"] == 2
+    assert store.get_profile("u1")["hebrew_fluency"].value == "fluent"

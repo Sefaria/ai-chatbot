@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -34,7 +35,7 @@ from typing import Literal
 from .llm import LLMClient, UsageLedger
 from .parsing import parse_json_object, validate_envelope
 from .registry import SlotRegistry
-from .store import STALE_REVISION, ProfileStore
+from .store import STALE_REVISION, DjangoProfileStore, ProfileStore
 from .strategies.base import truncate_prompt, verbatim_evidence
 from .strategies.nightly import MAX_OBSERVATIONS, NightlyStrategy
 from .strategies.prompts import _COMMON_RULES, current_profile_text, slot_definitions
@@ -61,11 +62,12 @@ A slot the profile marks as stated was set by the learner; do not touch it.
 If a later prompt plainly corrects the learner's own earlier statement ("actually", "I meant", \
 "no longer"), return the corrected value with "correction": true and quote the correcting words.
 If two prompts disagree and you cannot tell which is the later correction, do not pick one: \
-report {{"slot", "a", "b"}} under "conflicts" with the two values.
+report {{"slot", "a", "b", "evidence"}} under "conflicts" with the two values and the quotes.
 
 Return {{"updates": [{{"slot": "<slot key>", "value": <value>, "correction": false, "evidence": \
 [{{"message_id": "<id>", "quote": "<verbatim learner words from that message>"}}]}}], \
-"conflicts": [{{"slot": "<slot key>", "a": <value>, "b": <value>}}]}}.
+"conflicts": [{{"slot": "<slot key>", "a": <value>, "b": <value>, "evidence": [{{"message_id": \
+"<id>", "quote": "<verbatim learner words>"}}]}}]}}.
 Return {{"updates": [], "conflicts": []}} when nothing changes."""
 
 Mode = Literal["candidate", "apply"]
@@ -115,8 +117,12 @@ def looks_like_instruction(text: str, registry: SlotRegistry | None = None) -> b
     # when it is assigned with "=" or ":", a snake_case key also with "to" or "as".
     plain = "|".join(re.escape(k) for k in keys if "_" not in k)
     snake = "|".join(re.escape(k) for k in keys if "_" in k)
-    pattern = rf"\b(?:{plain})\b\s*[=:]|\b(?:{snake})\b\s*(?:[=:]|\bto\b|\bas\b)"
-    return re.search(pattern, text, re.IGNORECASE) is not None
+    parts = []  # an empty group would make `\b(?:)\b` match any word followed by ":" or "="
+    if plain:
+        parts.append(rf"\b(?:{plain})\b\s*[=:]")
+    if snake:
+        parts.append(rf"\b(?:{snake})\b\s*(?:[=:]|\bto\b|\bas\b)")
+    return bool(parts) and re.search("|".join(parts), text, re.IGNORECASE) is not None
 
 
 # -- helpers -----------------------------------------------------------------------------------
@@ -180,7 +186,6 @@ def run_job(
     unconsumed = [o for o in store.observations(user_id) if o.consumed_at is None]
     if not unconsumed:
         return result  # nothing new: a second run changes nothing and calls nothing
-    unconsumed_ids = [o.id for o in unconsumed]
 
     held = {p.source_message_id for p in store.proposals(user_id, "pending") if p.source_message_id}
     readable = NightlyStrategy.in_window(unconsumed, now, held)
@@ -188,6 +193,14 @@ def run_job(
     ignored["instruction_prompt"] = len(readable) - len(clean)
     recent = clean[-MAX_OBSERVATIONS:]
     result.observations_read = len(recent)
+    # Only what the job processed is consumed. A prompt held for a pending proposal, one dated in
+    # the future, or one cut by the window of recent prompts stays for a later run.
+    skipped = {id(o) for o in clean[: len(clean) - len(recent)]}
+    unconsumed_ids = [
+        o.id
+        for o in unconsumed
+        if o.message_id not in held and o.at <= now and id(o) not in skipped
+    ]
 
     data = None
     if recent:
@@ -222,7 +235,7 @@ def run_job(
     result.candidate = {**current, **{c["slot"]: c["new"] for c in changes}}
 
     if not changes and not conflicts:
-        # Nothing to review or write: the observations are consumed so the next run is a no-op.
+        # Nothing to review or write: what was processed is consumed so the next run is a no-op.
         marked = store.mark_consumed(user_id, unconsumed_ids, now, revision)
         result.write = marked
         return result
@@ -237,7 +250,7 @@ def run_job(
         result.write = store.set_candidate(user_id, envelope, changes, expected_revision=revision)
         return result
     result.write = _apply(store, user_id, envelope, changes, now, registry, revision)
-    result.applied = result.write.applied
+    result.applied = bool(changes) and result.write.applied  # conflicts alone write no slot
     return result
 
 
@@ -277,8 +290,17 @@ def _decide(
             continue
         a = registry.validate(raw["slot"], raw.get("a"))
         b = registry.validate(raw["slot"], raw.get("b"))
-        if a is None or b is None or _canon(a) == _canon(b):
+        values = [x for v in (a, b) for x in (v if isinstance(v, list) else [v]) if v is not None]
+        if (
+            a is None
+            or b is None
+            or _canon(a) == _canon(b)
+            or any(looks_like_instruction(str(x), registry) for x in values)
+        ):
             ignored["conflict_invalid"] += 1
+            continue
+        if not _evidence(raw.get("evidence"), seen):  # verified like an update's evidence
+            ignored["conflict_no_valid_evidence"] += 1
             continue
         mark(raw["slot"], a, b)
 
@@ -388,6 +410,32 @@ def _evidence(raw: object, seen: dict[str, Observation]) -> list[Evidence]:
 # -- applying ----------------------------------------------------------------------------------
 
 
+class _Refused(Exception):
+    def __init__(self, result: WriteResult):
+        self.result = result
+
+
+def _atomic(store: ProfileStore):
+    """One transaction for the Django store; the in-memory store is rolled back by `_restore`."""
+    if isinstance(store, DjangoProfileStore):
+        from django.db import transaction
+
+        return transaction.atomic()
+    return nullcontext()
+
+
+def _restore(store: ProfileStore, user_id: str, before: dict, slots: list[str], now: datetime):
+    """Put back the slots a failed apply had already written (in-memory store only)."""
+    for key in slots:
+        old = before.get(key)
+        if old is None:
+            store.delete_slot(user_id, key)
+        else:
+            store.set_inferred(
+                user_id, key, old.value, old.evidence, old.updated_at, old.expires_at
+            )
+
+
 def _apply(
     store: ProfileStore,
     user_id: str,
@@ -397,23 +445,34 @@ def _apply(
     registry: SlotRegistry,
     revision: int,
 ) -> WriteResult:
-    """Write the changes, then consume the observations, carrying the revision forward. A refusal
-    ends the run where it is: the observations stay unconsumed."""
-    result = WriteResult(False, None, revision)
-    for change in changes:
-        slot = registry.get(change["slot"])
-        row = envelope["profile"][change["slot"]]
-        expires = now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
-        result = store.set_inferred(
-            user_id, slot.key, change["new"], [_evidence_from(e) for e in row["evidence"]],
-            now, expires, revision,
-        )  # fmt: skip
-        if not result.applied:
-            return result
-        revision = result.revision
-    consumed = store.mark_consumed(user_id, envelope["observation_ids"], now, revision)
-    if consumed.reason:  # refused: the observations stay unconsumed
-        return consumed
+    """Write the changes, then consume the observations, all or nothing: a refusal anywhere rolls
+    the transaction back (Django) or restores the slots already written (in-memory), and the
+    observations stay unconsumed."""
+    before = store.get_profile(user_id)
+    written: list[str] = []
+    try:
+        with _atomic(store):
+            for change in changes:
+                slot = registry.get(change["slot"])
+                row = envelope["profile"][change["slot"]]
+                expires = (
+                    now + timedelta(days=slot.shelf_life_days) if slot.shelf_life_days else None
+                )
+                result = store.set_inferred(
+                    user_id, slot.key, change["new"],
+                    [_evidence_from(e) for e in row["evidence"]], now, expires, revision,
+                )  # fmt: skip
+                if not result.applied:
+                    raise _Refused(result)
+                written.append(slot.key)
+                revision = result.revision
+            consumed = store.mark_consumed(user_id, envelope["observation_ids"], now, revision)
+            if consumed.reason:
+                raise _Refused(consumed)
+    except _Refused as refused:
+        if not isinstance(store, DjangoProfileStore):
+            _restore(store, user_id, before, written, now)
+        return refused.result
     return WriteResult(True, None, consumed.revision if consumed.applied else revision)
 
 
@@ -424,18 +483,22 @@ def apply_candidate(
     now: datetime | None = None,
     registry: SlotRegistry | None = None,
 ) -> WriteResult:
-    """Apply the user's candidate. Refuses with `stale_revision` (and leaves the candidate) when
-    the profile is no longer the one the job saw."""
+    """Apply the user's candidate. `set_candidate` records the revision it was written at
+    (`base_revision`) and bumps it once, so the candidate is current only while the store is at
+    `base_revision + 1`: any write since (a slot, a setting, a new observation) refuses with
+    `stale_revision` and leaves the candidate. Revision is the only test; the profile's values
+    are not compared again, because every write that could change them moves the revision."""
     registry = registry or SlotRegistry.load()
     now = now or datetime.now(UTC)
     candidate = store.get_candidate(user_id)
     revision = store.revision(user_id)
     if candidate is None:
         return WriteResult(False, None, revision)
-    envelope = candidate["slots"]
-    if _snapshot(store.get_profile(user_id)) != envelope["base"]:
+    if revision != candidate["base_revision"] + 1:
         return WriteResult(False, STALE_REVISION, revision)
-    result = _apply(store, user_id, envelope, candidate["changes"], now, registry, revision)
+    result = _apply(
+        store, user_id, candidate["slots"], candidate["changes"], now, registry, revision
+    )
     if not result.applied:
         return result
     cleared = store.clear_candidate(user_id)
