@@ -40,11 +40,10 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 
 ## To do before merge
 
-- [ ] **Weblate strings**: enter the 11 `assistant.menu.*_floating_button` / `assistant.floating_button_modal.*`
-  keys with English and Hebrew (Penina, in Weblate). The English and Hebrew in this branch's `en.json` and `he.json`
-  are **preview-only**, so the Cauldron shows text before Weblate is hooked up. Once Weblate's PR
-  merges, merge `main` in and make the locale files match `main` exactly, so this PR carries keys
-  only.
+- [x] **Weblate strings**: the 11 `assistant.menu.*_floating_button` /
+  `assistant.floating_button_modal.*` keys, English and Hebrew, came in through Weblate
+  ([Sefaria/ai-chatbot#313](https://github.com/Sefaria/ai-chatbot/pull/313)). This branch's locale
+  files now match `main` exactly, so the PR carries keys only.
 - [ ] **Behavioral tests**: add more e2e coverage beyond `e2e/floating-button-setting.spec.js`
   (which covers hide persists, host reopen, log in / sign up / account settings links, the
   `chatbot:launcher_visibility` event, account wins over browser).
