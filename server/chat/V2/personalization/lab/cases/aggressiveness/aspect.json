@@ -1,0 +1,6 @@
+{
+  "id": "aggressiveness",
+  "question": "None, light or aggressive: how eagerly should an observation change the profile?",
+  "why": "Mickey's three arms (23:10 to 24:37) and \"remember everything, see what mistakes it makes\". All three use the typed Haiku client from the core so that only the update rule differs. The arms ignore the slots' minimum-sessions rule, which belongs to the nightly design.",
+  "source": "wiki/meta/spec-2026-11-10-la-personalization-lab-test-tree.md, heading \"Aspect `aggressiveness`: none, light or aggressive?\""
+}
