@@ -1,0 +1,210 @@
+{
+ "note": "Invented fixture for the mock; no real text. 'replies' holds the scripted reply of the fake model per turn id (question key -> [choice, confidence]); a turn with no entry gets the all-unclear reply.",
+ "personas": [
+  {
+   "id": "ana",
+   "user_id": "mock:ana",
+   "trap": "a later prompt contradicts the first and replaces it",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ana-s1",
+     "turns": [
+      {
+       "id": "ana-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Please explain this week's parsha, I read no Hebrew at all",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Actually I took a course and now I read Hebrew fluently",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "What does sugya mean?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "Who is Rashi?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "fluent"
+    }
+   },
+   "golden_timeline": [
+    {
+     "slot": "hebrew_fluency",
+     "from_turn": 1,
+     "value": "none"
+    },
+    {
+     "slot": "hebrew_fluency",
+     "from_turn": 2,
+     "value": "fluent"
+    }
+   ],
+   "checks": []
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "one odd prompt flips a settled value",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "I can follow a simple Hebrew verse with help",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Which commentary helps with a simple verse?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "I read basic Hebrew, show me the verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "Translate this paragraph of Ramban for a native speaker",
+       "assistant": "ok",
+       "tags": [
+        "outlier"
+       ]
+      },
+      {
+       "id": "ben-5",
+       "at": "2026-11-04T09:05:00Z",
+       "user": "Back to basics: what is a verse?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "basic"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "cal",
+   "user_id": "mock:cal",
+   "trap": "no signal; a sensitive turn is never sent",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "cal-s1",
+     "turns": [
+      {
+       "id": "cal-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Where do I find the Mishnah?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Show me the daily page",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "My mother died last week and I am saying kaddish, which verses help?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": []
+  }
+ ],
+ "replies": {
+  "ana-1": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "ana-2": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-1": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "ben-2": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "ben-3": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "ben-4": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-5": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  }
+ }
+}
