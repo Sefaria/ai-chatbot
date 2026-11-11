@@ -84,6 +84,33 @@ test.describe('compare', () => {
     await expect(assistant.answers).toHaveCount(2); // personalized bubble + plain bubble, one turn
   });
 
+  test('the plain arm keeps one session per chat and gets a new one in a new chat', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    const requests = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    });
+    await compareToggle(assistant).check();
+    const plainStreams = () => requests.filter((r) => r.context.personalizationMode === 'off');
+    const plainCells = assistant.host.getByTestId('lab-compare-plain');
+
+    await assistant.send('What is a mitzvah?');
+    await expect(plainCells).toHaveCount(1);
+    await expect(plainCells.last()).toContainText('Plain answer.');
+    await assistant.send('And a minhag?');
+    await expect(plainCells).toHaveCount(2);
+    await expect(plainCells.last()).toContainText('Plain answer.');
+
+    const [first, second] = plainStreams();
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(second.messageId).not.toBe(first.messageId);
+
+    await assistant.startNewChat();
+    await assistant.send('What is a halacha?');
+    await expect.poll(() => plainStreams().length).toBe(3);
+    expect(plainStreams()[2].sessionId).not.toBe(first.sessionId);
+  });
+
   test('Stop cancels both the personalized and the plain turn', async ({ page, context }) => {
     const assistant = await setUp(page, context, { allowed: true });
     const streams = [];

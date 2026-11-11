@@ -248,6 +248,8 @@
   let labCompare = $state(false);
   // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
   let comparePlain = $state({});
+  // One plain-arm session per main chat, so follow-up compare questions share context. Memory only.
+  const plainSessionIds = {};
   let widthBeforeCompare = null;
 
   // Two columns need room: widen the panel while Compare is on, then put it back.
@@ -961,6 +963,7 @@
   function handleNewChat() {
     conversationNavigation += 1;
     conversationDrafts[sessionId] = inputText;
+    delete plainSessionIds[sessionId];
     const { sessionId: newSessionId } = getOrCreateSession(true, !!userId);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
@@ -1497,7 +1500,8 @@
     plainArms[chatId] = request;
     comparePlain = { ...comparePlain, [request.messageId]: { status: 'loading', markdown: '' } };
     // Its own session and message ids, kept so Stop can cancel this turn on the server too.
-    request.plain = { sessionId: generateSessionId(), messageId: generateMessageId() };
+    plainSessionIds[chatId] ||= generateSessionId();
+    request.plain = { sessionId: plainSessionIds[chatId], messageId: generateMessageId() };
     let outcome;
     try {
       const response = await sendMessageStream(
