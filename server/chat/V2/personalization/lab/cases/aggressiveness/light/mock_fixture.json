@@ -1,0 +1,373 @@
+{
+ "note": "Invented fixture for the mock; no real text. 'replies' holds the scripted reply of the fake model per turn id (question key -> [choice, confidence]); a turn with no entry gets the all-unclear reply. ana: 1 signal for none, then 4 for fluent (activates at turn 4). ben: 2 for basic against 2 for fluent (a tie: neither), then 4 more for fluent (activates at turn 6). cal: 3 for fluent (active at turn 3), one odd 'none' (outlier, changes nothing), then 5 more 'none' (6 against 3: flips at turn 9).",
+ "personas": [
+  {
+   "id": "ana",
+   "user_id": "mock:ana",
+   "trap": "4 signals for one value and 1 for another activate the first",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ana-s1",
+     "turns": [
+      {
+       "id": "ana-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "I am not sure I follow the Hebrew in this verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Please explain the Hebrew of this verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "What does sugya mean in Hebrew?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "Who is Rashi in the Hebrew text?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-5",
+       "at": "2026-11-04T09:05:00Z",
+       "user": "Show me the Hebrew of Genesis 1",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "fluent"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "2 against 2 activate neither; 4 more for the rival activate it",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "I read a little Hebrew, show me the verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "I read Hebrew easily, show me the verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "I need a little help with this verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "I read it easily, which commentary?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-5",
+       "at": "2026-11-04T09:05:00Z",
+       "user": "Show me the Rashi on this verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-6",
+       "at": "2026-11-04T09:06:00Z",
+       "user": "Which Tosafot is on this page?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-7",
+       "at": "2026-11-04T09:07:00Z",
+       "user": "Show me the Ramban on this verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-8",
+       "at": "2026-11-04T09:08:00Z",
+       "user": "Which Rashba is on this page?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "fluent"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "cal",
+   "user_id": "mock:cal",
+   "trap": "one odd prompt changes nothing; a rival with twice the support flips the value",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "cal-s1",
+     "turns": [
+      {
+       "id": "cal-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "I read Hebrew fluently, show me the Mishnah",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "I read it fluently, show me the daily page",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "I read fluently, find me the verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "Translate every word for me this time, I am new to this",
+       "assistant": "ok",
+       "tags": [
+        "outlier"
+       ]
+      },
+      {
+       "id": "cal-5",
+       "at": "2026-11-04T09:05:00Z",
+       "user": "I am a beginner, explain the verse",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-6",
+       "at": "2026-11-04T09:06:00Z",
+       "user": "Please explain it for a beginner",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-7",
+       "at": "2026-11-04T09:07:00Z",
+       "user": "I am new, what is a mishnah?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-8",
+       "at": "2026-11-04T09:08:00Z",
+       "user": "A beginner question: what is a sugya?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-9",
+       "at": "2026-11-04T09:09:00Z",
+       "user": "As a beginner, where do I start?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "none"
+    }
+   },
+   "golden_timeline": [
+    {
+     "slot": "hebrew_fluency",
+     "from_turn": 1,
+     "value": "fluent"
+    },
+    {
+     "slot": "hebrew_fluency",
+     "from_turn": 5,
+     "value": "none"
+    }
+   ],
+   "checks": []
+  }
+ ],
+ "replies": {
+  "ana-1": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "ana-2": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ana-3": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ana-4": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ana-5": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-1": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "ben-2": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-3": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "ben-4": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-5": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-6": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-7": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "ben-8": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "cal-1": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "cal-2": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "cal-3": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ]
+  },
+  "cal-4": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "cal-5": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "cal-6": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "cal-7": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "cal-8": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  },
+  "cal-9": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ]
+  }
+ }
+}

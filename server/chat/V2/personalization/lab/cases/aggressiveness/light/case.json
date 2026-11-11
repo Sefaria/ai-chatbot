@@ -1,0 +1,81 @@
+{
+  "id": "aggressiveness/light",
+  "question": "Does waiting for repeated support make the profile slower to fill but far safer?",
+  "why": "Mickey's three arms (23:10 to 24:37). The light arm trades speed for fewer wrong turns and immunity to one odd prompt.",
+  "source": "wiki/meta/spec-2026-11-10-la-personalization-lab-test-tree.md, heading \"Aspect `aggressiveness`: none, light or aggressive?\", row `light`",
+  "hypothesis": "Slower to fill, far fewer wrong turns, immune to one odd prompt: a value becomes active only with at least 3 supporting signals and at least twice the support of any rival, and changes only when a rival reaches that.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-4-5-20251001",
+    "min_support": 3,
+    "ratio": 2.0,
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "wrong_slot_turns",
+    "outlier_flips",
+    "turns_to_fill",
+    "slot_accuracy",
+    "first_session_fill",
+    "flips_per_10_turns",
+    "fill_rate_at_k",
+    "run_agreement"
+  ],
+  "keep_if": [
+    {
+      "metric": "wrong_slot_turns",
+      "agg": "mean",
+      "op": "<=",
+      "ref": {
+        "case": "aggressiveness/aggressive",
+        "metric": "wrong_slot_turns",
+        "agg": "mean",
+        "factor": 0.5
+      },
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "outlier_flips",
+      "agg": "pooled",
+      "op": "==",
+      "value": 0,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "turns_to_fill",
+      "agg": "mean",
+      "op": "<=",
+      "value": 5,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.85,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 0.5M Haiku tokens (the test tree's estimate); one typed call per turn on the 20-persona sample and syn1, about 185 calls per run, 3 runs",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: `syn2` and `real1`",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2 maps the row: every bar the row puts on syn2 applies to anon-personas, and the real1 aggregates are computed on the same anon-personas runs, numbers only. As a model case it runs the A2 seeded sample of anon-personas, the same one as reverify/heldout-personas: sample_dataset anon-personas, sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20). syn1 stays as the reference, reported beside, never alone.",
+      "amendment": "A2",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "agg": "The row says `turns_to_fill` median <= 5. The kit's aggregations are mean, min, max, pooled and each, and the metric is itself a median over slots, so the bar reads the mean of the three runs' medians (agg mean); the bar value is not loosened. The other bars use the aggregation the row names (mean; pooled for outlier_flips).",
+      "no_bar": "first_session_fill, flips_per_10_turns, fill_rate_at_k (k = 2, 4, 8) and run_agreement are reported with no bar (the same extras as the aggressive case, so the two arms are read side by side); the row puts no bar on them.",
+      "arm": "min_support 3, ratio 2.0 (P/arms.py, ArmUpdater): a value needs at least 3 signals and at least twice any rival's support, the incumbent counting as a rival; no nightly job.",
+      "ref": "`wrong_slot_turns` mean <= half of aggressive's mean is a reference bar: ref aggressiveness/aggressive, metric wrong_slot_turns, agg mean, factor 0.5, on anon-personas; the verdict reads that case's result files from its branch and is inconclusive until they exist."
+    }
+  ],
+  "status": "planned"
+}
