@@ -7,8 +7,6 @@ import random
 import shutil
 from pathlib import Path
 
-import pytest
-
 from chat.V2.personalization.lab import results, runner, verdict
 from chat.V2.personalization.lab.datasets import Dataset
 from chat.V2.personalization.lab.manifest import load_case
@@ -219,49 +217,63 @@ def test_manifest_has_the_rows_bars_on_anon_personas_and_the_deviations():
     got = [(b.metric, b.agg, b.op, b.value, b.dataset, b.expected_to_fail) for b in case.keep_if]
     assert got == [
         ("slot_accuracy", "mean", ">=", 0.85, "anon-personas", False),
-        ("slot_accuracy", "min", ">=", 0.80, "anon-personas", True),  # the row expects it to fail
-        ("outlier_flips", "pooled", "<=", 1, "anon-personas", False),
+        ("slot_accuracy", "min", ">=", 0.80, "anon-personas", False),
+        ("outlier_flips", "pooled", "<=", 1, "anon-personas", True),  # the row expects it to fail
     ]
     text = json.dumps(json.loads((CASE_DIR / "case.json").read_text())["deviations"])
     assert "Amendment A2" in text and "20261110" in text and "not human-reviewed" in text
 
 
-def fake_result(run_no, accuracy=0.90, minimum=None, flips=0):
-    """A real-dataset result file as the runner writes it, with invented numbers."""
+def fake_result(run_no, accuracy=0.90, flips=0, worst=None):
+    """A real-dataset result file as the runner writes it, with invented numbers. `worst` replaces
+    the accuracy of run 3 only."""
     return {
         "run": run_no, "dataset": {"name": "anon-personas", "kind": "real", "sha256": "s", "n": 20},
-        "metrics": {"slot_accuracy": minimum if (minimum and run_no == 3) else accuracy,
+        "metrics": {"slot_accuracy": worst if (worst and run_no == 3) else accuracy,
                     "outlier_flips": flips},
         "ratios": {}, "invalid": 0,
         "privacy": {"sensitive_reached_model": None, "stated_overwritten": 0, "exclusion_stored": 0},
     }  # fmt: skip
 
 
-def test_keep_when_the_mean_holds_and_the_expected_failure_is_not_counted():
-    case = load_case(CASE_DIR)
-    # runs 0.95, 0.95, 0.76: mean 0.887 holds; the min bar (0.76 < 0.80) fails but is expected to
-    out = verdict.compute(case, [fake_result(n, accuracy=0.95, minimum=0.76) for n in (1, 2, 3)])
-    states = {(b["agg"], b["metric"]): b for b in out["bars"]}
-    assert out["verdict"] == "keep"
-    assert states[("min", "slot_accuracy")]["expected_to_fail"] is True
-    assert states[("min", "slot_accuracy")]["holds"] is False
+def bars_by_name(out):
+    return {(b["agg"], b["metric"]): b for b in out["bars"]}
 
 
-@pytest.mark.parametrize(
-    "kwargs, failing",
-    [
-        ({"accuracy": 0.82}, [0]),  # mean under 0.85 (the expected min bar is not counted)
-        ({"flips": 1}, [2]),  # one flip in each run pools to 3, over the bar's 1
-    ],
-)
-def test_each_counted_bar_fails_on_its_own(kwargs, failing):
+def test_keep_when_accuracy_holds_even_though_the_expected_flips_bar_fails():
     case = load_case(CASE_DIR)
-    out = verdict.compute(case, [fake_result(n, **kwargs) for n in (1, 2, 3)])
+    out = verdict.compute(case, [fake_result(n, accuracy=0.90, flips=2) for n in (1, 2, 3)])
+    bars = bars_by_name(out)
+    assert out["verdict"] == "keep"  # 6 flips pooled, over the bar's 1, but the bar is not counted
+    assert bars[("pooled", "outlier_flips")]["expected_to_fail"] is True
+    assert bars[("pooled", "outlier_flips")]["holds"] is False
+    assert bars[("pooled", "outlier_flips")]["observed"] == 6
+
+
+def test_drop_when_the_min_bar_fails_in_every_run():
+    case = load_case(CASE_DIR)
+    out = verdict.compute(case, [fake_result(n, accuracy=0.78, flips=0) for n in (1, 2, 3)])
+    bars = bars_by_name(out)
     assert out["verdict"] == "drop"
-    assert [i for i, b in enumerate(out["bars"]) if b["state"] == "fails"] == failing
+    assert bars[("min", "slot_accuracy")]["state"] == "fails"
+    assert bars[("min", "slot_accuracy")]["expected_to_fail"] is False  # it counts
 
 
-def test_one_outlier_flip_in_all_three_runs_together_holds_the_pooled_bar():
+def test_the_min_bar_failing_in_one_run_only_is_inconclusive():
+    case = load_case(CASE_DIR)
+    out = verdict.compute(case, [fake_result(n, accuracy=0.95, worst=0.76) for n in (1, 2, 3)])
+    assert out["verdict"] == "inconclusive"  # mean 0.887 holds; run 3 alone is under 0.80
+
+
+def test_drop_when_the_mean_fails():
+    case = load_case(CASE_DIR)
+    out = verdict.compute(case, [fake_result(n, accuracy=0.82) for n in (1, 2, 3)])
+    assert out["verdict"] == "drop"
+    assert bars_by_name(out)[("mean", "slot_accuracy")]["state"] == "fails"
+
+
+def test_one_outlier_flip_over_three_runs_holds_the_pooled_bar():
     case = load_case(CASE_DIR)
     out = verdict.compute(case, [fake_result(n, flips=1 if n == 2 else 0) for n in (1, 2, 3)])
-    assert out["verdict"] == "keep" and out["bars"][2]["observed"] == 1
+    bar = bars_by_name(out)[("pooled", "outlier_flips")]
+    assert out["verdict"] == "keep" and bar["observed"] == 1 and bar["holds"] is True
