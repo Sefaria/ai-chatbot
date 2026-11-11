@@ -59,3 +59,53 @@ def test_no_denominator_is_none_not_zero():
 def test_an_unknown_group_is_refused():
     with pytest.raises(ValueError):
         METRICS["slot_accuracy_on"].compute(RunData(), "register")
+
+
+# -- per prompt language ----------------------------------------------------------------------------
+
+
+def lang_replay(prompts, golden, final):
+    r = replay(golden, final)
+    r.persona["sessions"] = [
+        {"session_id": "s", "turns": [{"id": f"t{i}", "user": p} for i, p in enumerate(prompts)]}
+    ]
+    return r
+
+
+def test_persona_language_is_hebrew_when_most_prompts_have_more_hebrew_than_latin_letters():
+    from chat.V2.personalization.lab.cases.extract.metrics import persona_language
+
+    he = {
+        "sessions": [
+            {
+                "turns": [
+                    {"user": "מה זה גמרא"},
+                    {"user": "explain Rashi"},
+                    {"user": "שלום, מה פירוש Talmud"},
+                ]
+            }
+        ]
+    }
+    en = {
+        "sessions": [{"turns": [{"user": "What is Berakhot 2a"}, {"user": "מה זה"}]}]
+    }  # a tie is English
+    assert persona_language(he) == "he" and persona_language(en) == "en"
+    assert persona_language({"sessions": []}) == "en"
+
+
+def test_by_language_metrics_split_the_personas_and_registered():
+    for name in ("slot_accuracy_by_lang", "over_inferred_by_lang"):
+        assert METRICS[name].formula and METRICS[name].params == ("he", "en")
+    golden = {"preferred_language": {"value": "he"}, "hebrew_fluency": None}
+    replays = [
+        lang_replay(["שלום", "מה זה"], golden, {"preferred_language": "he"}),
+        lang_replay(["שלום"], golden, {"preferred_language": "en", "hebrew_fluency": "basic"}),
+        lang_replay(["hello"], golden, {"preferred_language": "he"}),
+    ]  # fmt: skip
+    assert value("slot_accuracy_by_lang", "he", replays)[0] == 0.5
+    assert value("slot_accuracy_by_lang", "en", replays)[0] == 1.0
+    he_filled = value("over_inferred_by_lang", "he", replays)[1]
+    assert he_filled.num == 1  # the second persona's hebrew_fluency, where the golden is empty
+    assert value("over_inferred_by_lang", "en", replays)[1].num == 0
+    with pytest.raises(ValueError):
+        METRICS["slot_accuracy_by_lang"].compute(RunData(), "fr")
