@@ -1,0 +1,51 @@
+{
+ "bars": [
+  {
+   "agg": "each",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "byte_identical_off",
+   "observed": 1.0,
+   "op": "==",
+   "state": "holds",
+   "target": 1.0,
+   "why": ""
+  },
+  {
+   "agg": "each",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "store_writes",
+   "observed": 0,
+   "op": "==",
+   "state": "holds",
+   "target": 0,
+   "why": ""
+  },
+  {
+   "agg": "min",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "runs_identical",
+   "observed": 1.0,
+   "op": "==",
+   "state": "holds",
+   "target": 1,
+   "why": ""
+  }
+ ],
+ "case_sha": "400f25a28c958b4a350b1d8040187306ec2922ec",
+ "id": "aggressiveness/none",
+ "note": "",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "reasons": [],
+ "runs": 6,
+ "verdict": "keep"
+}
