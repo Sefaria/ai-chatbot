@@ -79,16 +79,26 @@ def aggregate(values: list, ratios: list, agg: str):
     return statistics.mean(values)  # mean and `each` (reported as the mean)
 
 
-def git_ref_reader(case, ref_case_id: str, run_no: int) -> dict | None:
-    """The sibling case's result file on `origin/lab/<aspect>/<case>`, read with `git show`."""
+def git_ref_reader(case, ref_case_id: str, run_no: int) -> list[dict] | None:
+    """The sibling case's result files for one run on `origin/lab/<aspect>/<case>`, read with `git show`.
+
+    Like the case's own results, both `run{n}.json` and `real_run{n}.json` (whichever exist) come
+    back, so `_series` can pick the file that carries the bar's dataset. None when neither exists.
+    """
     case_dir = Path(case.dir).resolve()
     top = repo_root(case_dir)
-    sibling = case_dir.parent.parent / ref_case_id / "results" / f"run{run_no}.json"
-    rel = sibling.relative_to(top).as_posix()
-    proc = subprocess.run(
-        ["git", "show", f"origin/lab/{ref_case_id}:{rel}"], cwd=top, capture_output=True, text=True
-    )
-    return json.loads(proc.stdout) if proc.returncode == 0 else None
+    found = []
+    for name in (f"run{run_no}.json", f"real_run{run_no}.json"):
+        rel = (case_dir.parent.parent / ref_case_id / "results" / name).relative_to(top).as_posix()
+        proc = subprocess.run(
+            ["git", "show", f"origin/lab/{ref_case_id}:{rel}"],
+            cwd=top,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0:
+            found.append(json.loads(proc.stdout))
+    return found or None
 
 
 def _target(bar, case, ref_reader):
@@ -97,11 +107,15 @@ def _target(bar, case, ref_reader):
         return bar.value, ""
     ref = bar.ref
     reader = ref_reader or git_ref_reader
-    found = [reader(case, ref["case"], n) for n in range(1, RUNS + 1)]
-    if any(r is None for r in found):
+    per_run = [reader(case, ref["case"], n) for n in range(1, RUNS + 1)]
+    if any(not r for r in per_run):
         return None, f"reference case {ref['case']} has no results yet"
+    # a reader returns one result or a list of them (synthetic and real files of the run)
+    found = [part for r in per_run for part in (r if isinstance(r, list) else [r])]
     dataset = ref.get("dataset", bar.dataset)
     values, ratios = _series(found, dataset, ref["metric"])
+    if len(values) < RUNS:
+        return None, f"reference case {ref['case']} has {len(values)} of {RUNS} runs on {dataset}"
     value = aggregate(values, ratios, ref.get("agg", "mean"))
     if value is None:
         return None, f"reference metric {ref['metric']} is missing in {ref['case']}"
