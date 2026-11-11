@@ -196,11 +196,12 @@
 
   <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
        ?user-id=<encrypted user token> shows it logged in as that user, and
-       ?anon-free-answers=<n> passes the host's free-answer limit.
+       ?anon-free-answers=<n> passes the host's free-answer limit, and
+       ?hide-launcher=true|false the logged-in user's saved "Hide Ask button" choice.
        Runs before the widget module below, which loads deferred. -->
   <script>
     const params = new URLSearchParams(window.location.search);
-    for (const attribute of ['user-id', 'anon-free-answers']) {
+    for (const attribute of ['user-id', 'anon-free-answers', 'hide-launcher']) {
       if (params.get(attribute)) {
         document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
       }
@@ -216,6 +217,7 @@
     document.addEventListener('chatbot:closed', () => console.log('Chatbot closed'));
     document.addEventListener('chatbot:message_sent', (e) => console.log('Message sent:', e.detail));
     document.addEventListener('chatbot:error', (e) => console.error('Chatbot error:', e.detail));
+    document.addEventListener('chatbot:launcher_visibility', (e) => console.log('Ask button hidden:', e.detail.hidden));
   </script>
 </body>
 </html>
