@@ -281,7 +281,7 @@
     const anon = user ? '' : (labRequested ? getOrCreateAnonId() : getStorage(STORAGE_KEYS.ANON_ID, ''));
     fetchPersonalizationStatus(base, user, anon).then((status) => {
       if (!current) return;
-      labMode = labRequested && status.overrideAllowedForYou === true;
+      labMode = labRequested && status.overrideAllowedForYou === true && status.labEnabled === true;
       if (!labMode) labCompare = false;
     });
     return () => { current = false; };
@@ -1522,7 +1522,8 @@
   async function handleSend({ source = '' } = {}) {
     await loggedOutChatsClaimed;
     const text = inputText.trim();
-    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
+    // A live plain arm blocks new turns: its entry must not be overwritten.
+    const isReadyToSend = text && !isCurrentSessionSending && !plainArms[sessionId] && !limitReached;
     if (!isReadyToSend) return;
     const sendingSessionId = sessionId;
     setSessionSending(sendingSessionId, true);
@@ -3071,7 +3072,7 @@
           <button
             class="send-btn"
             onclick={() => handleSend()}
-            disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+            disabled={!inputText.trim() || isCurrentSessionSending || !!plainArms[sessionId] || limitReached}
             aria-label={$_('assistant.input.send.tooltip')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

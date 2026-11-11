@@ -76,6 +76,18 @@ def test_status_returns_only_callers_id():
     assert post("status", {"userId": "garbage"}).status_code == 401
 
 
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_status_lab_enabled_needs_seed_flag_and_non_production(monkeypatch):
+    assert post("status", {}).data["labEnabled"] is False  # seed flag unset
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
+    assert post("status", {}).data["labEnabled"] is True
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    assert post("status", {}).data["labEnabled"] is False
+    monkeypatch.setenv("ENVIRONMENT", "preview")
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "false")
+    assert post("status", {}).data["labEnabled"] is False
+
+
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET, PERSONALIZATION_OVERRIDE_ENABLED=True)
 def test_profile_api_is_404_without_allowlist():
     with override_settings(PERSONALIZATION_OVERRIDE_USER_IDS=""):

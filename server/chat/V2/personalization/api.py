@@ -153,6 +153,7 @@ def personalization_status(request):
             "injection": config.injection,
             "overrideEnabled": getattr(settings, "PERSONALIZATION_OVERRIDE_ENABLED", False) is True,
             "overrideAllowedForYou": gate.override_allowed(settings, actor.user_id),
+            "labEnabled": _lab_deployment(),
             "environment": os.environ.get("ENVIRONMENT", ""),
             "braintrustProject": os.environ.get("BRAINTRUST_PROJECT", "On Site Agent"),
             "tables": _tables_exist(),

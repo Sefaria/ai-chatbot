@@ -46,6 +46,14 @@ test.describe('lab UI hidden', () => {
     await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
   });
 
+  test('allowed and opted in but the server has no lab (labEnabled false) shows nothing', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true, labEnabled: false });
+    await expect(assistant.input).toBeVisible();
+    await expect(compareToggle(assistant)).toHaveCount(0);
+    await assistant.openMoreOptions();
+    await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
+  });
+
   test('nothing lab-related shows without the lab at all', async ({ page, context }) => {
     const assistant = await setUp(page, context, null);
     await expect(compareToggle(assistant)).toHaveCount(0);
@@ -157,6 +165,37 @@ test.describe('compare', () => {
       expect.objectContaining({ sessionId: plainStream.sessionId, messageId: plainStream.messageId }),
     );
     await expect(stop).toHaveCount(0);
+  });
+
+  test('a new question is ignored while the plain arm streams, and works once it settles', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    const streams = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
+    });
+    let releasePlain;
+    const plainGate = new Promise((resolve) => { releasePlain = resolve; });
+    await page.route('**/chat/stream', async (route) => {
+      if (route.request().postDataJSON().context?.personalizationMode === 'off') {
+        await plainGate;
+        return route.fallback();
+      }
+      return route.fallback();
+    });
+    await compareToggle(assistant).check();
+    await assistant.send('What is a mitzvah?');
+    await expect(assistant.host.getByTestId('lab-compare-personalized')).toContainText('Answer 1.');
+    await expect(assistant.host.getByRole('button', { name: 'Stop' })).toBeVisible(); // plain still running
+    const before = streams.length;
+    await assistant.input.fill('A second question');
+    await assistant.input.press('Enter');
+    await page.waitForTimeout(500);
+    expect(streams.length).toBe(before);
+    await expect(assistant.input).toHaveValue('A second question');
+    releasePlain();
+    await expect(assistant.host.getByRole('button', { name: 'Stop' })).toHaveCount(0);
+    await assistant.input.press('Enter');
+    await expect.poll(() => streams.length).toBeGreaterThan(before);
   });
 
   test('without the toggle a question gets one normal answer', async ({ page, context }) => {

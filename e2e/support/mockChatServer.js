@@ -27,7 +27,7 @@
  *   context.personalizationMode "off" gets the answer `Plain answer.` and is not kept.
  *
  * Options:
- * - lab: { allowed: boolean, slots?: slot[] } turns the lab on for the visitor.
+ * - lab: { allowed: boolean, labEnabled?: boolean (default true), slots?: slot[] } turns the lab on for the visitor.
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -211,7 +211,7 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       return answer(route, request.postDataJSON());
     }
     if (path.endsWith('/v2/personalization/status')) {
-      return route.fulfill({ json: { overrideAllowedForYou: !!lab?.allowed, mode: 'lab' } });
+      return route.fulfill({ json: { overrideAllowedForYou: !!lab?.allowed, labEnabled: lab?.labEnabled !== false, mode: 'lab' } });
     }
     if (path.endsWith('/v2/personalization/profile')) {
       if (!labProfile || !lab.allowed) return route.fulfill({ status: 404, json: { error: 'not_found' } });
