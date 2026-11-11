@@ -1,0 +1,147 @@
+{
+ "case_sha": "6be085699e2348878d1da7db103819c51d5106f7",
+ "cost": {
+  "calls": 103,
+  "in_tokens": 76372,
+  "out_tokens": 8132,
+  "typed_requests": 0,
+  "usd": 0.11703199999999998
+ },
+ "dataset": {
+  "kind": "real",
+  "n": 20,
+  "name": "anon-personas",
+  "sha256": "0a89da7095237ec54ebc4940c53ae86f949d26570dc75759d03e7c9aafe2211d"
+ },
+ "git_sha": "b8cddfb0298d15e581f12dc2fd393b1da719497f",
+ "id": "extract/llm-free",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "calls_per_turn": 0.9903846153846154,
+  "fill_rate_at_k@2": 0.49333333333333335,
+  "fill_rate_at_k@4": 0.64,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.75,
+  "flips_per_10_turns": 1.1538461538461537,
+  "outlier_flips": 1,
+  "over_inferred": 0.07692307692307693,
+  "over_inferred_on@language": null,
+  "over_inferred_on@text_categories": null,
+  "run_agreement": 0.5714285714285714,
+  "sensitive_dropped_share": 0.0,
+  "slot_accuracy": 0.6142857142857143,
+  "slot_accuracy_on@language": 0.95,
+  "slot_accuracy_on@text_categories": 0.55,
+  "usd_per_1000_turns": 1.1253076923076921
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": null,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   103,
+   104
+  ],
+  "fill_rate_at_k@2": [
+   37,
+   75
+  ],
+  "fill_rate_at_k@4": [
+   48,
+   75
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   15,
+   20
+  ],
+  "flips_per_10_turns": [
+   120,
+   104
+  ],
+  "over_inferred": [
+   5,
+   65
+  ],
+  "over_inferred_on@language": [
+   0,
+   0
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   0
+  ],
+  "run_agreement": [
+   36,
+   63
+  ],
+  "sensitive_dropped_share": [
+   0,
+   104
+  ],
+  "slot_accuracy": [
+   43,
+   70
+  ],
+  "slot_accuracy_on@language": [
+   19,
+   20
+  ],
+  "slot_accuracy_on@text_categories": [
+   11,
+   20
+  ]
+ },
+ "run": 3,
+ "schema": 1,
+ "started_at": "2026-11-11T09:04:09+00:00",
+ "steps": [
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 103,
+   "n_out": 69,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 20,
+   "n_out": 16,
+   "name": "score"
+  }
+ ]
+}
