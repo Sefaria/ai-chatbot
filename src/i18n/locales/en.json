@@ -159,5 +159,20 @@
     "assistant.floating_button_modal.sign_up": "sign up",
     "assistant.floating_button_modal.main_menu_logged_in": "You can remove the Library Assistant from the main menu in {account_settings}.",
     "assistant.floating_button_modal.account_settings": "settings",
-    "assistant.floating_button_modal.done": "Done"
+    "assistant.floating_button_modal.done": "Done",
+  "assistant.listening.label": "Listen while learning",
+  "assistant.listening.start": "Start listening",
+  "assistant.listening.stop": "Stop listening",
+  "assistant.listening.hint": "Speak freely. Suggested questions appear here; select one to ask the assistant. Browser speech recognition may send audio to its provider.",
+  "assistant.listening.suggestions": "Suggested questions",
+  "assistant.listening.dismiss": "Dismiss suggested question",
+  "assistant.listening.state.idle": "Ready to listen",
+  "assistant.listening.state.starting": "Starting microphone…",
+  "assistant.listening.state.listening": "Listening",
+  "assistant.listening.state.reconnecting": "Connection interrupted. Retrying…",
+  "assistant.listening.state.error": "Listening stopped. Please try again.",
+  "assistant.listening.state.permission": "Microphone access was denied. Allow access and try again.",
+  "assistant.listening.state.expired": "Listening session expired. Start again to continue.",
+  "assistant.listening.state.ended": "The microphone stopped. Start listening again to continue.",
+  "assistant.listening.state.bufferFull": "Listening paused because the connection could not keep up. Start again to continue."
 }

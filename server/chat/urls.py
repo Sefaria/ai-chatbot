@@ -5,6 +5,7 @@ Chat API URL configuration.
 from django.urls import path
 
 from . import views
+from .listening import views as listening_views
 from .V2 import views as v2_views
 from .V2.anthropic_views import chat_anthropic_v2
 
@@ -19,6 +20,13 @@ urlpatterns = [
     path("v2/chat/feedback", v2_views.chat_feedback_v2, name="chat_feedback_v2"),
     path("v2/prompts/defaults", v2_views.prompt_defaults, name="prompt_defaults_v2"),
     path("v2/anon/claim", v2_views.anon_claim_v2, name="anon_claim_v2"),
+    path("v2/listening/sessions", listening_views.sessions),
+    path("v2/listening/sessions/<uuid:session_id>/analyze", listening_views.analyze),
+    path("v2/listening/sessions/<uuid:session_id>/stop", listening_views.stop),
+    path(
+        "v2/listening/sessions/<uuid:session_id>/suggestions/<uuid:suggestion_id>",
+        listening_views.suggestion,
+    ),
     # Shared endpoints
     path("history/conversations", views.conversation_list, name="conversation_list"),
     path(

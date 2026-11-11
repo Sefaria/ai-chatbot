@@ -357,3 +357,8 @@ LOGGING = {
         },
     },
 }
+
+# Listening mode is opt-in during rollout. Only authenticated users may start it.
+LISTENING_ENABLED = os.environ.get("LISTENING_ENABLED", "false").lower() == "true"
+LISTENING_DETECT_MODEL = os.environ.get("LISTENING_DETECT_MODEL", "claude-haiku-4-5-20251001")
+LISTENING_REWORD_MODEL = os.environ.get("LISTENING_REWORD_MODEL", "claude-sonnet-4-6")

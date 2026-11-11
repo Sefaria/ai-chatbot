@@ -162,6 +162,13 @@ export class AssistantPage {
     return this.messageList.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
   }
 
+  // Ambient listening
+  get startListening() { return this.host.getByRole('button', { name: t('assistant.listening.start'), exact: true }); }
+  get stopListening() { return this.host.getByRole('button', { name: t('assistant.listening.stop'), exact: true }); }
+  get suggestedQuestions() { return this.host.getByRole('list', { name: t('assistant.listening.suggestions') }); }
+  suggestedQuestion(text) { return this.suggestedQuestions.getByRole('button', { name: text, exact: true }); }
+  get dismissQuestion() { return this.suggestedQuestions.getByRole('button', { name: t('assistant.listening.dismiss') }); }
+
   // Input
 
   get input() {
