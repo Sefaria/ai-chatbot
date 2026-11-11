@@ -389,7 +389,7 @@ LAB_PAGE = """<!DOCTYPE html>
 <body>
   <h1>LA personalization lab</h1>
   <p>Synthetic personas only. Open the chat, then use the personalization panel.</p>
-  <lc-chatbot api-base-url="/api" default-open="true" placement="right"></lc-chatbot>
+  <lc-chatbot api-base-url="/api" default-open="true" placement="right" personalization-lab="true"></lc-chatbot>
   <script>
     // The widget reads its personalization mode from sessionStorage (or ?la_personalization=).
     try { sessionStorage.setItem("la_personalization", "hybrid"); } catch (e) {}

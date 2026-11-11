@@ -24,6 +24,9 @@ CACHE_SECONDS = 60
 REQUEST_TIMEOUT_SECONDS = 3
 
 
+LAB_ANSWER_LIMIT = 200  # a lab demo asks two answers per question; the real limit would stop it
+
+
 def get_anon_answer_limit() -> int | None:
     """How many answers a logged-out visitor gets, or None for no limit.
 
@@ -33,11 +36,20 @@ def get_anon_answer_limit() -> int | None:
     cache_key = f"{CACHE_KEY}:{base_url}"
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached["limit"]
+        return _lab_limit(cached["limit"])
 
     limit = _fetch_limit(base_url)
     # Cache "no limit" too, so an unreachable Sefaria isn't asked on every question.
     cache.set(cache_key, {"limit": limit}, CACHE_SECONDS)
+    return _lab_limit(limit)
+
+
+def _lab_limit(limit: int | None) -> int | None:
+    """A request from a lab origin (a lab deployment only) gets at least LAB_ANSWER_LIMIT."""
+    from .sefaria_base_url import request_from_lab_origin
+
+    if limit is not None and request_from_lab_origin():
+        return max(limit, LAB_ANSWER_LIMIT)
     return limit
 
 

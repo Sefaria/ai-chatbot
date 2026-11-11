@@ -29,6 +29,16 @@ _request_sefaria_base_url: contextvars.ContextVar[str | None] = contextvars.Cont
 )
 
 
+_request_from_lab_origin: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "request_from_lab_origin", default=False
+)
+
+
+def request_from_lab_origin() -> bool:
+    """True when the current request came from a lab origin (see lab_origin_allowed)."""
+    return _request_from_lab_origin.get()
+
+
 def request_sefaria_base_url() -> str | None:
     """The current request's Sefaria, or None to use the default."""
     return _request_sefaria_base_url.get()
@@ -106,6 +116,7 @@ def _clear() -> None:
     # set(None), not reset(token): a stream may be consumed in a different context
     # than the one the value was set in, where reset() would raise.
     _request_sefaria_base_url.set(None)
+    _request_from_lab_origin.set(False)
 
 
 def _clear_when_done(content):
@@ -125,7 +136,9 @@ class SefariaBaseUrlMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        _request_sefaria_base_url.set(allowed_sefaria_base_url(request.headers.get("Origin")))
+        origin = request.headers.get("Origin")
+        _request_sefaria_base_url.set(allowed_sefaria_base_url(origin))
+        _request_from_lab_origin.set(lab_origin_allowed(origin))
         try:
             response = self.get_response(request)
         except BaseException:
