@@ -68,6 +68,13 @@ def test_pooled_adds_numerators_and_denominators():
     assert out["bars"][0]["observed"] == 17 / 22 and out["verdict"] == "keep"
 
 
+def test_pooled_on_a_count_adds_the_runs_together():
+    bar = Bar("outlier_flips", "pooled", "<=", 1, dataset="syn1")
+    rows = [result(n, flips, metric="outlier_flips") for n, flips in ((1, 1), (2, 1), (3, 0))]
+    out = verdict.compute(make_case(bar), rows)
+    assert out["bars"][0]["observed"] == 2 and out["verdict"] == "drop"  # a mean of 0.67 would keep
+
+
 def test_privacy_breach_forces_drop():
     breach = {"sensitive_reached_model": 0, "stated_overwritten": 1, "exclusion_stored": 0}
     out = verdict.compute(make_case(MEAN_BAR), runs(0.99, 0.99, 0.99, privacy=breach))

@@ -74,7 +74,9 @@ def aggregate(values: list, ratios: list, agg: str):
     if agg == "pooled" and all(r for r in ratios):
         den = sum(r[1] for r in ratios)
         return sum(r[0] for r in ratios) / den if den else None
-    return statistics.mean(values)  # mean, pooled without ratios, and `each` (reported as the mean)
+    if agg == "pooled":
+        return sum(values)  # a count: the three runs' items added together
+    return statistics.mean(values)  # mean and `each` (reported as the mean)
 
 
 def git_ref_reader(case, ref_case_id: str, run_no: int) -> dict | None:
