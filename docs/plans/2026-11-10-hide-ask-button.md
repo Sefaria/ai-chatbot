@@ -11,7 +11,7 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 ## Decisions
 
 - **Menu item**: "Hide Ask button" (eye-off icon) while the button shows, "Show Ask button"
-  (eye icon) while it's hidden. After Maximize/Minimize, before Give feedback.
+  (eye icon) while it's hidden. Below Help: the last item logged out, right above "Disable in settings" logged in.
 - **Modal**: reuses the feedback modal's card. Title "Hide or show Ask button"; a
   "Show the Ask button" switch that applies at once; Done closes it. A little larger and
   more spaced out than the feedback modal (title one step up, 14px body, 44×24 switch in a

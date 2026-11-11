@@ -2549,10 +2549,6 @@
                   {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
                 </button>
                 {/if}
-                <button class="menu-item" onclick={() => { showAskButtonModal = true; closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
-                  {$_(launcherHidden ? 'assistant.menu.show_ask_button' : 'assistant.menu.hide_ask_button')}
-                </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2561,6 +2557,10 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                <button class="menu-item" onclick={() => { showAskButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_ask_button' : 'assistant.menu.hide_ask_button')}
+                </button>
                 {#if isLoggedIn}
                   <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
