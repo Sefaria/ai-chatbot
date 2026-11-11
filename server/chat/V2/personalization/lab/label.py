@@ -205,6 +205,38 @@ def _recompute_sha256(directory: Path) -> str:
     return sha
 
 
+def build_system(name: str) -> str:
+    """The labeling prompt for a dataset: its brief plus the one-item instruction."""
+    return (
+        f"{load_brief(name).strip()}\n\n"
+        "Label the single JSON item in the user message. Reply with one JSON object only."
+    )
+
+
+def label_item(
+    name: str, item: dict, *, client, model: str, slots: dict, system: str | None = None
+) -> dict | None:
+    """Label one unlabeled item with the dataset's brief; None when no attempt gives valid labels.
+
+    `label_dataset` and the cases that re-label a dataset (for example `reverify/label-agreement`)
+    both call this, so a second labeller runs the very prompt and checks the first one did.
+    """
+    system = system or build_system(name)
+    user_prompt = json.dumps(item, ensure_ascii=False)
+    for _ in range(ATTEMPTS):
+        try:
+            response = client.complete(
+                system=system, user=user_prompt, model=model, max_tokens=MAX_TOKENS
+            )
+            parsed = parse_json_object(response.text)
+        except Exception:
+            parsed = None
+        merged = _apply_labels(name, item, parsed, slots)
+        if merged is not None:
+            return merged
+    return None
+
+
 def label_dataset(
     name: str,
     *,
@@ -214,7 +246,7 @@ def label_dataset(
     data_root: Path | None = None,
     workers: int = 4,
 ) -> LabelResult:
-    brief = load_brief(name)
+    system = build_system(name)
     root = Path(data_root) if data_root is not None else datasets.data_dir()
     directory = root / name
     if not directory.is_dir():
@@ -227,25 +259,8 @@ def label_dataset(
     slots = validate_data.load_slots()
     client = llm or llm_module.ClaudeCodeLLMClient()
 
-    system = (
-        f"{brief.strip()}\n\n"
-        "Label the single JSON item in the user message. Reply with one JSON object only."
-    )
-
     def label_one(item: dict) -> dict | None:
-        user_prompt = json.dumps(item, ensure_ascii=False)
-        for _ in range(ATTEMPTS):
-            try:
-                response = client.complete(
-                    system=system, user=user_prompt, model=model, max_tokens=MAX_TOKENS
-                )
-                parsed = parse_json_object(response.text)
-            except Exception:
-                parsed = None
-            merged = _apply_labels(name, item, parsed, slots)
-            if merged is not None:
-                return merged
-        return None
+        return label_item(name, item, client=client, model=model, slots=slots, system=system)
 
     if workers > 1 and len(items) > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
