@@ -27,14 +27,29 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 - **Hidden** means hidden on every page, phones and desktop, until turned back on. The
   header and mobile-menu entry points still open the assistant.
 - **Saved**: logged out, in this browser. Logged in, also in the account
-  (`settings.library_assistant_ask_button_hidden`), so it follows the user across devices;
+  (`settings.library_assistant_floating_button_hidden`), so it follows the user across devices;
   the account's value wins over the browser's. The widget tells the host with
   `chatbot:launcher_visibility`; Sefaria saves it via `/api/profile` and passes it back as
   `hide-launcher`.
+- **Names**: keys, code and the account setting say `floating_button`, not `ask_button`, since the
+  button's word ("Ask") may change. The English copy still says "Ask button".
 - **No analytics yet.**
 - **Accepted**: with the pill hidden there's no reply badge, and the relabelled no-results
   pill doesn't show (the link in Sefaria's no-results text still asks the search; opening from
   the header just opens the assistant).
+
+## To do before merge
+
+- [ ] **Weblate strings**: enter the 11 `assistant.menu.*_floating_button` / `assistant.floating_button_modal.*`
+  keys with English and Hebrew (Penina, in Weblate). The English in this branch's `en.json` is
+  **preview-only**, so the Cauldron shows text before Weblate is hooked up. Once Weblate's PR
+  merges, merge `main` in and make the locale files match `main` exactly, so this PR carries keys
+  only.
+- [ ] **Behavioral tests**: add more e2e coverage beyond `e2e/floating-button-setting.spec.js`
+  (which covers hide persists, host reopen, log in / sign up / account settings links, the
+  `chatbot:launcher_visibility` event, account wins over browser).
+- [ ] **Real device**: check the menu, modal and hidden button on a real phone (so far only the
+  iOS Simulator and phone-width browser).
 
 ## Follow-ups
 

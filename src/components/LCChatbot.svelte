@@ -321,7 +321,7 @@
       ? getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false)
       : !!hideLauncherAttr && hideLauncherAttr !== 'false'
   );
-  let showAskButtonModal = $state(false);
+  let showFloatingButtonModal = $state(false);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -2165,15 +2165,15 @@
   // {account_settings}), so translators can order it freely; it's split into text and link
   // parts so each link is its own <a>.
   const ACCOUNT_LINKS = {
-    log_in: { href: () => accountUrl('login'), key: 'assistant.ask_button_modal.log_in' },
-    sign_up: { href: () => accountUrl('register'), key: 'assistant.ask_button_modal.sign_up' },
+    log_in: { href: () => accountUrl('login'), key: 'assistant.floating_button_modal.log_in' },
+    sign_up: { href: () => accountUrl('register'), key: 'assistant.floating_button_modal.sign_up' },
     // Straight to the Library Assistant on/off setting on Sefaria's account settings page
-    account_settings: { href: () => `${sefariaBase()}/settings/account#libraryAssistantSetting`, key: 'assistant.ask_button_modal.account_settings' }
+    account_settings: { href: () => `${sefariaBase()}/settings/account#libraryAssistantSetting`, key: 'assistant.floating_button_modal.account_settings' }
   };
-  let askButtonNoteParts = $derived.by(() => {
+  let floatingButtonNoteParts = $derived.by(() => {
     const [key, names] = isLoggedIn
-      ? ['assistant.ask_button_modal.settings_note_link', ['account_settings']]
-      : ['assistant.ask_button_modal.header_note_links', ['log_in', 'sign_up']];
+      ? ['assistant.floating_button_modal.settings_note_link', ['account_settings']]
+      : ['assistant.floating_button_modal.header_note_links', ['log_in', 'sign_up']];
     const values = Object.fromEntries(names.map(name => [name, `\u0000${name}\u0000`]));
     return $_(key, { values })
       .split('\u0000')
@@ -2557,9 +2557,9 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" onclick={() => { showAskButtonModal = true; closeMenu(); }} role="menuitem">
+                <button class="menu-item" onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
-                  {$_(launcherHidden ? 'assistant.menu.show_ask_button' : 'assistant.menu.hide_ask_button')}
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
                 {#if isLoggedIn}
                   <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
@@ -3037,15 +3037,15 @@
           </div>
         </div>
       {/if}
-      {#if showAskButtonModal}
+      {#if showFloatingButtonModal}
         <!-- Ask button settings: reuses the feedback modal's card -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="feedback-modal-overlay" onclick={() => { showAskButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showAskButtonModal = false)}>
+        <div class="feedback-modal-overlay" onclick={() => { showFloatingButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showFloatingButtonModal = false)}>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="feedback-modal ask-button-modal" role="dialog" aria-labelledby="lc-ask-button-modal-title" onclick={(e) => e.stopPropagation()}>
-            <h3 class="feedback-modal-title" id="lc-ask-button-modal-title">{$_('assistant.ask_button_modal.title')}</h3>
-            <label class="ask-button-toggle">
-              <span>{$_('assistant.ask_button_modal.toggle')}</span>
+          <div class="feedback-modal floating-button-modal" role="dialog" aria-labelledby="lc-floating-button-modal-title" onclick={(e) => e.stopPropagation()}>
+            <h3 class="feedback-modal-title" id="lc-floating-button-modal-title">{$_('assistant.floating_button_modal.title')}</h3>
+            <label class="floating-button-toggle">
+              <span>{$_('assistant.floating_button_modal.toggle')}</span>
               <input
                 type="checkbox"
                 role="switch"
@@ -3053,13 +3053,13 @@
                 onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
               />
             </label>
-            <p class="ask-button-modal-text">{$_('assistant.ask_button_modal.description')}</p>
-            <p class="ask-button-modal-text">
-              {#each askButtonNoteParts as part}{#if part.link}<a href={part.link.href()}>{$_(part.link.key)}</a>{:else}{part.text}{/if}{/each}
+            <p class="floating-button-modal-text">{$_('assistant.floating_button_modal.description')}</p>
+            <p class="floating-button-modal-text">
+              {#each floatingButtonNoteParts as part}{#if part.link}<a href={part.link.href()}>{$_(part.link.key)}</a>{:else}{part.text}{/if}{/each}
             </p>
             <div class="feedback-modal-actions">
-              <button class="feedback-modal-btn submit" onclick={() => { showAskButtonModal = false; }}>
-                {$_('assistant.ask_button_modal.done')}
+              <button class="feedback-modal-btn submit" onclick={() => { showFloatingButtonModal = false; }}>
+                {$_('assistant.floating_button_modal.done')}
               </button>
             </div>
           </div>
@@ -5079,12 +5079,12 @@
     }
   }
 
-  .ask-button-modal .feedback-modal-title {
+  .floating-button-modal .feedback-modal-title {
     font-size: var(--lc-font-size-lg);
     margin-bottom: var(--global-dimension-200);
   }
 
-  .ask-button-toggle {
+  .floating-button-toggle {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -5097,7 +5097,7 @@
   }
 
   /* A switch: a 44×24 track with a 20px knob */
-  .ask-button-toggle input {
+  .floating-button-toggle input {
     appearance: none;
     flex: 0 0 auto;
     position: relative;
@@ -5110,7 +5110,7 @@
     transition: background 0.15s ease;
   }
 
-  .ask-button-toggle input::after {
+  .floating-button-toggle input::after {
     content: '';
     position: absolute;
     top: 2px;
@@ -5122,36 +5122,36 @@
     transition: transform 0.15s ease;
   }
 
-  .ask-button-toggle input:checked {
+  .floating-button-toggle input:checked {
     background: var(--semantic-action-primary);
   }
 
-  .ask-button-toggle input:checked::after {
+  .floating-button-toggle input:checked::after {
     transform: translateX(20px);
   }
 
-  .interface-hebrew .ask-button-toggle input:checked::after {
+  .interface-hebrew .floating-button-toggle input:checked::after {
     transform: translateX(-20px);
   }
 
-  .ask-button-toggle input:focus-visible {
+  .floating-button-toggle input:focus-visible {
     outline: 2px solid var(--semantic-action-primary);
     outline-offset: 2px;
   }
 
-  .ask-button-modal-text {
+  .floating-button-modal-text {
     font-size: var(--lc-font-size);
     line-height: 1.45;
     color: var(--lc-text-secondary);
     margin: 0 0 var(--global-dimension-150);
   }
 
-  .ask-button-modal-text a {
+  .floating-button-modal-text a {
     color: var(--semantic-text-link);
     text-decoration: underline;
   }
 
-  .ask-button-modal .feedback-modal-actions {
+  .floating-button-modal .feedback-modal-actions {
     margin-top: var(--global-dimension-300);
   }
 

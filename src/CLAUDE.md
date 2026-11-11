@@ -72,7 +72,7 @@ Bot version and prompt slugs configured via settings panel (gear icon).
 
 ## Host Events
 
-- Dispatches `chatbot:launcher_visibility` (`detail = { hidden }`) on `document` whenever the visitor flips the "Show the Ask button" switch; Sefaria saves it to a logged-in user's profile (`settings.library_assistant_ask_button_hidden`) and passes it back as `hide-launcher`.
+- Dispatches `chatbot:launcher_visibility` (`detail = { hidden }`) on `document` whenever the visitor flips the "Show the Ask button" switch; Sefaria saves it to a logged-in user's profile (`settings.library_assistant_floating_button_hidden`) and passes it back as `hide-launcher`.
 - Dispatches `chatbot:opened` / `chatbot:closed` on `document`, and `sefaria:bootstrap-url` for in-page navigation (always via `navigateHost()`).
 - Listens for `chatbot:open` on `document` to open from host UI (Sefaria's mobile menu, no-results button). `detail.source` becomes the GA4 `feature_name`; an optional `detail.question` is asked in a new chat, never added to the open conversation.
 - Listens for `chatbot:launcher` on `document`: `detail = { source, question }` relabels the closed pill with the widget's own label for that source (`search_no_results` → `assistant.floating_button.search_label`, "✦ Search with Library Assistant") and makes a click ask `question` as `chatbot:open` would (in a new chat). It asks once: later clicks with the same source and question (e.g. after closing the assistant, or on another empty tab of the same search) just reopen the assistant; `detail = null` puts the "✦ Ask" pill back. A `chatbot:open` with that same source and question (e.g. the link in Sefaria's no-results text) counts as a click on the relabelled pill, so the question is asked once whichever is clicked first.

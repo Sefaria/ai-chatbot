@@ -101,35 +101,35 @@ export class AssistantPage {
 
   // Ask button setting (kebab menu → Ask button)
 
-  get askButtonModal() {
-    return this.host.getByRole('dialog', { name: t('assistant.ask_button_modal.title') });
+  get floatingButtonModal() {
+    return this.host.getByRole('dialog', { name: t('assistant.floating_button_modal.title') });
   }
 
-  get askButtonSwitch() {
-    return this.askButtonModal.getByRole('switch', { name: t('assistant.ask_button_modal.toggle') });
+  get floatingButtonSwitch() {
+    return this.floatingButtonModal.getByRole('switch', { name: t('assistant.floating_button_modal.toggle') });
   }
 
-  get askButtonSignUpLink() {
-    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.sign_up'), exact: true });
+  get floatingButtonSignUpLink() {
+    return this.floatingButtonModal.getByRole('link', { name: t('assistant.floating_button_modal.sign_up'), exact: true });
   }
 
-  get askButtonLogInLink() {
-    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.log_in'), exact: true });
+  get floatingButtonLogInLink() {
+    return this.floatingButtonModal.getByRole('link', { name: t('assistant.floating_button_modal.log_in'), exact: true });
   }
 
-  get askButtonAccountSettingsLink() {
-    return this.askButtonModal.getByRole('link', { name: t('assistant.ask_button_modal.account_settings'), exact: true });
+  get floatingButtonAccountSettingsLink() {
+    return this.floatingButtonModal.getByRole('link', { name: t('assistant.floating_button_modal.account_settings'), exact: true });
   }
 
   /** The kebab menu item: "Hide Ask button" while it shows, "Show Ask button" while hidden. */
-  askButtonMenuItem(action) {
-    return this.host.getByRole('menuitem', { name: t(`assistant.menu.${action}_ask_button`) });
+  floatingButtonMenuItem(action) {
+    return this.host.getByRole('menuitem', { name: t(`assistant.menu.${action}_floating_button`) });
   }
 
-  async openAskButtonSetting(action = 'hide') {
+  async openFloatingButtonSetting(action = 'hide') {
     await this.host.getByRole('button', { name: t('assistant.header.moreOptions') }).click();
-    await this.askButtonMenuItem(action).click();
-    await expect(this.askButtonModal).toBeVisible();
+    await this.floatingButtonMenuItem(action).click();
+    await expect(this.floatingButtonModal).toBeVisible();
   }
 
   /** Record the "Ask button hidden" choices the assistant tells the host (to save to the account). */
@@ -144,9 +144,9 @@ export class AssistantPage {
     return this.page.evaluate(() => window.launcherVisibility);
   }
 
-  async closeAskButtonSetting() {
-    await this.askButtonModal.getByRole('button', { name: t('assistant.ask_button_modal.done') }).click();
-    await expect(this.askButtonModal).toBeHidden();
+  async closeFloatingButtonSetting() {
+    await this.floatingButtonModal.getByRole('button', { name: t('assistant.floating_button_modal.done') }).click();
+    await expect(this.floatingButtonModal).toBeHidden();
   }
 
   // The phone sheet's history entry (see src/lib/sheetHistory.js)
