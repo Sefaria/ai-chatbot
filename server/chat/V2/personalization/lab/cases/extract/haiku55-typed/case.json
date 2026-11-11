@@ -1,0 +1,89 @@
+{
+  "id": "extract/haiku55-typed",
+  "question": "Can Haiku 5.5 with a typed reply answer the closed-set questions over the last 12 prompts?",
+  "why": "The same questions as extract/haiku-typed on claude-haiku-5-5: does the newer, cheaper small model hold the same accuracy? It decides the model for the typed call and the cost.",
+  "source": "The core technique (transcript 4:17 to 6:44)",
+  "hypothesis": "Haiku 5.5 is at least as accurate as Haiku 4.5 on the closed-set questions, at a lower price.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-5-5",
+    "strategy": "hybrid_haiku",
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "slot_accuracy",
+    "over_inferred",
+    "first_session_fill",
+    "run_agreement",
+    "slot_accuracy_on",
+    "over_inferred_on",
+    "fill_rate_at_k",
+    "flips_per_10_turns",
+    "calls_per_turn",
+    "usd_per_1000_turns",
+    "sensitive_dropped_share"
+  ],
+  "keep_if": [
+    {
+      "metric": "slot_accuracy",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.85,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy",
+      "agg": "min",
+      "op": ">=",
+      "value": 0.8,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "over_inferred",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.05,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "first_session_fill",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.75,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "run_agreement",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.8,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 0.5M Haiku tokens like extract/haiku-typed, at Haiku 5.5 prices ($0.10 / $0.50 per million input / output); expect about 185 typed calls per run (110 on the sample, 74 on syn1)",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "extract/haiku-typed (model claude-haiku-4-5-20251001)",
+      "what": "Amendment A3 (Yotam, 2026-11-11): the Haiku 5.5 comparison is a new case, extract/haiku55-typed. Same questions, same pipeline, same datasets (syn1, then the A2 seeded sample of anon-personas: 20 personas, seed 20261110), config model claude-haiku-5-5. Bars copied unchanged from the test-tree row as registered in extract/haiku-typed.",
+      "cost": "Token costs of extract/haiku-typed were measured before the stdin fix on lab/core (headless thinking leaked on about 2/3 of its calls), so cost is not comparable across the two cases; accuracy is. Haiku 5.5 price comes from the lab's price table (A3: $0.10 / $0.50 per million tokens)."
+    },
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: syn2 and real1",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2 maps the row: every bar the row puts on syn2 applies to anon-personas, and the real1 aggregates (run_agreement) are computed on the same anon-personas runs, numbers only. As a model case it runs the A2 seeded sample of anon-personas, the same one as reverify/heldout-personas: sample_dataset anon-personas, sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20). syn1 stays as the reference, reported beside, never alone.",
+      "cost": "Running all 188 personas of anon-personas would cost about 9x the planned budget.",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "agg": "The row names no aggregation for over_inferred, first_session_fill and run_agreement, so each uses the default, mean; slot_accuracy has both bars the row names (mean and min). run_agreement is a cross-run metric: the verdict reads it at run 3.",
+      "typed": "Strategy hybrid_haiku (HaikuTypedClient, P/typed.py): one structured call per turn over the last 12 prompts, on claude-haiku-5-5 through headless Claude Code. The case pipeline wraps the replay StrategyPipeline so that, as for hybrid_jev, the learner's tap on each proposal is simulated and typed calls are counted as typed_questions; it changes no scoring and no strategy code."
+    }
+  ],
+  "status": "planned"
+}

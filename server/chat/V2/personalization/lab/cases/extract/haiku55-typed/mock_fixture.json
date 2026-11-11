@@ -1,0 +1,305 @@
+{
+ "note": "Invented fixture for the mock; no real text. 'replies' holds the scripted reply of the fake model per turn id: an object (question key -> [choice, confidence] or a yes/no score; unlisted questions get unclear / 0.02) or a raw string sent as is. A turn with no entry gets the all-unclear reply.",
+ "personas": [
+  {
+   "id": "ava",
+   "user_id": "mock:ava",
+   "trap": "every typed answer is right",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ava-s1",
+     "turns": [
+      {
+       "id": "ava-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "Please explain this week's parsha, I read no Hebrew at all",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Who is Rashi? I am a complete beginner",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "What does sugya mean? And what is a midrash?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "none"
+    },
+    "terminology_comfort": {
+     "value": "new"
+    },
+    "text_categories": {
+     "must_include": [
+      "Tanakh"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "Hebrew prompts, every typed answer is right",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "הראה לי את הגמרא בבא בתרא דף ג",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "אני לומד דף יומי כל בוקר, עברית שוטפת זה בסדר",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "רש\"י על הסוגיה הזאת בבקשה",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "he"
+    },
+    "hebrew_fluency": {
+     "value": "fluent"
+    },
+    "terminology_comfort": {
+     "value": "comfortable"
+    },
+    "text_categories": {
+     "must_include": [
+      "Talmud"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "cal",
+   "user_id": "mock:cal",
+   "trap": "a valid first reply, then a malformed one and a wrong-shaped one: no change",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "cal-s1",
+     "turns": [
+      {
+       "id": "cal-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "What does the word shalom mean in Hebrew?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "How do I write it in Hebrew letters?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "cal-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "And how do I say it out loud?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "basic"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "dee",
+   "user_id": "mock:dee",
+   "trap": "every reply is malformed: nothing is filled by the model",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "dee-s1",
+     "turns": [
+      {
+       "id": "dee-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "Where can I read about the weekly Torah portion?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "dee-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Is there a midrash on the first chapter of Genesis?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "none"
+    },
+    "text_categories": {
+     "must_include": [
+      "Midrash"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "eve",
+   "user_id": "mock:eve",
+   "trap": "a wrong filled slot, a low-confidence answer, an uncertain score and a sensitive turn",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "eve-s1",
+     "turns": [
+      {
+       "id": "eve-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "Show me the Talmud page on charity",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "eve-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "My mother died last week, what does the Talmud say about mourning?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "eve-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "What is a sugya?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": []
+  }
+ ],
+ "replies": {
+  "ava-2": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ],
+   "terminology_comfort": [
+    "new",
+    0.9
+   ],
+   "category:Tanakh": 0.95
+  },
+  "ava-3": {
+   "hebrew_fluency": [
+    "none",
+    0.9
+   ],
+   "terminology_comfort": [
+    "new",
+    0.9
+   ],
+   "category:Tanakh": 0.95
+  },
+  "ben-2": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ],
+   "terminology_comfort": [
+    "comfortable",
+    0.9
+   ],
+   "category:Talmud": 0.95
+  },
+  "ben-3": {
+   "hebrew_fluency": [
+    "fluent",
+    0.9
+   ],
+   "terminology_comfort": [
+    "comfortable",
+    0.9
+   ],
+   "category:Talmud": 0.95
+  },
+  "cal-1": {
+   "hebrew_fluency": [
+    "basic",
+    0.9
+   ]
+  },
+  "cal-2": "Sorry, I cannot answer that.",
+  "cal-3": "{\"answers\": \"basic\"}",
+  "dee-1": "{not json at all",
+  "dee-2": "```json\n{\"answers\": {\"hebrew_fluency\": {\"choice\": \"none\"",
+  "eve-1": {
+   "terminology_comfort": [
+    "comfortable",
+    0.9
+   ],
+   "hebrew_fluency": [
+    "basic",
+    0.3
+   ],
+   "category:Halakhah": 0.5
+  },
+  "eve-3": {
+   "hebrew_fluency": [
+    "none",
+    0.4
+   ],
+   "category:Talmud": 0.6
+  }
+ }
+}
