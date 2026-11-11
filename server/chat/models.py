@@ -440,3 +440,27 @@ class LabVote(models.Model):
     choice = models.CharField(max_length=32)
     left_arm = models.CharField(max_length=64)
     created = models.DateTimeField(auto_now_add=True)
+
+
+class LabQuota(models.Model):
+    """A lab cost counter: calls of one kind by one learner (or "__all__") in one time window."""
+
+    scope = models.CharField(max_length=16)  # "job" or "seed"
+    key = models.CharField(max_length=100)
+    window_start = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "key", "window_start"], name="lab_quota_scope_key_window"
+            )
+        ]
+
+
+class LabJobLock(models.Model):
+    """Single-flight marker for one learner's job run; a stale start (over 300 s) is ignored."""
+
+    user_id = models.CharField(max_length=100, unique=True)
+    running = models.BooleanField(default=False)
+    started_at = models.DateTimeField(null=True)

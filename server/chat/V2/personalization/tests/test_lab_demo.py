@@ -281,21 +281,101 @@ def test_run_job_per_day_limit_is_deployment_wide(honoured, seed_on, monkeypatch
 
 
 def test_run_job_refuses_a_concurrent_call(honoured, seed_on):
-    from django.core.cache import cache
+    from datetime import timedelta
 
-    cache.add(f"lab-job-lock:{USER_ID}", 1, timeout=60)
+    from django.utils import timezone
+
+    from chat.models import LabJobLock
+
+    LabJobLock.objects.create(user_id=USER_ID, running=True, started_at=timezone.now())
     with patch.object(runtime, "get_llm", return_value=stub_llm()):
         response = profile("run_job")
     assert response.status_code == 429 and response.data == {"error": "rate_limited"}
-    cache.delete(f"lab-job-lock:{USER_ID}")
+    # a stale start (over 300 s) no longer blocks
+    LabJobLock.objects.filter(user_id=USER_ID).update(
+        started_at=timezone.now() - timedelta(seconds=301)
+    )
     with patch.object(runtime, "get_llm", return_value=stub_llm()):
         assert profile("run_job").status_code == 200
 
 
 def test_run_job_releases_its_lock(honoured, seed_on):
+    from chat.models import LabJobLock
+
     with patch.object(runtime, "get_llm", return_value=stub_llm()):
         profile("run_job")
         assert profile("run_job").status_code == 200
+    assert LabJobLock.objects.get(user_id=USER_ID).running is False
+
+
+@pytest.mark.django_db
+def test_lock_is_released_after_an_exception():
+    from django.utils import timezone
+
+    from chat.models import LabJobLock
+    from chat.V2.personalization import api
+
+    def boom():
+        raise RuntimeError("model down")
+
+    with pytest.raises(RuntimeError):
+        api._guarded_job_call("u1", boom)
+    assert LabJobLock.objects.get(user_id="u1").running is False
+    assert api._acquire_job_lock("u1", timezone.now()) is True
+    assert api._acquire_job_lock("u1", timezone.now()) is False  # held
+    assert api._acquire_job_lock("u2", timezone.now()) is True  # per learner
+
+
+def test_quotas_are_stored_in_the_database(honoured, seed_on):
+    from chat.models import LabQuota
+
+    with patch.object(runtime, "get_llm", return_value=stub_llm()):
+        profile("run_job")
+        profile("run_job")
+    assert LabQuota.objects.get(scope="job", key=USER_ID).count == 2
+    assert LabQuota.objects.get(scope="job", key="__all__").count == 2
+
+
+def test_over_limit_job_does_not_count_or_call(honoured, seed_on, monkeypatch):
+    from chat.models import LabQuota
+
+    monkeypatch.setenv("PERSONALIZATION_LAB_JOB_PER_HOUR", "1")
+    with patch.object(runtime, "get_llm", return_value=stub_llm()) as llm:
+        profile("run_job")
+        calls = llm.call_count
+        assert profile("run_job").status_code == 429
+        assert llm.call_count == calls
+    assert LabQuota.objects.get(scope="job", key="__all__").count == 1
+
+
+def test_seed_per_learner_limit(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED_PER_DAY", "2")
+    assert profile("seed_persona", turns=TURNS).status_code == 200
+    assert profile("seed_persona", turns=TURNS).status_code == 200
+    limited = profile("seed_persona", turns=TURNS)
+    assert limited.status_code == 429 and limited.data == {"error": "rate_limited"}
+
+
+def test_seed_overall_limit(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED_PER_DAY_TOTAL", "1")
+    assert profile("seed_persona", turns=TURNS).status_code == 200
+    assert profile("seed_persona", turns=TURNS).status_code == 429
+
+
+def test_seed_bad_input_does_not_use_quota(honoured, seed_on, monkeypatch):
+    monkeypatch.setenv("PERSONALIZATION_LAB_SEED_PER_DAY", "1")
+    assert profile("seed_persona", turns=[]).status_code == 400
+    assert profile("seed_persona", turns=TURNS).status_code == 200
+
+
+def test_quota_migration_applies():
+    from django.db import connection
+    from django.db.migrations.executor import MigrationExecutor
+
+    executor = MigrationExecutor(connection)
+    assert ("chat", "0021_lab_quota") in executor.loader.applied_migrations
+    names = connection.introspection.table_names()
+    assert "chat_labquota" in names and "chat_labjoblock" in names
 
 
 # -- the lab page --------------------------------------------------------------------------------
@@ -380,14 +460,13 @@ def test_lab_origin_keeps_the_default_sefaria_base_url(lab_env):
 
 
 @override_settings(PERSONALIZATION_OVERRIDE_ENABLED=True)
-def test_anon_run_batch_is_rate_limited(lab_env, monkeypatch):
+def test_anon_run_batch_is_404(lab_env):
     from rest_framework.test import APIClient
 
-    monkeypatch.setenv("PERSONALIZATION_LAB_JOB_PER_HOUR", "0")
     response = APIClient().post(
         "/api/v2/personalization/profile",
         {"anonId": ANON_UUID, "action": "run_batch", "mode": "hybrid"},
         format="json",
         HTTP_ORIGIN=LAB_ORIGIN,
     )
-    assert response.status_code == 429 and response.data == {"error": "rate_limited"}
+    assert response.status_code == 404

@@ -13,7 +13,6 @@ import uuid
 from datetime import UTC, timedelta
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -49,6 +48,9 @@ SEED_WINDOW_DAYS = 29  # inside the job's 30-day window, with a day of margin
 UNATOMIC_ACTIONS = frozenset({"run_job"})
 JOB_PER_HOUR_DEFAULT = 10
 JOB_PER_DAY_DEFAULT = 300
+SEED_PER_DAY_DEFAULT = 20
+SEED_PER_DAY_TOTAL_DEFAULT = 200
+ALL_KEY = "__all__"
 BATCH_MODES = sorted(gate.MODES - {"off"})
 
 
@@ -218,32 +220,81 @@ def _rate_limited():
     return Response({"error": "rate_limited"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
-def _counter(key: str, ttl: int) -> int:
-    cache.add(key, 0, timeout=ttl)
-    try:
-        return cache.incr(key)
-    except ValueError:  # expired between add and incr
-        cache.set(key, 1, timeout=ttl)
-        return 1
+LOCK_STALE_SECONDS = 300
+
+
+def _take_quota(scope: str, key: str, window_start, limit: int) -> bool:
+    """Count one call against a window; False (and no count) when the window is full."""
+    from chat.models import LabQuota
+
+    row, _ = LabQuota.objects.select_for_update().get_or_create(
+        scope=scope, key=key, window_start=window_start
+    )
+    if row.count >= limit:
+        return False
+    row.count += 1
+    row.save(update_fields=["count"])
+    return True
+
+
+def _take_quotas(scope: str, checks) -> bool:
+    """All (key, window_start, limit) checks pass or none counts. One short transaction."""
+    with transaction.atomic():
+        sid = transaction.savepoint()
+        for key, window_start, limit in checks:
+            if not _take_quota(scope, key, window_start, limit):
+                transaction.savepoint_rollback(sid)
+                return False
+        transaction.savepoint_commit(sid)
+    return True
+
+
+def _acquire_job_lock(store_user_id: str, now) -> bool:
+    from chat.models import LabJobLock
+
+    with transaction.atomic():
+        lock, _ = LabJobLock.objects.select_for_update().get_or_create(user_id=store_user_id)
+        if (
+            lock.running
+            and lock.started_at is not None
+            and lock.started_at > now - timedelta(seconds=LOCK_STALE_SECONDS)
+        ):
+            return False
+        lock.running, lock.started_at = True, now
+        lock.save(update_fields=["running", "started_at"])
+    return True
+
+
+def _release_job_lock(store_user_id: str) -> None:
+    from chat.models import LabJobLock
+
+    LabJobLock.objects.filter(user_id=store_user_id).update(running=False)
 
 
 def _guarded_job_call(store_user_id: str, call):
-    """Run a model-calling action under the lab's cost limits: per store user, one at a time and
-    a number per hour; per deployment, a number per day. Over a limit is a 429 and no call."""
+    """Run the job under the lab's cost limits, kept in Postgres: one run at a time per learner (a
+    row lock), a number per hour per learner and per day overall. Over a limit is a 429 and no
+    call. Lock and quota transactions are short and commit before the model call."""
     per_hour = _limit("PERSONALIZATION_LAB_JOB_PER_HOUR", JOB_PER_HOUR_DEFAULT)
     per_day = _limit("PERSONALIZATION_LAB_JOB_PER_DAY", JOB_PER_DAY_DEFAULT)
     now = timezone.now()
-    lock = f"lab-job-lock:{store_user_id}"
-    if not cache.add(lock, 1, timeout=300):
+    if not _acquire_job_lock(store_user_id, now):
         return _rate_limited()
     try:
-        hour_key = f"lab-job-hour:{store_user_id}:{now:%Y%m%d%H}"
-        day_key = f"lab-job-day:{now:%Y%m%d}"
-        if _counter(hour_key, 3600) > per_hour or _counter(day_key, 86400) > per_day:
+        hour = now.replace(minute=0, second=0, microsecond=0)
+        day = hour.replace(hour=0)
+        if not _take_quotas("job", [(store_user_id, hour, per_hour), (ALL_KEY, day, per_day)]):
             return _rate_limited()
         return call()
     finally:
-        cache.delete(lock)
+        _release_job_lock(store_user_id)
+
+
+def _seed_quota_ok(store_user_id: str, now) -> bool:
+    per_day = _limit("PERSONALIZATION_LAB_SEED_PER_DAY", SEED_PER_DAY_DEFAULT)
+    total = _limit("PERSONALIZATION_LAB_SEED_PER_DAY_TOTAL", SEED_PER_DAY_TOTAL_DEFAULT)
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return _take_quotas("seed", [(store_user_id, day, per_day), (ALL_KEY, day, total)])
 
 
 def _parse_turn(raw, index: int, now) -> tuple[dict | None, str | None]:
@@ -294,6 +345,8 @@ def _seed_persona(data: dict, store, store_user_id: str, now):
         if error:
             return _bad(error)
         parsed.append(turn)
+    if not _seed_quota_ok(store_user_id, now):
+        return _rate_limited()
     earliest, run_id = now - timedelta(days=SEED_WINDOW_DAYS), uuid.uuid4().hex[:8]
     timed = [t["at"] for t in parsed if t["at"] is not None]
     newest_at = now - timedelta(minutes=1)
@@ -380,17 +433,12 @@ def _run(action: str, data: dict, store_user_id: str, mode: str):
         service = runtime.get_service("explicit")
         return _write_json(service.set_stated(store_user_id, slot, value, now))
     # run_batch: the nightly consolidation for this one store user, synchronously.
+    if store_user_id.startswith(gate.ANON_PREFIX):  # the lab uses run_job; same 404 as the gate
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     service = runtime.get_service(data.get("mode") or mode)
     if service is None or service.strategy is None:
         return _bad("run_batch needs a mode other than off")
-    if store_user_id.startswith(gate.ANON_PREFIX):
-        result = _guarded_job_call(
-            store_user_id, lambda: service.strategy.run_batch(now, [store_user_id])
-        )
-        if isinstance(result, Response):
-            return result
-    else:
-        result = service.strategy.run_batch(now, [store_user_id])
+    result = service.strategy.run_batch(now, [store_user_id])
     return {
         "mode": service.mode,
         "usersProcessed": result.users_processed,

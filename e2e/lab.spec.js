@@ -82,6 +82,28 @@ test.describe('compare', () => {
     await expect(assistant.answers).toHaveCount(2); // personalized bubble + plain bubble, one turn
   });
 
+  test('Stop cancels both the personalized and the plain turn', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    const streams = [];
+    const cancels = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
+      if (r.url().endsWith('/v2/chat/cancel')) cancels.push(r.postDataJSON());
+    });
+    await page.route('**/chat/stream', () => {}); // both streams stay open until stopped
+    await compareToggle(assistant).check();
+    await assistant.send('What is a mitzvah?');
+    await expect.poll(() => streams.length).toBe(2);
+    await assistant.host.getByRole('button', { name: 'Stop' }).click();
+    await expect.poll(() => cancels.length).toBeGreaterThanOrEqual(2);
+    for (const stream of streams) {
+      expect(cancels).toContainEqual(
+        expect.objectContaining({ sessionId: stream.sessionId, messageId: stream.messageId }),
+      );
+    }
+    expect(new Set(streams.map((s) => s.messageId)).size).toBe(2);
+  });
+
   test('without the toggle a question gets one normal answer', async ({ page, context }) => {
     const assistant = await setUp(page, context, { allowed: true });
     await assistant.ask('Hello');

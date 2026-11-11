@@ -1491,11 +1491,14 @@
   // is never added to the history. Stop on the main turn stops this one too.
   async function startPlainStream(request, text) {
     comparePlain = { ...comparePlain, [request.messageId]: { status: 'loading', markdown: '' } };
+    // Its own session and message ids, kept so Stop can cancel this turn on the server too.
+    request.plain = { sessionId: generateSessionId(), messageId: generateMessageId() };
     let outcome;
     try {
       const response = await sendMessageStream(
-        apiBaseUrl, userId, generateSessionId(), text, {}, promptSlugs, originProp, isModerator,
-        promptSlugs.labs === true, null, interfaceLang,
+        apiBaseUrl, userId, request.plain.sessionId, text, {}, promptSlugs, originProp, isModerator,
+        promptSlugs.labs === true, { messageId: request.plain.messageId },
+        interfaceLang,
         { signal: request.controller.signal, contextOverrides: { personalizationMode: 'off' } }
       );
       outcome = { status: 'done', markdown: response.markdown || '' };
@@ -1999,6 +2002,10 @@
     request.stopping = true;
     stopThinkingMessages();
     delete stopErrors[targetSessionId];
+    if (request.plain) {
+      // The lab's plain arm is its own server turn; best effort, the main cancel decides the UI.
+      cancelStream(apiBaseUrl, { userId, ...request.plain }).catch(() => {});
+    }
     try {
       const outcome = await cancelStream(apiBaseUrl, {
         userId, sessionId: targetSessionId, messageId: request.messageId
