@@ -51,6 +51,13 @@ def get_registry():
         return _registry
 
 
+def get_llm():
+    """The model client for the profile API's own calls (patched in tests)."""
+    from .llm import AnthropicLLMClient
+
+    return AnthropicLLMClient()
+
+
 def get_service(mode: str) -> PersonalizationService | None:
     """Built lazily and cached per mode; `None` when the mode is off."""
     if mode == "off":

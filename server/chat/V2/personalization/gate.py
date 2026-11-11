@@ -93,11 +93,20 @@ def _production_environment() -> bool:
     return (os.environ.get("ENVIRONMENT") or "").strip().lower() in PRODUCTION_ENVIRONMENTS
 
 
+ANON_PREFIX = "anon:"
+
+
 def override_allowed(settings, persistent_user_id: str) -> bool:
     if getattr(settings, "PERSONALIZATION_OVERRIDE_ENABLED", False) is not True:
         return False
     if not _non_production_environment():
         return False
+    if (
+        persistent_user_id.startswith(ANON_PREFIX)
+        and os.environ.get("PERSONALIZATION_OVERRIDE_ALLOW_ANON") == "true"
+        and not _production_environment()
+    ):
+        return True  # a lab deployment only: every anonymous visitor may use the override
     allowed = _allowlist(getattr(settings, "PERSONALIZATION_OVERRIDE_USER_IDS", ""))
     return bool(persistent_user_id) and persistent_user_id in allowed
 
