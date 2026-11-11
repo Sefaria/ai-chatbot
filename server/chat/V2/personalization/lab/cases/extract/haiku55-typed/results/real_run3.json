@@ -1,0 +1,151 @@
+{
+ "case_sha": "39ee1c51560e8341c8b67cb5548a1f472c4227a3",
+ "cost": {
+  "calls": 142,
+  "in_tokens": 212955,
+  "out_tokens": 110887,
+  "typed_requests": 105,
+  "usd": 0.07673899999999999
+ },
+ "dataset": {
+  "kind": "real",
+  "n": 20,
+  "name": "anon-personas",
+  "sha256": "0a89da7095237ec54ebc4940c53ae86f949d26570dc75759d03e7c9aafe2211d"
+ },
+ "git_sha": "0b4dcbb4fa131c20a6034dad5e127c5c9ed56092",
+ "id": "extract/haiku55-typed",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "calls_per_turn": 1.3653846153846154,
+  "fill_rate_at_k@2": 0.6666666666666666,
+  "fill_rate_at_k@4": 0.8266666666666667,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.8,
+  "flips_per_10_turns": 1.6346153846153846,
+  "over_inferred": 0.35384615384615387,
+  "over_inferred_on@language": null,
+  "over_inferred_on@text_categories": null,
+  "run_agreement": 0.6914893617021277,
+  "sensitive_dropped_share": 0.0,
+  "slot_accuracy": 0.8028169014084507,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.45,
+  "usd_per_1000_turns": 0.737875
+ },
+ "model": "claude-haiku-5-5",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": null,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   142,
+   104
+  ],
+  "fill_rate_at_k@2": [
+   50,
+   75
+  ],
+  "fill_rate_at_k@4": [
+   62,
+   75
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   16,
+   20
+  ],
+  "flips_per_10_turns": [
+   170,
+   104
+  ],
+  "over_inferred": [
+   23,
+   65
+  ],
+  "over_inferred_on@language": [
+   0,
+   0
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   0
+  ],
+  "run_agreement": [
+   65,
+   94
+  ],
+  "sensitive_dropped_share": [
+   0,
+   104
+  ],
+  "slot_accuracy": [
+   57,
+   71
+  ],
+  "slot_accuracy_on@language": [
+   20,
+   20
+  ],
+  "slot_accuracy_on@text_categories": [
+   9,
+   20
+  ]
+ },
+ "run": 3,
+ "schema": 1,
+ "started_at": "2026-11-11T12:45:00+00:00",
+ "steps": [
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 37,
+   "n_out": 107,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 20,
+   "n_out": 15,
+   "name": "score"
+  }
+ ]
+}
