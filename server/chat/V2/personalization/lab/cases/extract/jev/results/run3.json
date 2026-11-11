@@ -1,0 +1,422 @@
+{
+ "case_sha": "9911ada7fde45b1b938872a1fabcf1ca5a3ca246",
+ "cost": {
+  "calls": 106,
+  "in_tokens": 125860,
+  "out_tokens": 3785,
+  "typed_requests": 76,
+  "usd": 0.04939885599999999
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 9,
+  "name": "syn1",
+  "sha256": "377d7e13880684ea1afbe0273e276838fdda5c3b4245c89b5799dd8a0f4a6fab"
+ },
+ "git_sha": "6b7cc277adc1ea842127f8bac7aac03b69021339",
+ "id": "extract/jev",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "calls_per_turn": 1.4324324324324325,
+  "fill_rate_at_k@2": 0.6,
+  "fill_rate_at_k@4": 0.7,
+  "fill_rate_at_k@8": 0.7142857142857143,
+  "first_session_fill": 1.0,
+  "flips_per_10_turns": 3.3783783783783785,
+  "over_inferred": 0.6153846153846154,
+  "over_inferred_by_lang@en": 0.5833333333333334,
+  "over_inferred_by_lang@he": 1.0,
+  "over_inferred_on@text_categories": null,
+  "sensitive_dropped_share": 0.02702702702702703,
+  "slot_accuracy": 0.9333333333333333,
+  "slot_accuracy_by_lang@en": 0.925,
+  "slot_accuracy_by_lang@he": 1.0,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.8888888888888888,
+  "usd_per_1000_turns": 0.6675521081081079
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after rachel-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "rachel-1",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "hebrew_fluency after rachel-3: correct",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "turn": "rachel-3",
+     "type": "available_by_turn"
+    },
+    {
+     "detail": "terminology_comfort after rachel-4: correct",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "turn": "rachel-4",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "Explain concepts in simple terms for someone completely new to Jewish texts.",
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh",
+     "Commentary"
+    ]
+   },
+   "persona": "rachel-anon",
+   "turns": 4,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "hebrew_fluency stayed stated 'fluent'",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "stated_locked"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "Provide sources with precise textual references; include multiple interpretive layers and be ready to translate for congregational use.",
+    "hebrew_fluency": "fluent",
+    "learning_habits": "You are preparing a dvar Torah for Shabbat services each week, working through the parashah cycle.",
+    "preferred_language": "en",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Tanakh",
+     "Commentary",
+     "Midrash"
+    ]
+   },
+   "persona": "rebecca-veteran",
+   "turns": 11,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "stayed within ['he']",
+     "passed": true,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['fluent']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['comfortable']",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "learning_habits": "You are studying the daily page (daf yomi) in Bava Batra, progressing through consecutive pages (134, 135, 136, 137).",
+    "preferred_language": "he",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud",
+     "Halakhah",
+     "Commentary"
+    ]
+   },
+   "persona": "david-daf",
+   "turns": 12,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "final 'intermediate'; earlier snapshot in old ['none']: False",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "changed_fact"
+    },
+    {
+     "detail": "final 'comfortable'; earlier snapshot in old ['new']: True",
+     "passed": true,
+     "slot": "terminology_comfort",
+     "type": "changed_fact"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "Can you always show me the English translation?",
+    "hebrew_fluency": "intermediate",
+    "preferred_language": "en",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud",
+     "Commentary",
+     "Mishnah"
+    ]
+   },
+   "persona": "miriam-evolving",
+   "turns": 10,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "scope all: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "Provide focused comparisons and conceptual distinctions between related terms and texts.",
+    "hebrew_fluency": "basic",
+    "learning_habits": "You are working through Mesillat Yesharim, Orchot Tzaddikim, and Tomer Devorah, reading a short daily Musar text each morning.",
+    "preferred_language": "en",
+    "register": "traditional",
+    "text_categories": [
+     "Musar"
+    ]
+   },
+   "persona": "yossi-sensitive",
+   "turns": 8,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "captured_at": "turn",
+     "detail": "captured_at: turn",
+     "passed": true,
+     "slot": "answer_style",
+     "turn": "tamar-2",
+     "type": "instruction_captured"
+    },
+    {
+     "detail": "scope profile: no phrase found",
+     "passed": true,
+     "type": "never_stored"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "From now on, please keep your answers under 100 words and just give me the sources.",
+    "preferred_language": "en",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Halakhah",
+     "Talmud",
+     "Tanakh"
+    ]
+   },
+   "persona": "tamar-instruction",
+   "turns": 6,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "answer_style": "Provide original sources with translations; keep explanations concise.",
+    "hebrew_fluency": "fluent",
+    "preferred_language": "mixed",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Chasidut",
+     "Kabbalah"
+    ]
+   },
+   "persona": "avi-mixed",
+   "turns": 8,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "stayed within ['en']",
+     "passed": true,
+     "slot": "preferred_language",
+     "type": "not_flipped"
+    },
+    {
+     "detail": "stayed within ['none', 'basic']",
+     "passed": true,
+     "slot": "hebrew_fluency",
+     "type": "not_flipped"
+    }
+   ],
+   "final_profile": {
+    "answer_style": "Could you give me everything in English going forward?",
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "register": "traditional",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "sarah-paste",
+   "turns": 6,
+   "variant": ""
+  },
+  {
+   "checks": [
+    {
+     "detail": "final ['Mishnah', 'Commentary']; stale values left: []",
+     "passed": true,
+     "slot": "text_categories",
+     "type": "expired"
+    }
+   ],
+   "final_profile": {
+    "learning_habits": "You are learning Mishnah Yomit, currently working through Mishnah Pe'ah.",
+    "preferred_language": "en",
+    "register": "traditional",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Mishnah",
+     "Commentary"
+    ]
+   },
+   "persona": "noam-stale",
+   "turns": 9,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   106,
+   74
+  ],
+  "fill_rate_at_k@2": [
+   30,
+   50
+  ],
+  "fill_rate_at_k@4": [
+   35,
+   50
+  ],
+  "fill_rate_at_k@8": [
+   25,
+   35
+  ],
+  "first_session_fill": [
+   9,
+   9
+  ],
+  "flips_per_10_turns": [
+   250,
+   74
+  ],
+  "over_inferred": [
+   8,
+   13
+  ],
+  "over_inferred_by_lang@en": [
+   7,
+   12
+  ],
+  "over_inferred_by_lang@he": [
+   1,
+   1
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   0
+  ],
+  "sensitive_dropped_share": [
+   2,
+   74
+  ],
+  "slot_accuracy": [
+   42,
+   45
+  ],
+  "slot_accuracy_by_lang@en": [
+   37,
+   40
+  ],
+  "slot_accuracy_by_lang@he": [
+   5,
+   5
+  ],
+  "slot_accuracy_on@language": [
+   9,
+   9
+  ],
+  "slot_accuracy_on@text_categories": [
+   8,
+   9
+  ]
+ },
+ "run": 3,
+ "schema": 1,
+ "started_at": "2026-11-11T08:29:17+00:00",
+ "steps": [
+  {
+   "n_in": 74,
+   "n_out": 74,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 74,
+   "n_out": 72,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 30,
+   "n_out": 75,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 9,
+   "n_out": 17,
+   "name": "score"
+  }
+ ]
+}
