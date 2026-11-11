@@ -321,3 +321,22 @@ class ChatMessage(models.Model):
     def generate_turn_id(cls):
         """Generate a unique turn ID."""
         return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+class ListeningSession(models.Model):
+    """Short-lived listening state, isolated from durable chat history.
+
+    Compare-and-swap on revision protects writes across server processes. A lease
+    lets stop invalidate model work without holding a transaction across API calls.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id = models.CharField(max_length=100, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    closed = models.BooleanField(default=False)
+    revision = models.PositiveIntegerField(default=0)
+    lease = models.UUIDField(null=True)
+    lease_until = models.DateTimeField(null=True)
+    next_analysis_at = models.DateTimeField(null=True)
+    state = models.JSONField(default=dict)

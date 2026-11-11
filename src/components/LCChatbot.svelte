@@ -28,6 +28,7 @@
   import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
   import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
   import AskLauncher from './AskLauncher.svelte';
+  import ListeningPanel from './ListeningPanel.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
   import { tooltip } from '../lib/tooltip.js';
@@ -1440,15 +1441,15 @@
   }
 
   // `source`: where on the host page the question was asked from (only askInNewChat passes one)
-  async function handleSend({ source = '' } = {}) {
+  async function handleSend({ source = '', question = '', questionId = '', questionPageUrl = '' } = {}) {
     await loggedOutChatsClaimed;
-    const text = inputText.trim();
+    const text = (question || inputText).trim();
     const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
     if (!isReadyToSend) return;
     const sendingSessionId = sessionId;
     setSessionSending(sendingSessionId, true);
     activeRequests[sendingSessionId] = {
-      messageId: generateMessageId(), controller: new AbortController(), text,
+      messageId: questionId || generateMessageId(), controller: new AbortController(), text,
       stopping: false, appetizerData: null,
       // Streaming UX bookkeeping for this turn (see WORD_FADE_MS above).
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
@@ -1458,18 +1459,20 @@
     };
     const request = activeRequests[sendingSessionId];
     delete stopErrors[sendingSessionId];
-    conversationDrafts[sendingSessionId] = '';
+    if (!question) conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
     resetScroll();
     // gtag drops an undefined prompts_left (logged in, or not known).
     track('assistant_message_sent', { length: text.length, prompts_left: promptsLeft() });
     // Clear input and draft
-    inputText = '';
-    setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    if (!question) {
+      inputText = '';
+      setStorage(STORAGE_KEYS.DRAFT, { text: '' });
+    }
 
     // Create user message. It shows straight away; the location pin under it waits on a
     // ref lookup, so it's added when that returns.
-    const pageUrl = window.location.href;
+    const pageUrl = questionPageUrl || window.location.href;
     const locationRef = null;
     const userMessage = {
       messageId: request.messageId,
@@ -1669,7 +1672,7 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal, source }), request.controller.signal);
+      }, interfaceLang, { signal: request.controller.signal, source, pageUrl }), request.controller.signal);
 
       // Let the delayed playback and the last word's fade finish before
       // swapping in the final message.
@@ -2892,6 +2895,14 @@
 
       {#if stopErrors[sessionId]}
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
+      {/if}
+      {#if isOpen && userId && !showHistoryPanel && !loginRequired}
+        {#key userId + sessionId}
+          <ListeningPanel {apiBaseUrl} {userId} language={interfaceLang}
+            disabled={isCurrentSessionSending || limitReached}
+            onQuestion={(suggestion) => handleSend({ source: 'listening', question: suggestion.question,
+              questionId: suggestion.id, questionPageUrl: suggestion.page_url })} />
+        {/key}
       {/if}
       <!-- Input Footer -->
       {#if loginRequired}

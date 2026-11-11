@@ -291,12 +291,13 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null, source = '' } = options;
+  const { signal = null, source = '', pageUrl = '' } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  if (pageUrl) context.pageUrl = pageUrl;
   if (source) {
     context.source = source;
   }
