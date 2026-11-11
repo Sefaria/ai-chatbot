@@ -32,7 +32,7 @@
     "assistant.floating_button_modal.log_in": "log in",
     "assistant.floating_button_modal.sign_up": "sign up",
     "assistant.floating_button_modal.main_menu_logged_in": "You can remove the Library Assistant from the main menu in {account_settings}.",
-    "assistant.floating_button_modal.account_settings": "account settings",
+    "assistant.floating_button_modal.account_settings": "settings",
     "assistant.floating_button_modal.done": "Done",
     "assistant.empty.description": "You can ask questions while you study.",
     "assistant.empty.examples.label": "For example:",

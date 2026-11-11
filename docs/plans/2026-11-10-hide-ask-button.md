@@ -19,7 +19,7 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 - **Copy**: "You can continue to open the Library Assistant from the main menu." Then:
   - logged out: "To remove the Library Assistant from the main menu, **sign up** or
     **log in**." Each links straight to its flow (`/register`, `/login`) and back to the page.
-  - logged in: "You can remove the Library Assistant from the main menu in **account settings**."
+  - logged in: "You can remove the Library Assistant from the main menu in **settings**."
     Links to `/settings/account#libraryAssistantSetting`, the on/off setting.
   - "main menu" everywhere (not "Sefaria header" / "Sefaria menu").
   - Each sentence is one key with link placeholders, so translators can reorder it. All copy
