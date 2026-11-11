@@ -1,0 +1,73 @@
+{
+  "id": "extract/llm-free",
+  "question": "One free-form model call per turn (iteration 1's design A)",
+  "why": "The core technique (transcript 4:17 to 6:44). It decides the vendor question and the cost.",
+  "source": "The core technique (transcript 4:17 to 6:44)",
+  "hypothesis": "Fills fastest and is wrong most often.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-4-5-20251001",
+    "strategy": "realtime",
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "slot_accuracy",
+    "over_inferred",
+    "outlier_flips",
+    "slot_accuracy_on",
+    "over_inferred_on",
+    "first_session_fill",
+    "fill_rate_at_k",
+    "run_agreement",
+    "flips_per_10_turns",
+    "calls_per_turn",
+    "usd_per_1000_turns",
+    "sensitive_dropped_share"
+  ],
+  "keep_if": [
+    {
+      "metric": "slot_accuracy",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.85,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy",
+      "agg": "min",
+      "op": ">=",
+      "value": 0.8,
+      "dataset": "anon-personas",
+      "expected_to_fail": true
+    },
+    {
+      "metric": "outlier_flips",
+      "agg": "pooled",
+      "op": "<=",
+      "value": 1,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 0.4M Haiku tokens (the test tree's estimate); measured as one free-form call per turn: about 110 on the 20-persona sample and 74 on syn1 per run (the sensitive and instruction turns are never sent)",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: syn2 and real1",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2 maps the row: every bar the row puts on syn2 applies to anon-personas, and the real1 aggregates (fill_rate_at_k, run_agreement, flips_per_10_turns) are computed on the same anon-personas runs, numbers only, with no extra bar. As a model case it runs the A2 seeded sample of anon-personas, the same one as reverify/heldout-personas: sample_dataset anon-personas, sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20). syn1 stays as the reference, reported beside, never alone.",
+      "cost": "Running all 188 personas of anon-personas would cost about 9x the planned budget.",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "agg": "The row names slot_accuracy twice (mean and min) and outlier_flips pooled; all three apply to anon-personas. 'Pooled' on a count means the three runs' flips added together (lab/core verdict, commit 'a pooled bar on a count adds the runs together'), so at most 1 outlier-caused flip over all three runs together.",
+      "expected_to_fail": "The row says 'Expected to fail the second bar' (slot_accuracy min >= 0.80): that bar is marked expected_to_fail, so it is reported and not counted in the verdict.",
+      "outlier": "outlier_flips counts value changes (not first fills) made on a turn tagged 'outlier'. The A1 labels carry such tags on anon-personas (turn ids are strings, '<user_id>-t<N>'; the metric matches them as strings). Realtime has no batch step, so only the turn's own change counts.",
+      "realtime": "Strategy realtime (iteration 1's design A): one free-form call per turn on claude-haiku-4-5-20251001 through headless Claude Code, the model rewrites the profile from the current profile and the turn; no thresholds. preferred_language is set by code; a standing instruction is quarantined and never sent. The case pipeline is the replay StrategyPipeline unchanged."
+    }
+  ],
+  "status": "planned"
+}
