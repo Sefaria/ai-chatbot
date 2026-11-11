@@ -171,9 +171,64 @@ def test_live_runs_three_times_and_history_metrics_read_the_earlier_runs(repo):
         )
         results.write(directory, result)
         seen.append(result["metrics"])
-    assert seen[0]["run_agreement"] is None and seen[1]["run_agreement"] is not None
+    assert seen[0]["run_agreement"] is None and seen[1]["run_agreement"] is None  # needs 3 runs
+    assert seen[2]["run_agreement"] is not None
+    assert seen[0]["runs_identical"] is None and seen[1]["runs_identical"] is None
     assert seen[2]["runs_identical"] == 1.0
     assert deps
+
+
+def _three_runs(case, directory, dataset, last_llm):
+    seen = []
+    for n in (1, 2, 3):
+        llm = oracle_llm() if n < 3 else last_llm
+        result = run_case(
+            case, kind="live", run_no=n, dataset=dataset, llm=llm, pipeline_module=MODULE
+        )
+        results.write(directory, result)
+        seen.append(result["metrics"])
+    return seen
+
+
+def test_cross_run_values_over_three_runs_synthetic(repo):
+    work, cases = repo
+    directory = write_case(cases, metrics=["slot_accuracy", "run_agreement", "runs_identical"])
+    commit_and_push(work)
+    case = load_case(directory)
+    syn = Dataset("syn1", "synthetic", load_dataset("syn1").sha256, [persona()])
+    same = _three_runs(case, directory, syn, oracle_llm())
+    assert same[2]["run_agreement"] == 1.0 and same[2]["runs_identical"] == 1.0
+    differs = _three_runs(case, directory, syn, FakeLLMClient(lambda s, u: '{"updates": []}'))
+    # the oracle fills the golden slots in runs 1-2, run 3 only keeps the slots the replay sets itself
+    assert 0.0 < differs[2]["run_agreement"] < 1.0 and differs[2]["runs_identical"] == 0.0
+
+
+def test_cross_run_values_on_a_real_dataset_use_progress_under_the_data_dir(
+    repo, tmp_path, monkeypatch
+):
+    work, cases = repo
+    data = tmp_path / "la-lab-data"
+    monkeypatch.setenv("LA_LAB_DATA_DIR", str(data))
+    directory = write_case(cases, metrics=["slot_accuracy", "run_agreement", "runs_identical"])
+    commit_and_push(work)
+    case = load_case(directory)
+    real = Dataset(
+        "real1",
+        "real",
+        "sha",
+        [{"user_id": "u:real", "sessions": persona()["sessions"], "golden": persona()["golden"]}],
+    )
+    same = _three_runs(case, directory, real, oracle_llm())
+    assert same[0]["run_agreement"] is None and same[1]["run_agreement"] is None
+    assert same[2]["run_agreement"] == 1.0 and same[2]["runs_identical"] == 1.0
+    for n in (1, 2, 3):
+        assert (data / "partial" / "a" / "x" / f"profiles_real1_run{n}.json").is_file()
+        assert (directory / "results" / f"real_run{n}.json").is_file()
+    assert not (directory / "results" / ".partial").exists()  # nothing kept in the repo
+    for n in (1, 2, 3):  # a later run with a different answer set disagrees
+        (data / "partial" / "a" / "x" / f"profiles_real1_run{n}.json").unlink()
+    differs = _three_runs(case, directory, real, FakeLLMClient(lambda s, u: '{"updates": []}'))
+    assert 0.0 < differs[2]["run_agreement"] < 1.0 and differs[2]["runs_identical"] == 0.0
 
 
 def test_codex_judge_retries_once_then_scores_invalid():
@@ -225,6 +280,17 @@ def test_explain_shows_the_formulas_and_bars(tmp_path, capsys):
         "slots whose final value equals the golden value" in out
         and "slot_accuracy [mean] >= 0.5" in out
     )
+
+
+def test_explain_shows_the_cross_run_rule(tmp_path, capsys):
+    write_case(
+        tmp_path,
+        metrics=["slot_accuracy", "runs_identical"],
+        keep_if=[{"metric": "runs_identical", "agg": "min", "op": ">=", "value": 1}],
+    )
+    assert cli.main(["--cases-root", str(tmp_path), "explain", "a/x"]) == 0
+    out = capsys.readouterr().out
+    assert "cross-run rule" in out and "run 3" in out and "ignores its agg" in out
 
 
 def test_run_mock_writes_mock_json_and_blocked_case_exits_3(tmp_path):

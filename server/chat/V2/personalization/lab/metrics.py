@@ -72,6 +72,7 @@ class Metric:
     compute: Callable[[RunData, str | None], float | Ratio | None]
     params: tuple[str, ...] = ()
     history: bool = False  # computed after the others, from earlier runs and this run's metrics
+    cross_run: bool = False  # defined only over all three runs: a bar reads run 3's value
 
 
 _REGISTRY: SlotRegistry | None = None
@@ -280,7 +281,7 @@ def _final_values(replay) -> dict:
 
 def run_agreement(data: RunData, variant=None):
     runs = [*data.prior_profiles, {r.persona["user_id"]: _final_values(r) for r in data.replays}]
-    if len(runs) < 2:
+    if len(runs) < CROSS_RUNS:  # defined over all three runs only
         return None
     agree = filled = 0
     for user in runs[-1]:
@@ -383,6 +384,7 @@ def coverage(data: RunData, variant=None):
 # -- across runs ------------------------------------------------------------------------------
 
 
+CROSS_RUNS = 3  # runs a cross-run metric compares
 _HISTORY = ("run_agreement", "runs_identical", "lead_over_next")
 
 
@@ -392,7 +394,7 @@ def split_key(key: str) -> tuple[str, str | None]:
 
 
 def runs_identical(data: RunData, variant=None):
-    if not data.prior_metrics:
+    if len(data.prior_metrics) < CROSS_RUNS - 1:  # defined over all three runs only
         return None
     # metrics that read the other runs differ between runs by construction, so they are left out
     plain = lambda m: {k: v for k, v in m.items() if split_key(k)[0] not in _HISTORY}  # noqa: E731
@@ -494,8 +496,8 @@ def _base_metrics() -> dict[str, Metric]:
     found["fill_rate_at_k"] = Metric(
         "fill_rate_at_k", "fraction", formulas["fill_rate_at_k"], fill_rate_at_k, params=("2", "4", "8")
     )  # fmt: skip
-    found["run_agreement"] = Metric("run_agreement", "fraction", formulas["run_agreement"], run_agreement, history=True)  # fmt: skip
-    found["runs_identical"] = Metric("runs_identical", "flag", formulas["runs_identical"], runs_identical, history=True)  # fmt: skip
+    found["run_agreement"] = Metric("run_agreement", "fraction", formulas["run_agreement"], run_agreement, history=True, cross_run=True)  # fmt: skip
+    found["runs_identical"] = Metric("runs_identical", "flag", formulas["runs_identical"], runs_identical, history=True, cross_run=True)  # fmt: skip
     found["lead_over_next"] = Metric("lead_over_next", "fraction", formulas["lead_over_next"], lead_over_next, history=True)  # fmt: skip
     for name in _COUNTED_RATIOS:
         found[name] = Metric(name, "fraction", formulas[name], _counted_ratio(name))
