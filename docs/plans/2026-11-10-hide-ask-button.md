@@ -17,8 +17,8 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
   more spaced out than the feedback modal (title one step up, 14px body, 44×24 switch in a
   44px row).
 - **Copy**: "You can continue to open the Library Assistant from the main menu." Then:
-  - logged out: "To remove the Library Assistant from the main menu, **log in** or
-    **sign up**." Each links straight to its flow (`/login`, `/register`) and back to the page.
+  - logged out: "To remove the Library Assistant from the main menu, **sign up** or
+    **log in**." Each links straight to its flow (`/register`, `/login`) and back to the page.
   - logged in: "You can remove the Library Assistant from the main menu in **account settings**."
     Links to `/settings/account#libraryAssistantSetting`, the on/off setting.
   - "main menu" everywhere (not "Sefaria header" / "Sefaria menu").

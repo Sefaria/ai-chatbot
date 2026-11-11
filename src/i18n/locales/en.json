@@ -28,7 +28,7 @@
     "assistant.floating_button_modal.title": "Hide or show Ask button",
     "assistant.floating_button_modal.toggle": "Show the Ask button",
     "assistant.floating_button_modal.description": "You can continue to open the Library Assistant from the main menu.",
-    "assistant.floating_button_modal.main_menu_logged_out": "To remove the Library Assistant from the main menu, {log_in} or {sign_up}.",
+    "assistant.floating_button_modal.main_menu_logged_out": "To remove the Library Assistant from the main menu, {sign_up} or {log_in}.",
     "assistant.floating_button_modal.log_in": "log in",
     "assistant.floating_button_modal.sign_up": "sign up",
     "assistant.floating_button_modal.main_menu_logged_in": "You can remove the Library Assistant from the main menu in {account_settings}.",

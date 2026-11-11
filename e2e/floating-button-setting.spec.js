@@ -47,11 +47,11 @@ test('with the Ask button off, the host can still open the assistant and turn it
   await expect(assistant.trigger).toBeVisible();
 });
 
-test('a logged-out visitor is offered log-in and sign-up to remove the assistant from the header', async ({ page, context }) => {
+test('a logged-out visitor is offered sign-up and log-in to remove the assistant from the main menu', async ({ page, context }) => {
   const assistant = await setUp(page, context);
   await assistant.openFloatingButtonSetting();
-  await expect(assistant.floatingButtonLogInLink).toHaveAttribute('href', /\/login\?next=%2F$/);
   await expect(assistant.floatingButtonSignUpLink).toHaveAttribute('href', /\/register\?next=%2F$/);
+  await expect(assistant.floatingButtonLogInLink).toHaveAttribute('href', /\/login\?next=%2F$/);
 });
 
 test('a logged-in user is sent to the Library Assistant setting in account settings', async ({ page, context }) => {
