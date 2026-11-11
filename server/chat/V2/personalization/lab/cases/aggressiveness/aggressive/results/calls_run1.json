@@ -1,0 +1,578 @@
+[
+ {
+  "variant": "",
+  "persona": "rachel-anon",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1141,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rachel-anon",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1157,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rachel-anon",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1155,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rachel-anon",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1157,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1182,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1158,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1153,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1176,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1161,
+  "out_tokens": 338
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1162,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1039,
+  "out_tokens": 332
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1036,
+  "out_tokens": 332
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1019,
+  "out_tokens": 332
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1048,
+  "out_tokens": 332
+ },
+ {
+  "variant": "",
+  "persona": "rebecca-veteran",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1033,
+  "out_tokens": 332
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1197,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1158,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1170,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1183,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1162,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1160,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1173,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1162,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1200,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1171,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1173,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "david-daf",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1151,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1160,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1149,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1151,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1152,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1155,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1212,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1155,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1175,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1179,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "miriam-evolving",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1157,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1164,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1152,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1161,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1151,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1155,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "yossi-sensitive",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1151,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1148,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1159,
+  "out_tokens": 333
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1145,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1149,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1147,
+  "out_tokens": 335
+ },
+ {
+  "variant": "",
+  "persona": "tamar-instruction",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1141,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1176,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1156,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1156,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1157,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1181,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1162,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1159,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "avi-mixed",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1166,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1154,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1154,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1219,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1154,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1157,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "sarah-paste",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1144,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1153,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1147,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1159,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1152,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1160,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1151,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1165,
+  "out_tokens": 361
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1165,
+  "out_tokens": 362
+ },
+ {
+  "variant": "",
+  "persona": "noam-stale",
+  "step": "typed_questions",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 1158,
+  "out_tokens": 361
+ }
+]
