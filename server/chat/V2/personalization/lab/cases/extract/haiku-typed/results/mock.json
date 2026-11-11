@@ -1,5 +1,5 @@
 {
- "case_sha": "3503a29e75c69ba34c652c2e884949020bd44ad0",
+ "case_sha": "62d568492cfbc6b847f11d7ca6c433f795af8240",
  "cost": {
   "calls": 18,
   "in_tokens": 16185,
@@ -13,7 +13,7 @@
   "name": "mock",
   "sha256": "972fe70b8520b4fdf944f7c27e15c9981f467f3e6f105ed818a42bce04c470f6"
  },
- "git_sha": "e224d06125eaa2366ed3044ef060d2861978a6e1",
+ "git_sha": "dae988fdbdc2e0f8fd236b57972227731a045da9",
  "id": "extract/haiku-typed",
  "invalid": 0,
  "kind": "mock",
@@ -155,7 +155,7 @@
  },
  "run": 0,
  "schema": 1,
- "started_at": "2026-11-11T07:25:38+00:00",
+ "started_at": "2026-11-11T08:19:16+00:00",
  "steps": [
   {
    "n_in": 14,
