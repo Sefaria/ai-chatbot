@@ -1,0 +1,334 @@
+{
+ "note": "Invented fixture for the mock; no real text. 'replies' holds the scripted reply of the fake model per turn id: a list of [slot, value] updates (each sent with a verbatim quote of the turn) or a raw value sent as is (a string, or any JSON, malformed on purpose). A turn with no entry gets an empty update list. Turn ids are strings '<user>-t<N>', the shape of the A1 labels.",
+ "personas": [
+  {
+   "id": "ava",
+   "user_id": "mock:ava",
+   "trap": "every update is right",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ava-s1",
+     "turns": [
+      {
+       "id": "ava-t1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Please explain this week's parsha, I read no Hebrew at all",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-t2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Who is Rashi? I am a complete beginner",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-t3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "What does sugya mean? And what is a midrash?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "none"
+    },
+    "terminology_comfort": {
+     "value": "new"
+    },
+    "text_categories": {
+     "must_include": [
+      "Tanakh"
+     ]
+    }
+   },
+   "checks": [],
+   "golden_timeline": []
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "an outlier turn flips a filled slot, the next turn flips it back",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-t1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Show me Rashi on Genesis 1:1 with the Hebrew",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-t2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Here is a long quote from my teacher in Hebrew letters, please translate it",
+       "assistant": "ok",
+       "tags": [
+        "outlier"
+       ]
+      },
+      {
+       "id": "ben-t3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "Which commentaries explain the first verse of Exodus?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "basic"
+    }
+   },
+   "checks": [],
+   "golden_timeline": []
+  },
+  {
+   "id": "cal",
+   "user_id": "mock:cal",
+   "trap": "an outlier fills a slot first (no flip), a second outlier flips it",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "cal-s1",
+     "turns": [
+      {
+       "id": "cal-t1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "What is a sugya?",
+       "assistant": "ok",
+       "tags": [
+        "outlier"
+       ]
+      },
+      {
+       "id": "cal-t2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Explain the daf on charity to me like a friend",
+       "assistant": "ok",
+       "tags": [
+        "outlier"
+       ]
+      },
+      {
+       "id": "cal-t3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "What does the Talmud say about lending?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "terminology_comfort": {
+     "value": "new"
+    },
+    "text_categories": {
+     "must_include": [
+      "Talmud"
+     ]
+    }
+   },
+   "checks": [],
+   "golden_timeline": []
+  },
+  {
+   "id": "dee",
+   "user_id": "mock:dee",
+   "trap": "both replies are malformed, the third offers a value outside the options",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "dee-s1",
+     "turns": [
+      {
+       "id": "dee-t1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Show me the Mishnah on blessings",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "dee-t2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "And the next chapter of Berakhot",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "dee-t3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "Who wrote the Tosafot on this page?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "basic"
+    }
+   },
+   "checks": [],
+   "golden_timeline": []
+  },
+  {
+   "id": "eve",
+   "user_id": "mock:eve",
+   "trap": "a sensitive turn, an instruction and a slot the golden profile leaves empty",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "eve-s1",
+     "turns": [
+      {
+       "id": "eve-t1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Show me the Talmud page on charity",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "eve-t2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "My mother died last week, what does the Talmud say about mourning?",
+       "assistant": "ok",
+       "tags": [
+        "sensitive"
+       ]
+      },
+      {
+       "id": "eve-t3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "From now on always answer in short sentences",
+       "assistant": "ok",
+       "tags": [
+        "instruction"
+       ]
+      },
+      {
+       "id": "eve-t4",
+       "at": "2026-11-04T09:04:00Z",
+       "user": "What is a sugya?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": [],
+   "golden_timeline": []
+  }
+ ],
+ "replies": {
+  "ava-t1": [
+   [
+    "hebrew_fluency",
+    "none"
+   ],
+   [
+    "text_categories",
+    [
+     "Tanakh"
+    ]
+   ]
+  ],
+  "ava-t2": [
+   [
+    "terminology_comfort",
+    "new"
+   ]
+  ],
+  "ben-t1": [
+   [
+    "hebrew_fluency",
+    "basic"
+   ]
+  ],
+  "ben-t2": [
+   [
+    "hebrew_fluency",
+    "fluent"
+   ]
+  ],
+  "ben-t3": [
+   [
+    "hebrew_fluency",
+    "basic"
+   ]
+  ],
+  "cal-t1": [
+   [
+    "terminology_comfort",
+    "comfortable"
+   ]
+  ],
+  "cal-t2": [
+   [
+    "terminology_comfort",
+    "new"
+   ]
+  ],
+  "cal-t3": [
+   [
+    "text_categories",
+    [
+     "Talmud"
+    ]
+   ]
+  ],
+  "dee-t1": "Sure, here is the profile: he reads Hebrew a little",
+  "dee-t2": {
+   "updates": "hebrew_fluency=basic"
+  },
+  "dee-t3": [
+   [
+    "hebrew_fluency",
+    "native"
+   ]
+  ],
+  "eve-t1": [
+   [
+    "text_categories",
+    [
+     "Talmud"
+    ]
+   ]
+  ],
+  "eve-t4": [
+   [
+    "terminology_comfort",
+    "comfortable"
+   ]
+  ]
+ }
+}

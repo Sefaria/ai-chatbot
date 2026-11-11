@@ -1,0 +1,114 @@
+[
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 706,
+  "out_tokens": 48
+ },
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 731,
+  "out_tokens": 26
+ },
+ {
+  "variant": "",
+  "persona": "ava",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 749,
+  "out_tokens": 3
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 702,
+  "out_tokens": 25
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 725,
+  "out_tokens": 25
+ },
+ {
+  "variant": "",
+  "persona": "ben",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 720,
+  "out_tokens": 25
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 695,
+  "out_tokens": 24
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 720,
+  "out_tokens": 26
+ },
+ {
+  "variant": "",
+  "persona": "cal",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 717,
+  "out_tokens": 26
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 699,
+  "out_tokens": 12
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 699,
+  "out_tokens": 8
+ },
+ {
+  "variant": "",
+  "persona": "dee",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 700,
+  "out_tokens": 25
+ },
+ {
+  "variant": "",
+  "persona": "eve",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 700,
+  "out_tokens": 26
+ },
+ {
+  "variant": "",
+  "persona": "eve",
+  "step": "extract_turn",
+  "model": "claude-haiku-4-5-20251001",
+  "in_tokens": 711,
+  "out_tokens": 24
+ }
+]

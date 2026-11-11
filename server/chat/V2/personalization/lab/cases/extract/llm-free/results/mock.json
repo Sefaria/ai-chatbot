@@ -1,0 +1,204 @@
+{
+ "case_sha": "6be085699e2348878d1da7db103819c51d5106f7",
+ "cost": {
+  "calls": 14,
+  "in_tokens": 9974,
+  "out_tokens": 323,
+  "typed_requests": 0,
+  "usd": 0.011589
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 5,
+  "name": "mock",
+  "sha256": "68803db579505ff391278f4acc05080ce6b2ca2a85ffa6b90c6338210ad8bd0f"
+ },
+ "git_sha": "d2f98b6f8c075f56ce918734df604821f5fb7d08",
+ "id": "extract/llm-free",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "calls_per_turn": 0.875,
+  "fill_rate_at_k@2": 0.8333333333333334,
+  "fill_rate_at_k@4": 1.0,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.6,
+  "flips_per_10_turns": 1.875,
+  "outlier_flips": 2,
+  "over_inferred": 0.08695652173913043,
+  "over_inferred_on@language": null,
+  "over_inferred_on@text_categories": 0.3333333333333333,
+  "run_agreement": null,
+  "sensitive_dropped_share": 0.0625,
+  "slot_accuracy": 0.9166666666666666,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 1.0,
+  "usd_per_1000_turns": 0.7243125
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "basic",
+    "preferred_language": "en"
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "cal",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "dee",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "eve",
+   "turns": 4,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   14,
+   16
+  ],
+  "fill_rate_at_k@2": [
+   10,
+   12
+  ],
+  "fill_rate_at_k@4": [
+   1,
+   1
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   3,
+   5
+  ],
+  "flips_per_10_turns": [
+   30,
+   16
+  ],
+  "over_inferred": [
+   2,
+   23
+  ],
+  "over_inferred_on@language": [
+   0,
+   0
+  ],
+  "over_inferred_on@text_categories": [
+   1,
+   3
+  ],
+  "sensitive_dropped_share": [
+   1,
+   16
+  ],
+  "slot_accuracy": [
+   11,
+   12
+  ],
+  "slot_accuracy_on@language": [
+   5,
+   5
+  ],
+  "slot_accuracy_on@text_categories": [
+   2,
+   2
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T08:44:18+00:00",
+ "steps": [
+  {
+   "n_in": 16,
+   "n_out": 16,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 16,
+   "n_out": 15,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 14,
+   "n_out": 16,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 5,
+   "n_out": 16,
+   "name": "score"
+  }
+ ]
+}
