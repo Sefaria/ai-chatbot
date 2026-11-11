@@ -427,12 +427,12 @@ def test_visit_blocked_when_fields_unmapped(tmp_path):
     blocked = read_meta(out, "anon-visit")["blocked"]
     assert "site" in blocked and "browser_lang" in blocked and "country" in blocked
     visit = items(out, "anon-visit")
-    assert visit and "text" in visit[0]
+    assert visit and "prompt" in visit[0] and "text" not in visit[0]
     assert "site" not in visit[0] and "browser_lang" not in visit[0] and "country" not in visit[0]
     mapped = go(tmp_path, learner("learner-7", 4), out=tmp_path / "mapped")
     row0 = items(mapped, "anon-visit")[0]
     assert row0["site"] == "en" and row0["browser_lang"] == "en" and row0["country"] == "US"
-    assert "text" in row0 and "blocked" not in read_meta(mapped, "anon-visit")
+    assert "prompt" in row0 and "blocked" not in read_meta(mapped, "anon-visit")
 
 
 def _rows_named(n=4):
@@ -523,3 +523,35 @@ def test_workers_output_matches_serial(tmp_path):
 
     assert strip(personas(serial)) == strip(personas(parallel))
     assert read_summary(serial, "anon-personas") == read_summary(parallel, "anon-personas")
+
+
+def test_turn_dropped_when_only_the_assistant_text_is_sensitive(tmp_path):
+    rows = learner("learner-7", 4)
+    rows.append(row("learner-7", 4, "tell me about Genesis", "my mother is sick and I am sorry"))
+    out = go(tmp_path, rows)
+    assert len(turns_of(personas(out)[0])) == 4
+    assert "tell me about Genesis" not in blob(out)
+    assert read_summary(out, "anon-personas")["sensitive_dropped_share"] == pytest.approx(0.2)
+
+
+def test_run_rejects_unknown_keyword(tmp_path):
+    with pytest.raises(TypeError):
+        go(tmp_path, learner("learner-7", 4), bogus_option=1)
+
+
+def test_git_check_is_the_shared_helper_and_asks_git(tmp_path, monkeypatch):
+    from chat.V2.personalization.lab import datasets, label
+    from chat.V2.personalization.lab.real import pull
+
+    assert pull._is_inside_git_repo is datasets.is_inside_git_repo
+    assert label._is_inside_git_repo is datasets.is_inside_git_repo
+    # no .git ancestor here, so only the `git rev-parse` fallback can say yes
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="true\n", stderr="")
+
+    monkeypatch.setattr(datasets.subprocess, "run", fake_run)
+    assert datasets.is_inside_git_repo(tmp_path)
+    assert calls and "--is-inside-work-tree" in calls[0]

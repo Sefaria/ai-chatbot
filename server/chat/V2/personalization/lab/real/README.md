@@ -56,7 +56,7 @@ Under `--out`:
 - `anon-personas/users.jsonl` — pseudonymous `user_id`, pseudonymous `sessions[].session_id`,
   and `turns[]` with `at`, `user`, `assistant` (plus a pseudonymous turn `id`)
 - `anon-vocab/items.jsonl`, `anon-impact/items.jsonl` — one object per kept user prompt, `id` and `text`
-- `anon-visit/items.jsonl` — the same, plus `site`, `browser_lang`, and `country` when those paths are mapped
+- `anon-visit/items.jsonl` — `id` and `prompt` (the key the validator reads), plus `site`, `browser_lang`, and `country` when those paths are mapped
 
 Each directory also gets `summary.json` (counts and shares only), `meta.json`
 (`anonymized` true only when the residual scan finds nothing, `name_pass_failures` is 0, and the dataset has at least one row),

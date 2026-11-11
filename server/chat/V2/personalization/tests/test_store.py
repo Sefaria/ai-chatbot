@@ -1,5 +1,8 @@
 """One suite, run against the in-memory and the Django store."""
 
+import pytest
+
+from chat.V2.personalization.store import DjangoProfileStore
 from chat.V2.personalization.types import Observation
 
 from .conftest import NOW, day, evidence
@@ -169,3 +172,18 @@ def test_expire_never_touches_stated_slots(store):
     store.set_stated("a", "text_categories", ["Musar"], day(0))
     assert store.expire(day(100)) == 0
     assert store.get_profile("a")["text_categories"].value == ["Musar"]
+
+
+@pytest.mark.django_db
+def test_do_expire_itself_keeps_unexpired_slots():
+    from chat.models import ProfileSlot
+
+    django_store = DjangoProfileStore()
+    django_store.set_inferred(
+        "a", "text_categories", ["Talmud"], [evidence()], NOW, expires_at=day(60)
+    )
+    django_store.set_inferred(
+        "a", "answer_style", "Be brief.", [evidence()], NOW, expires_at=day(-1)
+    )
+    assert django_store._do_expire(ProfileSlot.objects.filter(user_id="a"), NOW) == 1
+    assert set(django_store.get_profile("a")) == {"text_categories"}

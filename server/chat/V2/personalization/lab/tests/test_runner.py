@@ -13,7 +13,7 @@ from chat.V2.personalization.lab.runner import JevOnIdentifiableData, run_case
 from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.typed import JevTypedClient
 
-from .conftest import commit_and_push, write_case
+from .conftest import commit_and_push, git, write_case
 
 MODULE = types.SimpleNamespace(build=strategy_pipeline)
 
@@ -385,3 +385,21 @@ def test_live_run_without_case_dir_refused():
     case = dataclasses.replace(load_case(write_case(Path(tempfile.mkdtemp()))), dir="")
     with pytest.raises(RunnerError, match="case_dir|case dir"):
         run(case, kind="live", run_no=1)
+
+
+def test_check_fails_for_live_results_on_an_unpushed_case(repo):
+    work, cases = repo
+    directory = write_case(cases)
+    commit_and_push(work, push=False)
+    from chat.V2.personalization.lab import guard
+
+    stub = {
+        "case_sha": guard.case_sha(directory),
+        "dataset": {"name": "syn1", "sha256": load_dataset("syn1").sha256},
+    }
+    for name in ("mock.json", "run1.json", "run2.json", "run3.json", "verdict.json"):
+        results.write(directory, {**stub, "kind": "mock", "run": 0}, name)
+    args = ["--cases-root", str(cases), "check", "a/x"]
+    assert cli.main(args) == 1
+    git(work, "push", "-q", "origin", "HEAD:main")
+    assert cli.main(args) == 0

@@ -11,11 +11,26 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 DATA_DIR = Path(__file__).parent / "data"
 REGISTRY_PATH = DATA_DIR / "datasets.json"
+
+
+def is_inside_git_repo(path) -> bool:
+    """True when `path` (or an ancestor) holds a `.git`, or git says it is in a work tree."""
+    resolved = Path(path).expanduser().resolve()
+    for ancestor in (resolved, *resolved.parents):
+        if (ancestor / ".git").exists():
+            return True
+    proc = subprocess.run(
+        ["git", "-C", str(resolved), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
 
 
 class DatasetChanged(RuntimeError):

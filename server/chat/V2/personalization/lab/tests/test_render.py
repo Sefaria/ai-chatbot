@@ -128,3 +128,18 @@ def test_render_shows_step_descriptions(out):
     for name in ("extract_turn", "score"):
         assert STEPS[name] in html
         assert STEPS[name] in page
+
+
+def test_render_refuses_real_per_item_in_mock_and_also(tmp_path):
+    for place in ("mock", "also"):
+        data = _tree()
+        case = data["aspects"][0]["cases"][0]
+        if place == "mock":
+            case["mock"] = {**_run("mock", 0, real=True), "per_item": [{"text": "x"}]}
+        else:
+            run = case["runs"][0]
+            run["also"] = {"real1": {"dataset": {"name": "real1", "kind": "real"}, "per_item": [1]}}
+        with pytest.raises(RealDataLeak):
+            render.view_model(data)
+        with pytest.raises(RealDataLeak):
+            render.render(data, tmp_path / "t.html", tmp_path / "w")

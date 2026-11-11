@@ -31,8 +31,12 @@ def formula_for(key: str, aspect: str) -> str:
 def check_no_leak(tree: dict) -> None:
     for aspect in tree["aspects"]:
         for case in aspect["cases"]:
-            for result in [*case.get("runs", []), *case.get("real_runs", [])]:
-                if is_real(result) and "per_item" in result:
+            results = [*case.get("runs", []), *case.get("real_runs", [])]
+            if case.get("mock"):
+                results.append(case["mock"])
+            for result in results:
+                parts = [result, *(result.get("also") or {}).values()]
+                if is_real(result) and any("per_item" in part for part in parts):
                     raise RealDataLeak(f"{case['id']}: a real-dataset result carries per_item")
 
 
@@ -118,6 +122,7 @@ def case_view(aspect: dict, case: dict) -> dict:
 
 
 def view_model(tree: dict) -> dict:
+    check_no_leak(tree)
     repo = tree.get("repo_url", "")
     aspects = []
     for aspect in tree["aspects"]:

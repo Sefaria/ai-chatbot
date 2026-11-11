@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import statistics
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -86,17 +87,42 @@ def _slots() -> list[str]:
 # -- golden profile helpers -------------------------------------------------------------------
 
 
+def _turn_number(persona: dict, from_turn) -> int:
+    """The 1-based turn number a `golden_timeline` `from_turn` names: an int is the number itself;
+    a string is a turn id, found in the persona's own turn order (real labels use `<user>-t<N>`,
+    the form `real/pull.py` builds, so a trailing `-t<N>` is the fallback)."""
+    if isinstance(from_turn, int) and not isinstance(from_turn, bool):
+        return from_turn
+    ids = [
+        t.get("id")
+        for s in persona.get("sessions") or []
+        for t in s.get("turns") or []
+        if isinstance(t, dict)
+    ]
+    if from_turn in ids:
+        return ids.index(from_turn) + 1
+    match = re.search(r"-t(\d+)$", str(from_turn))
+    if match:
+        return int(match.group(1))
+    raise ValueError(f"golden_timeline from_turn {from_turn!r} is not a turn of the persona")
+
+
 def golden_at(persona: dict, slot: str, turn_no: int):
     """The golden form of `slot` after turn `turn_no` (1-based): the last `golden_timeline` entry
     at or before it, or the final golden value from turn 1 when the persona has no timeline for
-    the slot. `_SKIP` when a timeline exists but has not started."""
+    the slot. `_SKIP` when a timeline exists but has not started. `from_turn` may be a turn number
+    or a turn id."""
     timeline = sorted(
-        (e for e in persona.get("golden_timeline") or [] if e["slot"] == slot),
-        key=lambda e: e["from_turn"],
+        (
+            (_turn_number(persona, e["from_turn"]), e)
+            for e in persona.get("golden_timeline") or []
+            if e["slot"] == slot
+        ),
+        key=lambda pair: pair[0],
     )
     if not timeline:
         return persona["golden"].get(slot)
-    applicable = [e for e in timeline if e["from_turn"] <= turn_no]
+    applicable = [e for n, e in timeline if n <= turn_no]
     return {"value": applicable[-1]["value"]} if applicable else _SKIP
 
 
