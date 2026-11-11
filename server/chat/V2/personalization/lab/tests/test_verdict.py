@@ -216,3 +216,58 @@ def test_cross_run_bar_on_a_real_dataset_reads_the_last_run():
 
 def test_a_non_cross_run_metric_still_needs_every_run():
     assert verdict.compute(make_case(MEAN_BAR), runs(None, None, 0.95))["verdict"] == "inconclusive"
+
+
+def real_result(run, value, dataset="anon-personas"):
+    out = result(run, value)
+    out["dataset"] = {"name": dataset, "kind": "real", "sha256": "s", "n": 10}
+    return out
+
+
+def _real_ref_bar(dataset="anon-personas"):
+    ref = {"case": "a/y", "metric": "slot_accuracy", "factor": 0.5, "dataset": dataset}
+    return Bar("slot_accuracy", "mean", "<=", ref=ref, dataset=dataset)
+
+
+def _own_real(*values):
+    return [real_result(i + 1, v) for i, v in enumerate(values)]
+
+
+def test_ref_bar_on_a_real_dataset_reads_the_references_real_run_files(repo):
+    work, cases = repo
+    sibling = write_case(cases, name="y")
+    commit_and_push(work)
+    git(work, "checkout", "-q", "-b", "lab/a/y")
+    (sibling / "results").mkdir()
+    for n in (1, 2, 3):
+        (sibling / "results" / f"run{n}.json").write_text(json.dumps(result(n, 0.1)))
+        (sibling / "results" / f"real_run{n}.json").write_text(json.dumps(real_result(n, 0.8)))
+    commit_and_push(work, "results", ref="lab/a/y")
+    git(work, "checkout", "-q", "main")
+    case = load_case(write_case(cases, name="x"))
+    parts = verdict.git_ref_reader(case, "a/y", 1)
+    assert sorted(p["dataset"]["name"] for p in parts) == ["anon-personas", "syn1"]
+    bar = _real_ref_bar()
+    out = verdict.evaluate_bar(bar, case, _own_real(0.3, 0.4, 0.4))
+    assert out["target"] == 0.4 and out["state"] == "holds"
+    assert verdict.evaluate_bar(bar, case, _own_real(0.5, 0.5, 0.5))["state"] == "fails"
+    syn = Bar(
+        "slot_accuracy",
+        "mean",
+        "<=",
+        ref={"case": "a/y", "metric": "slot_accuracy", "factor": 0.5},
+        dataset="syn1",
+    )
+    assert verdict.evaluate_bar(syn, case, runs(0.04, 0.04, 0.04))["target"] == 0.05  # syn1 path
+
+
+def test_ref_bar_on_a_real_dataset_with_a_reader_returning_both_files():
+    both = lambda case, ref_id, n: [result(n, 0.1), real_result(n, 0.8)]  # noqa: E731
+    out = verdict.compute(make_case(_real_ref_bar()), _own_real(0.3, 0.4, 0.4), ref_reader=both)
+    assert out["bars"][0]["target"] == 0.4 and out["verdict"] == "keep"
+
+
+def test_ref_bar_on_a_real_dataset_is_inconclusive_when_the_reference_has_only_synthetic_runs():
+    syn_only = lambda case, ref_id, n: [result(n, 0.8)]  # noqa: E731
+    out = verdict.compute(make_case(_real_ref_bar()), _own_real(0.3, 0.4, 0.4), ref_reader=syn_only)
+    assert out["verdict"] == "inconclusive" and out["bars"][0]["target"] is None
