@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from ...llm import ClaudeCodeLLMClient, LLMClient
 from ...signals import KeywordSensitiveScreen, SensitiveScreen
-from ..datasets import checksum
+from ..datasets import checksum, is_inside_git_repo
 from . import scrub
 
 DEFAULT_FIELDS_PATH = Path(__file__).with_name("fields.json")
@@ -76,12 +76,7 @@ class ExportFileSource:
         )
 
 
-def _is_inside_git_repo(path: Path) -> bool:
-    resolved = path.expanduser().resolve()
-    for ancestor in (resolved, *resolved.parents):
-        if (ancestor / ".git").exists():
-            return True
-    return False
+_is_inside_git_repo = is_inside_git_repo
 
 
 def _assert_outside_git_repo(path: Path, label: str) -> None:
@@ -208,7 +203,6 @@ def run(
     screen: SensitiveScreen | None = None,
     model: str = scrub.DEFAULT_SCRUB_MODEL,
     workers: int = 4,
-    **_unused: Any,
 ) -> dict[str, dict[str, Any]]:
     """Run the anonymized real-data pull and write the four datasets under `out`."""
     staff_path, staff_values, staff_rule = _validate_fields(fields)
@@ -260,7 +254,9 @@ def run(
             continue
 
         readable_non_staff_turns += 1
-        if sensitive_screen.is_sensitive(user_text):
+        if sensitive_screen.is_sensitive(user_text) or sensitive_screen.is_sensitive(
+            assistant_text
+        ):
             sensitive_dropped += 1
             continue
 
@@ -364,7 +360,7 @@ def run(
             vocab_rows.append({"id": item_id, "text": user_named})
             impact_rows.append({"id": item_id, "text": user_named})
 
-            visit_item: dict[str, Any] = {"id": item_id, "text": user_named}
+            visit_item: dict[str, Any] = {"id": item_id, "prompt": user_named}
             for ctx_key in VISIT_CONTEXT_FIELDS:
                 if ctx_key in turn["context"]:
                     visit_item[ctx_key] = turn["context"][ctx_key]

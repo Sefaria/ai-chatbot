@@ -211,7 +211,7 @@ _BOOKS: dict[str, list[str]] = {
         "מדרש", "בראשית רבה", "מכילתא", "ספרא", "ספרי",
     ],
     "Halakhah": [
-        "shulchan arukh", "shulchan aruch", "shulchan arukh", "mishneh torah", "halakhah",
+        "shulchan arukh", "shulchan aruch", "mishneh torah", "halakhah",
         "halakha", "kitzur shulchan", "orach chayim",
         "שולחן ערוך", "משנה תורה", "הלכה", "קיצור שולחן ערוך", "אורח חיים",
     ],

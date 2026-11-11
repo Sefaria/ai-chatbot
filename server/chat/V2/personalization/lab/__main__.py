@@ -315,6 +315,14 @@ def cmd_check(args, root) -> int:
     sha = guard.case_sha(case.dir)
     names = ["mock.json", *(f"run{n}.json" for n in range(1, LIVE_RUNS + 1)), "verdict.json"]
     registry = datasets.registry()
+    live_names = [f"run{n}.json" for n in range(1, LIVE_RUNS + 1)] + [
+        f"real_run{n}.json" for n in range(1, LIVE_RUNS + 1)
+    ]
+    if any(results.read(case.dir, name) is not None for name in live_names):
+        try:
+            guard.assert_preregistered(case.dir)
+        except guard.NotPreregistered as error:
+            problems.append(f"case is not pre-registered: {error}")
     for name in names:
         data = results.read(case.dir, name)
         if data is None:

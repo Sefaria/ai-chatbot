@@ -238,3 +238,38 @@ def test_step_name_must_be_in_catalog():
     assert steps.check_step_name("screen_sensitive") == "screen_sensitive"
     with pytest.raises(ValueError, match="catalog"):
         steps.check_step_name("a free text step")
+
+
+def _string_id_persona(timeline):
+    turns = [
+        {
+            "id": f"u-t{i}",
+            "at": "2026-11-01T09:00:00Z",
+            "user": f"u{i}",
+            "assistant": "a",
+            "tags": [],
+        }
+        for i in range(1, 12)
+    ]
+    return {"golden": GOLDEN, "golden_timeline": timeline, "sessions": [{"turns": turns}]}
+
+
+def test_golden_at_accepts_string_turn_ids():
+    from chat.V2.personalization.lab.metrics import _SKIP, golden_at
+
+    timeline = [
+        {"from_turn": "u-t10", "slot": "hebrew_fluency", "value": "basic"},  # t10 sorts after t9
+        {"from_turn": "u-t2", "slot": "hebrew_fluency", "value": "none"},
+    ]
+    persona_ = _string_id_persona(timeline)
+    assert golden_at(persona_, "hebrew_fluency", 1) is _SKIP
+    assert golden_at(persona_, "hebrew_fluency", 9) == {"value": "none"}
+    assert golden_at(persona_, "hebrew_fluency", 10) == {"value": "basic"}
+    assert golden_at(persona_, "hebrew_fluency", 11) == {"value": "basic"}
+
+
+def test_wrong_slot_turns_with_string_turn_ids():
+    timeline = [{"from_turn": "t3", "slot": "hebrew_fluency", "value": "basic"}]  # a turn id
+    held_none = [snap(i, {"hebrew_fluency": slot("none")}, turn_id=f"t{i + 1}") for i in range(3)]
+    with_ids = replay({}, held_none, golden_timeline=timeline)
+    assert value("wrong_slot_turns", RunData(replays=[with_ids])) == pytest.approx(1 / 3)

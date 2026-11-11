@@ -762,11 +762,11 @@ class DjangoProfileStore:
         )
 
     @staticmethod
-    def _do_expire(queryset) -> int:
+    def _do_expire(queryset, now) -> int:
         from chat.models import ProfileSlot
 
         deleted, _ = queryset.filter(
-            status=ProfileSlot.Status.INFERRED, expires_at__isnull=False
+            status=ProfileSlot.Status.INFERRED, expires_at__isnull=False, expires_at__lte=now
         ).delete()
         return deleted
 
@@ -1147,9 +1147,7 @@ class DjangoProfileStore:
         deleted = [0]
 
         def fn(_locked):
-            deleted[0] = self._do_expire(
-                ProfileSlot.objects.filter(user_id=user_id, expires_at__lte=now)
-            )
+            deleted[0] = self._do_expire(ProfileSlot.objects.filter(user_id=user_id), now)
             return APPLIED if deleted[0] else NOTHING
 
         result = self._locked_write(

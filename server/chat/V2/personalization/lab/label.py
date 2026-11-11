@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import copy
 import json
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -44,17 +43,7 @@ class LabelResult(dict):
             raise AttributeError(key) from error
 
 
-def _is_inside_git_repo(directory: Path) -> bool:
-    resolved = directory.resolve()
-    for ancestor in (resolved, *resolved.parents):
-        if (ancestor / ".git").exists():
-            return True
-    proc = subprocess.run(
-        ["git", "-C", str(resolved), "rev-parse", "--is-inside-work-tree"],
-        capture_output=True,
-        text=True,
-    )
-    return proc.returncode == 0 and proc.stdout.strip() == "true"
+_is_inside_git_repo = datasets.is_inside_git_repo
 
 
 def _assert_outside_git_repo(directory: Path) -> None:

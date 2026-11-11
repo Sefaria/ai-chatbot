@@ -13,7 +13,7 @@ from chat.V2.personalization.lab.runner import JevOnIdentifiableData, run_case
 from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.typed import JevTypedClient
 
-from .conftest import commit_and_push, write_case
+from .conftest import commit_and_push, git, write_case
 
 MODULE = types.SimpleNamespace(build=strategy_pipeline)
 
@@ -387,6 +387,24 @@ def test_live_run_without_case_dir_refused():
         run(case, kind="live", run_no=1)
 
 
+def test_check_fails_for_live_results_on_an_unpushed_case(repo):
+    work, cases = repo
+    directory = write_case(cases)
+    commit_and_push(work, push=False)
+    from chat.V2.personalization.lab import guard
+
+    stub = {
+        "case_sha": guard.case_sha(directory),
+        "dataset": {"name": "syn1", "sha256": load_dataset("syn1").sha256},
+    }
+    for name in ("mock.json", "run1.json", "run2.json", "run3.json", "verdict.json"):
+        results.write(directory, {**stub, "kind": "mock", "run": 0}, name)
+    args = ["--cases-root", str(cases), "check", "a/x"]
+    assert cli.main(args) == 1
+    git(work, "push", "-q", "origin", "HEAD:main")
+    assert cli.main(args) == 0
+
+
 def test_select_items_hook_picks_the_replayed_items(tmp_path):
     case = mock_case(tmp_path, metrics=["slot_accuracy"])
     module = types.SimpleNamespace(
@@ -397,6 +415,24 @@ def test_select_items_hook_picks_the_replayed_items(tmp_path):
     result = run(case, dataset, pipeline_module=module)
     assert result["dataset"]["n"] == 1
     assert len(result["per_item"]) == 1
+
+
+def test_a_replay_pipeline_module_may_report_counts_per_variant(tmp_path):
+    seen = []
+
+    def counts(vconfig, replays, llm):
+        seen.append((vconfig["variant"], len(replays)))
+        return {"overhead_tokens": 480, "recount_gap": 0.0}
+
+    module = types.SimpleNamespace(build=strategy_pipeline, counts=counts)
+    case = mock_case(
+        tmp_path, config={"variants": ["realtime", "explicit"]},
+        metrics=["overhead_tokens@realtime", "recount_gap@explicit"],
+        keep_if=[{"metric": "overhead_tokens@realtime", "op": "<=", "value": 528}],
+    )  # fmt: skip
+    result = run(case, pipeline_module=module)
+    assert seen == [("realtime", 1), ("explicit", 1)]
+    assert result["metrics"] == {"overhead_tokens@realtime": 480, "recount_gap@explicit": 0.0}
 
 
 def test_explain_lines_hook_is_printed_by_explain(tmp_path, capsys):
