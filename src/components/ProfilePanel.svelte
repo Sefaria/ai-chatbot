@@ -12,6 +12,7 @@
   // Slot editing
   let editingSlot = $state('');
   let editValue = $state('');
+  let editIsList = $state(false);
 
   // The job
   let jobRunning = $state(false);
@@ -30,6 +31,7 @@
   }
 
   function slotValueText(value) {
+    if (Array.isArray(value)) return value.join(', ');
     return typeof value === 'string' ? value : JSON.stringify(value);
   }
 
@@ -51,13 +53,17 @@
 
   function startEdit(slot) {
     editingSlot = slot.slot;
-    editValue = slotValueText(slot.value);
+    editIsList = Array.isArray(slot.value);
+    editValue = editIsList ? slot.value.join(', ') : slotValueText(slot.value);
   }
 
   async function saveEdit() {
     error = '';
     try {
-      await personalizationProfileAction(apiBaseUrl, userId, 'set', { slot: editingSlot, value: editValue });
+      await personalizationProfileAction(apiBaseUrl, userId, 'set', {
+        slot: editingSlot,
+        value: editIsList ? editValue.split(',').map((v) => v.trim()).filter(Boolean) : editValue
+      });
       editingSlot = '';
       await refresh();
     } catch (e) {

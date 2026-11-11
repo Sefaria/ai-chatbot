@@ -5,7 +5,7 @@
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId, getOrCreateAnonId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
     cancelStream,
@@ -63,6 +63,8 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
+    // Demo pages: each browser is one anonymous learner; probe the lab even with a fresh anon ID.
+    'personalization-lab': personalizationLabAttr = false,
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
@@ -259,12 +261,21 @@
   }
   let settingsTab = $state('prompts');
 
+  // Opt-in from the host page attribute or ?la_lab=1; without it nothing below changes.
+  const labRequested = (() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('la_lab') === '1') return true;
+    } catch { /* no location */ }
+    return !!personalizationLabAttr && personalizationLabAttr !== 'false';
+  })();
+
   $effect(() => {
     const base = apiBaseUrl;
     const user = userId;
     if (!base) return;
     let current = true;
-    fetchPersonalizationStatus(base, user, user ? '' : getStorage(STORAGE_KEYS.ANON_ID, '')).then((status) => {
+    const anon = user ? '' : (labRequested ? getOrCreateAnonId() : getStorage(STORAGE_KEYS.ANON_ID, ''));
+    fetchPersonalizationStatus(base, user, anon).then((status) => {
       if (!current) return;
       labMode = status.overrideAllowedForYou === true;
       if (!labMode) labCompare = false;
@@ -1727,7 +1738,10 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal, source }), request.controller.signal);
+      }, interfaceLang, {
+        signal: request.controller.signal, source,
+        contextDefaults: labMode && labRequested ? { personalizationMode: 'hybrid' } : null
+      }), request.controller.signal);
 
       // Let the delayed playback and the last word's fade finish before
       // swapping in the final message.

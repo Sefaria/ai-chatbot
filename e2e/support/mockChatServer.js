@@ -247,7 +247,7 @@ function sseEvent(event, data) {
 
 const DEFAULT_LAB_SLOTS = [
   { slot: 'learning_level', value: 'beginner', status: 'stated', evidence: ['e1', 'e2'], updatedAt: '2026-11-10T09:00:00Z', expiresAt: null, slotSetVersion: 1 },
-  { slot: 'interests', value: 'Talmud, ethics', status: 'inferred', evidence: ['e3'], updatedAt: '2026-11-10T09:05:00Z', expiresAt: null, slotSetVersion: 1 },
+  { slot: 'interests', value: ['Talmud', 'ethics'], status: 'inferred', evidence: ['e3'], updatedAt: '2026-11-10T09:05:00Z', expiresAt: null, slotSetVersion: 1 },
 ];
 
 /** An in-memory profile for the lab actions. Synthetic data only. */

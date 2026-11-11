@@ -134,3 +134,70 @@ test.describe('profile tab', () => {
     expect(posted[0].turns).toEqual(turns);
   });
 });
+
+test.describe('logged-out lab visitor', () => {
+  async function fresh(page, context, query) {
+    await mockChatServer(context, { lab: { allowed: true } });
+    const assistant = new AssistantPage(page);
+    await page.goto(`/${query}`);
+    await expect(assistant.host).toHaveCount(1);
+    await assistant.open();
+    return assistant;
+  }
+
+  test('a fresh browser with the personalization-lab attribute sees the lab UI and sends hybrid', async ({ page, context }) => {
+    const assistant = await fresh(page, context, '?personalization-lab=1');
+    await expect(compareToggle(assistant)).toBeVisible();
+    const requests = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    });
+    await assistant.ask('Hello');
+    expect(requests[0].anonId).toBeTruthy();
+    expect(requests[0].context.personalizationMode).toBe('hybrid');
+  });
+
+  test('?la_lab=1 also turns it on, and ?la_personalization= wins over the hybrid default', async ({ page, context }) => {
+    const assistant = await fresh(page, context, '?la_lab=1&la_personalization=injected');
+    await expect(compareToggle(assistant)).toBeVisible();
+    const requests = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    });
+    await assistant.ask('Hello');
+    expect(requests[0].context.personalizationMode).toBe('injected');
+  });
+
+  test('without the attribute a fresh browser is unchanged: no probe, no lab UI, no mode', async ({ page, context }) => {
+    const probes = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/v2/personalization/status')) probes.push(r.url());
+    });
+    const assistant = await fresh(page, context, '');
+    await expect(assistant.input).toBeVisible();
+    await expect(compareToggle(assistant)).toHaveCount(0);
+    const requests = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    });
+    await assistant.ask('Hello');
+    expect(requests[0].context.personalizationMode).toBeUndefined();
+    expect(probes).toHaveLength(0);
+  });
+});
+
+test('a list slot is edited as comma-separated text and saved as an array', async ({ page, context }) => {
+  const assistant = await setUp(page, context, { allowed: true });
+  await openProfile(assistant);
+  const row = assistant.host.locator('.slot-row[data-slot="interests"]');
+  await expect(row).toContainText('Talmud, ethics');
+  const posted = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/v2/personalization/profile') && r.postDataJSON().action === 'set') posted.push(r.postDataJSON());
+  });
+  await row.getByRole('button', { name: 'Edit' }).click();
+  await row.getByRole('textbox').fill('Talmud, ethics, Halakha');
+  await row.getByRole('button', { name: 'Save' }).click();
+  await expect(row).toContainText('Talmud, ethics, Halakha');
+  expect(posted[0].value).toEqual(['Talmud', 'ethics', 'Halakha']);
+});

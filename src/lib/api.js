@@ -285,6 +285,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
+ *   `contextDefaults` fills context keys that are not set yet (the lab's "hybrid" default).
  *   `contextOverrides` is merged over the request context last (the lab's plain compare stream).
  * @returns {Promise<ChatResponse>}
  */
@@ -302,12 +303,18 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null, source = '', contextOverrides = null } = options;
+  const { signal = null, source = '', contextOverrides = null, contextDefaults = null } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
+  // Lab defaults (e.g. personalizationMode "hybrid") yield to anything already set, such as ?la_personalization=.
+  if (contextDefaults) {
+    for (const [key, value] of Object.entries(contextDefaults)) {
+      if (context[key] === undefined) context[key] = value;
+    }
+  }
   if (source) {
     context.source = source;
   }
