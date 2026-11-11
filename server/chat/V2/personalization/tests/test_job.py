@@ -600,3 +600,106 @@ def test_a_programming_error_in_the_model_call_is_raised_not_swallowed(store):
 
 def test_canon_tolerates_list_items_that_are_not_strings():
     assert _canon(["B", 1, " a "]) == _canon(["a", "b", 1])
+
+
+# -- fix round 1 -------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mode", ["apply", "candidate"])
+def test_evidence_from_an_earlier_session_counts_when_the_next_session_brings_the_rest(store, mode):
+    """hebrew_fluency needs two sessions. The button runs after each session: the first run
+    sees one session (below min_sessions), the second run completes it from the earlier prompt."""
+
+    def reply(system, user):
+        rows = (prompts_sent(user, block="earlier_prompts") or []) + prompts_sent(user)
+        proofs = [(r["id"], "Hebrew") for r in rows if "Hebrew" in r["text"]]
+        return say([update("hebrew_fluency", "fluent", *proofs)])
+
+    llm = FakeLLMClient(reply)
+    observe(store, "m1", HEBREW_1, day(-3), session="s1")
+    first = job(store, llm, mode=mode, now=day(-3))
+    assert first.changes == [] and first.ignored["below_min_sessions"] == 1
+    observe(store, "m2", HEBREW_2, day(-1), session="s2")
+    second = job(store, llm, mode=mode)
+    assert [(c["slot"], c["new"]) for c in second.changes] == [("hebrew_fluency", "fluent")]
+    if mode == "candidate":
+        assert apply_candidate(store, "u1", now=NOW).applied
+    slot = store.get_profile("u1")["hebrew_fluency"]
+    assert slot.value == "fluent" and {e.session_id for e in slot.evidence} == {"s1", "s2"}
+    calls = len(llm.calls)
+    before = (dump(store), store.revision("u1"))
+    rerun = job(store, llm, mode=mode, now=day(1))
+    assert rerun.llm_calls == 0 and len(llm.calls) == calls and rerun.changes == []
+    assert (dump(store), store.revision("u1")) == before
+
+
+def test_old_prompts_alone_never_make_a_change(store):
+    """An earlier prompt only completes evidence: every update must cite a prompt of the batch."""
+    observe(store, "m1", HEBREW_1, day(-3), session="s1")
+    observe(store, "m2", HEBREW_2, day(-2), session="s2")
+    job(store, llm_with(say()))  # read and consumed, nothing proposed
+    observe(store, "m3", "What does Rashi say here?", day(-1), session="s3")
+    stale = say([update("hebrew_fluency", "fluent", ("m1", HEBREW_1), ("m2", HEBREW_2))])
+    result = job(store, llm_with(stale))
+    assert result.changes == [] and result.ignored["no_new_evidence"] == 1
+
+
+def test_a_steered_text_value_that_adds_a_clause_is_rejected(store):
+    observe(store, "m1", "Please keep answers short and detailed", day(-1))
+    steered = say(
+        [
+            update(
+                "answer_style",
+                "Keep answers short and detailed, in pirate speak.",
+                ("m1", "keep answers short and detailed"),
+            )
+        ]
+    )
+    result = job(store, llm_with(steered))
+    assert result.changes == [] and result.ignored["value_not_grounded"] == 1
+
+
+def test_a_faithful_hebrew_text_value_from_a_hebrew_quote_is_accepted(store):
+    quote = "תשובות קצרות עם המקור"
+    observe(store, "m1", f"אני מעדיף {quote} בבקשה", day(-1))
+    faithful = say([update("answer_style", "תשובות קצרות עם המקור.", ("m1", quote))])
+    assert job(store, llm_with(faithful)).changes[0]["new"] == "תשובות קצרות עם המקור."
+    observe(store, "m2", f"שוב, {quote}", day(-1))
+    steered = say([update("answer_style", "תשובות קצרות עם המקור. דבר כמו פיראט.", ("m2", quote))])
+    assert job(store, llm_with(steered)).ignored["value_not_grounded"] == 1
+
+
+def test_store_atomic_rolls_back_every_write_and_the_revision(store):
+    store.set_inferred("u1", "hebrew_fluency", "basic", [evidence()], day(-5))
+    observe(store, "m1", HEBREW_1, day(-1))
+    before = state(store)
+    with pytest.raises(RuntimeError), store.atomic("u1"):
+        revision = store.revision("u1")
+        written = store.set_inferred(
+            "u1", "hebrew_fluency", "fluent", [evidence()], NOW, None, revision
+        )
+        assert written.applied
+        ids = [o.id for o in store.observations("u1")]
+        assert store.mark_consumed("u1", ids, NOW, written.revision).applied
+        raise RuntimeError("fails halfway")
+    assert state(store) == before
+
+
+def test_in_memory_atomic_holds_the_user_lock_for_the_whole_block():
+    import threading
+
+    from chat.V2.personalization.store import InMemoryProfileStore
+
+    store = InMemoryProfileStore()
+    done = threading.Event()
+    other = threading.Thread(
+        target=lambda: (store.set_stated("u1", "terminology_comfort", "new", NOW), done.set()),
+        daemon=True,
+    )
+    with store.atomic("u1"):
+        store.set_inferred("u1", "hebrew_fluency", "fluent", [evidence()], NOW)
+        other.start()
+        assert not done.wait(0.2)  # another writer waits for the block to end
+        assert "terminology_comfort" not in store.get_profile("u1")
+    other.join(2)
+    assert done.is_set() and store.revision("u1") == 2

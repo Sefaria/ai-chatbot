@@ -21,7 +21,8 @@ from __future__ import annotations
 import copy
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
@@ -45,6 +46,11 @@ PENDING_PROPOSAL = "pending_proposal"
 
 
 class ProfileStore(Protocol):
+    def atomic(self, user_id: str) -> AbstractContextManager[None]:
+        """One user's several writes as one unit: other writers to the user wait for the block,
+        and an exception in it undoes every write of it, the revision included."""
+        ...
+
     def get_profile(self, user_id: str) -> dict[str, SlotValue]: ...
     def revision(self, user_id: str) -> int: ...
     def set_inferred(
@@ -199,6 +205,7 @@ class InMemoryProfileStore:
     Writers hold the user's `threading.Lock` (several users: sorted order), then `_data`, a short
     lock that also guards every read. A per-user lock is not re-entrant: a public method that
     called another public mutating method would deadlock, which the tests use as a guard.
+    `atomic(user_id)` is the one exception: the thread holding it writes without re-locking.
     """
 
     def __init__(self) -> None:
@@ -211,6 +218,7 @@ class InMemoryProfileStore:
         self._candidates: dict[str, dict] = {}
         self._revisions: dict[str, int] = {}
         self._next_observation_id = 1
+        self._held = threading.local()  # users whose lock this thread holds in `atomic`
 
     # -- the one write path ---------------------------------------------------------------
 
@@ -222,9 +230,12 @@ class InMemoryProfileStore:
         needs_store_enabled: bool,
         fn: Callable[[], _Outcome | None],
     ) -> WriteResult:
+        held = self._held_users()
         with self._data:
             locks = [
-                self._user_locks.setdefault(u, threading.Lock()) for u in sorted(set(user_ids))
+                self._user_locks.setdefault(u, threading.Lock())
+                for u in sorted(set(user_ids))
+                if u not in held  # inside `atomic` this thread already holds it
             ]
         for lock in locks:
             lock.acquire()
@@ -255,10 +266,36 @@ class InMemoryProfileStore:
 
     # -- all-or-nothing for a caller's several writes ---------------------------------------
 
-    def snapshot_user(self, user_id: str) -> dict:
-        """What a multi-write caller (the job's apply) may touch: the user's slots, which
-        observations are consumed, the candidate and the revision. Postgres uses a transaction
-        instead; this is the in-memory store's rollback point."""
+    @contextmanager
+    def atomic(self, user_id: str) -> Iterator[None]:
+        """Hold the user's lock for the whole block (this thread's writes inside it skip taking
+        it again; every other writer waits), save the user's state on entry, and put it back
+        exactly, revision included, when the block raises. The restore assigns the saved state
+        directly: no write method runs, so nothing bumps the revision on the way back."""
+        held = self._held_users()
+        if user_id in held:  # nested: the outer block already locks and saves
+            yield
+            return
+        with self._data:
+            lock = self._user_locks.setdefault(user_id, threading.Lock())
+        with lock:
+            held.add(user_id)
+            try:
+                saved = self._snapshot_user(user_id)
+                try:
+                    yield
+                except BaseException:
+                    self._restore_user(user_id, saved)
+                    raise
+            finally:
+                held.discard(user_id)
+
+    def _held_users(self) -> set[str]:
+        if not hasattr(self._held, "users"):
+            self._held.users = set()
+        return self._held.users
+
+    def _snapshot_user(self, user_id: str) -> dict:
         with self._data:
             return {
                 "slots": copy.deepcopy(self._slots.get(user_id)),
@@ -267,12 +304,8 @@ class InMemoryProfileStore:
                 "revision": self._revisions.get(user_id),
             }
 
-    def restore_user(self, user_id: str, saved: dict) -> None:
-        """Put a `snapshot_user` back exactly, revision included. It assigns the saved state
-        directly: no write method runs, so nothing bumps the revision on the way back."""
+    def _restore_user(self, user_id: str, saved: dict) -> None:
         with self._data:
-            lock = self._user_locks.setdefault(user_id, threading.Lock())
-        with lock, self._data:
             for table, key in ((self._slots, "slots"), (self._candidates, "candidate")):
                 if saved[key] is None:
                     table.pop(user_id, None)
@@ -675,6 +708,16 @@ class DjangoProfileStore:
     Every write locks the user's ProfileSettings row (`_locked_write`); `move` locks both
     identities' rows in sorted user-id order.
     """
+
+    @contextmanager
+    def atomic(self, user_id: str) -> Iterator[None]:
+        """One transaction holding the user's settings row `FOR UPDATE`: every write inside is a
+        savepoint of it, and an exception rolls all of them back, the revision included."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            _lock_settings([user_id])
+            yield
 
     # -- the one write path ---------------------------------------------------------------
 
