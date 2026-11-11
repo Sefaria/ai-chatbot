@@ -1,0 +1,78 @@
+{
+ "case_sha": "400f25a28c958b4a350b1d8040187306ec2922ec",
+ "cost": {
+  "calls": 0,
+  "in_tokens": 0,
+  "out_tokens": 0,
+  "typed_requests": 0,
+  "usd": 0
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 2,
+  "name": "mock",
+  "sha256": "efb629751ea1c4a937e47d39d962439ba228ce62037830145db891eacaf6cdcf"
+ },
+ "git_sha": "6ff538fbd7170dcbb6158f8d656d813dedb07645",
+ "id": "aggressiveness/none",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "byte_identical_off": 1.0,
+  "runs_identical": null,
+  "store_writes": 0
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "noa",
+   "turns": 5,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "eli",
+   "turns": 4,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "byte_identical_off": [
+   9,
+   9
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T09:54:39+00:00",
+ "steps": [
+  {
+   "n_in": 9,
+   "n_out": 9,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 9,
+   "n_out": 0,
+   "name": "render_profile"
+  },
+  {
+   "n_in": 0,
+   "n_out": 0,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 2,
+   "n_out": 3,
+   "name": "score"
+  }
+ ]
+}
