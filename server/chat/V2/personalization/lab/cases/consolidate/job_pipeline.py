@@ -4,7 +4,8 @@
 standing instruction is quarantined, as in the nightly design) and runs `P/job.py` when the replay
 presses the button: after the last turn of each night, which is the end of a session, and once
 more after the last turn. The model is `config["variant"]` (the runner fills it from `variants`)
-or `config["model"]`; one consolidation call per job run, none when nothing new was observed.
+or `config["model"]`; each press recomputes over the 30-day window with at most one call, none
+when the window's hash is the last run's.
 
 A case's `pipeline.py` is two lines:
 
@@ -33,7 +34,7 @@ from collections import Counter, defaultdict
 from dataclasses import replace
 from datetime import datetime
 
-from chat.V2.personalization.job import apply_candidate, run_job
+from chat.V2.personalization.job import add_conflict, apply_candidate, run_job
 from chat.V2.personalization.lab.replay import RecordingLLMClient
 from chat.V2.personalization.llm import UsageLedger
 from chat.V2.personalization.registry import SlotRegistry
@@ -80,7 +81,7 @@ class JobPipeline:
         )  # fmt: skip
         self._diagnostics["jobs"] += 1
         self._diagnostics.update({f"job_{k}": v for k, v in result.ignored.items()})
-        self._jobs_with_call += result.llm_calls
+        self._jobs_with_call += 1 if result.llm_calls else 0  # a run makes at most one call
         self._proposed += len(result.changes)
         applied = result.applied
         # Only a candidate this press wrote: a leftover one is neither counted nor applied again.
@@ -94,10 +95,12 @@ class JobPipeline:
                 self._diagnostics[f"apply_refused_{outcome.reason}"] += 1
         if applied:
             self._changes += len(result.changes)
-        known = {(c["slot"], str(c["a"]), str(c["b"])) for c in self._conflicts[user_id]}
-        for c in result.conflicts:
-            if (c["slot"], str(c["a"]), str(c["b"])) not in known:
-                self._conflicts[user_id].append(c)
+        self.record_conflicts(user_id, result.conflicts)
+
+    def record_conflicts(self, user_id: str, conflicts: list[dict]) -> None:
+        """A conflict a later run reports again (in either order) is counted once."""
+        for c in conflicts:
+            add_conflict(self._conflicts[user_id], c["slot"], c["a"], c["b"])
 
     def set_stated(self, user_id, slot, value, at) -> None:
         self.store.set_stated(user_id, slot, value, at)

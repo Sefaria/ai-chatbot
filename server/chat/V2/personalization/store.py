@@ -295,29 +295,33 @@ class InMemoryProfileStore:
             self._held.users = set()
         return self._held.users
 
+    # Every per-user table: `atomic` saves and restores all of them (quarantine is a flag on an
+    # observation, so the observation list covers it).
+    _USER_TABLES = (
+        "_slots",
+        "_observations",
+        "_proposals",
+        "_settings",
+        "_candidates",
+        "_revisions",
+    )
+
     def _snapshot_user(self, user_id: str) -> dict:
         with self._data:
             return {
-                "slots": copy.deepcopy(self._slots.get(user_id)),
-                "consumed": {o.id: o.consumed_at for o in self._observations.get(user_id, [])},
-                "candidate": copy.deepcopy(self._candidates.get(user_id)),
-                "revision": self._revisions.get(user_id),
+                name: copy.deepcopy(getattr(self, name)[user_id])
+                for name in self._USER_TABLES
+                if user_id in getattr(self, name)
             }
 
     def _restore_user(self, user_id: str, saved: dict) -> None:
         with self._data:
-            for table, key in ((self._slots, "slots"), (self._candidates, "candidate")):
-                if saved[key] is None:
-                    table.pop(user_id, None)
+            for name in self._USER_TABLES:
+                table = getattr(self, name)
+                if name in saved:
+                    table[user_id] = copy.deepcopy(saved[name])
                 else:
-                    table[user_id] = copy.deepcopy(saved[key])
-            for obs in self._observations.get(user_id, []):
-                if obs.id in saved["consumed"]:
-                    obs.consumed_at = saved["consumed"][obs.id]
-            if saved["revision"] is None:
-                self._revisions.pop(user_id, None)
-            else:
-                self._revisions[user_id] = saved["revision"]
+                    table.pop(user_id, None)
 
     # -- reads ----------------------------------------------------------------------------
 
