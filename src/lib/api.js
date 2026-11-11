@@ -285,6 +285,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
+ *   `contextOverrides` is merged over the request context last (the lab's plain compare stream).
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -301,7 +302,7 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null, source = '' } = options;
+  const { signal = null, source = '', contextOverrides = null } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
@@ -309,6 +310,10 @@ export async function sendMessageStream(
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (source) {
     context.source = source;
+  }
+  // Lab compare: the plain stream rides with personalizationMode "off".
+  if (contextOverrides) {
+    Object.assign(context, contextOverrides);
   }
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
@@ -804,4 +809,63 @@ export async function deleteConversation(apiBaseUrl, userId, sessionId) {
   }
 
   return response.json();
+}
+
+
+// --- Personalization lab (visible only when status.overrideAllowedForYou) ---
+
+/**
+ * Whether this user may use the lab override. Never throws: any failure means "not lab mode".
+ * A logged-out visitor is only asked when an anonymous ID already exists, so asking never
+ * creates one.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {string} [storedAnonId] - the existing anonymous ID, if any
+ * @returns {Promise<{overrideAllowedForYou: boolean, [key: string]: any}>}
+ */
+export async function fetchPersonalizationStatus(apiBaseUrl, userId, storedAnonId = '') {
+  const identity = userId ? { userId } : storedAnonId ? { anonId: storedAnonId } : null;
+  if (!identity) return { overrideAllowedForYou: false };
+  try {
+    const response = await fetch(`${apiBaseUrl}/v2/personalization/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(identity)
+    });
+    if (!response.ok) return { overrideAllowedForYou: false };
+    const data = await response.json();
+    return { ...data, overrideAllowedForYou: data?.overrideAllowedForYou === true };
+  } catch {
+    return { overrideAllowedForYou: false };
+  }
+}
+
+/**
+ * One profile action: get, set, release, run_job, apply_candidate, discard_candidate, seed_persona.
+ * Errors carry `.status` and `.code` (the server's `error`), e.g. 409 stale_revision.
+ * @param {string} apiBaseUrl
+ * @param {string} userId
+ * @param {string} action
+ * @param {Object} [args]
+ * @returns {Promise<any>}
+ */
+export async function personalizationProfileAction(apiBaseUrl, userId, action, args = {}) {
+  const response = await fetch(`${apiBaseUrl}/v2/personalization/profile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...identityFields(userId), action, ...args })
+  });
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    // Non-JSON body: fall through to the status error.
+  }
+  if (!response.ok) {
+    const error = new Error(data?.message || data?.error || `Profile request failed: ${response.status}`);
+    error.status = response.status;
+    error.code = data?.error;
+    throw error;
+  }
+  return data;
 }

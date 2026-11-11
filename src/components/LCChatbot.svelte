@@ -5,7 +5,7 @@
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
     cancelStream,
@@ -17,7 +17,8 @@
     renameConversation,
     deleteConversation,
     identityFields,
-    claimAnonChats
+    claimAnonChats,
+    fetchPersonalizationStatus
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
@@ -34,6 +35,7 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
+  import ProfilePanel from './ProfilePanel.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
@@ -235,6 +237,40 @@
     .map(normalizeHostname)
     .filter(Boolean);
   let loadingWrapperRef = $state(null);
+
+  // Personalization lab: everything lab-only is gated on the server's overrideAllowedForYou,
+  // so the normal widget is unchanged.
+  let labMode = $state(false);
+  let labCompare = $state(false);
+  // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
+  let comparePlain = $state({});
+  let widthBeforeCompare = null;
+
+  // Two columns need room: widen the panel while Compare is on, then put it back.
+  function setCompare(on) {
+    labCompare = on;
+    if (on) {
+      widthBeforeCompare = panelWidth;
+      panelWidth = maxCanvasWidth;
+    } else if (widthBeforeCompare !== null) {
+      panelWidth = widthBeforeCompare;
+      widthBeforeCompare = null;
+    }
+  }
+  let settingsTab = $state('prompts');
+
+  $effect(() => {
+    const base = apiBaseUrl;
+    const user = userId;
+    if (!base) return;
+    let current = true;
+    fetchPersonalizationStatus(base, user, user ? '' : getStorage(STORAGE_KEYS.ANON_ID, '')).then((status) => {
+      if (!current) return;
+      labMode = status.overrideAllowedForYou === true;
+      if (!labMode) labCompare = false;
+    });
+    return () => { current = false; };
+  });
 
   // Settings state
   let showSettings = $state(false);
@@ -1257,8 +1293,9 @@
   async function openSettings() {
     showSettings = true;
     settingsError = '';
+    settingsTab = isModerator ? 'prompts' : 'profile';
 
-    if (!settingsLoaded && apiBaseUrl) {
+    if (isModerator && !settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
       try {
         const defaults = await fetchPromptDefaults(apiBaseUrl);
@@ -1439,6 +1476,24 @@
     }
   }
 
+  // Lab compare: the same question again with personalization off, in a throwaway session that
+  // is never added to the history. Stop on the main turn stops this one too.
+  async function startPlainStream(request, text) {
+    comparePlain = { ...comparePlain, [request.messageId]: { status: 'loading', markdown: '' } };
+    let outcome;
+    try {
+      const response = await sendMessageStream(
+        apiBaseUrl, userId, generateSessionId(), text, {}, promptSlugs, originProp, isModerator,
+        promptSlugs.labs === true, null, interfaceLang,
+        { signal: request.controller.signal, contextOverrides: { personalizationMode: 'off' } }
+      );
+      outcome = { status: 'done', markdown: response.markdown || '' };
+    } catch (e) {
+      outcome = e?.name === 'AbortError' ? { status: 'stopped', markdown: '' } : { status: 'error', markdown: '' };
+    }
+    comparePlain = { ...comparePlain, [request.messageId]: outcome };
+  }
+
   // `source`: where on the host page the question was asked from (only askInNewChat passes one)
   async function handleSend({ source = '' } = {}) {
     await loggedOutChatsClaimed;
@@ -1457,6 +1512,7 @@
       toolWaitActive: false
     };
     const request = activeRequests[sendingSessionId];
+    request.compare = labMode && labCompare;
     delete stopErrors[sendingSessionId];
     conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
@@ -1614,6 +1670,8 @@
       return new Promise((resolve) => { onStreamDrained = resolve; });
     }
 
+    if (request.compare) startPlainStream(request, text);
+
     try {
       // Resolve location independently; Stop and chat switching remain responsive.
       parseSefariaRef(pageUrl).then(location => {
@@ -1721,6 +1779,7 @@
         content: response.markdown,
         timestamp: response.timestamp,
         status: 'sent',
+        compareKey: request.compare ? request.messageId : undefined,
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
@@ -2472,7 +2531,7 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                {#if isModerator}
+                {#if isModerator || labMode}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
@@ -2683,6 +2742,16 @@
             <div class="settings-title">{$_('assistant.settings.title')}</div>
           </div>
 
+          {#if labMode && isModerator}
+            <div class="settings-tabs" role="tablist">
+              <button role="tab" class="settings-tab" class:active={settingsTab === 'prompts'} aria-selected={settingsTab === 'prompts'} onclick={() => (settingsTab = 'prompts')}>Prompts</button>
+              <button role="tab" class="settings-tab" class:active={settingsTab === 'profile'} aria-selected={settingsTab === 'profile'} onclick={() => (settingsTab = 'profile')}>Profile</button>
+            </div>
+          {/if}
+
+          {#if labMode && settingsTab === 'profile'}
+            <ProfilePanel {apiBaseUrl} {userId} />
+          {:else}
           {#if isLoadingSettings}
             <div class="settings-loading">{$_('assistant.settings.loading')}</div>
           {/if}
@@ -2721,6 +2790,7 @@
           </div>
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
+          {/if}
         </div>
       {:else}
       <!-- Message List -->
@@ -2818,7 +2888,33 @@
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
-              {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+              {#if item.compareKey && comparePlain[item.compareKey]}
+                {@const plain = comparePlain[item.compareKey]}
+                <div class="lab-compare" data-testid="lab-compare">
+                  <div class="lab-compare-col" data-testid="lab-compare-personalized">
+                    <div class="lab-compare-label">Personalized</div>
+                    {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+                  </div>
+                  <div class="lab-compare-col" data-testid="lab-compare-plain">
+                    <div class="lab-compare-label">Plain</div>
+                    <div class="message assistant no-entry-animation">
+                      <div class="message-content">
+                        {#if plain.status === 'loading'}
+                          <p>Loading…</p>
+                        {:else if plain.status === 'error'}
+                          <p>The plain answer failed.</p>
+                        {:else if plain.status === 'stopped'}
+                          <p>Stopped.</p>
+                        {:else}
+                          {@html renderMarkdown(plain.markdown)}
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {:else}
+                {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+              {/if}
             </div>
           {:else}
             <div class="message user" class:no-entry-animation={item.noEntryAnimation}>
@@ -2901,6 +2997,12 @@
           <p class="login-prompt-text">{$_('assistant.anon.limit_reached')}</p>
         </div>
       {:else}
+        {#if labMode}
+          <label class="lab-compare-toggle">
+            <input type="checkbox" checked={labCompare} onchange={(e) => setCompare(e.currentTarget.checked)} />
+            <span>Compare: personalized vs plain</span>
+          </label>
+        {/if}
         <footer class="lc-chatbot-input">
           <textarea
             bind:this={inputRef}
@@ -4898,6 +5000,60 @@
   .settings-reset:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .settings-tabs {
+    display: flex;
+    gap: 8px;
+  }
+
+  .settings-tab {
+    border: 1px solid var(--lc-border);
+    border-radius: var(--lc-radius-sm);
+    padding: 6px 12px;
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    font-family: var(--lc-font);
+    cursor: pointer;
+    background: var(--lc-bg-tertiary);
+    color: var(--lc-text-secondary);
+  }
+
+  .settings-tab.active {
+    background: var(--brand-sefaria-blue);
+    color: white;
+    border-color: transparent;
+  }
+
+  /* Personalization lab: compare toggle and the two-column answer */
+  .lab-compare-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px 0;
+    font-size: var(--lc-font-size-sm);
+    color: var(--lc-text-secondary);
+  }
+
+  .lab-compare-toggle input {
+    accent-color: var(--lc-primary);
+  }
+
+  .lab-compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    gap: 12px;
+  }
+
+  .lab-compare-col {
+    min-width: 0;
+  }
+
+  .lab-compare-label {
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    color: var(--lc-text-secondary);
+    padding: 0 0 4px;
   }
 
   /* Clearing animation for message list */

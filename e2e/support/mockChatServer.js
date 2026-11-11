@@ -20,7 +20,14 @@
  *   anonymous chats (POST /v2/anon/claim), which moves them to the user, so
  *   they're in the user's chat history. (Done.)
  *
+ * - Personalization lab (option `lab`): POST /v2/personalization/status says whether the
+ *   visitor may use the lab override, and POST /v2/personalization/profile answers the
+ *   profile actions (get, set, release, run_job, apply_candidate, discard_candidate,
+ *   seed_persona) from a small in-memory profile. A chat request with
+ *   context.personalizationMode "off" gets the answer `Plain answer.` and is not kept.
+ *
  * Options:
+ * - lab: { allowed: boolean, slots?: slot[] } turns the lab on for the visitor.
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -33,7 +40,8 @@ const LONG_ANSWER_PARAGRAPHS = 30;
  * @param {import('@playwright/test').BrowserContext} context
  * @param {{ longAnswers?: boolean }} [options]
  */
-export async function mockChatServer(context, { longAnswers = false, failedClaims = 0 } = {}) {
+export async function mockChatServer(context, { longAnswers = false, failedClaims = 0, lab = null } = {}) {
+  const labProfile = lab ? createLabProfile(lab) : null;
   // failedClaims: how many claims fail (500) before claims work again.
   let claimsToFail = failedClaims;
   const limit = getFreeAnswerLimit();
@@ -74,6 +82,21 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
   }
 
   function answer(route, body) {
+    if (body.context?.personalizationMode === 'off') {
+      const message = {
+        messageId: `msg_plain_${body.messageId}`,
+        sessionId: body.sessionId,
+        timestamp: new Date().toISOString(),
+        markdown: 'Plain answer.',
+        toolCalls: [],
+        stats: {},
+      };
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sseEvent('message', message),
+      });
+    }
     const owner = body.userId || body.anonId;
     let remaining;
     if (!body.userId) {
@@ -187,6 +210,13 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (path.endsWith('/chat/stream')) {
       return answer(route, request.postDataJSON());
     }
+    if (path.endsWith('/v2/personalization/status')) {
+      return route.fulfill({ json: { overrideAllowedForYou: !!lab?.allowed, mode: 'lab' } });
+    }
+    if (path.endsWith('/v2/personalization/profile')) {
+      if (!labProfile || !lab.allowed) return route.fulfill({ status: 404, json: { error: 'not_found' } });
+      return labProfile.handle(route, request.postDataJSON());
+    }
     if (path.endsWith('/v2/anon/claim')) {
       return claim(route, request.postDataJSON());
     }
@@ -213,4 +243,72 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
 
 function sseEvent(event, data) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+const DEFAULT_LAB_SLOTS = [
+  { slot: 'learning_level', value: 'beginner', status: 'stated', evidence: ['e1', 'e2'], updatedAt: '2026-11-10T09:00:00Z', expiresAt: null, slotSetVersion: 1 },
+  { slot: 'interests', value: 'Talmud, ethics', status: 'inferred', evidence: ['e3'], updatedAt: '2026-11-10T09:05:00Z', expiresAt: null, slotSetVersion: 1 },
+];
+
+/** An in-memory profile for the lab actions. Synthetic data only. */
+function createLabProfile({ slots = DEFAULT_LAB_SLOTS } = {}) {
+  let revision = 1;
+  let current = slots.map((slot) => ({ ...slot }));
+  let candidate = null;
+
+  const payload = () => ({
+    storeUserId: 'lab-user',
+    revision,
+    slots: current,
+    settings: {},
+    proposals: [],
+    observations: [],
+    quarantinedObservations: [],
+  });
+
+  return {
+    handle(route, body) {
+      switch (body.action) {
+        case 'get':
+          return route.fulfill({ json: payload() });
+        case 'set': {
+          current = current.map((s) => (s.slot === body.slot ? { ...s, value: body.value, status: 'stated' } : s));
+          revision += 1;
+          return route.fulfill({ json: payload() });
+        }
+        case 'release': {
+          current = current.filter((s) => s.slot !== body.slot);
+          revision += 1;
+          return route.fulfill({ json: payload() });
+        }
+        case 'run_job':
+          candidate = {
+            status: 'candidate',
+            changes: [{ slot: 'learning_level', old: 'beginner', new: 'intermediate', reason: 'Asked about commentaries twice' }],
+            conflicts: [],
+            observationsRead: 7,
+            tokens: 1234,
+            costUsd: 0.0123,
+            revision,
+          };
+          return route.fulfill({ json: candidate });
+        case 'apply_candidate': {
+          if (!candidate) return route.fulfill({ status: 409, json: { error: 'stale_revision' } });
+          candidate.changes.forEach((c) => {
+            current = current.map((s) => (s.slot === c.slot ? { ...s, value: c.new } : s));
+          });
+          candidate = null;
+          revision += 1;
+          return route.fulfill({ json: { applied: true, profile: payload() } });
+        }
+        case 'discard_candidate':
+          candidate = null;
+          return route.fulfill({ json: { discarded: true } });
+        case 'seed_persona':
+          return route.fulfill({ json: { seeded: body.turns.length } });
+        default:
+          return route.fulfill({ status: 400, json: { error: 'unknown_action' } });
+      }
+    },
+  };
 }
