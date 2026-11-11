@@ -43,11 +43,40 @@ export class AssistantPage {
    * visitor: with no ?user-id it mounts the widget without one, the way the
    * host site shows it to a logged-out visitor.
    */
-  async goto({ hostFreeAnswers } = {}) {
+  async goto({ hostFreeAnswers, pageTheme } = {}) {
     // hostFreeAnswers: the free-answer limit the host page passes (anon-free-answers).
+    // pageTheme: the page's <html data-theme>, there before the assistant loads, as Sefaria
+    // renders it.
+    if (pageTheme) await this.startPagesInTheme(pageTheme);
     const query = hostFreeAnswers === undefined ? '' : `?anon-free-answers=${hostFreeAnswers}`;
     await this.page.goto(`/${query}`);
     await expect(this.host).toHaveCount(1);
+  }
+
+  // The host page's light/dark theme (see src/lib/hostTheme.js)
+
+  /** Pages load with <html data-theme={theme}>, set before any of the page's scripts run. */
+  async startPagesInTheme(theme) {
+    await this.page.addInitScript((value) => {
+      const apply = () => document.documentElement.setAttribute('data-theme', value);
+      if (document.documentElement) {
+        apply();
+        return;
+      }
+      new MutationObserver((_, observer) => {
+        if (!document.documentElement) return;
+        observer.disconnect();
+        apply();
+      }).observe(document, { childList: true });
+    }, theme);
+  }
+
+  /** Act as the host page switching theme: set <html data-theme>, or remove it with null. */
+  async setPageTheme(theme) {
+    await this.page.evaluate((value) => {
+      if (value === null) document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', value);
+    }, theme);
   }
 
   /**

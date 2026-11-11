@@ -27,6 +27,7 @@
   import { sheetDrag } from '../lib/sheetDrag.js';
   import { keepAnchorOnResize, pinChatToBottom } from '../lib/chatScroll.js';
   import { listenToHost, LAUNCHER_LABELS } from '../lib/hostEvents.js';
+  import { followHostTheme } from '../lib/hostTheme.js';
   import AskLauncher from './AskLauncher.svelte';
   import HeaderButton from './HeaderButton.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -867,6 +868,13 @@
     await tick();
     handleSend({ source });
   }
+
+  // Follow the page's light/dark theme (<html data-theme>, lib/hostTheme.js). The styles key off
+  // data-theme on the host, which also tells the page this widget has a dark theme.
+  $effect(() => {
+    const host = $host();
+    return followHostTheme((theme) => host.setAttribute('data-theme', theme));
+  });
 
   // Hosts can open the assistant and relabel its launcher (lib/hostEvents.js)
   $effect(() => listenToHost({
@@ -3077,6 +3085,34 @@
     --lc-danger: #C03522;
     --lc-danger-hover: #A02C1C;
 
+    /* Colours rules used to hard-code. Each light value is exactly what it replaced, so the
+       dark theme below can change them without touching the rules. */
+    --lc-primary-fill: var(--brand-sefaria-blue); /* brand blue as a fill under white text */
+    --lc-submit-bg: var(--lc-sefaria-blue);
+    --lc-danger-fill: var(--lc-danger);
+    --lc-disabled-icon: var(--core-base-white);
+    --lc-input-bg: Field; /* the main text box keeps the browser's own field colour */
+    --lc-input-border: var(--lc-border);
+    --lc-error-bg: #fef2f2;
+    --lc-error-hover: #dc2626;
+    --lc-history-row-hover: var(--core-blue-tbr-100);
+    --lc-history-row-active: var(--core-blue-tbr-200);
+    --lc-history-fade-from: rgba(250, 250, 250, 0.7);
+    --lc-history-fade-to: rgba(250, 250, 250, 0.2);
+    --lc-empty-icon-bg: var(--core-neutral-gray-200, #ededec);
+    --lc-icon-filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    --lc-stop-icon-filter: none;
+    --lc-danger-icon-filter: none;
+    --lc-panel-shadow: var(--lc-shadow);
+    --lc-docked-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
+    --lc-sheet-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
+    --lc-dropdown-shadow: 0 8px 18px rgba(13, 3, 32, 0.14);
+    --lc-tap-highlight: rgb(0 0 0 / 0.08);
+    --lc-trail-text: #777;
+    --lc-trail-muted: #888;
+    --lc-trail-hover: #555;
+    --lc-trail-error: #c62828;
+
     display: block;
     font-family: var(--lc-font);
   }
@@ -3086,6 +3122,83 @@
     height: 100%;
     min-height: 0;
     max-height: 100%;
+  }
+
+  /* Dark theme, while the page is dark (data-theme on the host: lib/hostTheme.js). The values
+     are Sefaria's dark tokens (Sefaria-Project static/css/theme-tokens.css): page #121212,
+     panel #1C1C1C, menus #252525, text #E8E6E3, brand blue #A9C1EB as text and #2F5A96 as a
+     fill. Screen only, so printing stays light, as on Sefaria. */
+  @media screen {
+    :host([data-theme="dark"]) {
+      --semantic-action-primary: #A9C1EB;
+      --semantic-text-link: #A9C1EB;
+      --semantic-text-primary: #E8E6E3;
+      --semantic-text-secondary: #B3B1AE;
+      --semantic-text-muted: #959390;
+      --semantic-icon-muted: #959390;
+      --functional-icon-icon-primary: #B3B1AE;
+      --brand-sefaria-blue: #A9C1EB; /* as text, borders and focus */
+      --lc-sefaria-blue: #A9C1EB;
+      --lc-primary-fill: #2F5A96; /* under white text */
+      --lc-primary-hover: #3A69AB;
+      --lc-user-bg: #2F5A96;
+      --lc-submit-bg: #2F5A96;
+
+      --lc-body-bg: #1C1C1C;
+      --lc-bg: #252525;
+      --lc-bg-secondary: #1C1C1C;
+      --lc-bg-tertiary: #333333;
+      --lc-bg-hover: #333333;
+      --lc-text: #E8E6E3;
+      --lc-text-muted: #959390;
+      --lc-border: #474747;
+      --lc-border-strong: #767676;
+      --lc-input-bg: #262626;
+      --lc-input-border: #777777;
+      --lc-assistant-bg: #252525;
+      --lc-assistant-text: #E8E6E3;
+      --lc-topics-bg: #1A2B40;
+      --lc-history-row-hover: #1A2B40;
+      --lc-history-row-active: #1E3A5F;
+      --lc-history-fade-from: rgba(28, 28, 28, 0.7);
+      --lc-history-fade-to: rgba(28, 28, 28, 0.2);
+      --lc-empty-icon-bg: #2B2B2B;
+
+      --lc-error: #FF7B6B;
+      --lc-error-hover: #FFA196;
+      --lc-error-bg: #3A2323;
+      --lc-danger: #FF7B6B;
+      --lc-danger-fill: #B34A42;
+      --lc-danger-hover: #9E3F38;
+      --lc-disabled-button: #2B2B2B;
+      --lc-disabled-text: #959390;
+      --lc-disabled-icon: #7A7875;
+
+      /* Grey <img> icons; the red trash icon is lightened */
+      --lc-icon-filter: brightness(0) saturate(100%) invert(70%);
+      --lc-stop-icon-filter: var(--lc-icon-filter);
+      --lc-danger-icon-filter: brightness(1.6);
+
+      /* Shadows barely show on a dark page: floating surfaces get a 1px edge too */
+      --lc-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+      --lc-panel-shadow: 0 0 0 1px var(--lc-border), var(--lc-shadow);
+      --lc-docked-shadow: 0 0 0 1px var(--lc-border), 0 16px 32px 0 rgb(0 0 0 / 0.5);
+      --lc-sheet-shadow: 0 0 0 1px var(--lc-border), 0 -8px 32px rgb(0 0 0 / 0.6);
+      --lc-dropdown-shadow: 0 8px 18px rgb(0 0 0 / 0.5);
+      --lc-tap-highlight: rgb(255 255 255 / 0.12);
+
+      --lc-trail-text: #A8A6A3;
+      --lc-trail-muted: #959390;
+      --lc-trail-hover: #D6D4D1;
+      --lc-trail-error: #FF7B6B;
+    }
+
+    /* Native controls and scrollbars, and text with no colour of its own. Set inside the
+       shadow tree, where the page's own rules for <lc-chatbot> can't override them. */
+    :host([data-theme="dark"]) .lc-chatbot-container {
+      color-scheme: dark;
+      color: var(--lc-text);
+    }
   }
 
   * {
@@ -3134,7 +3247,7 @@
     height: auto;
     max-height: 100%;
     border-radius: 12px;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.08), 0 16px 32px 0 rgba(13, 3, 32, 0.16);
+    box-shadow: var(--lc-docked-shadow);
     margin-inline-start: 10px;
     margin-inline-end: 10px;
     margin-bottom: 0;
@@ -3220,7 +3333,7 @@
   /* While dragged, the sheet lifts off the page: rounded top and an upward shadow */
   .mode-fullscreen .lc-chatbot-panel.sheet-lifted {
     border-radius: var(--lc-radius) var(--lc-radius) 0 0;
-    box-shadow: 0 -1px 3px rgb(0 0 0 / 0.08), 0 -8px 32px rgb(0 0 0 / 0.22);
+    box-shadow: var(--lc-sheet-shadow);
   }
 
   .mode-fullscreen .header-actions {
@@ -3297,7 +3410,7 @@
   .mode-fullscreen .link-like,
   .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link)) {
     padding-block: 6px;
-    -webkit-tap-highlight-color: rgb(0 0 0 / 0.08);
+    -webkit-tap-highlight-color: var(--lc-tap-highlight);
   }
 
   .mode-fullscreen :global(:is(.lc-topic-link, .trail-ref-link, .appetizer-sentence, .progress-trail-entry)) {
@@ -3591,7 +3704,7 @@
     min-height: 0;
     background: var(--lc-body-bg);
     border-radius: var(--lc-radius);
-    box-shadow: var(--lc-shadow);
+    box-shadow: var(--lc-panel-shadow);
     overflow: hidden;
     position: relative;
   }
@@ -3688,12 +3801,12 @@
   .history-search-submit img,
   .header-actions img,
   .menu-item img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-filter);
   }
 
   /* trash-2-danger.svg is pre-colored red; the shared gray filter above would flatten it back to gray */
   .history-row-dropdown button.danger img {
-    filter: none;
+    filter: var(--lc-danger-icon-filter);
   }
 
   .history-icon-btn {
@@ -3727,7 +3840,7 @@
     height: 35px;
     margin: 4px 12px 12px;
     padding: 10px 8px 10px 12px;
-    border: 1px solid var(--lc-border);
+    border: 1px solid var(--lc-input-border);
     border-radius: 8px;
     background: var(--lc-bg);
     overflow: hidden;
@@ -3737,7 +3850,7 @@
   .history-rename-form input {
     min-width: 0;
     width: 100%;
-    border: 1px solid var(--lc-border);
+    border: 1px solid var(--lc-input-border);
     border-radius: 6px;
     color: var(--lc-text);
     background: var(--lc-bg);
@@ -3808,7 +3921,7 @@
     inset-block-end: 0;
     width: 100%;
     height: 43px;
-    background: linear-gradient(to top, rgba(250, 250, 250, 0.7), rgba(250, 250, 250, 0.2));
+    background: linear-gradient(to top, var(--lc-history-fade-from), var(--lc-history-fade-to));
     pointer-events: none;
   }
 
@@ -3846,17 +3959,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: var(--core-blue-tbr-100);
+    background: var(--lc-history-row-hover);
   }
 
   .history-row.active {
-    background: var(--core-blue-tbr-200);
+    background: var(--lc-history-row-active);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: var(--core-blue-tbr-200);
+    background: var(--lc-history-row-active);
   }
 
   .history-row:disabled {
@@ -3879,7 +3992,7 @@
   }
 
   .history-row.active .history-row-title {
-    color: #121212;
+    color: var(--semantic-text-primary);
   }
 
   /* .history-row sets font-family: var(--lc-font) (a Latin stack), which
@@ -3890,7 +4003,7 @@
   }
 
   .history-row-date {
-    color: #999;
+    color: var(--lc-text-muted);
     font-size: 12px;
     line-height: 20px;
     white-space: nowrap;
@@ -3948,7 +4061,7 @@
     background: var(--lc-bg);
     border: 1px solid var(--lc-border);
     border-radius: 6px;
-    box-shadow: 0 8px 18px rgba(13, 3, 32, 0.14);
+    box-shadow: var(--lc-dropdown-shadow);
     overflow: hidden;
     z-index: 20;
     font-family: var(--lc-font);
@@ -4031,12 +4144,12 @@
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    background: var(--core-neutral-gray-200, #ededec);
+    background: var(--lc-empty-icon-bg);
     color: var(--lc-text-secondary);
   }
 
   .history-empty-icon img {
-    filter: brightness(0) saturate(100%) invert(41%) sepia(0%) saturate(2%) hue-rotate(150deg) brightness(92%) contrast(87%);
+    filter: var(--lc-icon-filter);
   }
 
   .history-empty strong {
@@ -4297,7 +4410,7 @@
 
   .empty-state .message.assistant .message-content,
   .empty-state .message.assistant .message-content :global(a) {
-    color: #575757;
+    color: var(--semantic-text-secondary);
   }
 
   .message.assistant .message-content :global(ul),
@@ -4330,7 +4443,7 @@
 
   .message.failed .message-content {
     border: 1px solid var(--lc-error);
-    background: #fef2f2;
+    background: var(--lc-error-bg);
   }
 
   .message.limit-message .message-content {
@@ -4449,7 +4562,7 @@
   }
 
   .retry-btn:hover {
-    color: #dc2626;
+    color: var(--lc-error-hover);
   }
 
   .feedback-buttons {
@@ -4468,7 +4581,7 @@
 
   .feedback-btn:hover,
   .feedback-btn.active {
-    color: #666;
+    color: var(--lc-icon-primary);
   }
 
   /* Live thinking message shown while the backend prepares the final response. */
@@ -4709,8 +4822,9 @@
     max-height: calc(4.2em + 22px);
     overflow-y: auto;
     padding: 10px 14px;
-    border: 1px solid var(--lc-border);
+    border: 1px solid var(--lc-input-border);
     border-radius: var(--lc-radius-sm);
+    background-color: var(--lc-input-bg);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
     resize: none;
@@ -4740,8 +4854,8 @@
     justify-content: center;
     width: var(--lc-send-size);
     height: var(--lc-send-size);
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--lc-primary-fill);
+    color: var(--lc-on-primary);
     border: none;
     border-radius: var(--lc-radius-sm);
     cursor: pointer;
@@ -4754,6 +4868,7 @@
 
   .send-btn:disabled {
     background: var(--lc-disabled-button);
+    color: var(--lc-disabled-icon);
     cursor: not-allowed;
   }
 
@@ -4820,7 +4935,7 @@
   }
 
   .settings-field input {
-    border: 1px solid var(--lc-border);
+    border: 1px solid var(--lc-input-border);
     border-radius: var(--lc-radius-sm);
     padding: 8px 10px;
     font-size: 13px;
@@ -4875,8 +4990,8 @@
   }
 
   .settings-save {
-    background: var(--brand-sefaria-blue);
-    color: white;
+    background: var(--lc-primary-fill);
+    color: var(--lc-on-primary);
     border-color: transparent;
   }
 
@@ -4938,7 +5053,7 @@
     padding: 24px;
     width: 320px;
     max-width: calc(100% - 32px);
-    box-shadow: var(--lc-shadow);
+    box-shadow: var(--lc-panel-shadow);
     animation: slideUp 0.2s ease;
   }
 
@@ -4949,7 +5064,7 @@
   }
 
   .delete-modal .feedback-modal-title {
-    color: #121212;
+    color: var(--semantic-text-primary);
     font-size: 14px;
     font-weight: 600;
     line-height: 18px;
@@ -4971,13 +5086,13 @@
   }
 
   .delete-modal .feedback-modal-btn.skip {
-    border: 1px solid var(--core-neutral-gray-300, #ccc);
+    border: 1px solid var(--lc-border-strong);
     color: var(--lc-text-secondary);
-    background: var(--core-base-white, #fff);
+    background: var(--lc-bg);
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
-    background: var(--semantic-surface-hover, #eee);
+    background: var(--lc-bg-hover);
   }
 
   .delete-modal .feedback-modal-btn {
@@ -5036,7 +5151,7 @@
   .feedback-modal-input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid var(--lc-border);
+    border: 1px solid var(--lc-input-border);
     border-radius: var(--lc-radius-sm);
     font-family: var(--lc-font);
     font-size: var(--lc-font-size);
@@ -5093,7 +5208,7 @@
   }
 
   .feedback-modal-btn.submit {
-    background: var(--lc-sefaria-blue);
+    background: var(--lc-submit-bg);
     color: var(--lc-submit-white);
   }
 
@@ -5102,7 +5217,7 @@
   }
 
   .feedback-modal-btn.submit.danger {
-    background: var(--lc-danger);
+    background: var(--lc-danger-fill);
     border: none;
   }
 
@@ -5225,13 +5340,13 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: #888;
+    color: var(--lc-trail-muted);
     font-size: 11px;
     padding: 4px 12px;
     font-family: inherit;
   }
   :global(.progress-trail-toggle:hover) {
-    color: #555;
+    color: var(--lc-trail-hover);
   }
   :global(.progress-trail-list) {
     list-style: none;
@@ -5247,13 +5362,13 @@
     gap: 6px;
     font-size: 12px;
     line-height: 1.4;
-    color: #777;
+    color: var(--lc-trail-text);
   }
   :global(.progress-trail-entry--error) {
-    color: #c62828;
+    color: var(--lc-trail-error);
   }
   :global(.progress-trail-entry--complete) {
-    color: #666;
+    color: var(--lc-icon-primary);
   }
   :global(.progress-trail-icon) {
     flex-shrink: 0;
@@ -5266,8 +5381,8 @@
   :global(.progress-trail-spinner) {
     width: 10px;
     height: 10px;
-    border: 1.5px solid #ccc;
-    border-top-color: #888;
+    border: 1.5px solid var(--lc-border-strong);
+    border-top-color: var(--lc-trail-muted);
     border-radius: 50%;
     animation: trail-spin 0.8s linear infinite;
   }
@@ -5312,6 +5427,7 @@
   .stop-btn:active:not(:disabled) { background: var(--lc-bg-hover); transform: scale(0.95); }
   .stop-btn:focus-visible { outline: 2px solid var(--lc-primary); outline-offset: 2px; }
   .stop-btn:disabled { cursor: default; }
+  .stop-btn img { filter: var(--lc-stop-icon-filter); }
   .message.assistant.stopped-message { align-self: stretch; }
   .stop-notice { color: var(--lc-text-secondary); font-family: var(--lc-font); font-size: var(--lc-font-size-sm); line-height: 20px; margin: var(--global-dimension-200) 0 0; }
   .stop-error { color: var(--lc-text-secondary); margin: 4px var(--global-dimension-200); font-size: var(--lc-font-size-sm); }
