@@ -1,0 +1,53 @@
+{
+  "id": "reverify/label-agreement",
+  "question": "How much do the gold labels depend on the labeller? (Opus 5.5 re-labels the personas Sonnet labelled)",
+  "why": "Mickey's action item for Yotam (recap). Every accuracy figure on anon-personas is measured against golden profiles one model wrote and no person reviewed; this case asks how much of the figure is the labeller.",
+  "source": "Mickey's action item for Yotam (recap); Yotam's approval 2026-11-11 (Amendment A3 context)",
+  "hypothesis": "Sonnet's and Opus's golden profiles agree on at least 85% of slots; disagreement concentrates in text categories and level.",
+  "engine": "offline",
+  "task": "label",
+  "config": {
+    "model": "claude-opus-5-5",
+    "brief_dataset": "anon-personas",
+    "first_labeller": "claude-sonnet-5-5 on anon-personas; the author on syn1",
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "label_agreement",
+    "label_agreement@preferred_language",
+    "label_agreement@hebrew_fluency",
+    "label_agreement@terminology_comfort",
+    "label_agreement@register",
+    "label_agreement@text_categories",
+    "label_agreement@answer_style",
+    "label_agreement@learning_habits",
+    "label_both_empty_share"
+  ],
+  "keep_if": [
+    {
+      "metric": "label_agreement",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.85,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 30 Opus 5.5 calls per run (9 syn1 personas plus the seeded 20 of anon-personas), three runs; no Opus price is in the lab's price table, so usd is not computed",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: none (this case has no row)",
+      "what": "Amendment A1 and A2 apply as for every anon-personas case: the persona set is anon-personas, run on the seeded sample of 20 (sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20)), with syn1 beside it as the reference. Labels not human-reviewed: the frozen golden profiles on anon-personas were written by Sonnet and no person has reviewed them (Amendment A2, decision 1). The manifest was set by the lane brief on Yotam's approval of 2026-11-11 (Amendment A3 context), not copied from a test tree row.",
+      "bar": "label_agreement mean >= 0.85 on anon-personas only. syn1 (the author's golden against Opus) is the reference and carries no bar; label_agreement per slot and label_both_empty_share are reported with no bar.",
+      "pipeline": "Opus is given the same labeling prompt and the same checks the Sonnet labeller used (L/label.py: build_system and label_item, brief anon-personas), on the persona's turns only: golden, timeline, tags and the author's notes are removed before the call. 'Same final value' compares the `golden` slot forms: an enum slot has the same `value` (accept lists ignored); a list slot has the same set of included categories; a free-text slot shares at least one keyword; the timeline and the tags are not compared. The result keeps one letter per slot (agree, differ, frozen-only, opus-only, both-empty), never the Opus labels. The Opus labels are written only under $LA_LAB_DATA_DIR/partial/reverify/label-agreement so that a timed-out slice resumes, and are not committed. An item that gets no valid labels in three attempts is invalid and left out of the ratios.",
+      "cost": "The lab's price table has no entry for Claude Opus 5.5, so `cost.usd` reads 0.0 and the token counts are the figure to read."
+    }
+  ],
+  "status": "planned"
+}
