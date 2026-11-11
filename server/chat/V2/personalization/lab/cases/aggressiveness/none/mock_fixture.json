@@ -1,0 +1,103 @@
+{
+ "note": "Invented fixture for the mock; no real text.",
+ "personas": [
+  {
+   "id": "noa",
+   "user_id": "mock:noa",
+   "trap": "fixture",
+   "interview": null,
+   "golden": {},
+   "checks": [],
+   "sessions": [
+    {
+     "session_id": "noa-s1",
+     "turns": [
+      {
+       "id": "noa-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "Who was Hillel, and what is the sugya about the convert?",
+       "assistant": "Hillel was a sage.",
+       "tags": []
+      },
+      {
+       "id": "noa-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Please answer in English: what is <b>kiddush</b>?",
+       "assistant": "It is a blessing.",
+       "tags": []
+      },
+      {
+       "id": "noa-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "מה פירוש המילה תלמוד?",
+       "assistant": "הלימוד.",
+       "tags": []
+      }
+     ]
+    },
+    {
+     "session_id": "noa-s2",
+     "turns": [
+      {
+       "id": "noa-4",
+       "at": "2026-11-06T18:00:00Z",
+       "user": "Show me Genesis 1:1",
+       "assistant": "Here it is.",
+       "tags": []
+      },
+      {
+       "id": "noa-5",
+       "at": "2026-11-06T18:01:00Z",
+       "user": "And the Rashi on it, short",
+       "assistant": "Rashi says ...",
+       "tags": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "eli",
+   "user_id": "mock:eli",
+   "trap": "fixture",
+   "interview": null,
+   "golden": {},
+   "checks": [],
+   "sessions": [
+    {
+     "session_id": "eli-s1",
+     "turns": [
+      {
+       "id": "eli-1",
+       "at": "2026-11-05T01:00:00Z",
+       "user": "hello",
+       "assistant": "hi",
+       "tags": []
+      },
+      {
+       "id": "eli-2",
+       "at": "2026-11-05T01:05:00Z",
+       "user": "What does Tosafot say here? {not a template} {0}",
+       "assistant": "See Tosafot.",
+       "tags": []
+      },
+      {
+       "id": "eli-3",
+       "at": "2026-11-05T01:06:00Z",
+       "user": "thanks",
+       "assistant": "welcome",
+       "tags": []
+      },
+      {
+       "id": "eli-4",
+       "at": "2026-11-05T01:07:00Z",
+       "user": "one more: Berakhot 2a",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
