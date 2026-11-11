@@ -403,3 +403,33 @@ def test_check_fails_for_live_results_on_an_unpushed_case(repo):
     assert cli.main(args) == 1
     git(work, "push", "-q", "origin", "HEAD:main")
     assert cli.main(args) == 0
+
+
+def test_select_items_hook_picks_the_replayed_items(tmp_path):
+    case = mock_case(tmp_path, metrics=["slot_accuracy"])
+    module = types.SimpleNamespace(
+        build=strategy_pipeline, select_items=lambda items, config, dataset: items[:1]
+    )
+    first, second = persona(), {**persona(), "id": "other", "user_id": "anon:other"}
+    dataset = Dataset("fixture", "synthetic", "sha", [first, second])
+    result = run(case, dataset, pipeline_module=module)
+    assert result["dataset"]["n"] == 1
+    assert len(result["per_item"]) == 1
+
+
+def test_a_replay_pipeline_module_may_report_counts_per_variant(tmp_path):
+    seen = []
+
+    def counts(vconfig, replays, llm):
+        seen.append((vconfig["variant"], len(replays)))
+        return {"overhead_tokens": 480, "recount_gap": 0.0}
+
+    module = types.SimpleNamespace(build=strategy_pipeline, counts=counts)
+    case = mock_case(
+        tmp_path, config={"variants": ["realtime", "explicit"]},
+        metrics=["overhead_tokens@realtime", "recount_gap@explicit"],
+        keep_if=[{"metric": "overhead_tokens@realtime", "op": "<=", "value": 528}],
+    )  # fmt: skip
+    result = run(case, pipeline_module=module)
+    assert seen == [("realtime", 1), ("explicit", 1)]
+    assert result["metrics"] == {"overhead_tokens@realtime": 480, "recount_gap@explicit": 0.0}
