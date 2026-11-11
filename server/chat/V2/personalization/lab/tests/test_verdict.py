@@ -169,3 +169,43 @@ def test_invalid_on_secondary_dataset_makes_a_keep_inconclusive():
         }
     }  # fmt: skip
     assert verdict.compute(make_case(MEAN_BAR), rows)["verdict"] == "inconclusive"
+
+
+def cross_runs(*last, metric="runs_identical", kind="synthetic"):
+    """Runs 1 and 2 carry None (cross-run metrics compare earlier runs), run 3 carries `last`."""
+    rows = [
+        result(1, None, metric=metric),
+        result(2, None, metric=metric),
+        result(3, last[0], metric=metric),
+    ]
+    for r in rows:
+        r["dataset"]["kind"] = kind
+    return rows
+
+
+@pytest.mark.parametrize("agg", ["mean", "min", "each", "pooled"])
+def test_cross_run_bar_holds_on_the_last_run_whatever_agg_says(agg):
+    bar = Bar("runs_identical", agg, ">=", 1, dataset="syn1")
+    assert verdict.compute(make_case(bar), cross_runs(1.0))["verdict"] == "keep"
+
+
+def test_cross_run_bar_drops_when_the_runs_differ():
+    bar = Bar("runs_identical", "mean", ">=", 1, dataset="syn1")
+    out = verdict.compute(make_case(bar), cross_runs(0.0))
+    assert out["verdict"] == "drop" and out["bars"][0]["observed"] == 0.0
+
+
+def test_cross_run_bar_is_inconclusive_when_run_3_has_no_value():
+    bar = Bar("run_agreement", "mean", ">=", 0.9, dataset="syn1")
+    out = verdict.compute(make_case(bar), cross_runs(None, metric="run_agreement"))
+    assert out["verdict"] == "inconclusive" and "last run" in out["bars"][0]["why"]
+
+
+def test_cross_run_bar_on_a_real_dataset_reads_the_last_run():
+    bar = Bar("run_agreement", "mean", ">=", 0.9, dataset="syn1")
+    out = verdict.compute(make_case(bar), cross_runs(0.95, metric="run_agreement", kind="real"))
+    assert out["verdict"] == "keep"
+
+
+def test_a_non_cross_run_metric_still_needs_every_run():
+    assert verdict.compute(make_case(MEAN_BAR), runs(None, None, 0.95))["verdict"] == "inconclusive"
