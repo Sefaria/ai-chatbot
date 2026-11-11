@@ -268,6 +268,10 @@ def cmd_explain(args, root) -> int:
         if name not in seen:
             seen.add(name)
             print(f"  {name} ({known[name].unit}): {known[name].formula}")
+            if known[name].cross_run:
+                print(
+                    "    cross-run rule: defined over all three runs; a bar on it reads run 3's value and ignores its agg"
+                )
     print("Pass bar (keep if):")
     for bar in case.keep_if:
         target = (
