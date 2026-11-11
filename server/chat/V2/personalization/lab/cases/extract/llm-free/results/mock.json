@@ -1,5 +1,5 @@
 {
- "case_sha": "779207aad12cf1e0735f1faeaed1d9cbed1efa42",
+ "case_sha": "6be085699e2348878d1da7db103819c51d5106f7",
  "cost": {
   "calls": 14,
   "in_tokens": 9974,
@@ -13,7 +13,7 @@
   "name": "mock",
   "sha256": "68803db579505ff391278f4acc05080ce6b2ca2a85ffa6b90c6338210ad8bd0f"
  },
- "git_sha": "e482d14341697e0aba69da60ff56eed63429813d",
+ "git_sha": "d2f98b6f8c075f56ce918734df604821f5fb7d08",
  "id": "extract/llm-free",
  "invalid": 0,
  "kind": "mock",
@@ -158,7 +158,7 @@
  },
  "run": 0,
  "schema": 1,
- "started_at": "2026-11-11T08:42:38+00:00",
+ "started_at": "2026-11-11T08:44:18+00:00",
  "steps": [
   {
    "n_in": 16,
