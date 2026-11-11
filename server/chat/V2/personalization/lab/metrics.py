@@ -281,7 +281,7 @@ def _final_values(replay) -> dict:
 
 def run_agreement(data: RunData, variant=None):
     runs = [*data.prior_profiles, {r.persona["user_id"]: _final_values(r) for r in data.replays}]
-    if len(runs) < CROSS_RUNS:  # defined over all three runs only
+    if len(runs) < 2:
         return None
     agree = filled = 0
     for user in runs[-1]:
@@ -384,7 +384,6 @@ def coverage(data: RunData, variant=None):
 # -- across runs ------------------------------------------------------------------------------
 
 
-CROSS_RUNS = 3  # runs a cross-run metric compares
 _HISTORY = ("run_agreement", "runs_identical", "lead_over_next")
 
 
@@ -394,7 +393,7 @@ def split_key(key: str) -> tuple[str, str | None]:
 
 
 def runs_identical(data: RunData, variant=None):
-    if len(data.prior_metrics) < CROSS_RUNS - 1:  # defined over all three runs only
+    if not data.prior_metrics:
         return None
     # metrics that read the other runs differ between runs by construction, so they are left out
     plain = lambda m: {k: v for k, v in m.items() if split_key(k)[0] not in _HISTORY}  # noqa: E731
