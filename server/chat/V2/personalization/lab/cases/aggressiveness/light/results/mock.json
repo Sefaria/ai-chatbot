@@ -1,0 +1,130 @@
+{
+ "case_sha": "61df554530f1233e338e243d9bd446d3327f6635",
+ "cost": {
+  "calls": 22,
+  "in_tokens": 21418,
+  "out_tokens": 3269,
+  "typed_requests": 22,
+  "usd": 0.037763
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 3,
+  "name": "mock",
+  "sha256": "1f1bbf18188d292bad78338b40be7f924e8681c5f814fdc101465e4cd74d1fe5"
+ },
+ "git_sha": "98da01c61ccd3e118e1690addeba6198118130f9",
+ "id": "aggressiveness/light",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "fill_rate_at_k@2": 0.0,
+  "fill_rate_at_k@4": 0.8333333333333334,
+  "fill_rate_at_k@8": 1.0,
+  "first_session_fill": 1.0,
+  "flips_per_10_turns": 0.45454545454545453,
+  "outlier_flips": 0,
+  "run_agreement": null,
+  "slot_accuracy": 1.0,
+  "turns_to_fill": 3.5,
+  "wrong_slot_turns": 0.18181818181818182
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "preferred_language": "en"
+   },
+   "persona": "ana",
+   "turns": 5,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "preferred_language": "en"
+   },
+   "persona": "ben",
+   "turns": 8,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en"
+   },
+   "persona": "cal",
+   "turns": 9,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "fill_rate_at_k@2": [
+   0,
+   6
+  ],
+  "fill_rate_at_k@4": [
+   5,
+   6
+  ],
+  "fill_rate_at_k@8": [
+   4,
+   4
+  ],
+  "first_session_fill": [
+   3,
+   3
+  ],
+  "flips_per_10_turns": [
+   10,
+   22
+  ],
+  "slot_accuracy": [
+   6,
+   6
+  ],
+  "wrong_slot_turns": [
+   4,
+   22
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T10:01:29+00:00",
+ "steps": [
+  {
+   "n_in": 22,
+   "n_out": 22,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 22,
+   "n_out": 22,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": 22,
+   "n_out": 22,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 22,
+   "n_out": 7,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 3,
+   "n_out": 10,
+   "name": "score"
+  }
+ ]
+}
