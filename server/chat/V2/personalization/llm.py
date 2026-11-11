@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 # USD per million input / output tokens; matched by model-id prefix (longest wins).
+# Haiku 5.5: $0.10 in / $0.50 out up to 100K-token prompts (Anthropic pricing page, cached
+# 2026-11-03; `main`'s model_pricing.json has no entry for it). Haiku 4.5: $1 / $5.
 PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
     "claude-haiku-5-5": (0.10, 0.50),
@@ -148,7 +150,10 @@ class ClaudeCodeLLMClient:
         ]  # fmt: skip
         env = dict(os.environ)
         # The production path is a plain Messages API call. Headless Claude Code turns extended
-        # thinking on by default, which multiplies output tokens and latency, so switch it off.
+        # thinking on by default (Haiku 5.5: adaptive thinking), which multiplies output tokens and
+        # latency, so switch it off. MAX_THINKING_TOKENS=0 alone is not enough on Haiku 5.5: with
+        # stdin inherited, "Reply with OK" still spent 75-190 thinking tokens in about 2 of 3 calls
+        # (measured 2026-11-11); with stdin=DEVNULL it spent 0 in 20 of 20. So stdin is closed too.
         env["MAX_THINKING_TOKENS"] = "0"
         if config_dir := os.environ.get("PERSONALIZATION_CLAUDE_CONFIG_DIR"):
             env["CLAUDE_CONFIG_DIR"] = config_dir
@@ -157,7 +162,13 @@ class ClaudeCodeLLMClient:
             with tempfile.TemporaryDirectory() as cwd:
                 try:
                     proc = subprocess.run(
-                        argv, capture_output=True, text=True, timeout=self.timeout, cwd=cwd, env=env
+                        argv,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.timeout,
+                        cwd=cwd,
+                        env=env,
+                        stdin=subprocess.DEVNULL,
                     )
                 except subprocess.TimeoutExpired:
                     last_error = "timed out"

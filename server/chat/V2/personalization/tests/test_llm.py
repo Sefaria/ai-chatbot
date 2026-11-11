@@ -35,6 +35,8 @@ def completed(stdout="", returncode=0, stderr=""):
 def test_estimate_cost_prefix_match():
     assert estimate_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000) == pytest.approx(6.0)
     assert estimate_cost("claude-haiku-5-5", 1_000_000, 1_000_000) == pytest.approx(0.6)
+    assert estimate_cost("claude-haiku-5-5", 1_000_000, 0) == pytest.approx(0.10)
+    assert estimate_cost("claude-haiku-5-5", 0, 1_000_000) == pytest.approx(0.50)
     assert estimate_cost("claude-sonnet-4-6", 1_000_000, 0) == pytest.approx(3.0)
     assert estimate_cost("claude-sonnet-5-5", 0, 1_000_000) == pytest.approx(10.0)
     assert estimate_cost("unknown-model", 100, 100) == 0.0
@@ -103,6 +105,8 @@ def test_claude_code_runs_headless_without_tools_and_parses_usage(run, monkeypat
     kwargs = run.call_args.kwargs
     assert kwargs["timeout"] == 180 and kwargs.get("shell") is None
     assert kwargs["env"]["CLAUDE_CONFIG_DIR"] == "/tmp/cfg"
+    # Thinking stays off for Haiku 5.5 only when stdin is closed as well as the env var is set.
+    assert kwargs["env"]["MAX_THINKING_TOKENS"] == "0" and kwargs["stdin"] is subprocess.DEVNULL
     assert kwargs["cwd"] != "."
 
 
