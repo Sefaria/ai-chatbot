@@ -25,9 +25,9 @@ Every run is a pure recomputation, so its rules hold by construction:
 
 `mode="apply"` writes the changes at once; `mode="candidate"` writes a candidate envelope next to
 the profile for the learner to apply (`apply_candidate`) or drop (`discard_candidate`). Writes run
-inside `store.atomic(user_id)` and refuse with `stale_revision` only when a slot the result
-snapshotted (each slot it changes and each stated slot) differs now. A prompt that arrives
-meanwhile does not stale it: the next run recomputes and sees it.
+inside `store.atomic(user_id)` and refuse with `stale_revision` when any slot of the profile the
+result snapshotted (value, status, expiry) differs now. A prompt that arrives meanwhile does not
+stale it: the next run recomputes and sees it. A list slot's evidence carries its item.
 
 The job keeps its record in the store's candidate row (no schema change). Its `slots` field holds
 the envelope `{"pending", "window_hash", "window_digest", "profile", "snapshot", "conflicts",
@@ -44,7 +44,7 @@ import json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -221,20 +221,15 @@ def window_digest(
     return _digest([version, registry.version, model, prompts])
 
 
-def profile_digest(profile: dict[str, SlotValue]) -> str:
+def profile_states(profile: dict[str, SlotValue]) -> dict[str, list]:
+    """Every slot as the snapshot records it: [value, status, expires_at]."""
+    return {k: _state(v) for k, v in profile.items()}
+
+
+def profile_digest(states: dict[str, list]) -> str:
     """The code's side: every slot's value, status and expiry, so a slot the learner set or
     released, or one that expired, makes the next run recompute."""
-    return _digest(
-        sorted(
-            [
-                k,
-                json.dumps(v.value, sort_keys=True),
-                v.status,
-                v.expires_at and v.expires_at.isoformat(),
-            ]
-            for k, v in profile.items()
-        )
-    )
+    return _digest(sorted([k, json.dumps(v, sort_keys=True)] for k, v in states.items()))
 
 
 def window_hash(
@@ -251,7 +246,7 @@ def window_hash(
 
 
 def _combine(digest: str, profile: dict[str, SlotValue]) -> str:
-    return _digest([digest, profile_digest(profile)])
+    return _digest([digest, profile_digest(profile_states(profile))])
 
 
 # -- what the model sees -----------------------------------------------------------------------
@@ -460,17 +455,22 @@ def _decide_list(key, options, held, since, registry, conflicts, ignored):
     for o in options:
         for item in o.value:
             support.setdefault(item, {}).update(o.evidence)
-    stored = {e.message_id: e for e in (held.evidence if held is not None else [])}
     held_items = list(held.value) if held is not None else []
+
+    def stored(item: str) -> dict[str, Evidence]:
+        """The item's own stored evidence; an entry with no item (older rows) counts for all."""
+        rows = held.evidence if held is not None else []
+        return {e.message_id: e for e in rows if e.item in (None, item)}
+
+    def in_window(evidence: dict[str, Evidence]) -> dict[str, Evidence]:
+        return {m: e for m, e in evidence.items() if since is None or e.at >= since}
 
     kept, gone, dropped = [], [], []
     for item in held_items:
-        evidence = {**stored, **support.get(item, {})}
+        evidence = {**stored(item), **support.get(item, {})}
         if corrected_away(evidence, item):
             gone.append(item)
-        elif item not in support and not any(
-            since is None or e.at >= since for e in stored.values()
-        ):
+        elif item not in support and not in_window(stored(item)):
             dropped.append(item)  # no evidence left in the window
         else:
             kept.append(item)
@@ -499,12 +499,16 @@ def _decide_list(key, options, held, since, registry, conflicts, ignored):
         reason = f"{dropped!r} left the window"
     else:
         reason = "new" if held is None else f"grew from {held.value!r}"
-    evidence = {**{m: e for m, e in stored.items() if since is None or e.at >= since}}
+    # One entry per item, its newest evidence, tagged with the item (fits MAX_EVIDENCE: a list
+    # holds at most max_items).
+    evidence = []
     for item in value:
-        evidence.update(support.get(item, {}))
+        mine = {**in_window(stored(item)), **support.get(item, {})}
+        newest_entry = max(mine.values(), key=lambda e: e.at)
+        evidence.append(replace(newest_entry, item=item))
     old = held.value if held is not None else None
     change = {"slot": key, "old": old, "new": value, "reason": reason}
-    return change, sorted(evidence.values(), key=lambda e: e.at)
+    return change, sorted(evidence, key=lambda e: e.at)
 
 
 # -- the job -----------------------------------------------------------------------------------
@@ -536,7 +540,6 @@ def run_job(
     sent = screened[-MAX_OBSERVATIONS:]
     if len(screened) > len(sent):
         ignored["truncated"] = len(screened) - len(sent)
-    stated = {k: v.value for k, v in profile.items() if v.status == "stated"}
     digest = window_digest(sent, registry, model=model)
     result.window_hash = _combine(digest, profile)
     if result.window_hash == _last_hash(store, user_id):
@@ -562,9 +565,7 @@ def run_job(
             c["slot"]: {"value": c["new"], "evidence": [_evidence_row(e) for e in rows[c["slot"]]]}
             for c in changes
         },
-        "snapshot": {
-            k: _state(profile.get(k)) for k in sorted({c["slot"] for c in changes} | set(stated))
-        },
+        "snapshot": profile_states(profile),  # the whole profile: any slot that moves stales it
         "conflicts": conflicts,
         "observation_ids": [o.id for o in seen],
     }
@@ -625,18 +626,21 @@ def _evidence_row(e: Evidence) -> dict:
         "session_id": e.session_id,
         "message_id": e.message_id,
         "at": e.at.isoformat(),
+        **({"item": e.item} if e.item is not None else {}),
     }
 
 
 def _evidence_from(row: dict) -> Evidence:
-    return Evidence(
-        row["quote"], row["session_id"], row["message_id"], datetime.fromisoformat(row["at"])
-    )
+    at = datetime.fromisoformat(row["at"])
+    return Evidence(row["quote"], row["session_id"], row["message_id"], at, row.get("item"))
 
 
 def _state(slot: SlotValue | None) -> list | None:
     """A slot as the snapshot records it (JSON-shaped, so a stored candidate compares equal)."""
-    return None if slot is None else json.loads(json.dumps([slot.value, slot.status]))
+    if slot is None:
+        return None
+    expires = slot.expires_at.isoformat() if slot.expires_at else None
+    return json.loads(json.dumps([slot.value, slot.status, expires]))
 
 
 class _Refused(Exception):
@@ -645,12 +649,10 @@ class _Refused(Exception):
 
 
 def _fresh(store: ProfileStore, user_id: str, envelope: dict) -> bool:
-    """True while every snapshotted slot is as the job saw it. Nothing else stales a result."""
+    """True while the whole profile (every slot's value, status and expiry) is as the job saw it.
+    A new observation does not stale a result."""
     snapshot = envelope.get("snapshot")
-    if not isinstance(snapshot, dict):
-        return False
-    profile = store.get_profile(user_id)
-    return all(_state(profile.get(k)) == want for k, want in snapshot.items())
+    return isinstance(snapshot, dict) and profile_states(store.get_profile(user_id)) == snapshot
 
 
 def _write_candidate(store, user_id: str, envelope: dict, changes: list[dict]) -> WriteResult:
@@ -673,18 +675,22 @@ def _commit(store, user_id, now, registry, load) -> WriteResult:
             envelope, changes = loaded
             if not _fresh(store, user_id, envelope):
                 return WriteResult(False, STALE_REVISION, store.revision(user_id))
+            states = dict(envelope["snapshot"])  # the profile the commit leaves, by construction
             for change in changes:
                 slot = registry.get(change["slot"])
                 row = envelope["profile"][change["slot"]]
                 days = slot.shelf_life_days
+                expires = now + timedelta(days=days) if days else None
                 evidence = [_evidence_from(e) for e in row["evidence"]]
                 written = store.set_inferred(
-                    user_id, slot.key, row["value"], evidence, now,
-                    now + timedelta(days=days) if days else None,
-                )  # fmt: skip
+                    user_id, slot.key, row["value"], evidence, now, expires
+                )
                 if not written.applied:
                     raise _Refused(written)
-            after = _combine(envelope["window_digest"], store.get_profile(user_id))
+                states[slot.key] = _state(
+                    SlotValue(slot.key, row["value"], "inferred", [], now, expires)
+                )
+            after = _digest([envelope["window_digest"], profile_digest(states)])
             record = {"pending": False, "window_hash": after}
             for write in (
                 store.mark_consumed(user_id, envelope.get("observation_ids") or [], now),

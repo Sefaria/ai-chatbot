@@ -21,7 +21,7 @@ from chat.V2.personalization.registry import SlotRegistry
 from chat.V2.personalization.signals import is_sensitive
 from chat.V2.personalization.store import STALE_REVISION
 from chat.V2.personalization.strategies.nightly import MAX_OBSERVATIONS
-from chat.V2.personalization.types import Observation
+from chat.V2.personalization.types import Evidence, Observation
 
 from .conftest import NOW, day, evidence
 
@@ -602,6 +602,92 @@ def test_a_list_item_whose_evidence_left_the_window_drops_out(store):
     result = job(store, llm_with(say([update("text_categories", ["Midrash"], "m2")])))
     assert result.changes[0]["new"] == ["Midrash"]
     assert "left the window" in result.changes[0]["reason"]
+
+
+def item_evidence(message, at, item=None, session=None):
+    return Evidence(item or "q", session or f"s-{message}", message, at, item)
+
+
+def held_list(store, *rows):
+    store.set_inferred("u1", "text_categories", [r.item for r in rows], list(rows), day(-1))
+
+
+def test_list_evidence_is_stored_per_item_as_json(store):
+    observe(store, "m1", "Show me Talmud sources", day(-3), session="s1")
+    observe(store, "m2", "And some Midrash please", day(-1), session="s2")
+    llm = llm_with(
+        say(
+            [
+                update("text_categories", ["Talmud"], "m1"),
+                update("text_categories", ["Midrash"], "m2"),
+            ]
+        )
+    )
+    assert job(store, llm).applied
+    slot = store.get_profile("u1")["text_categories"]
+    assert {(e.message_id, e.item) for e in slot.evidence} == {("m1", "Talmud"), ("m2", "Midrash")}
+    if hasattr(store, "_slots"):
+        return
+    from chat.models import ProfileSlot
+
+    row = ProfileSlot.objects.get(user_id="u1", slot_key="text_categories")
+    assert {r["item"] for r in json.loads(json.dumps(row.evidence))} == {"Talmud", "Midrash"}
+
+
+def test_a_list_item_whose_own_evidence_left_the_window_drops_out_alone(store):
+    held_list(
+        store,
+        item_evidence("m-t", day(-40), "Talmud"),
+        item_evidence("m-m", day(-5), "Mishnah"),
+    )
+    observe(store, "m2", "And some Midrash please", day(-1))
+    result = job(store, llm_with(say([update("text_categories", ["Midrash"], "m2")])))
+    assert result.changes[0]["new"] == ["Mishnah", "Midrash"]
+    assert "left the window" in result.changes[0]["reason"]
+
+
+def test_a_correction_removes_only_the_items_whose_evidence_is_older(store):
+    held_list(
+        store,
+        item_evidence("m-t", day(-5), "Talmud"),
+        item_evidence("m-m", NOW, "Mishnah"),
+    )
+    observe(store, "m2", "Actually, Midrash rather than Talmud", day(-1))
+    fix = say([update("text_categories", ["Midrash"], "m2", correction=True)])
+    result = job(store, llm_with(fix))
+    assert result.changes[0]["new"] == ["Mishnah", "Midrash"]
+    assert "correction" in result.changes[0]["reason"]
+
+
+def test_list_evidence_without_an_item_counts_for_every_held_item(store):
+    store.set_inferred(
+        "u1",
+        "text_categories",
+        ["Talmud", "Mishnah"],
+        [evidence("old", "s0", "m0", day(-5))],
+        day(-5),
+    )
+    observe(store, "m2", "Actually, only Midrash", day(-1))
+    fix = say([update("text_categories", ["Midrash"], "m2", correction=True)])
+    assert job(store, llm_with(fix)).changes[0]["new"] == ["Midrash"]
+
+
+@pytest.mark.parametrize("change", ["expire", "delete"])
+def test_a_candidate_is_refused_when_an_unchanged_slot_expired_or_was_deleted(store, change):
+    """The candidate snapshots the whole profile (value, status, expiry): any slot that moved
+    makes apply refuse with stale_revision, and the next run recomputes."""
+    store.set_inferred("u1", "terminology_comfort", "some", [evidence()], day(-5), day(1))
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", HEBREW_2, day(-2))
+    llm = llm_with(say([update("hebrew_fluency", "fluent", "m1", "m2")]))
+    assert job(store, llm, mode="candidate").candidate_written
+    if change == "expire":
+        assert store.expire_user("u1", day(2)).applied
+    else:
+        assert store.delete_slot("u1", "terminology_comfort").applied
+    assert apply_candidate(store, "u1", now=NOW).reason == STALE_REVISION
+    assert "hebrew_fluency" not in store.get_profile("u1")
+    assert job(store, llm, mode="candidate").llm_calls == 1  # the profile moved: recompute
 
 
 def test_a_conflicts_only_run_writes_no_candidate(store):

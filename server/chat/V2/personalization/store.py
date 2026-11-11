@@ -683,6 +683,7 @@ def _evidence_to_json(evidence: list[Evidence]) -> list[dict]:
             "session_id": e.session_id,
             "message_id": e.message_id,
             "at": e.at.isoformat(),
+            **({"item": e.item} if e.item is not None else {}),
         }
         for e in cap_evidence(evidence)
     ]
@@ -690,7 +691,13 @@ def _evidence_to_json(evidence: list[Evidence]) -> list[dict]:
 
 def _evidence_from_json(rows: list[dict]) -> list[Evidence]:
     return [
-        Evidence(r["quote"], r["session_id"], r["message_id"], datetime.fromisoformat(r["at"]))
+        Evidence(
+            r["quote"],
+            r["session_id"],
+            r["message_id"],
+            datetime.fromisoformat(r["at"]),
+            r.get("item"),
+        )
         for r in rows
     ]
 

@@ -36,6 +36,7 @@ class Evidence:
     session_id: str
     message_id: str
     at: datetime
+    item: str | None = None  # for a list slot: the item this prompt supports (None: all of them)
 
 
 @dataclass
