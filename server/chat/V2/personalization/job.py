@@ -8,9 +8,10 @@ Every run is a pure recomputation, so its rules hold by construction:
 2. **Screen, in code, on every run:** a sensitive prompt and one that reads as an instruction are
    dropped and counted. Nothing else reaches the model, so a dropped prompt is never sent, on
    this run or any later one.
-3. **Idempotence by hash:** sha256 over the screened prompts (ids and text hashes), the learner's
-   stated slots, the slot registry's version and `PROMPT_VERSION`. Equal to the hash recorded by
-   the last run: no model call, no write.
+3. **Idempotence by hash:** sha256 over the screened prompts (id, session, time, text hash), the
+   model, `PROMPT_VERSION`, the registry's version and every profile slot (value, status, expiry).
+   A commit records it against the profile as the commit left it. Equal to the recorded hash: no
+   model call, no write.
 4. **One model call** over the screened window, oldest first and newest last, as one JSON data
    block; past `MAX_OBSERVATIONS` the newest are kept and the rest counted as `truncated`.
 5. **The model proposes** closed-set values only ({slot, value, evidence: [ids], correction}) and
@@ -29,7 +30,8 @@ snapshotted (each slot it changes and each stated slot) differs now. A prompt th
 meanwhile does not stale it: the next run recomputes and sees it.
 
 The job keeps its record in the store's candidate row (no schema change). Its `slots` field holds
-the envelope `{"pending", "window_hash", "profile", "snapshot", "conflicts", "observation_ids"}`;
+the envelope `{"pending", "window_hash", "window_digest", "profile", "snapshot", "conflicts",
+"observation_ids"}`;
 a row with `pending: false` is only the last run's record (its hash), nothing to review.
 Observations are marked consumed when a result is committed, for the store's own housekeeping
 (`users_with_pending`); the job never reads that flag.
@@ -202,24 +204,54 @@ def screen(
     return kept
 
 
+def _digest(payload: object) -> str:
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
+    return hashlib.sha256(blob).hexdigest()
+
+
+def window_digest(
+    sent: list[Observation], registry: SlotRegistry, *, model: str, version: str = PROMPT_VERSION
+) -> str:
+    """The model's side of a run: every prompt it reads (id, session, time, text), the model,
+    the prompt version and the slot registry."""
+    prompts = sorted(
+        [o.message_id, o.session_id, o.at.isoformat(), hashlib.sha256(o.text.encode()).hexdigest()]
+        for o in sent
+    )
+    return _digest([version, registry.version, model, prompts])
+
+
+def profile_digest(profile: dict[str, SlotValue]) -> str:
+    """The code's side: every slot's value, status and expiry, so a slot the learner set or
+    released, or one that expired, makes the next run recompute."""
+    return _digest(
+        sorted(
+            [
+                k,
+                json.dumps(v.value, sort_keys=True),
+                v.status,
+                v.expires_at and v.expires_at.isoformat(),
+            ]
+            for k, v in profile.items()
+        )
+    )
+
+
 def window_hash(
     sent: list[Observation],
-    stated: dict[str, Value],
+    profile: dict[str, SlotValue],
     registry: SlotRegistry,
     *,
+    model: str,
     version: str = PROMPT_VERSION,
 ) -> str:
-    """What a run's result depends on, besides the profile's inferred slots."""
-    payload = {
-        "version": version,
-        "registry": registry.version,
-        "prompts": sorted(
-            [o.message_id, hashlib.sha256(o.text.encode()).hexdigest()] for o in sent
-        ),
-        "stated": sorted([k, json.dumps(v, sort_keys=True)] for k, v in stated.items()),
-    }
-    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
-    return hashlib.sha256(blob).hexdigest()
+    """Everything a run's result depends on. A committed run records it against the profile as
+    the commit left it, so a rerun with nothing new matches."""
+    return _combine(window_digest(sent, registry, model=model, version=version), profile)
+
+
+def _combine(digest: str, profile: dict[str, SlotValue]) -> str:
+    return _digest([digest, profile_digest(profile)])
 
 
 # -- what the model sees -----------------------------------------------------------------------
@@ -288,9 +320,11 @@ def decide(
     profile: dict[str, SlotValue],
     registry: SlotRegistry,
     ignored: Counter,
+    since: datetime | None = None,
 ) -> tuple[list[dict], list[dict], dict[str, list[Evidence]]]:
     """The changes ({slot, old, new, reason}), the conflicts ({slot, a, b}) and each changed
-    slot's evidence, from the model's reply and nothing the reply cannot prove."""
+    slot's evidence, from the model's reply and nothing the reply cannot prove. `since` is the
+    window's start: a list item whose evidence is all older has dropped out."""
     shown = {o.message_id: o for o in sent}
     allowed = {s.key for s in job_slots(registry)}
 
@@ -353,6 +387,13 @@ def decide(
             ignored["conflict_reported"] += 1  # the slot keeps its value
             continue
         held = profile.get(key)
+        if registry.get(key).value_type == "list":
+            found = list(by_value.values())
+            decided = _decide_list(key, found, held, since, registry, conflicts, ignored)
+            if decided is not None:
+                changes.append(decided[0])
+                rows[key] = decided[1]
+            continue
         if held is not None:  # the current value is a rival, with its stored evidence
             current = by_value.setdefault(_canon(held.value), _Option(held.value, {}))
             for e in held.evidence:
@@ -386,6 +427,86 @@ def decide(
     return changes, conflicts, rows
 
 
+def _decide_list(key, options, held, since, registry, conflicts, ignored):
+    """A list slot is a set of items, not one value: the decided list is every item whose
+    evidence meets `min_sessions`, capped as the registry says, so it grows without a
+    correction. A held item leaves only when a correction strictly newer than all of its
+    evidence omits it, or when none of its evidence is in the window any more. Returns
+    (change, evidence) or None when the list stays as it is."""
+    corrections = [o for o in options if o.correction]
+    newest = {id(o): max(e.at for e in o.evidence.values()) for o in corrections}
+    correction = next(
+        (
+            c
+            for c in corrections
+            if all(newest[id(c)] > newest[id(o)] for o in corrections if o is not c)
+        ),
+        None,
+    )
+    if corrections and correction is None:
+        ignored["order_unclear"] += 1  # two corrections with no order between them
+        for other in corrections[1:]:
+            add_conflict(conflicts, key, corrections[0].value, other.value)
+        return None
+
+    def corrected_away(evidence: dict[str, Evidence], item: str) -> bool:
+        return (
+            correction is not None
+            and item not in correction.value
+            and all(e.at < newest[id(correction)] for e in evidence.values())
+        )
+
+    support: dict[str, dict[str, Evidence]] = {}  # item -> message_id -> evidence
+    for o in options:
+        for item in o.value:
+            support.setdefault(item, {}).update(o.evidence)
+    stored = {e.message_id: e for e in (held.evidence if held is not None else [])}
+    held_items = list(held.value) if held is not None else []
+
+    kept, gone, dropped = [], [], []
+    for item in held_items:
+        evidence = {**stored, **support.get(item, {})}
+        if corrected_away(evidence, item):
+            gone.append(item)
+        elif item not in support and not any(
+            since is None or e.at >= since for e in stored.values()
+        ):
+            dropped.append(item)  # no evidence left in the window
+        else:
+            kept.append(item)
+    added = []
+    min_sessions = registry.get(key).min_sessions
+    for item, evidence in support.items():
+        if item in held_items or item in added or corrected_away(evidence, item):
+            continue
+        sessions = {e.session_id for e in evidence.values()}
+        if item in (correction.value if correction is not None else ()):
+            sessions |= {e.session_id for o in options for e in o.evidence.values()}
+        if len(sessions) < min_sessions:
+            ignored["below_min_sessions"] += 1
+            continue
+        added.append(item)
+    value = registry.validate(key, kept + added) or []
+    if _canon(value) == _canon(held_items):
+        ignored["unchanged"] += 1
+        return None
+    if not value:
+        ignored["list_would_empty"] += 1  # the job never deletes a slot; its shelf life does
+        return None
+    if gone:
+        reason = f"correction of {held.value!r}"
+    elif dropped:
+        reason = f"{dropped!r} left the window"
+    else:
+        reason = "new" if held is None else f"grew from {held.value!r}"
+    evidence = {**{m: e for m, e in stored.items() if since is None or e.at >= since}}
+    for item in value:
+        evidence.update(support.get(item, {}))
+    old = held.value if held is not None else None
+    change = {"slot": key, "old": old, "new": value, "reason": reason}
+    return change, sorted(evidence.values(), key=lambda e: e.at)
+
+
 # -- the job -----------------------------------------------------------------------------------
 
 
@@ -416,7 +537,8 @@ def run_job(
     if len(screened) > len(sent):
         ignored["truncated"] = len(screened) - len(sent)
     stated = {k: v.value for k, v in profile.items() if v.status == "stated"}
-    result.window_hash = window_hash(sent, stated, registry)
+    digest = window_digest(sent, registry, model=model)
+    result.window_hash = _combine(digest, profile)
     if result.window_hash == _last_hash(store, user_id):
         result.ignored = dict(ignored)
         return result  # nothing new since the last run: no call, no write
@@ -425,14 +547,17 @@ def run_job(
     if data is None:
         result.ignored = dict(ignored)
         return result  # nothing recorded: the next run asks again
-    changes, conflicts, rows = decide(data, sent, profile, registry, ignored)
+    since = now - timedelta(days=WINDOW_DAYS)
+    changes, conflicts, rows = decide(data, sent, profile, registry, ignored, since)
     result.ignored = dict(ignored)
     result.changes, result.conflicts = changes, conflicts
     result.candidate.update({c["slot"]: c["new"] for c in changes})
 
     envelope = {
-        "pending": mode == "candidate" and bool(changes or conflicts),
+        # Only changes make a candidate; conflicts alone are reported in the result and recorded.
+        "pending": mode == "candidate" and bool(changes),
         "window_hash": result.window_hash,
+        "window_digest": digest,
         "profile": {
             c["slot"]: {"value": c["new"], "evidence": [_evidence_row(e) for e in rows[c["slot"]]]}
             for c in changes
@@ -559,7 +684,8 @@ def _commit(store, user_id, now, registry, load) -> WriteResult:
                 )  # fmt: skip
                 if not written.applied:
                     raise _Refused(written)
-            record = {"pending": False, "window_hash": envelope["window_hash"]}
+            after = _combine(envelope["window_digest"], store.get_profile(user_id))
+            record = {"pending": False, "window_hash": after}
             for write in (
                 store.mark_consumed(user_id, envelope.get("observation_ids") or [], now),
                 store.set_candidate(user_id, record, []),

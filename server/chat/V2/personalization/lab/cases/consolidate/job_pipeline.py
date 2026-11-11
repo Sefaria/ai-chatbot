@@ -84,18 +84,26 @@ class JobPipeline:
         self._jobs_with_call += 1 if result.llm_calls else 0  # a run makes at most one call
         self._proposed += len(result.changes)
         applied = result.applied
+        # Committed: the run's result reached the store (its record, or its slots).
+        committed = result.write is not None and result.write.applied
         # Only a candidate this press wrote: a leftover one is neither counted nor applied again.
         if self.mode == "candidate" and result.candidate_written:
             self._diagnostics["candidates"] += 1
             outcome = apply_candidate(self.store, user_id, now=now, registry=self.registry)
+            committed = outcome.applied
             if outcome.applied:
                 self._diagnostics["applied_candidates"] += 1
-                applied = bool(result.changes)  # a conflicts-only candidate writes no slot
+                applied = True  # a candidate is written only when it has changes
             else:
                 self._diagnostics[f"apply_refused_{outcome.reason}"] += 1
         if applied:
             self._changes += len(result.changes)
-        self.record_conflicts(user_id, result.conflicts)
+        # Each run recomputes the whole window, so the conflicts of the last committed run that
+        # asked the model are the ones that stand: one a later run resolved is no longer marked,
+        # and a refused result marks nothing.
+        if result.llm_calls and committed:
+            self._conflicts[user_id] = []
+            self.record_conflicts(user_id, result.conflicts)
 
     def record_conflicts(self, user_id: str, conflicts: list[dict]) -> None:
         """A conflict a later run reports again (in either order) is counted once."""

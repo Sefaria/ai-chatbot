@@ -466,19 +466,154 @@ def test_a_min_sessions_slot_activates_on_the_run_after_its_second_session(store
     assert rerun.llm_calls == 0 and rerun.changes == [] and state(store) == before
 
 
-def test_the_hash_covers_texts_stated_slots_and_the_prompt_version(store, registry):
+def test_the_hash_covers_the_window_the_profile_the_model_and_the_prompt_version(store, registry):
     observe(store, "m1", HEBREW_1, day(-3))
     sent = store.observations("u1")
-    base = window_hash(sent, {}, registry)
-    assert base == window_hash(sent, {}, registry)
-    assert window_hash([replace(sent[0], text="other")], {}, registry) != base
-    assert window_hash(sent, {"hebrew_fluency": "none"}, registry) != base
-    assert window_hash(sent, {}, registry, version=PROMPT_VERSION + "x") != base
-    # A stated slot set since the last run makes the next run recompute.
+
+    def h(sent=sent, profile=None, model="m", **kw):
+        return window_hash(sent, profile or {}, registry, model=model, **kw)
+
+    base = h()
+    assert base == h()
+    assert h([replace(sent[0], text="other")]) != base
+    assert h([replace(sent[0], session_id="other")]) != base
+    assert h([replace(sent[0], at=day(-2))]) != base
+    assert h(model="other") != base
+    assert h(version=PROMPT_VERSION + "x") != base
+    store.set_stated("u1", "hebrew_fluency", "none", day(-1))
+    stated = store.get_profile("u1")
+    assert h(profile=stated) != base
+    store.set_inferred("u1", "terminology_comfort", "new", [evidence()], NOW, day(5))
+    inferred = store.get_profile("u1")
+    assert h(profile=inferred) != h(profile=stated)
+    later = {
+        **inferred,
+        "terminology_comfort": replace(inferred["terminology_comfort"], expires_at=day(6)),
+    }
+    assert h(profile=later) != h(profile=inferred)
+
+
+def test_a_stated_slot_set_since_the_last_run_makes_the_next_run_recompute(store):
+    observe(store, "m1", HEBREW_1, day(-3))
     llm = llm_with(say())
     job(store, llm)
     store.set_stated("u1", "terminology_comfort", "new", day(-1))
     assert job(store, llm).llm_calls == 1 and job(store, llm).llm_calls == 0
+
+
+def test_another_model_on_the_same_window_is_called(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    llm = llm_with(say())
+    assert job(store, llm, model="model-a").llm_calls == 1
+    assert job(store, llm, model="model-a").llm_calls == 0
+    assert job(store, llm, model="model-b").llm_calls == 1
+    assert llm.calls[-1]["model"] == "model-b"
+
+
+def test_an_expired_or_released_inferred_slot_makes_the_next_run_recompute(store):
+    observe(store, "m1", "Show me Talmud sources", day(-3))
+    llm = llm_with(say([update("text_categories", ["Talmud"], "m1")]))
+    assert job(store, llm).applied  # text_categories has a 60-day shelf life
+    assert job(store, llm).llm_calls == 0
+    assert store.expire_user("u1", day(61)).applied
+    assert "text_categories" not in store.get_profile("u1")
+    again = job(store, llm)
+    assert again.llm_calls == 1 and again.applied
+    assert store.get_profile("u1")["text_categories"].value == ["Talmud"]
+    assert job(store, llm).llm_calls == 0
+    store.delete_slot("u1", "text_categories")
+    assert job(store, llm).llm_calls == 1
+
+
+# -- list slots ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mode", ["apply", "candidate"])
+def test_a_list_slot_grows_across_sessions_without_a_correction(store, mode):
+    def reply(system, user):
+        ids = sent_ids({"user": user})
+        updates = [update("text_categories", ["Talmud"], "m1")]
+        if "m2" in ids:
+            updates.append(update("text_categories", ["Midrash"], "m2"))
+        return say(updates)
+
+    llm = FakeLLMClient(reply)
+    observe(store, "m1", "Show me Talmud sources", day(-3), session="s1")
+    first = job(store, llm, mode=mode, now=day(-3))
+    apply_if_candidate(store, mode, first)
+    assert store.get_profile("u1")["text_categories"].value == ["Talmud"]
+    observe(store, "m2", "And some Midrash please", day(-1), session="s2")
+    second = job(store, llm, mode=mode)
+    assert second.conflicts == []
+    assert [(c["old"], c["new"]) for c in second.changes] == [(["Talmud"], ["Talmud", "Midrash"])]
+    apply_if_candidate(store, mode, second)
+    slot = store.get_profile("u1")["text_categories"]
+    assert slot.value == ["Talmud", "Midrash"]
+    assert {e.message_id for e in slot.evidence} == {"m1", "m2"}
+
+
+def test_a_list_slot_is_capped_as_the_registry_says(store):
+    observe(store, "m1", "Talmud, Midrash, Mishnah and Kabbalah", day(-1))
+    llm = llm_with(
+        say([update("text_categories", ["Talmud", "Midrash", "Mishnah", "Kabbalah"], "m1")])
+    )
+    assert store_value(job(store, llm), store) == ["Talmud", "Midrash", "Mishnah"]
+
+
+def store_value(result, store):
+    return store.get_profile("u1")["text_categories"].value
+
+
+def test_a_list_item_is_kept_when_the_model_does_not_mention_it_again(store):
+    store.set_inferred(
+        "u1", "text_categories", ["Talmud"], [evidence("Talmud", "s0", "m0", day(-5))], day(-5)
+    )
+    observe(store, "m2", "And some Midrash please", day(-1))
+    result = job(store, llm_with(say([update("text_categories", ["Midrash"], "m2")])))
+    assert result.changes[0]["new"] == ["Talmud", "Midrash"]
+
+
+def test_a_list_item_is_removed_by_a_newer_correction(store):
+    store.set_inferred(
+        "u1", "text_categories", ["Talmud"], [evidence("Talmud", "s0", "m0", day(-5))], day(-5)
+    )
+    observe(store, "m2", "Actually, I want Midrash not Talmud", day(-1))
+    result = job(
+        store, llm_with(say([update("text_categories", ["Midrash"], "m2", correction=True)]))
+    )
+    (change,) = result.changes
+    assert (change["old"], change["new"]) == (["Talmud"], ["Midrash"])
+    assert "correction" in change["reason"]
+    # An older "correction" removes nothing.
+    store.set_inferred(
+        "u1", "text_categories", ["Talmud"], [evidence("Talmud", "s0", "m0", NOW)], NOW
+    )
+    result = job(
+        store, llm_with(say([update("text_categories", ["Midrash"], "m2", correction=True)]))
+    )
+    assert result.changes[0]["new"] == ["Talmud", "Midrash"]
+
+
+def test_a_list_item_whose_evidence_left_the_window_drops_out(store):
+    store.set_inferred(
+        "u1", "text_categories", ["Talmud"], [evidence("Talmud", "s0", "m0", day(-40))], day(-40)
+    )
+    observe(store, "m2", "And some Midrash please", day(-1))
+    result = job(store, llm_with(say([update("text_categories", ["Midrash"], "m2")])))
+    assert result.changes[0]["new"] == ["Midrash"]
+    assert "left the window" in result.changes[0]["reason"]
+
+
+def test_a_conflicts_only_run_writes_no_candidate(store):
+    observe(store, "m1", HEBREW_1, day(-3))
+    observe(store, "m2", "I cannot read Hebrew at all", day(-2))
+    llm = llm_with(say([], [conflict("hebrew_fluency", "fluent", "none", ["m1"], ["m2"])]))
+    result = job(store, llm, mode="candidate")
+    assert result.conflicts == [{"slot": "hebrew_fluency", "a": "fluent", "b": "none"}]
+    assert not result.candidate_written and result.write.applied and not result.applied
+    assert pending_candidate(store, "u1") is None
+    assert apply_candidate(store, "u1", now=NOW).applied is False
+    assert job(store, llm, mode="candidate").llm_calls == 0  # recorded: nothing new, no call
 
 
 # -- candidates --------------------------------------------------------------------------------

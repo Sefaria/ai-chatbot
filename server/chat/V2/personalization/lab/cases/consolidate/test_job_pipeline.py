@@ -161,7 +161,10 @@ def test_only_a_candidate_this_run_wrote_is_counted_and_applied():
     pipeline = build({"mode": "candidate", "variant": MODEL}, FakeLLMClient(scripted))
     pipeline.on_turn("u:p", Turn("u:p", "s1", "t1", "Show me Talmud sources please", "ok", NOW_))
     # A pending candidate left by an earlier press (written, not applied) over the same window.
-    left = run_job(pipeline.store, "u:p", now=NOW_, llm=FakeLLMClient(scripted), mode="candidate")
+    left = run_job(
+        pipeline.store, "u:p", now=NOW_, llm=FakeLLMClient(scripted), mode="candidate",
+        registry=pipeline.registry, model=MODEL,
+    )  # fmt: skip
     assert left.candidate_written
     pipeline.run_job("u:p", NOW_)  # nothing new: no call, nothing written, nothing applied
     assert "candidates" not in pipeline.stats()["diagnostics"]
@@ -174,6 +177,57 @@ def test_a_conflict_repeated_by_later_runs_is_counted_once_in_either_order():
     pipeline.record_conflicts("u:p", [{"slot": "x", "a": "new", "b": "comfortable"}])
     pipeline.record_conflicts("u:p", [{"slot": "x", "a": "Comfortable", "b": "new"}])
     assert pipeline.conflicts_marked("u:p") == 1
+
+
+def _hebrew_turns(pipeline, *texts):
+    for i, text in enumerate(texts):
+        at = NOW_.replace(day=1 + i)
+        pipeline.on_turn("u:p", Turn("u:p", f"s{i}", f"h{i}", text, "ok", at))
+
+
+def _hebrew_model(conflicted):
+    def reply(system, user):
+        ids = [r["id"] for r in prompts_sent(user)]
+        updates = [
+            {"slot": "hebrew_fluency", "value": "fluent", "evidence": ids, "correction": False}
+        ]
+        conflicts = [
+            {"slot": "hebrew_fluency", "a": "fluent", "b": "none",
+             "evidence_a": ids[:1], "evidence_b": ids[1:2]}
+        ] if conflicted() else []  # fmt: skip
+        return json.dumps({"updates": updates, "conflicts": conflicts})
+
+    return reply
+
+
+def test_a_conflict_a_later_run_resolved_is_no_longer_marked():
+    state = {"conflicted": True}
+    pipeline = build(
+        {"mode": "apply", "variant": MODEL},
+        FakeLLMClient(_hebrew_model(lambda: state["conflicted"])),
+    )
+    _hebrew_turns(pipeline, "I read Hebrew well", "I cannot read Hebrew")
+    pipeline.run_job("u:p", NOW_.replace(day=3))
+    assert pipeline.conflicts_marked("u:p") == 1
+    pipeline.run_job("u:p", NOW_.replace(day=4))  # no call: the mark stays
+    assert pipeline.conflicts_marked("u:p") == 1
+    state["conflicted"] = False
+    _hebrew_turns(pipeline, "I read Hebrew well", "I cannot read Hebrew", "Hebrew is easy for me")
+    pipeline.run_job("u:p", NOW_.replace(day=5))
+    assert pipeline.conflicts_marked("u:p") == 0
+
+
+def test_the_conflicts_of_a_refused_candidate_are_not_recorded(monkeypatch):
+    from chat.V2.personalization.lab.cases.consolidate import job_pipeline
+    from chat.V2.personalization.types import WriteResult
+
+    monkeypatch.setattr(
+        job_pipeline, "apply_candidate", lambda *a, **k: WriteResult(False, "stale_revision", 0)
+    )
+    pipeline = build({"mode": "candidate", "variant": MODEL}, FakeLLMClient(scripted))
+    replay_persona(pipeline, persona())
+    assert pipeline.stats()["diagnostics"]["apply_refused_stale_revision"] >= 1
+    assert pipeline.conflicts_marked("u:p") == 0
 
 
 def test_select_items_samples_by_seed_and_leaves_other_datasets_whole():
