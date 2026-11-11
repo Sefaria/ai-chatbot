@@ -19,7 +19,7 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 - **Copy**: "You can continue to open the Library Assistant from the main menu." Then:
   - logged out: "To remove the Library Assistant from the main menu, **log in** or
     **sign up**." Each links straight to its flow (`/login`, `/register`) and back to the page.
-  - logged in: "To remove the Library Assistant from the main menu, go to **account settings**."
+  - logged in: "You can remove the Library Assistant from the main menu in **account settings**."
     Links to `/settings/account#libraryAssistantSetting`, the on/off setting.
   - "main menu" everywhere (not "Sefaria header" / "Sefaria menu").
   - Each sentence is one key with link placeholders, so translators can reorder it. All copy
@@ -41,8 +41,8 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 ## To do before merge
 
 - [ ] **Weblate strings**: enter the 11 `assistant.menu.*_floating_button` / `assistant.floating_button_modal.*`
-  keys with English and Hebrew (Penina, in Weblate). The English in this branch's `en.json` is
-  **preview-only**, so the Cauldron shows text before Weblate is hooked up. Once Weblate's PR
+  keys with English and Hebrew (Penina, in Weblate). The English and Hebrew in this branch's `en.json` and `he.json`
+  are **preview-only**, so the Cauldron shows text before Weblate is hooked up. Once Weblate's PR
   merges, merge `main` in and make the locale files match `main` exactly, so this PR carries keys
   only.
 - [ ] **Behavioral tests**: add more e2e coverage beyond `e2e/floating-button-setting.spec.js`

@@ -2172,8 +2172,8 @@
   };
   let floatingButtonNoteParts = $derived.by(() => {
     const [key, names] = isLoggedIn
-      ? ['assistant.floating_button_modal.settings_note_link', ['account_settings']]
-      : ['assistant.floating_button_modal.header_note_links', ['log_in', 'sign_up']];
+      ? ['assistant.floating_button_modal.main_menu_logged_in', ['account_settings']]
+      : ['assistant.floating_button_modal.main_menu_logged_out', ['log_in', 'sign_up']];
     const values = Object.fromEntries(names.map(name => [name, `\u0000${name}\u0000`]));
     return $_(key, { values })
       .split('\u0000')
