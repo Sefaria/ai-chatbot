@@ -10,7 +10,9 @@ import { AssistantPage } from './pages/assistantPage.js';
 async function setUp(page, context, lab) {
   await mockChatServer(context, { lab });
   const assistant = new AssistantPage(page);
-  await assistant.logIn();
+  // The lab UI needs the host's opt-in (?la_lab=1) as well as the server's permission.
+  await page.goto(`/?user-id=${encodeURIComponent('test-user-token')}&la_lab=1`);
+  await expect(assistant.host).toHaveCount(1);
   await assistant.open();
   return assistant;
 }
@@ -27,6 +29,17 @@ const compareToggle = (assistant) => assistant.host.getByLabel('Compare: persona
 test.describe('lab UI hidden', () => {
   test('nothing lab-related shows when the override is not allowed', async ({ page, context }) => {
     const assistant = await setUp(page, context, { allowed: false });
+    await expect(assistant.input).toBeVisible();
+    await expect(compareToggle(assistant)).toHaveCount(0);
+    await assistant.openMoreOptions();
+    await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
+  });
+
+  test('a user the server allows still sees nothing without the opt-in', async ({ page, context }) => {
+    await mockChatServer(context, { lab: { allowed: true } });
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    await assistant.open();
     await expect(assistant.input).toBeVisible();
     await expect(compareToggle(assistant)).toHaveCount(0);
     await assistant.openMoreOptions();
@@ -129,9 +142,34 @@ test.describe('profile tab', () => {
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify({ label: 'Synthetic learner', turns })),
     });
-    await expect(assistant.host.getByText('seeded 2 turns')).toBeVisible();
+    await expect(assistant.host.getByText('seeded 2 turns', { exact: true })).toBeVisible();
     expect(posted).toHaveLength(1);
     expect(posted[0].turns).toEqual(turns);
+  });
+
+  test('a rate-limited job run shows a clear message', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    await openProfile(assistant);
+    await page.route('**/v2/personalization/profile', (route) => {
+      if (route.request().postDataJSON().action === 'run_job') {
+        return route.fulfill({ status: 429, json: { error: 'rate_limited' } });
+      }
+      return route.fallback();
+    });
+    await assistant.host.getByRole('button', { name: 'Run the job' }).click();
+    await expect(assistant.host.getByText('Too many lab runs right now')).toBeVisible();
+  });
+
+  test('load learner reports skipped turns', async ({ page, context }) => {
+    const assistant = await setUp(page, context, { allowed: true });
+    await openProfile(assistant);
+    const turns = [{ user: 'Q one' }, { user: 'SKIPME two' }];
+    await assistant.host.getByLabel('Load learner file').setInputFiles({
+      name: 'learner.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ turns })),
+    });
+    await expect(assistant.host.getByText('seeded 1 turns, skipped 1')).toBeVisible();
   });
 });
 

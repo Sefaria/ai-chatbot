@@ -305,7 +305,7 @@ function createLabProfile({ slots = DEFAULT_LAB_SLOTS } = {}) {
           candidate = null;
           return route.fulfill({ json: { discarded: true } });
         case 'seed_persona':
-          return route.fulfill({ json: { seeded: body.turns.length } });
+          return route.fulfill({ json: { seeded: body.turns.length - (body.turns.filter((t) => t.user.includes('SKIPME')).length), skipped: body.turns.filter((t) => t.user.includes('SKIPME')).length } });
         default:
           return route.fulfill({ status: 400, json: { error: 'unknown_action' } });
       }

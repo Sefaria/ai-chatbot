@@ -240,8 +240,8 @@
     .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
-  // Personalization lab: everything lab-only is gated on the server's overrideAllowedForYou,
-  // so the normal widget is unchanged.
+  // Personalization lab: everything lab-only needs the host's opt-in (labRequested, below) AND
+  // the server's overrideAllowedForYou, so the normal widget is unchanged.
   let labMode = $state(false);
   let labCompare = $state(false);
   // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
@@ -277,7 +277,7 @@
     const anon = user ? '' : (labRequested ? getOrCreateAnonId() : getStorage(STORAGE_KEYS.ANON_ID, ''));
     fetchPersonalizationStatus(base, user, anon).then((status) => {
       if (!current) return;
-      labMode = status.overrideAllowedForYou === true;
+      labMode = labRequested && status.overrideAllowedForYou === true;
       if (!labMode) labCompare = false;
     });
     return () => { current = false; };

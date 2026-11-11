@@ -27,6 +27,7 @@
   const MAX_SEED_TURNS = 60;
 
   function describe(e) {
+    if (e?.status === 429) return 'Too many lab runs right now. Wait a little and try again.';
     return e?.message || 'Request failed.';
   }
 
@@ -161,7 +162,7 @@
         return;
       }
       const result = await personalizationProfileAction(apiBaseUrl, userId, 'seed_persona', { turns });
-      seedMessage = `seeded ${result?.seeded ?? turns.length} turns`;
+      seedMessage = `seeded ${result?.seeded ?? turns.length} turns` + (result?.skipped ? `, skipped ${result.skipped}` : '');
       await refresh();
     } catch (e) {
       seedError = describe(e);
