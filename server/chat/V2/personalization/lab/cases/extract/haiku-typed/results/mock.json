@@ -1,0 +1,206 @@
+{
+ "case_sha": "3503a29e75c69ba34c652c2e884949020bd44ad0",
+ "cost": {
+  "calls": 18,
+  "in_tokens": 16185,
+  "out_tokens": 1402,
+  "typed_requests": 13,
+  "usd": 0.023195
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 5,
+  "name": "mock",
+  "sha256": "972fe70b8520b4fdf944f7c27e15c9981f467f3e6f105ed818a42bce04c470f6"
+ },
+ "git_sha": "e224d06125eaa2366ed3044ef060d2861978a6e1",
+ "id": "extract/haiku-typed",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "calls_per_turn": 1.2857142857142858,
+  "fill_rate_at_k@2": 0.8571428571428571,
+  "fill_rate_at_k@4": null,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.6,
+  "flips_per_10_turns": 0.0,
+  "over_inferred": 0.047619047619047616,
+  "over_inferred_on@language": null,
+  "over_inferred_on@text_categories": 0.0,
+  "run_agreement": null,
+  "sensitive_dropped_share": 0.07142857142857142,
+  "slot_accuracy": 0.8571428571428571,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.6666666666666666,
+  "usd_per_1000_turns": 1.6567857142857143
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "preferred_language": "he",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "basic",
+    "preferred_language": "en"
+   },
+   "persona": "cal",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "dee",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en",
+    "terminology_comfort": "comfortable"
+   },
+   "persona": "eve",
+   "turns": 3,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   18,
+   14
+  ],
+  "fill_rate_at_k@2": [
+   12,
+   14
+  ],
+  "fill_rate_at_k@4": [
+   0,
+   0
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   3,
+   5
+  ],
+  "flips_per_10_turns": [
+   0,
+   14
+  ],
+  "over_inferred": [
+   1,
+   21
+  ],
+  "over_inferred_on@language": [
+   0,
+   0
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   2
+  ],
+  "sensitive_dropped_share": [
+   1,
+   14
+  ],
+  "slot_accuracy": [
+   12,
+   14
+  ],
+  "slot_accuracy_on@language": [
+   5,
+   5
+  ],
+  "slot_accuracy_on@text_categories": [
+   2,
+   3
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T07:25:38+00:00",
+ "steps": [
+  {
+   "n_in": 14,
+   "n_out": 14,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 14,
+   "n_out": 13,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 5,
+   "n_out": 13,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 5,
+   "n_out": 15,
+   "name": "score"
+  }
+ ]
+}
