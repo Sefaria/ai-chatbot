@@ -1,0 +1,137 @@
+{
+ "case_sha": "1cec35f61766a1c854c98c3c222f19b2df2f22ff",
+ "cost": {
+  "calls": 9,
+  "in_tokens": 28668,
+  "out_tokens": 10963,
+  "typed_requests": 0,
+  "usd": 0.0
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 9,
+  "name": "syn1",
+  "sha256": "377d7e13880684ea1afbe0273e276838fdda5c3b4245c89b5799dd8a0f4a6fab"
+ },
+ "git_sha": "75a57c336ffc9482a7929a44a012d5e4f93a939a",
+ "id": "reverify/label-agreement",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "label_agreement": 0.78,
+  "label_agreement@answer_style": 0.7777777777777778,
+  "label_agreement@hebrew_fluency": 0.5555555555555556,
+  "label_agreement@learning_habits": 1.0,
+  "label_agreement@preferred_language": 1.0,
+  "label_agreement@register": null,
+  "label_agreement@terminology_comfort": 1.0,
+  "label_agreement@text_categories": 0.4444444444444444,
+  "label_both_empty_share": 0.20634920634920634
+ },
+ "model": "claude-opus-5-5",
+ "per_item": [
+  {
+   "id": "rachel-anon",
+   "label": "golden",
+   "predicted": "AAABFAB"
+  },
+  {
+   "id": "rebecca-veteran",
+   "label": "golden",
+   "predicted": "ADABDAA"
+  },
+  {
+   "id": "david-daf",
+   "label": "golden",
+   "predicted": "AAABDFA"
+  },
+  {
+   "id": "miriam-evolving",
+   "label": "golden",
+   "predicted": "ADABDAA"
+  },
+  {
+   "id": "yossi-sensitive",
+   "label": "golden",
+   "predicted": "AAABAAA"
+  },
+  {
+   "id": "tamar-instruction",
+   "label": "golden",
+   "predicted": "AFABAAB"
+  },
+  {
+   "id": "avi-mixed",
+   "label": "golden",
+   "predicted": "AAABAAB"
+  },
+  {
+   "id": "sarah-paste",
+   "label": "golden",
+   "predicted": "AAABAAB"
+  },
+  {
+   "id": "noam-stale",
+   "label": "golden",
+   "predicted": "AFABDFA"
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "label_agreement": [
+   39,
+   50
+  ],
+  "label_agreement@answer_style": [
+   7,
+   9
+  ],
+  "label_agreement@hebrew_fluency": [
+   5,
+   9
+  ],
+  "label_agreement@learning_habits": [
+   5,
+   5
+  ],
+  "label_agreement@preferred_language": [
+   9,
+   9
+  ],
+  "label_agreement@register": [
+   0,
+   0
+  ],
+  "label_agreement@terminology_comfort": [
+   9,
+   9
+  ],
+  "label_agreement@text_categories": [
+   4,
+   9
+  ],
+  "label_both_empty_share": [
+   13,
+   63
+  ]
+ },
+ "run": 2,
+ "schema": 1,
+ "started_at": "2026-11-11T11:27:01+00:00",
+ "steps": [
+  {
+   "n_in": 9,
+   "n_out": 9,
+   "name": "assign_vocabulary"
+  },
+  {
+   "n_in": 9,
+   "n_out": 9,
+   "name": "score"
+  }
+ ]
+}
