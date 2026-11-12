@@ -107,6 +107,15 @@ def override_allowed(settings, persistent_user_id: str) -> bool:
         and not _production_environment()
     ):
         return True  # a lab deployment only: every anonymous visitor may use the override
+    if (
+        persistent_user_id
+        and not persistent_user_id.startswith(ANON_PREFIX)
+        and os.environ.get("PERSONALIZATION_OVERRIDE_ALLOW_ALL") == "true"
+        and not _production_environment()
+    ):
+        # A lab deployment reached from Sefaria with ?chatbot_version=<n>: every signed-in
+        # visitor may use the override, as anonymous ones may with ALLOW_ANON.
+        return True
     allowed = _allowlist(getattr(settings, "PERSONALIZATION_OVERRIDE_USER_IDS", ""))
     return bool(persistent_user_id) and persistent_user_id in allowed
 

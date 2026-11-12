@@ -436,7 +436,9 @@ def _run(action: str, data: dict, store_user_id: str, mode: str):
         service = runtime.get_service("explicit")
         return _write_json(service.set_stated(store_user_id, slot, value, now))
     # run_batch: the nightly consolidation for this one store user, synchronously.
-    if store_user_id.startswith(gate.ANON_PREFIX):  # the lab uses run_job; same 404 as the gate
+    # The lab uses run_job; on a lab deployment nobody runs the batch (it holds a transaction across
+    # a model call), and anonymous ids never do. Same 404 as the gate.
+    if store_user_id.startswith(gate.ANON_PREFIX) or _lab_deployment():
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     service = runtime.get_service(data.get("mode") or mode)
     if service is None or service.strategy is None:

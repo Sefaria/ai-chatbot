@@ -10,7 +10,7 @@ import { AssistantPage } from './pages/assistantPage.js';
 async function setUp(page, context, lab) {
   await mockChatServer(context, { lab });
   const assistant = new AssistantPage(page);
-  // The lab UI needs the host's opt-in (?la_lab=1) as well as the server's permission.
+  // ?la_lab=1 is the host's opt-in; only anonymous visitors need it, signed-in users rely on the server.
   await page.goto(`/?user-id=${encodeURIComponent('test-user-token')}&la_lab=1`);
   await expect(assistant.host).toHaveCount(1);
   await assistant.open();
@@ -35,15 +35,34 @@ test.describe('lab UI hidden', () => {
     await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
   });
 
-  test('a user the server allows still sees nothing without the opt-in', async ({ page, context }) => {
+  test('a signed-in user the lab server allows sees the lab without the opt-in', async ({ page, context }) => {
+    // Sefaria's ?chatbot_version=<n> loads the widget on pages whose URL Sefaria rewrites, so a
+    // signed-in user relies on the server alone: overrideAllowedForYou and labEnabled.
     await mockChatServer(context, { lab: { allowed: true } });
     const assistant = new AssistantPage(page);
     await assistant.logIn();
     await assistant.open();
+    await expect(compareToggle(assistant)).toHaveCount(1);
+
+    const requests = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    });
+    await compareToggle(assistant).check();
+    await assistant.send('What is a mitzvah?');
+    await expect(assistant.host.getByTestId('lab-compare-plain')).toContainText('Plain answer.');
+    expect(requests).toHaveLength(2);
+    // The personalized arm asks for hybrid, the plain arm for off: not both off.
+    expect(requests.map((r) => r.context.personalizationMode).sort()).toEqual(['hybrid', 'off']);
+  });
+
+  test('a logged-out visitor sees nothing without the opt-in', async ({ page, context }) => {
+    await mockChatServer(context, { lab: { allowed: true } });
+    const assistant = new AssistantPage(page);
+    await page.goto('/');
+    await assistant.open();
     await expect(assistant.input).toBeVisible();
     await expect(compareToggle(assistant)).toHaveCount(0);
-    await assistant.openMoreOptions();
-    await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
   });
 
   test('allowed and opted in but the server has no lab (labEnabled false) shows nothing', async ({ page, context }) => {

@@ -49,6 +49,7 @@ def honoured():
 def environment(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "preview")
     monkeypatch.delenv("PERSONALIZATION_OVERRIDE_ALLOW_ANON", raising=False)
+    monkeypatch.delenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -489,3 +490,44 @@ def test_anon_run_batch_is_404(lab_env):
         HTTP_ORIGIN=LAB_ORIGIN,
     )
     assert response.status_code == 404
+
+
+# -- signed-in visitors on a lab deployment (Sefaria ?chatbot_version=<n>) ------------------------
+
+
+def test_signed_in_refused_without_allow_all(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "lab")
+    assert gate.override_allowed(settings_for(), "someone-registered") is False
+
+
+def test_signed_in_allowed_with_allow_all_in_lab(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "lab")
+    monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", "true")
+    assert gate.override_allowed(settings_for(), "someone-registered") is True
+    assert gate.override_allowed(settings_for(), "") is False
+
+
+@pytest.mark.parametrize("environment", ["production", "prod", "beta", ""])
+def test_allow_all_refused_in_production(monkeypatch, environment):
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", "true")
+    assert gate.override_allowed(settings_for(), "someone-registered") is False
+
+
+def test_allow_all_refused_when_override_disabled(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "lab")
+    monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", "true")
+    disabled = SimpleNamespace(
+        PERSONALIZATION_OVERRIDE_ENABLED=False, PERSONALIZATION_OVERRIDE_USER_IDS=""
+    )
+    assert gate.override_allowed(disabled, "someone-registered") is False
+
+
+def test_run_batch_is_404_on_a_lab_deployment(honoured, seed_on):
+    assert profile("run_batch", mode="hybrid").status_code == 404
+
+
+def test_allow_all_does_not_open_anonymous_ids(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "lab")
+    monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", "true")
+    assert gate.override_allowed(settings_for(), ANON) is False

@@ -242,8 +242,8 @@
     .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
-  // Personalization lab: everything lab-only needs the host's opt-in (labRequested, below) AND
-  // the server's overrideAllowedForYou, so the normal widget is unchanged.
+  // Personalization lab: everything lab-only needs the server's overrideAllowedForYou and labEnabled;
+  // an anonymous visitor also needs the host's opt-in (labRequested, below). Signed-in users don't.
   let labMode = $state(false);
   let labCompare = $state(false);
   // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
@@ -265,7 +265,7 @@
   }
   let settingsTab = $state('prompts');
 
-  // Opt-in from the host page attribute or ?la_lab=1; without it nothing below changes.
+  // Opt-in from the host page attribute or ?la_lab=1; anonymous visitors need it, signed-in users don't.
   const labRequested = (() => {
     try {
       if (new URLSearchParams(window.location.search).get('la_lab') === '1') return true;
@@ -281,7 +281,9 @@
     const anon = user ? '' : (labRequested ? getOrCreateAnonId() : getStorage(STORAGE_KEYS.ANON_ID, ''));
     fetchPersonalizationStatus(base, user, anon).then((status) => {
       if (!current) return;
-      labMode = labRequested && status.overrideAllowedForYou === true && status.labEnabled === true;
+      // A signed-in user needs no opt-in: Sefaria rewrites the page URL before the widget mounts, and
+      // only a lab deployment answers labEnabled. Anonymous visitors still need the opt-in.
+      labMode = (labRequested || !!user) && status.overrideAllowedForYou === true && status.labEnabled === true;
       if (!labMode) labCompare = false;
     });
     return () => { current = false; };
@@ -1754,7 +1756,7 @@
         timestamp: userMessage.timestamp
       }, interfaceLang, {
         signal: request.controller.signal, source,
-        contextDefaults: labMode && labRequested ? { personalizationMode: 'hybrid' } : null
+        contextDefaults: labMode ? { personalizationMode: 'hybrid' } : null
       }), request.controller.signal);
 
       // Let the delayed playback and the last word's fade finish before
