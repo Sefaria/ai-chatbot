@@ -295,11 +295,12 @@ def test_a_prompt_saved_during_the_run_is_left_for_the_next_run():
 
 def test_a_held_lock_is_busy():
     two_sessions()
-    assert quota.acquire_job_lock(USER, NOW)
+    lease = quota.acquire_job_lock(USER, NOW)
+    assert lease
     llm = model()
     result = run(llm)
     assert result.status == "busy" and llm.calls == []
-    quota.release_job_lock(USER)
+    quota.release_job_lock(USER, lease)
     assert run(model()).status != "busy"
 
 

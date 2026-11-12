@@ -49,6 +49,7 @@ _HIDE_SOURCES = re.compile(
 REASONS = {
     "never_store": "LA does not keep anything about health, family, location, observance or the like.",
     "hide_sources": "Hiding sources or voices belongs in Instructions, where you set the wording.",
+    "profile_off": "Your Profile is off. Turn it on in Settings to change it.",
     "empty": "Tell LA what to change, in a few words.",
     "bad_reply": "LA could not make that change. Please try again.",
     "changed": "Your Profile changed while LA was working. Please try again.",
@@ -118,6 +119,8 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
 
 
 def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
+    if not get_settings(user_id).profile_enabled:
+        return _refuse("profile_off")
     text = clean_text(request or "")[:MAX_REQUEST]
     if not text:
         return _refuse("empty")

@@ -21,6 +21,7 @@ from chat.V2.prompts.prompt_fragments import (
     CONVERSATION_SUMMARY_SECTION,
     PAGE_CONTEXT_SECTION,
     SECTION_SEPARATOR,
+    USER_INSTRUCTIONS_NOTE,
     build_prompt,
 )
 
@@ -147,6 +148,17 @@ def test_order():
     assert CHAPTER in prompt
 
 
+def test_the_instructions_note_follows_the_instructions_block_only():
+    both, _ = build_prompt("q", core_prompt="CORE", instructions_text="INS", profile_text="PROF")
+    assert f"</user_instructions>\n{USER_INSTRUCTIONS_NOTE}" in both
+    assert both.index(USER_INSTRUCTIONS_NOTE) < both.index("<user_profile>")
+    only_prof, _ = build_prompt("q", core_prompt="CORE", profile_text="PROF")
+    assert USER_INSTRUCTIONS_NOTE not in only_prof
+    neither, _ = build_prompt("q", core_prompt="CORE")
+    assert USER_INSTRUCTIONS_NOTE not in neither
+    assert "never override" in USER_INSTRUCTIONS_NOTE and "sources" in USER_INSTRUCTIONS_NOTE
+
+
 def test_turn_prompt_carries_the_blocks():
     context = MessageContext(instructions_text="INS", profile_text="PROF")
     result = build_turn_prompt(
@@ -265,6 +277,19 @@ def test_notice_once(lab_on):
     assert first.notice is True and first.meta["notice_shown"] is True
     second = runtime.context_for_request("u1", plain=False)
     assert second.notice is False and second.meta["notice_shown"] is False
+
+
+@pytest.mark.django_db
+def test_no_notice_on_a_turn_without_the_profile_block(lab_on):
+    seed("u1")
+    store.set_enabled("u1", "profile", False)
+    store.PersonalizationSettings.objects.filter(user_id="u1").update(notice_pending=True)
+    context = runtime.context_for_request("u1", plain=False)
+    assert context.profile_text is None and context.instructions_text
+    assert context.notice is False and context.meta["notice_shown"] is False
+    assert store.get_settings("u1").notice_pending  # kept for the turn that does show the Profile
+    store.set_enabled("u1", "profile", True)
+    assert runtime.context_for_request("u1", plain=False).notice is True
 
 
 @pytest.mark.django_db

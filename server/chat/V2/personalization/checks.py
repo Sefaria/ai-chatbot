@@ -12,7 +12,7 @@ from django.conf import settings
 from .llm import LLMClient
 from .parsing import clean_text
 from .profile_store import SectionData, render_profile
-from .signals import is_sensitive
+from .signals import is_sensitive, is_user_statement
 
 MAX_WORDS = 150
 MAX_DYNAMIC = 4
@@ -21,7 +21,8 @@ MAX_DYNAMIC = 4
 _NEVER_STORE_EXTRA = re.compile(
     r"\b(orthodox|haredi|hasidic|chasidic|reform|reconstructionist|secular|observant|"
     r"shomer (shabbat|shabbos|mitzvot)|lives in|living in|based in|resides?|your (wife|husband|"
-    r"children|kids|son|daughter|mother|father|parents|family))\b",
+    r"children|kids|son|daughter|mother|father|parents|family)|"
+    r"you (live|are based|reside) in|you are (orthodox|reform|haredi|secular|a convert))\b",
     re.IGNORECASE,
 )
 
@@ -49,7 +50,7 @@ def _normalize_verdict(text: str) -> str:
 
 def never_store_text(text: str) -> bool:
     """The code screen for never-store content: sensitive categories plus the term list."""
-    return bool(is_sensitive(text) or _NEVER_STORE_EXTRA.search(text))
+    return bool(is_sensitive(text) or is_user_statement(text) or _NEVER_STORE_EXTRA.search(text))
 
 
 def normalize_heading(heading: str) -> str:
