@@ -1,8 +1,8 @@
 """The settings endpoint: the access-control surface of personalization. Made-up text only."""
 
 import hashlib
+import json
 import logging
-import sys
 import types
 from datetime import timedelta
 
@@ -10,9 +10,13 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from chat.models import ProfileWriterRun
 from chat.tests.test_streaming_integration import create_test_token
+from chat.V2.personalization import profile_edit, profile_job, quota
 from chat.V2.personalization import profile_store as store
+from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.profile_store import SectionData
+from chat.V2.prompts.chapters import load_chapter
 
 pytestmark = pytest.mark.django_db
 
@@ -301,20 +305,20 @@ def test_clear_then_get(client):
     assert profile["updatedBy"] is None
 
 
-def test_501_until_later_tasks_land(client, lab, monkeypatch):
-    for name in ("profile_edit", "profile_job", "health"):
-        monkeypatch.setitem(sys.modules, f"chat.V2.personalization.{name}", None)
-    assert call(client, "edit_profile", request="more on parsha").status_code == 501
-    assert call(client, "run_now", kind="session").status_code == 501
-    assert call(client, "health").status_code == 501
-
-
-def fake_module(monkeypatch, name, **attrs):
-    module = types.ModuleType(f"chat.V2.personalization.{name}")
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    monkeypatch.setitem(sys.modules, f"chat.V2.personalization.{name}", module)
-    return module
+def test_the_three_actions_are_live(client, lab, monkeypatch):
+    """No placeholder answers any more: each action reaches its module (a fake model, no network)."""
+    monkeypatch.setattr(
+        profile_edit, "AnthropicLLMClient", lambda: FakeLLMClient(lambda s, u: "not json")
+    )
+    r = call(client, "edit_profile", request="more on parsha")
+    assert r.status_code == 200 and r.json()["edit"]["status"] == "refused"
+    r = call(client, "run_now", kind="session")
+    assert r.status_code == 200 and r.json()["run"] == {
+        "status": "no_change",
+        "reason": "no_new_prompts",
+    }
+    r = call(client, "health")
+    assert r.status_code == 200 and [j["name"] for j in r.json()["jobs"]] == ["session", "dream"]
 
 
 def test_edit_profile_routes_and_validates(client, monkeypatch):
@@ -324,7 +328,7 @@ def test_edit_profile_routes_and_validates(client, monkeypatch):
         seen.append((user_id, request))
         return "refused", "too vague"
 
-    fake_module(monkeypatch, "profile_edit", edit_profile=edit_profile)
+    monkeypatch.setattr(profile_edit, "edit_profile", edit_profile)
     r = call(client, "edit_profile", request="make it better")
     assert r.status_code == 200
     assert r.json()["edit"] == {"status": "refused", "reason": "too vague"}
@@ -338,7 +342,7 @@ def test_edit_profile_routes_and_validates(client, monkeypatch):
 
 def test_edit_profile_quota_429(client, monkeypatch):
     monkeypatch.setenv("PERSONALIZATION_EDIT_PER_HOUR", "1")
-    fake_module(monkeypatch, "profile_edit", edit_profile=lambda u, r, **_: ("applied", "ok"))
+    monkeypatch.setattr(profile_edit, "edit_profile", lambda u, r, **_: ("applied", "ok"))
     assert call(client, "edit_profile", request="one").status_code == 200
     r = call(client, "edit_profile", request="two")
     assert r.status_code == 429 and r.json() == {"error": "quota"}
@@ -359,7 +363,7 @@ def test_run_now_routes_and_maps_results(client, lab, monkeypatch):
         calls.append((user_id, trigger, kw))
         return next(results)
 
-    fake_module(monkeypatch, "profile_job", run_profile_job=run_profile_job)
+    monkeypatch.setattr(profile_job, "run_profile_job", run_profile_job)
     r = call(client, "run_now", kind="dream")
     assert r.status_code == 200 and r.json()["run"] == {"status": "applied", "reason": None}
     assert calls[0][0] == USER_A and calls[0][1] == "run_now" and calls[0][2]["window"] == "dream"
@@ -371,16 +375,113 @@ def test_run_now_routes_and_maps_results(client, lab, monkeypatch):
     assert call(client, "run_now", kind="weekly").status_code == 400
 
 
-def test_health_routes(client, lab, monkeypatch):
-    fake_module(
-        monkeypatch,
-        "health",
-        snapshot=lambda: {
-            "jobs": [{"name": "x", "lastRunAt": None, "lastWriteAt": None, "parked": 0}]
-        },
+def test_run_now_dream_runs_the_real_dream(client, lab, monkeypatch):
+    from chat.V2.personalization.tests.test_profile_store import add_prompt
+
+    add_prompt(USER_A, "a question", session="s1", at=timezone.now() - timedelta(days=1))
+    seen = []
+
+    def respond(system, user):
+        seen.append(system)
+        if system == load_chapter("profile_dream"):
+            return json.dumps(
+                {
+                    "sections": [
+                        {
+                            "key": "answer_style",
+                            "heading": "",
+                            "body": "You like short answers.",
+                            "origin": "inferred",
+                            "support": [1],
+                        }
+                    ]
+                }
+            )
+        return "no"
+
+    monkeypatch.setattr(profile_job, "AnthropicLLMClient", lambda: FakeLLMClient(respond))
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key-not-real")
+    r = call(client, "run_now", kind="dream")
+    assert r.status_code == 200 and r.json()["run"]["status"] == "applied"
+    assert r.json()["profile"]["sections"][0]["body"] == "You like short answers."
+    assert ProfileWriterRun.objects.get().window == "dream"
+
+
+def test_run_now_when_a_job_holds_the_lock_is_200_busy(client, lab):
+    assert quota.acquire_job_lock(USER_A, timezone.now())
+    r = call(client, "run_now", kind="session")
+    assert r.status_code == 200 and r.json()["run"]["status"] == "busy"
+
+
+def test_run_now_quota_is_429_through_the_real_job(client, lab, monkeypatch):
+    from chat.V2.personalization.tests.test_profile_store import add_prompt
+
+    add_prompt(USER_A, "a question", session="s1", at=timezone.now() - timedelta(days=1))
+    monkeypatch.setenv("PERSONALIZATION_JOB_PER_HOUR", "0")
+    monkeypatch.setattr(profile_job, "AnthropicLLMClient", lambda: FakeLLMClient(lambda s, u: ""))
+    r = call(client, "run_now", kind="session")
+    assert r.status_code == 429 and r.json() == {"error": "quota"}
+
+
+def test_edit_profile_applies_through_the_real_module(client, monkeypatch):
+    rev = store.get_settings(USER_A).profile_revision
+    store.replace_sections(
+        USER_A,
+        rev,
+        [
+            SectionData(
+                "current_interests",
+                "core",
+                "Current interests",
+                "You study widely.",
+                "inferred",
+                timezone.now(),
+                0,
+            )
+        ],
+        updated_by="la",
+        processed_through=None,
+        set_notice=False,
     )
+
+    def respond(system, user):
+        if system == load_chapter("profile_edit"):
+            return json.dumps(
+                {
+                    "status": "applied",
+                    "reason": "Done.",
+                    "sections": [
+                        {
+                            "key": "current_interests",
+                            "heading": "",
+                            "body": "You study only parsha.",
+                        }
+                    ],
+                }
+            )
+        return "no"
+
+    monkeypatch.setattr(profile_edit, "AnthropicLLMClient", lambda: FakeLLMClient(respond))
+    r = call(client, "edit_profile", request="only in the context of parsha")
+    assert r.status_code == 200 and r.json()["edit"]["status"] == "applied"
+    assert r.json()["profile"]["updatedBy"] == "you_la"
+    assert r.json()["profile"]["sections"][0]["body"] == "You study only parsha."
+
+
+def test_health_routes(client, lab):
+    store.record_run(user_id=USER_A, trigger="idle", window="dream", status="applied")
     r = call(client, "health")
-    assert r.status_code == 200 and r.json()["jobs"][0]["name"] == "x"
+    assert r.status_code == 200
+    jobs = {j["name"]: j for j in r.json()["jobs"]}
+    assert jobs["session"] == {
+        "name": "session",
+        "lastRunAt": None,
+        "lastWriteAt": None,
+        "parked": 0,
+    }
+    assert (
+        jobs["dream"]["lastRunAt"] and jobs["dream"]["lastWriteAt"] and jobs["dream"]["parked"] == 0
+    )
     assert r["Cache-Control"] == "no-store, private"
 
 

@@ -24,7 +24,7 @@ from rest_framework.response import Response
 
 from ...auth import AuthenticationError, UserTokenExpired, authenticate_request
 from ...serializers import IdentitySerializerMixin
-from . import gate, profile_store, quota
+from . import gate, health, profile_edit, profile_job, profile_store, quota
 
 logger = logging.getLogger("chat")
 audit_logger = logging.getLogger("chat.personalization.audit")
@@ -170,10 +170,6 @@ def _handle(action: str, user_id: str, data: dict):
         request_text = request_text.strip()
         if len(request_text) > MAX_REQUEST:
             return _bad_request("too_long", max=MAX_REQUEST)
-        try:
-            from . import profile_edit  # late: lands with a later task
-        except ImportError:
-            return _respond({"error": "not_implemented"}, status.HTTP_501_NOT_IMPLEMENTED)
         if not _take_edit_quota(user_id):
             return _respond({"error": "quota"}, status.HTTP_429_TOO_MANY_REQUESTS)
         edit_status, reason = profile_edit.edit_profile(user_id, request_text)
@@ -183,10 +179,6 @@ def _handle(action: str, user_id: str, data: dict):
         kind = data.get("kind")
         if kind not in RUN_KINDS:
             return _bad_request()
-        try:
-            from . import profile_job  # late: lands with a later task
-        except ImportError:
-            return _respond({"error": "not_implemented"}, status.HTTP_501_NOT_IMPLEMENTED)
         result = profile_job.run_profile_job(user_id, "run_now", window=RUN_KINDS[kind])
         if result.status == "quota":
             return _respond({"error": "quota"}, status.HTTP_429_TOO_MANY_REQUESTS)
@@ -195,10 +187,6 @@ def _handle(action: str, user_id: str, data: dict):
         )
 
     if action == "health":
-        try:
-            from . import health  # late: lands with a later task
-        except ImportError:
-            return _respond({"error": "not_implemented"}, status.HTTP_501_NOT_IMPLEMENTED)
         return _respond(health.snapshot())
 
     return _bad_request()  # unreachable: the serializer limits the action

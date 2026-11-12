@@ -49,6 +49,8 @@ logger = logging.getLogger(__name__)
 
 EXTRACTION_CHAPTER = "profile_extraction"
 WRITER_CHAPTER = "profile_writer"
+DREAM_CHAPTER = "profile_dream"
+DREAM_MAX_PROMPTS = 200  # the newest of the window
 STALE_DAYS = 60
 PARK_AFTER = 3
 MAX_PROMPT_CHARS = q.MAX_PROMPT_CHARS
@@ -117,8 +119,8 @@ def run_profile_job(
     llm: LLMClient | None = None,
     jev: JevClient | None = None,
 ) -> RunResult:
-    if window != "session":
-        raise NotImplementedError("the dream window is not built yet")
+    if window not in ("session", "dream"):
+        raise ValueError(f"unknown window: {window!r}")
     now = now or timezone.now()
     if not quota.acquire_job_lock(user_id, now):
         return RunResult("busy", "job_running")
@@ -130,10 +132,13 @@ def run_profile_job(
 
 def _run(user_id, trigger, window, now, llm, jev) -> RunResult:
     current = get_settings(user_id)
-    ctx = _Ctx(user_id, trigger, window, now, current.processed_through, current.profile_revision)
-    if trigger != "run_now" and _is_parked(user_id, window, ctx.since):
+    since = current.processed_through if window == "session" else None
+    ctx = _Ctx(user_id, trigger, window, now, since, current.profile_revision)
+    if trigger != "run_now" and is_parked(user_id, window, ctx.since):
         return RunResult("failed", "parked")
     try:
+        if window == "dream":
+            return _dream_steps(ctx, now, llm, jev, current.processed_through)
         return _steps(ctx, now, llm, jev)
     except _Fail as fail:
         if fail.status == "quota":
@@ -144,16 +149,19 @@ def _run(user_id, trigger, window, now, llm, jev) -> RunResult:
         return _finish(ctx, "failed", f"error:{type(exc).__name__}")
 
 
-def _is_parked(user_id: str, window: str, since: datetime | None) -> bool:
-    """The last PARK_AFTER runs all failed or were rejected for this same watermark."""
+def is_parked(user_id: str, window: str, since: datetime | None) -> bool:
+    """The last PARK_AFTER runs all failed or were rejected for this same watermark, and no prompt
+    has arrived since the last of them (a new prompt gives the next trigger a fresh try)."""
     recent = list(
         ProfileWriterRun.objects.filter(user_id=user_id, window=window)
         .exclude(reason=REVISION_MOVED)
         .order_by("-id")[:PARK_AFTER]
     )
-    return len(recent) == PARK_AFTER and all(
+    if len(recent) < PARK_AFTER or not all(
         r.status in ("failed", "rejected") and r.watermark_from == since for r in recent
-    )
+    ):
+        return False
+    return not unprocessed_user_prompts(user_id, recent[0].started_at)
 
 
 def _steps(ctx: _Ctx, now: datetime, llm: LLMClient, jev: JevClient | None) -> RunResult:
@@ -432,6 +440,198 @@ def _merge(sections, touched, bodies, now):
     return ordered, wrote or len(ordered) != len(sections)
 
 
+# ---- the dream: rebuild the whole Profile from the last 60 days -------------------------------
+
+
+@dataclass
+class _Candidate:
+    """What the model proposed for one section, before the code rules."""
+
+    key: str | None
+    heading: str
+    body: str
+    origin: str
+    support: list[int]
+
+
+def _dream_prompts(ctx: _Ctx, now: datetime, jev: JevClient | None):
+    """The window's screened prompts, oldest first (the newest DREAM_MAX_PROMPTS of them)."""
+    rows = unprocessed_user_prompts(ctx.user_id, now - timedelta(days=STALE_DAYS))
+    rows = rows[-DREAM_MAX_PROMPTS:]
+    if rows:
+        ctx.watermark_to = max(p.server_timestamp for p in rows)
+    ctx.prompts = rows
+    kept = [p for p in rows if not is_sensitive(p.text)]
+    texts = [clean_text(p.text)[:MAX_PROMPT_CHARS] for p in kept]
+    dropped: set[int] = set()
+    step = q.MAX_PROMPTS_PER_RUN
+    for start in range(0, len(texts), step):  # Jev's sensitive screen, a chunk at a time
+        gate = ask_gate(texts[start : start + step], settings.PERSONALIZATION_JEV_GATE, jev)
+        dropped |= {start + i for i in gate.sensitive}
+    kept = [p for i, p in enumerate(kept) if i not in dropped]
+    texts = [t for i, t in enumerate(texts) if i not in dropped]
+    return kept, texts
+
+
+def _dream_input(sections, kept, texts, instructions, now) -> str:
+    current = (
+        "\n\n".join(
+            f"[{s.key or 'dynamic'}] {s.heading} ({s.origin}, last supported "
+            f"{s.last_supported_at.date().isoformat()})\n{s.body}"
+            for s in sections
+        )
+        or "(none)"
+    )
+    sessions: dict[str, str] = {}
+    lines = []
+    for i, (p, text) in enumerate(zip(kept, texts, strict=True), start=1):
+        label = sessions.setdefault(p.session_id, f"S{len(sessions) + 1}")
+        lines.append(f"[P{i}] [{label}] [{p.server_timestamp.date().isoformat()}] {text}")
+    return (
+        f"<today>{now.date().isoformat()}</today>\n"
+        f"<current_profile>\n{current}\n</current_profile>\n"
+        f"<instructions>{instructions or '(none)'}</instructions>\n"
+        f"<allowed_core_slots>{', '.join(CORE_KEYS)}</allowed_core_slots>\n"
+        f"<prompts>\n" + "\n".join(lines) + "\n</prompts>"
+    )
+
+
+def _parse_candidates(raw: str, count: int) -> list[_Candidate]:
+    parsed = parse_json_object(raw)
+    if not parsed or not isinstance(parsed.get("sections"), list):
+        raise _Fail("failed", "bad_dream_output")
+    out = []
+    for entry in parsed["sections"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("body"), str):
+            continue
+        body = clean_text(entry["body"])
+        if not body:
+            continue  # nothing to say: the section is gone
+        key = entry.get("key")
+        if key is not None:
+            if key not in CORE_KEYS:
+                continue
+            heading = CORE_HEADINGS[key]
+        else:
+            heading = clean_text(str(entry.get("heading") or ""))[:100]
+            if not heading or is_sensitive(heading):
+                continue
+        support = entry.get("support")
+        valid = sorted(
+            {n for n in (support if isinstance(support, list) else []) if _is_index(n, count)}
+        )
+        out.append(
+            _Candidate(
+                key,
+                heading,
+                body,
+                entry.get("origin") if entry.get("origin") in ORIGINS else "inferred",
+                valid,
+            )
+        )
+    return out
+
+
+def _is_index(n, count: int) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= count
+
+
+def _build_candidate(candidates, existing, kept, now):
+    """Apply the code rules to the model's proposal. Returns (sections, unsupported heading|None)."""
+    cutoff = now - timedelta(days=STALE_DAYS)
+    by_heading = {normalize_heading(s.heading): s for s in existing}
+    rows: list[SectionData] = []
+    unsupported = None
+    for c in candidates:
+        if not c.support:
+            unsupported = unsupported or c.heading
+            continue
+        supporting = [kept[n - 1] for n in c.support]
+        if c.key is None and len({p.session_id for p in supporting}) < 2:
+            continue  # a dynamic section needs support in two sessions
+        supported = max(p.server_timestamp for p in supporting)
+        prior = by_heading.get(normalize_heading(c.heading))
+        if prior is not None and prior.origin == "stated" and c.origin == "inferred":
+            c.body, c.origin = prior.body, "stated"  # stated beats inferred
+        rows.append(
+            SectionData(
+                c.key, "core" if c.key else "dynamic", c.heading, c.body, c.origin, supported, 0
+            )
+        )
+    # A section the user asked for in the Settings box has no prompt behind it; the dream keeps it
+    # for as long as it is itself still fresh.
+    have = {normalize_heading(r.heading) for r in rows}
+    for s in existing:
+        if (
+            s.origin == "stated"
+            and s.last_supported_at >= cutoff
+            and (normalize_heading(s.heading) not in have)
+        ):
+            rows.append(
+                SectionData(s.key, s.kind, s.heading, s.body, s.origin, s.last_supported_at, 0)
+            )
+    order = {k: i for i, k in enumerate(CORE_KEYS)}
+    core = sorted((r for r in rows if r.kind == "core"), key=lambda r: order.get(r.key, 99))
+    ordered = core + [r for r in rows if r.kind != "core"]
+    for i, r in enumerate(ordered):
+        r.position = i
+    return ordered, unsupported
+
+
+def _same_content(a: list[SectionData], b: list[SectionData]) -> bool:
+    def view(rows):
+        return [(r.key, r.kind, r.heading, r.body, r.origin) for r in rows]
+
+    return view(a) == view(b)
+
+
+def _dream_steps(
+    ctx: _Ctx, now: datetime, llm: LLMClient, jev: JevClient | None, current_mark: datetime | None
+) -> RunResult:
+    existing = get_sections(ctx.user_id)
+    ctx.profile_before = render_profile(existing)
+    kept, texts = _dream_prompts(ctx, now, jev)
+    if not kept and not existing:
+        return _finish(ctx, "no_change", "no_new_prompts")
+
+    candidates: list[_Candidate] = []
+    if kept:
+        _take_quota(ctx.user_id, now)
+        instructions = clean_text(get_settings(ctx.user_id).instructions_text)
+        user = _dream_input(existing, kept, texts, instructions, now)
+        raw = _call(ctx, llm, load_chapter(DREAM_CHAPTER), user, 1500)
+        candidates = _parse_candidates(raw, len(kept))
+    final, unsupported = _build_candidate(candidates, existing, kept, now)
+    ctx.extraction["dream"] = {
+        "prompts_read": len(kept),
+        "candidate": [(s.key, s.heading) for s in final],
+        "unsupported": unsupported,
+    }
+    if unsupported:
+        raise _Fail("rejected", "unsupported_section", "unsupported_section")
+    if _same_content(final, existing):
+        return _finish(ctx, "no_change", "dream_unchanged")
+    if final:
+        result = check_profile(final, llm)  # a model call: outside any transaction
+        if not result.ok:
+            raise _Fail("rejected", result.failed or "check", result.failed or "")
+    mark = max((t for t in (current_mark, ctx.watermark_to) if t is not None), default=None)
+    if not replace_sections(
+        ctx.user_id,
+        ctx.base_revision,
+        final,
+        updated_by="la",
+        processed_through=mark,
+        set_notice=True,
+    ):
+        raise _Fail("failed", REVISION_MOVED)
+    return _finish(ctx, "applied", None, profile_after=render_profile(final))
+
+
+def _chapters(window: str) -> tuple[str, ...]:
+    return (DREAM_CHAPTER,) if window == "dream" else (EXTRACTION_CHAPTER, WRITER_CHAPTER)
+
+
 def _finish(
     ctx: _Ctx, status: str, reason: str | None, failed_check: str = "", **extra
 ) -> RunResult:
@@ -450,10 +650,7 @@ def _finish(
         else "",
         profile_before=ctx.profile_before,
         profile_after=extra.get("profile_after", ""),
-        chapter_hashes={
-            EXTRACTION_CHAPTER: chapter_sha(EXTRACTION_CHAPTER),
-            WRITER_CHAPTER: chapter_sha(WRITER_CHAPTER),
-        },
+        chapter_hashes={name: chapter_sha(name) for name in _chapters(ctx.window)},
         model=ctx.usage.model,
         input_tokens=ctx.usage.input_tokens or None,
         output_tokens=ctx.usage.output_tokens or None,

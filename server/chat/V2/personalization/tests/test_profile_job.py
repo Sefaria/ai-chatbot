@@ -396,6 +396,17 @@ def test_model_calls_happen_outside_a_transaction():
     assert len(seen) == 3 and not any(seen)
 
 
-def test_the_dream_window_is_not_part_of_this_task():
-    with pytest.raises(NotImplementedError):
-        run(model(), window="dream")
+def test_a_parked_user_is_retried_when_a_new_prompt_arrives():
+    two_sessions()
+    for _ in range(3):
+        assert run(FakeLLMClient(boom)).status == "failed"
+    assert run(model()).reason == "parked"
+    seed(("one more prompt", "s3"), at=NOW + timedelta(hours=1))
+    llm = model([item("answer_style", "Kind of answers you want", sessions=1)])
+    result = run(llm)
+    assert result.reason != "parked" and result.status == "applied" and llm.calls
+
+
+def test_an_unknown_window_is_refused():
+    with pytest.raises(ValueError):
+        run(model(), window="weekly")

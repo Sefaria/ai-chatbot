@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from django.db import transaction
+from django.db.models import F, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from chat.models import (
@@ -280,3 +281,35 @@ def record_run(**fields) -> int:
     """Store one job run and return its id. `started_at` defaults to now."""
     fields.setdefault("started_at", timezone.now())
     return ProfileWriterRun.objects.create(**fields).id
+
+
+def _watermarks():
+    return PersonalizationSettings.objects.filter(user_id=OuterRef("user_id")).values(
+        "processed_through"
+    )[:1]
+
+
+def users_with_new_prompts() -> list[str]:
+    """Users with at least one user prompt after their watermark (cheap; the caller screens)."""
+    rows = (
+        ChatMessage.objects.filter(role=ChatMessage.Role.USER)
+        .exclude(user_id="")
+        .annotate(mark=Subquery(_watermarks()))
+        .filter(Q(mark__isnull=True) | Q(server_timestamp__gt=F("mark")))
+        .order_by()
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    return sorted(set(rows))
+
+
+def users_active_since(since: datetime) -> list[str]:
+    """Users with a user prompt after `since`."""
+    rows = (
+        ChatMessage.objects.filter(role=ChatMessage.Role.USER, server_timestamp__gt=since)
+        .exclude(user_id="")
+        .order_by()
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    return sorted(set(rows))
