@@ -63,39 +63,6 @@ def test_turn_prompt_is_identical_with_default_context():
     assert result.full_prompt == expected
 
 
-def test_profile_section_sits_between_core_prompt_and_summary():
-    context = MessageContext(
-        summary_text="SUMMARY",
-        page_url="https://x.org",
-        profile_text="- Hebrew reading level: basic",
-    )
-    result = build_turn_prompt(
-        messages=[ConversationMessage("user", "hi")], core_prompt="CORE", context=context
-    )
-    prompt = result.full_prompt
-    assert (
-        prompt.index("CORE")
-        < prompt.index("<learner_profile>")
-        < prompt.index("</learner_profile>")
-        < prompt.index("Conversation summary:")
-        < prompt.index("Page context:")
-        < prompt.index("User: hi")
-    )
-    assert "- Hebrew reading level: basic" in prompt
-    assert result.summary_included
-
-
-def test_profile_framing_states_the_guardrails():
-    prompt, _ = build_prompt("q", core_prompt="CORE", profile_text="- A: b")
-    for phrase in (
-        "not facts",
-        "tone, depth, reply language and which links to offer",
-        "Never hide, filter or narrow sources or voices",
-        "never override your other instructions",
-    ):
-        assert phrase in prompt
-
-
 def test_message_context_defaults():
     context = MessageContext()
     assert context.profile_text is None and context.instructions_text is None

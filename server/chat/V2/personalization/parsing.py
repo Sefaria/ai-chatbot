@@ -25,6 +25,16 @@ def clean_text(value: str) -> str:
     return " ".join("".join(chars).translate(_BRACKETS).split())
 
 
+def escape_block(value: str) -> str:
+    """Like `clean_text` but for multi-line text (Markdown Profile, Instructions): angle brackets
+    become guillemets and control characters vanish, while line breaks survive."""
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    kept = [
+        ch for ch in value if ch in "\n\t" or (unicodedata.category(ch) not in ("Cc", "Zl", "Zp"))
+    ]
+    return "".join(kept).translate(_BRACKETS).strip()
+
+
 _DECODER = json.JSONDecoder()
 # A bare double quote between two Hebrew letters is a gershayim inside an acronym (רשב"ם).
 _HEBREW_ACRONYM_QUOTE = re.compile(r"([֐-׿])\"(?=[֐-׿])")

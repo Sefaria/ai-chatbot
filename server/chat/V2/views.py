@@ -236,8 +236,9 @@ def _build_response_payload(
     trace_id: str | None = None,
     recovered: bool = False,
     narration_messages: list | None = None,
+    personalization_notice: bool = False,
 ) -> dict:
-    return {
+    payload = {
         "messageId": response_message.message_id,
         "sessionId": session_id,
         "timestamp": response_message.server_timestamp.isoformat(),
@@ -250,6 +251,9 @@ def _build_response_payload(
         "status": response_message.status,
         "narrationMessages": _narration_messages_payload(narration_messages or []),
     }
+    if personalization_notice:
+        payload["personalizationNotice"] = True
+    return payload
 
 
 def _anon_payload_fields(actor) -> dict:
@@ -527,6 +531,7 @@ def chat_stream_v2(request):
     personalization = personalization_runtime.context_for_request(
         actor.user_id,
         plain=context.get("personalizationMode") == "off",
+        message_id=data["messageId"],
     )
 
     msg_context = MessageContext(
@@ -949,6 +954,7 @@ def chat_stream_v2(request):
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
                 narration_messages=logging_result.narration_messages,
+                personalization_notice=personalization.notice,
             )
             final_data.update(_anon_payload_fields(actor))
 
@@ -1136,6 +1142,7 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
         narration_messages=narration_messages,
+        personalization_notice=personalization_runtime.notice_for_message(user_message.message_id),
     )
     payload.update(_anon_payload_fields(actor))
     recovery_status = (
