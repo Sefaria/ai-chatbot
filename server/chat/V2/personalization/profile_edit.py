@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime
 
 from django.conf import settings
@@ -53,6 +54,7 @@ REASONS = {
     "empty": "Tell LA what to change, in a few words.",
     "bad_reply": "LA could not make that change. Please try again.",
     "changed": "Your Profile changed while LA was working. Please try again.",
+    "busy": "Your Profile was being updated. Try again in a moment.",
     "check": "That change would not pass LA's checks for the Profile.",
 }
 
@@ -118,6 +120,21 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
     return ordered
 
 
+class _Deadline:
+    """Wraps the model client: every call gets the time left of one shared budget, and a call
+    after the budget is spent fails at once. One edit, with its retry, never waits longer."""
+
+    def __init__(self, llm: LLMClient, seconds: float):
+        self.llm, self.end = llm, time.monotonic() + seconds
+
+    def complete(self, **kwargs):
+        left = self.end - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("profile edit budget spent")
+        kwargs["timeout"] = round(max(min(kwargs.get("timeout") or left, left), 0.05), 2)
+        return self.llm.complete(**kwargs)
+
+
 def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
     if not get_settings(user_id).profile_enabled:
         return _refuse("profile_off")
@@ -129,8 +146,25 @@ def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple
     if _HIDE_SOURCES.search(text):
         return _refuse("hide_sources")
 
-    llm = llm or AnthropicLLMClient()
-    current = get_settings(user_id)
+    # No retries inside the SDK (they would multiply the timeout); the deadline covers the whole edit.
+    base = llm or AnthropicLLMClient()
+    if hasattr(base, "with_max_retries"):
+        base = base.with_max_retries(0)
+    llm = _Deadline(base, float(settings.PERSONALIZATION_MODEL_TIMEOUT))
+    for _ in range(2):
+        current = get_settings(user_id)
+        status, reason = _attempt(user_id, text, llm, rec, current)
+        if status != "moved":
+            return status, reason
+        # The Profile moved under the edit. A Clear discards the edit; anything else gets one retry
+        # from the fresh Profile.
+        if get_settings(user_id).cleared_at != current.cleared_at:
+            return _refuse("changed")
+    return _refuse("busy")
+
+
+def _attempt(user_id, text, llm, rec, current) -> tuple[str, str]:
+    """One read, model call, check and write. ("moved", "") when the write lost the revision race."""
     rec["base_revision"] = current.profile_revision
     sections = get_sections(user_id)
     rec["profile_before"] = render_profile(sections)
@@ -164,7 +198,12 @@ def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple
         return _refuse("bad_reply")
 
     final = _apply(sections, entries, timezone.now())
-    if final and (result := check_profile(final, llm)) and not result.ok:
+    try:
+        result = check_profile(final, llm) if final else None
+    except Exception as exc:  # the check's model call failed or ran out of time
+        logger.warning("profile edit check failed: %s", type(exc).__name__)
+        return _refuse("bad_reply")
+    if result and not result.ok:
         logger.info("profile edit rejected by check: %s", result.failed)
         rec["check_code"] = result.failed
         if result.failed in ("never_store_terms", "never_store_model"):
@@ -178,7 +217,7 @@ def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple
         processed_through=None,
         set_notice=False,
     ):
-        return _refuse("changed")
+        return "moved", ""
     reason = clean_text(str(parsed.get("reason") or ""))[:MAX_REASON]
     rec["profile_after"] = render_profile(final)
     return "applied", reason or "Done."
@@ -195,7 +234,7 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
         raise
     if status == "applied":
         run_status = "applied"
-    elif reason in (REASONS["bad_reply"], REASONS["changed"]):
+    elif reason in (REASONS["bad_reply"], REASONS["changed"], REASONS["busy"]):
         run_status = "failed"
     else:
         run_status = "rejected"

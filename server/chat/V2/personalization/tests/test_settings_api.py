@@ -557,3 +557,49 @@ def test_audit_line(client, logs):
         assert f"action={action}" in line and hashed in line
         assert USER_A not in line and secret_text not in line
     assert secret_text not in caplog.text
+
+
+def test_a_busy_edit_returns_200_with_the_fixed_reason_and_the_current_state(client, monkeypatch):
+    rev = store.get_settings(USER_A).profile_revision
+    sections = [
+        SectionData(
+            "current_interests",
+            "core",
+            "Current interests",
+            "You study widely.",
+            "inferred",
+            timezone.now(),
+            0,
+        )
+    ]
+    store.replace_sections(
+        USER_A, rev, sections, updated_by="la", processed_through=None, set_notice=False
+    )
+    edit_system = load_chapter("profile_edit")
+
+    def respond(system, user):
+        if system != edit_system:
+            return "no"
+        # a Profile job's write lands during every attempt
+        cur = store.get_settings(USER_A).profile_revision
+        store.replace_sections(
+            USER_A, cur, sections, updated_by="la", processed_through=None, set_notice=False
+        )
+        return json.dumps(
+            {
+                "status": "applied",
+                "reason": "x",
+                "sections": [{"key": "current_interests", "heading": "", "body": "Only parsha."}],
+            }
+        )
+
+    monkeypatch.setattr(profile_edit, "AnthropicLLMClient", lambda: FakeLLMClient(respond))
+    r = call(client, "edit_profile", request="only parsha")
+    assert r.status_code == 200
+    assert r.json()["edit"] == {
+        "status": "refused",
+        "reason": "Your Profile was being updated. Try again in a moment.",
+    }
+    assert r.json()["profile"]["sections"][0]["body"] == "You study widely."
+    assert r.json()["profile"]["updatedBy"] == "la"
+    assert ProfileWriterRun.objects.filter(trigger="edit", reason="busy").count() == 1

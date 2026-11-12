@@ -1,12 +1,15 @@
 """Chat-to-edit: one call, applied or refused. Fake model, made-up text only."""
 
 import json
+import time
 from datetime import UTC, datetime
 
 import pytest
+from django.db import connection
 
 from chat.models import ProfileWriterRun
 from chat.V2.personalization import profile_store as store
+from chat.V2.personalization import quota
 from chat.V2.personalization.llm import FakeLLMClient
 from chat.V2.personalization.profile_edit import edit_profile
 from chat.V2.personalization.profile_store import SectionData
@@ -341,3 +344,154 @@ def test_an_unparseable_model_check_is_visible_on_the_run_row():
     run = _runs()[-1]
     assert run.status == "rejected" and run.reason == "never_store_unparseable"
     assert run.extraction == "" and run.profile_after == ""
+
+
+# --- an edit that meets a concurrent write (a Profile job, usually) -------------------------------
+
+BUSY = "Your Profile was being updated. Try again in a moment."
+
+
+def _applied_reply(body="You study only the weekly parsha."):
+    return json.dumps(
+        {
+            "status": "applied",
+            "reason": "Narrowed.",
+            "sections": [{"key": "current_interests", "heading": "", "body": body}],
+        }
+    )
+
+
+def _concurrent_write(note):
+    """What a Profile job's write does: replace the sections at the current revision."""
+    rev = store.get_settings(USER).profile_revision
+    assert store.replace_sections(
+        USER,
+        rev,
+        [
+            SectionData(
+                "current_interests",
+                "core",
+                "Current interests",
+                "You study many books.",
+                "inferred",
+                T,
+                0,
+            ),
+            SectionData("answer_style", "core", "Kind of answers you want", note, "inferred", T, 1),
+        ],
+        updated_by="la",
+        processed_through=None,
+        set_notice=False,
+    )
+
+
+def _racing_model(times, seen):
+    """A fake model whose edit call triggers a concurrent write on its first `times` calls."""
+    state = {"n": 0}
+
+    def respond(system, user):
+        if system != EDIT:
+            return "no"
+        seen.append(user)
+        state["n"] += 1
+        if state["n"] <= times:
+            _concurrent_write(f"You like job-version {state['n']} answers.")
+        return _applied_reply()
+
+    return FakeLLMClient(respond)
+
+
+def test_a_write_that_lands_between_the_read_and_the_write_is_retried_once_and_applies():
+    put_interests()
+    seen = []
+    llm = _racing_model(1, seen)
+    status, _ = edit_profile(USER, "only parsha", llm=llm)
+    assert status == "applied" and len(seen) == 2
+    assert "job-version 1" not in seen[0] and "job-version 1" in seen[1]  # re-read, same request
+    assert seen[0].split("<request>")[1] == seen[1].split("<request>")[1]
+    sections = {s.heading: s for s in store.get_sections(USER)}
+    assert sections["Current interests"].body == "You study only the weekly parsha."
+    assert sections["Kind of answers you want"].body == "You like job-version 1 answers."
+    runs = ProfileWriterRun.objects.filter(trigger="edit")
+    assert runs.count() == 1 and runs[0].status == "applied" and runs[0].profile_after
+
+
+def test_an_edit_that_loses_twice_is_refused_as_busy_and_changes_nothing_of_its_own():
+    put_interests()
+    seen = []
+    status, reason = edit_profile(USER, "only parsha", llm=_racing_model(2, seen))
+    assert (status, reason) == ("refused", BUSY) and len(seen) == 2
+    sections = {s.heading: s for s in store.get_sections(USER)}
+    assert sections["Current interests"].body == "You study many books."
+    run = ProfileWriterRun.objects.get(trigger="edit")
+    assert run.reason == "busy" and run.profile_after == "" and run.extraction == ""
+
+
+def test_a_clear_between_the_read_and_the_write_is_not_retried():
+    put_interests()
+    seen = []
+
+    def respond(system, user):
+        if system != EDIT:
+            return "no"
+        seen.append(user)
+        store.clear_profile(USER)
+        return _applied_reply()
+
+    status, reason = edit_profile(USER, "only parsha", llm=FakeLLMClient(respond))
+    assert status == "refused" and reason != BUSY and len(seen) == 1
+    assert store.get_sections(USER) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_model_call_of_an_edit_runs_inside_a_transaction():
+    put_interests()
+    in_tx = []
+    inner = _racing_model(1, [])
+
+    def respond(system, user):
+        in_tx.append(connection.in_atomic_block)
+        return inner.responder(system, user)
+
+    assert edit_profile(USER, "only parsha", llm=FakeLLMClient(respond))[0] == "applied"
+    assert len(in_tx) >= 3 and not any(in_tx)
+
+
+def test_an_edit_does_not_wait_for_the_job_lock():
+    put_interests()
+    lease = quota.acquire_job_lock(USER, datetime.now(UTC))
+    assert lease
+    try:
+        assert edit_profile(USER, "only parsha", llm=_racing_model(0, []))[0] == "applied"
+    finally:
+        quota.release_job_lock(USER, lease)
+
+
+def test_a_failing_check_call_refuses_instead_of_raising():
+    put_interests()
+
+    def respond(system, user):
+        if system == EDIT:
+            return _applied_reply()
+        raise TimeoutError("model check timed out")
+
+    status, _ = edit_profile(USER, "only parsha", llm=FakeLLMClient(respond))
+    assert status == "refused"
+    assert ProfileWriterRun.objects.get(trigger="edit").status == "failed"
+
+
+def test_the_whole_edit_shares_one_model_budget(settings):
+    settings.PERSONALIZATION_MODEL_TIMEOUT = 0.3
+    put_interests()
+    llm = _racing_model(0, [])
+    real = llm.responder
+
+    def slow(system, user):
+        time.sleep(0.35)  # the edit call alone spends the budget; the check call then has none
+        return real(system, user)
+
+    llm.responder = slow
+    started = time.monotonic()
+    status, _ = edit_profile(USER, "only parsha", llm=llm)
+    assert status == "refused" and time.monotonic() - started < 1
+    assert all(c["timeout"] <= 0.3 for c in llm.calls) and len(llm.calls) == 1

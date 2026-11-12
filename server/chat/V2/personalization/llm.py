@@ -72,14 +72,20 @@ class FakeLLMClient:
 class AnthropicLLMClient:
     """Production path: the Anthropic Messages API through the repo's tracked wrapper."""
 
-    def __init__(self, client: Any = None):
+    def __init__(self, client: Any = None, max_retries: int | None = None):
         self._client = client
+        self._max_retries = max_retries  # None: the SDK default
+
+    def with_max_retries(self, max_retries: int) -> AnthropicLLMClient:
+        return AnthropicLLMClient(self._client, max_retries)
 
     def complete(self, *, system, user, model, max_tokens=600, timeout=20.0):
         from chat.V2.pricing import tracked_messages_create
         from chat.V2.utils import get_anthropic_client
 
         client = self._client or get_anthropic_client()
+        if self._max_retries is not None:
+            client = client.with_options(max_retries=self._max_retries)
         started = time.perf_counter()
         response = tracked_messages_create(
             client,

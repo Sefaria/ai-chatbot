@@ -590,3 +590,52 @@ def test_a_writer_echoing_the_new_section_placeholder_is_a_bad_output(echo):
     result = run(llm)
     assert result.status == "failed" and result.reason == "bad_writer_output"
     assert store.get_sections(USER) == []
+
+
+def test_a_job_that_loses_the_revision_race_to_an_edit_does_not_clobber_it():
+    two_sessions()
+    put(
+        section("Kind of answers you want", "You like long answers.", key="answer_style"),
+        section("Current interests", "You study many books.", key="current_interests", position=1),
+    )
+    base = model([item("current_interests", "Current interests")])
+    edited = "You want short answers."
+
+    def respond(system, user):
+        if system == EXTRACTION:  # a chat-to-edit lands while the job is working
+            rev = store.get_settings(USER).profile_revision
+            assert store.replace_sections(
+                USER,
+                rev,
+                [
+                    section(
+                        "Kind of answers you want", edited, key="answer_style", origin="stated"
+                    ),
+                    section(
+                        "Current interests",
+                        "You study many books.",
+                        key="current_interests",
+                        position=1,
+                    ),
+                ],
+                updated_by="you_la",
+                processed_through=None,
+                set_notice=False,
+            )
+        return base.responder(system, user)
+
+    result = run(FakeLLMClient(respond))
+    assert result.status == "failed" and result.reason == "revision_moved"
+    sections = {s.heading: s for s in store.get_sections(USER)}
+    assert sections["Kind of answers you want"].body == edited
+    assert sections["Current interests"].body == "You study many books."  # the job's write is lost
+    assert store.get_settings(USER).profile_updated_by == "you_la"
+
+    # The next run, from the fresh Profile, writes and leaves the edited section alone.
+    again = run(base)
+    assert again.status == "applied"
+    sections = {s.heading: s for s in store.get_sections(USER)}
+    assert sections["Kind of answers you want"].body == edited
+    assert sections["Kind of answers you want"].origin == "stated"
+    assert sections["Current interests"].body == "Body of Current interests."
+    assert store.get_settings(USER).profile_updated_by == "la"
