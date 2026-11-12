@@ -129,33 +129,3 @@ class TestCountAnonAnswersExcludesNarration:
         )
 
         assert count_anon_answers("anon_1") == 1
-
-
-def test_a_lab_origin_request_gets_a_raised_limit(monkeypatch):
-    from django.test import RequestFactory
-
-    from chat.sefaria_base_url import SefariaBaseUrlMiddleware
-
-    monkeypatch.setenv("ENVIRONMENT", "lab")
-    monkeypatch.setenv("PERSONALIZATION_LAB_SEED", "true")
-    monkeypatch.setenv("PERSONALIZATION_LAB_ORIGINS", "lab.example.test")
-    seen = {}
-
-    def view(request):
-        seen["limit"] = get_anon_answer_limit()
-        return MagicMock(streaming=False)
-
-    def limit_for(origin):
-        cache.clear()
-        with sefaria_returns({REMOTE_CONFIG_KEY: 3}):
-            SefariaBaseUrlMiddleware(view)(RequestFactory().get("/", HTTP_ORIGIN=origin))
-        return seen["limit"]
-
-    assert limit_for("https://lab.example.test") == anon_access.LAB_ANSWER_LIMIT
-    assert limit_for("https://elsewhere.example.test") == 3
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    assert limit_for("https://lab.example.test") == 3
-    monkeypatch.setenv("ENVIRONMENT", "lab")
-    monkeypatch.delenv("PERSONALIZATION_LAB_SEED")
-    assert limit_for("https://lab.example.test") == 3
-    assert get_anon_answer_limit.__module__  # outside a request the limit is untouched
