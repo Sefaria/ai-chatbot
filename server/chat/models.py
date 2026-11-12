@@ -321,3 +321,118 @@ class ChatMessage(models.Model):
     def generate_turn_id(cls):
         """Generate a unique turn ID."""
         return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+def new_proposal_id() -> str:
+    """Kept only because an applied migration (0016) refers to it."""
+    return uuid.uuid4().hex
+
+
+class PersonalizationSettings(models.Model):
+    """One row per signed-in user: Instructions, the Profile switches and the writer's watermark."""
+
+    MAX_INSTRUCTIONS = 300
+
+    user_id = models.CharField(max_length=100, unique=True)
+    # Written by the user; the 300-character cap is a column limit as well as an API check.
+    instructions_text = models.CharField(max_length=300, blank=True, default="")
+    instructions_enabled = models.BooleanField(default=True)
+    instructions_updated_at = models.DateTimeField(null=True, blank=True)
+    profile_enabled = models.BooleanField(default=True)
+    profile_updated_at = models.DateTimeField(null=True, blank=True)
+    # "la" (the writer) or "you_la" (the user asked LA to edit); None before the first write.
+    profile_updated_by = models.CharField(max_length=10, null=True, blank=True)
+    # Bumped by every applied write, so a write computed from an older Profile is refused.
+    profile_revision = models.PositiveIntegerField(default=0)
+    # Time of the newest prompt already processed (the watermark) and of the last Clear.
+    processed_through = models.DateTimeField(null=True, blank=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+    notice_pending = models.BooleanField(default=False)
+    # The user message whose turn showed the notice, so a recovered reply can repeat it.
+    notice_message_id = models.CharField(max_length=100, blank=True, default="")
+    # Lab-only testing switches.
+    show_plain_response = models.BooleanField(default=False)
+    update_every_message = models.BooleanField(default=False)
+
+
+class ProfileSection(models.Model):
+    """One section of a user's Profile: a core slot or a dynamic section LA opened."""
+
+    class Kind(models.TextChoices):
+        CORE = "core", "Core"
+        DYNAMIC = "dynamic", "Dynamic"
+
+    class Origin(models.TextChoices):
+        STATED = "stated", "Stated"
+        INFERRED = "inferred", "Inferred"
+
+    user_id = models.CharField(max_length=100, db_index=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    # The core slot key; null for a dynamic section.
+    key = models.CharField(max_length=40, null=True, blank=True)
+    heading = models.CharField(max_length=100)
+    body = models.TextField()
+    origin = models.CharField(max_length=10, choices=Origin.choices, default=Origin.INFERRED)
+    last_supported_at = models.DateTimeField()
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_id", "heading"], name="uniq_profile_section_heading"
+            )
+        ]
+
+
+class ProfileWriterRun(models.Model):
+    """One run of the Profile job, kept for review and for a later judge."""
+
+    user_id = models.CharField(max_length=100, db_index=True)
+    trigger = models.CharField(max_length=20)
+    window = models.CharField(max_length=10, default="session")
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    watermark_from = models.DateTimeField(null=True, blank=True)
+    watermark_to = models.DateTimeField(null=True, blank=True)
+    prompt_ids = models.JSONField(default=list)
+    # The text fields below are blanked when the user clears their Profile.
+    extraction = models.TextField(blank=True, default="")
+    profile_before = models.TextField(blank=True, default="")
+    profile_after = models.TextField(blank=True, default="")
+    chapter_hashes = models.JSONField(default=dict)
+    model = models.CharField(max_length=100, blank=True, default="")
+    input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    # applied | no_change | rejected | failed
+    status = models.CharField(max_length=12)
+    failed_check = models.CharField(max_length=40, blank=True, default="")
+    reason = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=["user_id", "started_at"])]
+
+
+class LabQuota(models.Model):
+    """A lab cost counter: calls of one kind by one learner (or "__all__") in one time window."""
+
+    scope = models.CharField(max_length=16)  # "job" or "seed"
+    key = models.CharField(max_length=100)
+    window_start = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "key", "window_start"], name="lab_quota_scope_key_window"
+            )
+        ]
+
+
+class LabJobLock(models.Model):
+    """Single-flight marker for one learner's job run; a stale start (over 300 s) is ignored."""
+
+    user_id = models.CharField(max_length=100, unique=True)
+    running = models.BooleanField(default=False)
+    started_at = models.DateTimeField(null=True)

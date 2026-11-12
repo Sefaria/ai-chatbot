@@ -37,6 +37,11 @@ class BraintrustTraceLogger:
         if context.turn_number is not None:
             span_metadata["turn_number"] = context.turn_number
 
+        if context.personalization_meta is not None:
+            span_metadata.update(context.personalization_meta)
+        elif context.profile_text or context.instructions_text:
+            span_metadata["personalized"] = True
+
         # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
         # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.
         is_prod = context.origin in PROD_ORIGINS if context.origin else False

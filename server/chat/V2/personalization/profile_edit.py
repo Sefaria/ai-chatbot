@@ -1,0 +1,284 @@
+"""Chat-to-edit: one synchronous model call that changes the Profile, or refuses.
+
+The Settings box sends a request of at most 300 characters. Code refuses the clear cases first
+(never-store topics, hiding sources or voices) without a model call; the model handles the rest
+and may refuse too. A change goes through the same code checks as a job write and is stored only
+if the Profile revision is still the one it was computed from. The quota is taken by the API
+handler. Returns ("applied" | "refused", reason); on a refusal nothing changed.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import time
+from datetime import datetime
+
+from django.conf import settings
+from django.utils import timezone
+
+from chat.V2.prompts.chapters import chapter_sha, load_chapter
+
+from .checks import check_profile, never_store_text, normalize_heading
+from .core_slots import CORE_HEADINGS, CORE_KEYS
+from .llm import AnthropicLLMClient, LLMClient
+from .parsing import clean_text, parse_json_object
+from .profile_store import (
+    SectionData,
+    get_sections,
+    get_settings,
+    record_run_guarded,
+    render_profile,
+    replace_sections,
+)
+from .signals import is_sensitive
+
+logger = logging.getLogger(__name__)
+
+CHAPTER = "profile_edit"
+MAX_REQUEST = 300
+MAX_REASON = 200
+
+# Asking to hide, drop or rank sources or voices: that belongs in Instructions.
+_HIDE_SOURCES = re.compile(
+    r"\b(hide|exclude|block|never\s+show|don'?t\s+show|do\s+not\s+show|stop\s+showing|avoid|"
+    r"ignore|never\s+cite|don'?t\s+cite|never\s+use|don'?t\s+use)\b.{0,60}"
+    r"\b(sources?|voices?|commentators?|authors?|books?)\b",
+    re.IGNORECASE,
+)
+
+REASONS = {
+    "never_store": "LA does not keep anything about health, family, location, observance or the like.",
+    "hide_sources": "Hiding sources or voices belongs in Instructions, where you set the wording.",
+    "profile_off": "Your Profile is off. Turn it on in Settings to change it.",
+    "empty": "Tell LA what to change, in a few words.",
+    "bad_reply": "LA could not make that change. Please try again.",
+    "changed": "Your Profile changed while LA was working. Please try again.",
+    "busy": "Your Profile was being updated. Try again in a moment.",
+    "check": "That change would not pass LA's checks for the Profile.",
+}
+
+
+def _refuse(code: str) -> tuple[str, str]:
+    return "refused", REASONS[code]
+
+
+def _profile_block(sections: list[SectionData]) -> str:
+    return (
+        "\n\n".join(f"[{s.key or 'dynamic'}] {s.heading}\n{clean_text(s.body)}" for s in sections)
+        or "(empty)"
+    )
+
+
+def _entries(parsed: dict) -> list[dict] | None:
+    raw = parsed.get("sections")
+    if not isinstance(raw, list) or not raw:
+        return None
+    out = []
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("body"), str):
+            return None
+        key = entry.get("key")
+        if key is not None and key not in CORE_KEYS:
+            return None
+        heading = CORE_HEADINGS[key] if key else clean_text(str(entry.get("heading") or ""))[:100]
+        if not heading or (key is None and is_sensitive(heading)):
+            return None
+        out.append({"key": key, "heading": heading, "body": clean_text(entry["body"])})
+    return out
+
+
+def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> list[SectionData]:
+    """The sections with the edits in; each edited section is `stated`. An empty body removes."""
+    rows = [SectionData(**vars(s)) for s in sections]
+    for e in entries:
+        norm = normalize_heading(e["heading"])
+        match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
+        if not e["body"]:
+            if match:
+                rows.remove(match)
+            continue
+        if match:
+            match.body, match.origin, match.last_supported_at = e["body"], "stated", now
+        else:
+            rows.append(
+                SectionData(
+                    e["key"],
+                    "core" if e["key"] else "dynamic",
+                    e["heading"],
+                    e["body"],
+                    "stated",
+                    now,
+                    0,
+                )
+            )
+    order = {k: i for i, k in enumerate(CORE_KEYS)}
+    core = sorted((r for r in rows if r.kind == "core"), key=lambda r: order.get(r.key, 99))
+    ordered = core + [r for r in rows if r.kind != "core"]
+    for i, r in enumerate(ordered):
+        r.position = i
+    return ordered
+
+
+class _Deadline:
+    """Wraps the model client: every call gets the time left of one shared budget, and a call
+    after the budget is spent fails at once. One edit, with its retry, never waits longer."""
+
+    def __init__(self, llm: LLMClient, seconds: float):
+        self.llm, self.end = llm, time.monotonic() + seconds
+
+    def complete(self, **kwargs):
+        left = self.end - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("profile edit budget spent")
+        kwargs["timeout"] = round(max(min(kwargs.get("timeout") or left, left), 0.05), 2)
+        return self.llm.complete(**kwargs)
+
+
+def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
+    if not get_settings(user_id).profile_enabled:
+        return _refuse("profile_off")
+    text = clean_text(request or "")[:MAX_REQUEST]
+    if not text:
+        return _refuse("empty")
+    if never_store_text(text):
+        return _refuse("never_store")
+    if _HIDE_SOURCES.search(text):
+        return _refuse("hide_sources")
+
+    # No retries inside the SDK (they would multiply the timeout); the deadline covers the whole edit.
+    base = llm or AnthropicLLMClient()
+    if hasattr(base, "with_max_retries"):
+        base = base.with_max_retries(0)
+    llm = _Deadline(base, float(settings.PERSONALIZATION_MODEL_TIMEOUT))
+    for _ in range(2):
+        current = get_settings(user_id)
+        status, reason = _attempt(user_id, text, llm, rec, current)
+        if status != "moved":
+            return status, reason
+        # The Profile moved under the edit. A Clear discards the edit; anything else gets one retry
+        # from the fresh Profile.
+        if get_settings(user_id).cleared_at != current.cleared_at:
+            return _refuse("changed")
+    return _refuse("busy")
+
+
+def _attempt(user_id, text, llm, rec, current) -> tuple[str, str]:
+    """One read, model call, check and write. ("moved", "") when the write lost the revision race."""
+    rec["base_revision"] = current.profile_revision
+    sections = get_sections(user_id)
+    rec["profile_before"] = render_profile(sections)
+    user = f"<profile>\n{_profile_block(sections)}\n</profile>\n<request>{text}</request>"
+    try:
+        result = llm.complete(
+            system=load_chapter(CHAPTER),
+            user=user,
+            model=settings.PERSONALIZATION_MODEL,
+            max_tokens=900,
+            timeout=settings.PERSONALIZATION_MODEL_TIMEOUT,
+        )
+        raw = result.text
+        rec.update(
+            model=settings.PERSONALIZATION_MODEL,
+            input_tokens=result.input_tokens or None,
+            output_tokens=result.output_tokens or None,
+            cost_usd=round(result.cost_usd, 6) if result.input_tokens else None,
+        )
+    except Exception as exc:  # a model error: nothing changes
+        logger.warning("profile edit failed: %s", type(exc).__name__)
+        return _refuse("bad_reply")
+    parsed = parse_json_object(raw)
+    if not parsed or parsed.get("status") not in ("applied", "refused"):
+        return _refuse("bad_reply")
+    if parsed["status"] == "refused":
+        reason = clean_text(str(parsed.get("reason") or ""))[:MAX_REASON]
+        return "refused", reason or REASONS["bad_reply"]
+    entries = _entries(parsed)
+    if entries is None:
+        return _refuse("bad_reply")
+
+    final = _apply(sections, entries, timezone.now())
+    try:
+        result = check_profile(final, llm) if final else None
+    except Exception as exc:  # the check's model call failed or ran out of time
+        logger.warning("profile edit check failed: %s", type(exc).__name__)
+        return _refuse("bad_reply")
+    if result and not result.ok:
+        logger.info("profile edit rejected by check: %s", result.failed)
+        rec["check_code"] = result.failed
+        if result.failed in ("never_store_terms", "never_store_model"):
+            return _refuse("never_store")
+        return _refuse("check")
+    if not replace_sections(
+        user_id,
+        current.profile_revision,
+        final,
+        updated_by="you_la",
+        processed_through=None,
+        set_notice=False,
+    ):
+        return "moved", ""
+    reason = clean_text(str(parsed.get("reason") or ""))[:MAX_REASON]
+    rec["profile_after"] = render_profile(final)
+    return "applied", reason or "Done."
+
+
+def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) -> tuple[str, str]:
+    """Run one edit and record it as one `ProfileWriterRun` (trigger `edit`, window `edit`)."""
+    started = timezone.now()
+    rec: dict = {}
+    try:
+        status, reason = _edit(user_id, request, llm, rec)
+    except Exception as exc:
+        _record(user_id, started, rec, "failed", f"error:{type(exc).__name__}")
+        raise
+    if status == "applied":
+        run_status = "applied"
+    elif reason in (REASONS["bad_reply"], REASONS["changed"], REASONS["busy"]):
+        run_status = "failed"
+    else:
+        run_status = "rejected"
+    _record(user_id, started, rec, run_status, _reason_code(status, reason, rec))
+    return status, reason
+
+
+_CODE_BY_REASON = {text: code for code, text in REASONS.items()}
+
+
+def _reason_code(status: str, reason: str, rec: dict) -> str:
+    """A short fixed code for the run row; model prose is never stored."""
+    if status == "applied":
+        return "applied"
+    if rec.get("check_code") == "never_store_unparseable":
+        return "never_store_unparseable"
+    return _CODE_BY_REASON.get(reason, "model_refused")
+
+
+def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str) -> None:
+    """Store the run row: fixed codes, cost and the stored Profile only (`profile_after` just for an
+    applied edit). A failure to store never changes the edit's result."""
+    try:
+        record_run_guarded(
+            expected_revision=(
+                rec["base_revision"] + (1 if status == "applied" else 0)
+                if "base_revision" in rec
+                else None
+            ),
+            user_id=user_id,
+            trigger="edit",
+            window="edit",
+            started_at=started,
+            finished_at=timezone.now(),
+            extraction="",  # the request is user text: a run row never holds it
+            profile_before=rec.get("profile_before", ""),
+            profile_after=rec.get("profile_after", ""),
+            chapter_hashes={CHAPTER: chapter_sha(CHAPTER)},
+            model=rec.get("model", ""),
+            input_tokens=rec.get("input_tokens"),
+            output_tokens=rec.get("output_tokens"),
+            cost_usd=rec.get("cost_usd"),
+            status=status,
+            reason=(reason or "")[:MAX_REASON],
+        )
+    except Exception:
+        logger.warning("Could not record the profile edit run", exc_info=True)

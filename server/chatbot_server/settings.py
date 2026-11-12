@@ -251,6 +251,16 @@ from .model_defaults import APPETIZER_MODEL as _APPETIZER_MODEL_DEFAULT
 from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
 from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
 
+# Profile and Instructions personalization (lab deployments only, see chat/V2/personalization/gate.py).
+PERSONALIZATION_MODEL = os.environ.get("PERSONALIZATION_MODEL", _GUARDRAIL_MODEL_DEFAULT)
+# A request-level override works only on a non-production ENVIRONMENT.
+PERSONALIZATION_OVERRIDE_ENABLED = os.environ.get("PERSONALIZATION_OVERRIDE_ENABLED") == "true"
+# The Jev relevance gate in front of the writer: off | shadow | on.
+PERSONALIZATION_JEV_GATE = os.environ.get("PERSONALIZATION_JEV_GATE", "off")
+# Explicit timeouts in seconds for the writer's model calls and for Jev.
+PERSONALIZATION_MODEL_TIMEOUT = 20
+PERSONALIZATION_JEV_TIMEOUT = 5
+
 AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
 APPETIZER_MODEL = os.environ.get("APPETIZER_MODEL", _APPETIZER_MODEL_DEFAULT)
 GUARDRAIL_MODEL = os.environ.get("GUARDRAIL_MODEL", _GUARDRAIL_MODEL_DEFAULT)
@@ -357,3 +367,6 @@ LOGGING = {
         },
     },
 }
+
+# The widget bundle is a .cjs file that the lab page loads with a script tag.
+WHITENOISE_MIMETYPES = {".cjs": "application/javascript"}

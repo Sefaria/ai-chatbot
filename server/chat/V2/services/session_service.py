@@ -2,6 +2,7 @@
 Session management service for chat operations.
 """
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ...auth import Actor
@@ -48,24 +49,33 @@ def create_or_get_session(
     Raises:
         SessionOwnershipError: If validate_ownership is True and session belongs to different actor
     """
-    # Check ownership BEFORE updating to prevent overwriting another user's session
-    if validate_ownership:
-        existing = ChatSession.objects.filter(session_id=session_id).first()
-        if existing:
-            validate_session_ownership(existing, actor)
-
     defaults = {
         **actor.to_db_fields(),
         "last_activity": timezone.now(),
         **extra_defaults,
     }
 
-    session, created = ChatSession.objects.update_or_create(
-        session_id=session_id,
-        defaults=defaults,
-    )
-
-    return session, created
+    # The ownership check and the write happen under one row lock, so two callers racing on one
+    # session id cannot both pass the check and the second take the session over.
+    for attempt in range(2):
+        try:
+            with transaction.atomic():
+                existing = (
+                    ChatSession.objects.select_for_update().filter(session_id=session_id).first()
+                )
+                if existing is None:
+                    return ChatSession.objects.create(session_id=session_id, **defaults), True
+                if validate_ownership:
+                    validate_session_ownership(existing, actor)
+                for field, value in defaults.items():
+                    setattr(existing, field, value)
+                existing.save()
+                return existing, False
+        except IntegrityError:
+            # Another request created the row between our read and our insert: lock it and check.
+            if attempt:
+                raise
+    raise AssertionError("unreachable")
 
 
 def load_session_summary(session: ChatSession) -> str:

@@ -96,7 +96,8 @@ class SefariaBaseUrlMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        _request_sefaria_base_url.set(allowed_sefaria_base_url(request.headers.get("Origin")))
+        origin = request.headers.get("Origin")
+        _request_sefaria_base_url.set(allowed_sefaria_base_url(origin))
         try:
             response = self.get_response(request)
         except BaseException:

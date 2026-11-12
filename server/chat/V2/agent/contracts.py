@@ -57,6 +57,11 @@ class MessageContext:
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
+    # The user's Profile and Instructions for the prompt (see chat/V2/personalization).
+    profile_text: str | None = None
+    instructions_text: str | None = None
+    # Root-span metadata from personalization.runtime; None leaves the trace alone.
+    personalization_meta: dict[str, Any] | None = None
 
 
 @dataclass
@@ -80,6 +85,8 @@ class AgentResponse:
     # user in history (see ChatMessage.MessageKind) but never re-sent to the
     # model as conversation history or fed to the summarizer.
     narration_segments: list[str] = field(default_factory=list)
+    # The turn's root span, exported so the after-turn memory update can log a child span.
+    span_export: str | None = None
 
 
 ProgressCallback = Callable[[AgentProgressUpdate], None]

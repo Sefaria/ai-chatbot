@@ -19,6 +19,14 @@ class MessageContextSerializer(serializers.Serializer):
     isStaff = serializers.BooleanField(required=False, default=False)
     labs = serializers.BooleanField(required=False, default=False)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
+    # Personalization overrides: honoured only by the server-side gate; lenient here so a
+    # refused request is ignored rather than rejected.
+    personalizationMode = serializers.CharField(max_length=40, required=False)
+    personalizationInjection = serializers.CharField(max_length=40, required=False)
+    personalizationProfile = serializers.DictField(required=False)
+    personalizationSubject = serializers.CharField(max_length=100, required=False)
+    # Lab compare's plain arm: the server hides its session only on a lab deployment.
+    labCompare = serializers.BooleanField(required=False, default=False)
 
 
 class IdentitySerializerMixin(serializers.Serializer):
