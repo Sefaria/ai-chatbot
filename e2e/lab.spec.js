@@ -64,6 +64,20 @@ test.describe('notice', () => {
     await expect(notice(assistant)).toHaveCount(1); // still only the first answer's
   });
 
+  for (const [linkKey, hash] of [['configure', '#personalization'], ['learn_more', '#about-personalization']]) {
+    test(`the ${linkKey} link navigates the tab to the settings page, as the menu item does`, async ({ page, context }) => {
+      // Sefaria's settings pages are server-rendered, not routes of its React app, so the widget must not
+      // hand these links to the host's in-app router (which ignores them): the browser follows the href.
+      await context.route('**/settings/library-assistant', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<title>Settings</title>' })
+      );
+      const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+      await assistant.ask('What is a mitzvah?');
+      await notice(assistant).getByRole('link', { name: t(`assistant.personalization.${linkKey}`) }).click();
+      await expect(page).toHaveURL(new RegExp(`/settings/library-assistant${hash}$`));
+    });
+  }
+
   test('is absent when the final payload does not carry the flag', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true });
     await assistant.ask('What is a mitzvah?');

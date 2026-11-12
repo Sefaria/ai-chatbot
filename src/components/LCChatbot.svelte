@@ -2182,6 +2182,11 @@
     const href = anchor.getAttribute('href');
     if (!href) return;
 
+    // The personalization notice's links go to Sefaria's settings pages, which are server-rendered,
+    // not routes of the host's React app: the host's in-app router ignores them, so the browser
+    // follows the href (same tab), like the menu item.
+    if (anchor.closest('.personalization-notice')) return;
+
     e.preventDefault();
 
     let resolvedUrl;
