@@ -7,7 +7,7 @@ token and nothing else (see `settings_api`).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.db import transaction
 from django.db.models import F, OuterRef, Q, Subquery
@@ -23,6 +23,9 @@ from chat.models import (
 
 MAX_INSTRUCTIONS = PersonalizationSettings.MAX_INSTRUCTIONS
 TARGETS = ("instructions", "profile")
+# A turn still STARTED or RUNNING after this long is treated as abandoned: it neither blocks the
+# watermark nor counts as a prompt.
+UNFINISHED_TURN_ABANDONED_AFTER = timedelta(minutes=15)
 
 
 @dataclass
@@ -269,7 +272,10 @@ def unprocessed_user_prompts(
 
     Never earlier than the last Clear. Left out: prompts of hidden sessions (the plain arm of the
     dual display is stored with `is_deleted=True`) and of sessions the user deleted, and turns that
-    failed, were cancelled or were refused by the guardrail.
+    failed, were cancelled or were refused by the guardrail. Only turns that completed are read
+    (a blank processing state is an older row, read as finished). The list stops before the
+    earliest turn still started or running, so a watermark never passes it; such a turn older than
+    UNFINISHED_TURN_ABANDONED_AFTER is abandoned and skipped.
     """
     cleared_at = (
         PersonalizationSettings.objects.filter(user_id=user_id)
@@ -284,6 +290,21 @@ def unprocessed_user_prompts(
         rows = rows.filter(server_timestamp__lte=until)
     hidden_sessions = ChatSession.objects.filter(user_id=user_id, is_deleted=True).values(
         "session_id"
+    )
+    in_flight = rows.exclude(session_id__in=hidden_sessions).filter(
+        processing_state__in=[
+            ChatMessage.ProcessingState.STARTED,
+            ChatMessage.ProcessingState.RUNNING,
+        ],
+        server_timestamp__gt=timezone.now() - UNFINISHED_TURN_ABANDONED_AFTER,
+    )
+    earliest_unfinished = (
+        in_flight.order_by("server_timestamp").values_list("server_timestamp", flat=True).first()
+    )
+    if earliest_unfinished is not None:
+        rows = rows.filter(server_timestamp__lt=earliest_unfinished)
+    rows = rows.filter(
+        Q(processing_state=ChatMessage.ProcessingState.COMPLETED) | Q(processing_state="")
     )
     unanswered_turns = (
         ChatMessage.objects.filter(
@@ -319,6 +340,27 @@ def record_run(**fields) -> int:
     """Store one job run and return its id. `started_at` defaults to now."""
     fields.setdefault("started_at", timezone.now())
     return ProfileWriterRun.objects.create(**fields).id
+
+
+_RUN_TEXT_FIELDS = ("extraction", "profile_before", "profile_after")
+
+
+def record_run_guarded(*, expected_revision: int | None = None, **fields) -> int:
+    """Store one run row, unless a Clear (or any other Profile change) happened since the run
+    started: then every text field is blank, and status, reason, tokens and cost are kept. The
+    check runs under the settings-row lock that `clear_profile` and `replace_sections` take, so a
+    row cannot land with pre-Clear text after the Clear. `expected_revision` is the revision the
+    Profile should have now (None: only a Clear since `started_at` counts)."""
+    fields.setdefault("started_at", timezone.now())
+    with transaction.atomic():
+        row = _locked_row(fields["user_id"])
+        cleared = row.cleared_at is not None and row.cleared_at > fields["started_at"]
+        moved = expected_revision is not None and row.profile_revision != expected_revision
+        if cleared or moved:
+            for name in _RUN_TEXT_FIELDS:
+                if name in fields:
+                    fields[name] = ""
+        return ProfileWriterRun.objects.create(**fields).id
 
 
 def _watermarks():

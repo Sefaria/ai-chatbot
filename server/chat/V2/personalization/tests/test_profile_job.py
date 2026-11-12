@@ -410,3 +410,115 @@ def test_a_parked_user_is_retried_when_a_new_prompt_arrives():
 def test_an_unknown_window_is_refused():
     with pytest.raises(ValueError):
         run(model(), window="weekly")
+
+
+def _only_run():
+    return ProfileWriterRun.objects.get(user_id=USER)
+
+
+def test_a_run_rejected_by_a_never_store_check_records_no_extraction_text():
+    two_sessions()
+    llm = model(
+        [item("answer_style", "Kind of answers you want", notes=("zebra-note-text",))],
+        check="yes",
+    )
+    result = run(llm)
+    assert result.status == "rejected"
+    row = _only_run()
+    assert "zebra-note-text" not in row.extraction
+    assert "answer_style" in row.extraction  # slot keys and counts stay
+
+
+def test_other_runs_drop_notes_and_headings_that_fail_the_screen():
+    two_sessions()
+    llm = model(
+        [
+            item(
+                "answer_style",
+                "Kind of answers you want",
+                notes=("keeps short answers", "lives in Haifa"),
+            ),
+            item(None, "Based in Haifa", action="none", notes=("fine note",)),
+        ]
+    )
+    run(llm)
+    text = _only_run().extraction
+    assert "keeps short answers" in text
+    assert "Haifa" not in text
+
+
+def test_a_run_finishing_after_a_clear_records_no_pre_clear_text():
+    two_sessions()
+    put(section("Kind of answers you want", "You like long answers.", key="answer_style"))
+    base = model([item("answer_style", "Kind of answers you want", notes=("zebra-note-text",))])
+
+    def respond(system, user):
+        if system == EXTRACTION:
+            store.clear_profile(USER)  # the user clears while the job is in flight
+        return base.responder(system, user)
+
+    result = run(FakeLLMClient(respond))
+    row = ProfileWriterRun.objects.get(pk=result.run_id)
+    assert row.status == "failed" and row.reason == "revision_moved"
+    assert row.extraction == "" and row.profile_before == "" and row.profile_after == ""
+    assert not store.get_sections(USER)
+
+
+def test_unfinished_turns_are_not_read_and_the_batch_stops_before_them():
+    from django.utils import timezone
+
+    now = timezone.now()
+    add_prompt(
+        USER, "done", session="s1", at=now - timedelta(minutes=5), processing_state="completed"
+    )
+    add_prompt(
+        USER, "running", session="s2", at=now - timedelta(minutes=4), processing_state="running"
+    )
+    add_prompt(
+        USER,
+        "later done",
+        session="s3",
+        at=now - timedelta(minutes=3),
+        processing_state="completed",
+    )
+    got = [p.text for p in store.unprocessed_user_prompts(USER, None)]
+    assert got == ["done"]  # never past the unfinished turn, so the watermark cannot pass it
+
+
+def test_a_stale_unfinished_turn_is_abandoned_and_does_not_block():
+    from django.utils import timezone
+
+    now = timezone.now()
+    add_prompt(USER, "stuck", session="s1", at=now - timedelta(hours=2), processing_state="started")
+    add_prompt(
+        USER, "done", session="s2", at=now - timedelta(minutes=3), processing_state="completed"
+    )
+    assert [p.text for p in store.unprocessed_user_prompts(USER, None)] == ["done"]
+
+
+def test_a_writer_that_omits_or_mangles_a_requested_section_fails_the_run():
+    bad_replies = [
+        [],
+        [{"heading": "Some other heading", "body": "Text."}],
+        [{"heading": "Kind of answers you want", "body": 5}],
+        [{"heading": "Kind of answers you want", "body": "  "}],
+    ]
+    for reply in bad_replies:
+        ProfileWriterRun.objects.all().delete()
+        PersonalizationSettings.objects.all().delete()
+        from chat.models import ChatMessage
+
+        ChatMessage.objects.all().delete()
+        two_sessions()
+
+        def respond(system, user, reply=reply):
+            if system == EXTRACTION:
+                return json.dumps(
+                    {"sections": [item("answer_style", "Kind of answers you want", sessions=1)]}
+                )
+            return json.dumps({"sections": reply})
+
+        result = run(FakeLLMClient(respond))
+        assert result.status == "failed" and result.reason == "bad_writer_output", reply
+        assert store.get_sections(USER) == []
+        assert watermark() is None or watermark() < T0

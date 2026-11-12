@@ -276,3 +276,69 @@ def test_clear_blanks_the_text_of_edit_runs():
     run = edit_runs().get()
     assert run.extraction == "" and run.profile_before == "" and run.profile_after == ""
     assert run.status == "applied" and run.cost_usd is not None  # the cost record stays
+
+
+def _runs():
+    return list(ProfileWriterRun.objects.filter(user_id=USER))
+
+
+def test_a_refused_request_is_not_stored_on_the_run_row():
+    put_interests()
+    edit_profile(USER, "remember that I am based in Haifa", llm=edit_model({}))
+    (run,) = _runs()
+    assert "Haifa" not in run.extraction and run.status == "rejected"
+    assert run.reason == "never_store"
+    llm = edit_model({"status": "refused", "reason": "Too vague, Haifa."})
+    edit_profile(USER, "make it better please", llm=llm)
+    run = _runs()[-1]
+    assert "better" not in run.extraction and "Haifa" not in run.reason
+    assert run.reason == "model_refused"
+
+
+def test_an_applied_request_is_stored_only_when_it_passes_the_screen():
+    put_interests()
+    reply = {
+        "status": "applied",
+        "reason": "model prose",
+        "sections": [{"key": "answer_style", "heading": "x", "body": "You like long answers."}],
+    }
+    edit_profile(USER, "prefer long answers", llm=edit_model(reply))
+    run = _runs()[-1]
+    assert run.extraction == "prefer long answers" and run.reason == "applied"
+    # A request that is screened as never-store is refused before any model call; a marker only.
+    edit_profile(USER, "I am based in Haifa", llm=edit_model(reply))
+    assert _runs()[-1].extraction == "[redacted]"
+
+
+def test_an_edit_that_finishes_after_a_clear_leaves_no_text_on_its_row():
+    put_interests()
+
+    def respond(system, user):
+        if system == EDIT:
+            store.clear_profile(USER)  # the user clears while the edit is in flight
+            return json.dumps(
+                {
+                    "status": "applied",
+                    "reason": "x",
+                    "sections": [{"key": "answer_style", "heading": "x", "body": "Short."}],
+                }
+            )
+        return "no"
+
+    status, _ = edit_profile(USER, "prefer short answers", llm=FakeLLMClient(respond))
+    run = _runs()[-1]
+    assert status == "refused" and run.status == "failed"
+    assert run.extraction == "" and run.profile_before == "" and run.profile_after == ""
+
+
+def test_an_unparseable_model_check_is_visible_on_the_run_row():
+    put_interests()
+    reply = {
+        "status": "applied",
+        "reason": "x",
+        "sections": [{"key": "answer_style", "heading": "x", "body": "You like long answers."}],
+    }
+    edit_profile(USER, "prefer long answers", llm=edit_model(reply, check="not sure"))
+    run = _runs()[-1]
+    assert run.status == "rejected" and run.reason == "never_store_unparseable"
+    assert run.extraction == "[redacted]"

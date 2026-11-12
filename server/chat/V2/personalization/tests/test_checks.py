@@ -64,7 +64,7 @@ def test_never_store_terms_in_a_heading_and_in_hebrew():
 
 
 def test_model_check_yes_rejects():
-    llm = llm_says("Yes, it names a family detail.")
+    llm = llm_says("YES")
     result = check_profile([sec("Notes", "You read slowly.")], llm)
     assert result.failed == "never_store_model" and len(llm.calls) == 1
 
@@ -83,3 +83,43 @@ def test_term_screen_runs_before_the_model():
     llm = llm_says("no")
     check_profile([sec("Notes", "your illness")], llm)
     assert llm.calls == []
+
+
+def seq(*replies):
+    it = iter(replies)
+    llm = FakeLLMClient(lambda system, user: next(it))
+    return llm
+
+
+HEBREW = [sec("Reply language", "את כותבת בעברית ואוהבת תשובות קצרות.", kind="core")]
+
+
+def test_hebrew_profile_with_no_passes_and_prompt_demands_english_token():
+    llm = seq("NO")
+    assert check_profile(HEBREW, llm).ok
+    assert "exactly YES or NO" in llm.calls[0]["system"] and "Hebrew" in llm.calls[0]["system"]
+
+
+def test_verdict_parse_normalizes_case_and_punctuation():
+    for answer in ("no", " No. ", '"NO"', "NO!", "no\n"):
+        assert check_profile(HEBREW, seq(answer)).ok, answer
+
+
+def test_unparseable_replies_retry_once_then_pass_on_no():
+    for first in ("לא", "not sure", "No, it is fine.", ""):
+        llm = seq(first, "NO")
+        assert check_profile(HEBREW, llm).ok, first
+        assert len(llm.calls) == 2
+
+
+def test_two_unparseable_replies_reject_with_a_distinct_code():
+    llm = seq("לא", "not sure")
+    result = check_profile(HEBREW, llm)
+    assert not result.ok and result.failed == "never_store_unparseable"
+    assert len(llm.calls) == 2
+
+
+def test_yes_rejects_without_a_retry():
+    llm = seq("YES")
+    result = check_profile(HEBREW, llm)
+    assert not result.ok and result.failed == "never_store_model" and len(llm.calls) == 1

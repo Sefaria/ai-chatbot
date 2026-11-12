@@ -15,7 +15,7 @@ from django.conf import settings
 
 from . import jev_questions as q
 from .core_slots import CORE_KEYS
-from .jev import KEY_ENV, HttpJevClient, JevClient
+from .jev import KEY_ENV, HttpJevClient, JevAnswer, JevClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,22 @@ def _client(jev: JevClient | None) -> JevClient:
     return jev or HttpJevClient(model=q.MODEL, timeout=settings.PERSONALIZATION_JEV_TIMEOUT)
 
 
+def _valid(answers, questions) -> bool:
+    """Every requested question has an answer of its type with a numeric score in [0, 1]."""
+    if not isinstance(answers, dict):
+        return False
+    for key, question in questions.items():
+        answer = answers.get(key)
+        if not isinstance(answer, JevAnswer) or answer.type != question.type:
+            return False
+        value = answer.noul
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False
+        if not 0 <= value <= 1:  # also rejects NaN
+            return False
+    return True
+
+
 def ask_gate(prompts: list[str], mode: str, jev: JevClient | None = None) -> GateResult:
     if mode not in ("shadow", "on"):
         return _open("off")
@@ -49,8 +65,12 @@ def ask_gate(prompts: list[str], mode: str, jev: JevClient | None = None) -> Gat
     except Exception as exc:  # JevError, timeouts, anything: the model path continues
         logger.warning("jev gate fell back: %s", type(exc).__name__)
         return _open("fallback")
+    questions = q.build_questions(len(prompts))
     answers = response.answers
-    scores = {key: q.score(answers.get(key)) for key in q.build_questions(len(prompts))}
+    if not _valid(answers, questions):
+        logger.warning("jev gate fell back: incomplete or malformed answers")
+        return _open("fallback")
+    scores = {key: q.score(answers.get(key)) for key in questions}
     result = GateResult(
         relevant=q.counts_as_yes(answers.get(q.RELEVANT_KEY)),
         slots={k for k in CORE_KEYS if q.counts_as_yes(answers.get(q.slot_key(k)))},

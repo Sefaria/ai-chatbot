@@ -27,7 +27,7 @@ from chat.V2.prompts.chapters import chapter_sha, load_chapter
 
 from . import jev_questions as q
 from . import quota
-from .checks import MAX_DYNAMIC, MAX_WORDS, check_profile, normalize_heading
+from .checks import MAX_DYNAMIC, MAX_WORDS, check_profile, never_store_text, normalize_heading
 from .core_slots import CORE_HEADINGS, CORE_KEYS
 from .jev import JevClient
 from .jev_gate import ask_gate
@@ -38,7 +38,7 @@ from .profile_store import (
     SectionData,
     get_sections,
     get_settings,
-    record_run,
+    record_run_guarded,
     refresh_support_dates,
     render_profile,
     replace_sections,
@@ -65,8 +65,8 @@ WRITER_SUFFIX = """
 You are given only the sections to write, each under a "## Heading" line, with its current body
 and the notes to use. Return only JSON, no prose:
 {"sections": [{"heading": "<the heading, unchanged>", "body": "<the new body>"}]}
-One entry per listed heading. A body is plain second-person prose. Write an empty body when the
-notes do not support anything. Keep all bodies together within the word budget given."""
+One entry per listed heading. A body is plain second-person prose. Always write a non-empty body: when the
+notes do not support a change, repeat the current body. Keep all bodies together within the word budget given."""
 
 
 @dataclass
@@ -395,10 +395,17 @@ def _write(ctx, llm, touched: dict, sections, instructions) -> dict[str, str]:
     wanted = {normalize_heading(h): h for h in touched}
     bodies: dict[str, str] = {}
     for entry in parsed["sections"]:
-        if isinstance(entry, dict) and isinstance(entry.get("heading"), str):
-            heading = wanted.get(normalize_heading(entry["heading"]))
-            if heading and isinstance(entry.get("body"), str):
-                bodies[heading] = clean_text(entry["body"])
+        heading = (
+            wanted.get(normalize_heading(entry["heading"]))
+            if isinstance(entry, dict) and isinstance(entry.get("heading"), str)
+            else None
+        )
+        body = clean_text(entry["body"]) if heading and isinstance(entry.get("body"), str) else ""
+        if not heading or not body:  # unknown heading, or a body that is missing or empty
+            raise _Fail("failed", "bad_writer_output")
+        bodies[heading] = body
+    if set(bodies) != set(touched):  # the writer left a requested section out
+        raise _Fail("failed", "bad_writer_output")
     return bodies
 
 
@@ -639,11 +646,65 @@ def _chapters(window: str) -> tuple[str, ...]:
     return (DREAM_CHAPTER,) if window == "dream" else (EXTRACTION_CHAPTER, WRITER_CHAPTER)
 
 
+def _screened_extraction(extraction: dict) -> dict:
+    """The extraction with every note or heading that fails the never-store screen dropped."""
+    out = dict(extraction)
+    proposals = []
+    for p in extraction.get("extraction") or []:
+        heading = p.get("heading") or ""
+        if heading and never_store_text(heading):
+            continue
+        proposals.append(
+            {**p, "notes": [n for n in p.get("notes") or [] if not never_store_text(n)]}
+        )
+    if "extraction" in out:
+        out["extraction"] = proposals
+    return out
+
+
+def _counts_only(extraction: dict) -> dict:
+    """Counts and slot keys, no text: what a run rejected by a never-store check may keep."""
+    out = {k: v for k, v in extraction.items() if k not in ("extraction", "dream")}
+    if "extraction" in extraction:
+        out["extraction"] = [
+            {"key": p.get("key"), "action": p.get("action"), "notes": len(p.get("notes") or [])}
+            for p in extraction["extraction"]
+        ]
+    if "dream" in extraction:
+        d = extraction["dream"]
+        out["dream"] = {
+            "prompts_read": d.get("prompts_read"),
+            "candidate": [k for k, _ in d.get("candidate") or []],
+        }
+    return out
+
+
+def _extraction_text(ctx: _Ctx, *, rejected_by_check: bool) -> str:
+    if not ctx.extraction:
+        return ""
+    data = (
+        _counts_only(ctx.extraction) if rejected_by_check else _screened_extraction(ctx.extraction)
+    )
+    if not rejected_by_check and "dream" in data:
+        d = data["dream"]
+        data["dream"] = {
+            **d,
+            "candidate": [
+                (k, h) for k, h in d.get("candidate") or [] if not never_store_text(h or "")
+            ],
+            "unsupported": None
+            if d.get("unsupported") is None or never_store_text(str(d["unsupported"]))
+            else d["unsupported"],
+        }
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
 def _finish(
     ctx: _Ctx, status: str, reason: str | None, failed_check: str = "", **extra
 ) -> RunResult:
     finished = timezone.now()
-    run_id = record_run(
+    run_id = record_run_guarded(
+        expected_revision=ctx.base_revision + 1 if status == "applied" else ctx.base_revision,
         user_id=ctx.user_id,
         trigger=ctx.trigger,
         window=ctx.window,
@@ -652,9 +713,9 @@ def _finish(
         watermark_from=ctx.since,
         watermark_to=ctx.watermark_to,
         prompt_ids=[p.message_id for p in ctx.prompts],
-        extraction=json.dumps(ctx.extraction, ensure_ascii=False, default=str)
-        if ctx.extraction
-        else "",
+        extraction=_extraction_text(
+            ctx, rejected_by_check=failed_check in ("never_store_terms", "never_store_model")
+        ),
         profile_before=ctx.profile_before,
         profile_after=extra.get("profile_after", ""),
         chapter_hashes={name: chapter_sha(name) for name in _chapters(ctx.window)},
