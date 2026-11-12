@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.db import transaction
-from django.db.models import F, OuterRef, Q, Subquery
+from django.db.models import Exists, F, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from chat.models import (
@@ -272,10 +272,13 @@ def unprocessed_user_prompts(
 
     Never earlier than the last Clear. Left out: prompts of hidden sessions (the plain arm of the
     dual display is stored with `is_deleted=True`) and of sessions the user deleted, and turns that
-    failed, were cancelled or were refused by the guardrail. Only turns that completed are read
-    (a blank processing state is an older row, read as finished). The list stops before the
-    earliest turn still started or running, so a watermark never passes it; such a turn older than
-    UNFINISHED_TURN_ABANDONED_AFTER is abandoned and skipped.
+    failed, were cancelled or were refused by the guardrail. Only turns that completed are read.
+    A blank processing state is how the chat pipeline first saves a user message (it marks the
+    turn started a few queries later), so a blank counts as finished only when the message is
+    older than UNFINISHED_TURN_ABANDONED_AFTER or its turn has a successful assistant response.
+    The list stops before the earliest turn still unfinished (blank, started or running), so a
+    watermark never passes it; such a turn older than UNFINISHED_TURN_ABANDONED_AFTER is
+    abandoned and skipped.
     """
     cleared_at = (
         PersonalizationSettings.objects.filter(user_id=user_id)
@@ -291,20 +294,39 @@ def unprocessed_user_prompts(
     hidden_sessions = ChatSession.objects.filter(user_id=user_id, is_deleted=True).values(
         "session_id"
     )
-    in_flight = rows.exclude(session_id__in=hidden_sessions).filter(
+    recent = timezone.now() - UNFINISHED_TURN_ABANDONED_AFTER
+    answered = ChatMessage.objects.filter(
+        user_id=user_id,
+        role=ChatMessage.Role.ASSISTANT,
+        status=ChatMessage.Status.SUCCESS,
+        turn_id=OuterRef("turn_id"),
+    ).exclude(turn_id="")
+    answered_by_link = Q(response_message__status=ChatMessage.Status.SUCCESS)
+    rows = rows.annotate(has_answer=Exists(answered))
+    unfinished = Q(
         processing_state__in=[
             ChatMessage.ProcessingState.STARTED,
             ChatMessage.ProcessingState.RUNNING,
         ],
-        server_timestamp__gt=timezone.now() - UNFINISHED_TURN_ABANDONED_AFTER,
+        server_timestamp__gt=recent,
+    ) | (
+        Q(processing_state="", server_timestamp__gt=recent)
+        & ~Q(has_answer=True)
+        & ~answered_by_link
     )
     earliest_unfinished = (
-        in_flight.order_by("server_timestamp").values_list("server_timestamp", flat=True).first()
+        rows.exclude(session_id__in=hidden_sessions)
+        .filter(unfinished)
+        .order_by("server_timestamp")
+        .values_list("server_timestamp", flat=True)
+        .first()
     )
     if earliest_unfinished is not None:
         rows = rows.filter(server_timestamp__lt=earliest_unfinished)
     rows = rows.filter(
-        Q(processing_state=ChatMessage.ProcessingState.COMPLETED) | Q(processing_state="")
+        Q(processing_state=ChatMessage.ProcessingState.COMPLETED)
+        | Q(processing_state="", server_timestamp__lte=recent)
+        | Q(processing_state="") & (Q(has_answer=True) | answered_by_link)
     )
     unanswered_turns = (
         ChatMessage.objects.filter(

@@ -1,6 +1,6 @@
 """Code checks on a Profile the writer produced. A failure rejects the run; the stored Profile
-stays as it was. The cheap checks run first; the model's yes/no check runs last, and only when
-everything else passed."""
+stays as it was. Every candidate is screened for never-store content first (code terms, then the
+model's yes/no check); the size checks follow."""
 
 from __future__ import annotations
 
@@ -61,15 +61,12 @@ def word_count(sections: list[SectionData]) -> int:
 
 
 def check_profile(sections: list[SectionData], llm: LLMClient | None) -> CheckResult:
+    """The never-store checks run before the size checks, so every candidate is screened."""
     if any(not s.body.strip() or not s.heading.strip() for s in sections):
         return _fail("empty_section")
     headings = [normalize_heading(s.heading) for s in sections]
     if len(set(headings)) != len(headings):
         return _fail("duplicate_heading")
-    if sum(1 for s in sections if s.kind == "dynamic") > MAX_DYNAMIC:
-        return _fail("dynamic_cap")
-    if word_count(sections) > MAX_WORDS:
-        return _fail("words")
     text = render_profile(sections)
     if never_store_text(text):
         return _fail("never_store_terms")
@@ -84,8 +81,13 @@ def check_profile(sections: list[SectionData], llm: LLMClient | None) -> CheckRe
             )
             verdict = _normalize_verdict(answer.text)
             if verdict == "NO":
-                return CheckResult(True)
+                break
             if verdict == "YES":
                 return _fail("never_store_model")
-        return _fail("never_store_unparseable")
+        else:
+            return _fail("never_store_unparseable")
+    if sum(1 for s in sections if s.kind == "dynamic") > MAX_DYNAMIC:
+        return _fail("dynamic_cap")
+    if word_count(sections) > MAX_WORDS:
+        return _fail("words")
     return CheckResult(True)

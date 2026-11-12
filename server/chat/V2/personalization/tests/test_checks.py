@@ -123,3 +123,15 @@ def test_yes_rejects_without_a_retry():
     llm = seq("YES")
     result = check_profile(HEBREW, llm)
     assert not result.ok and result.failed == "never_store_model" and len(llm.calls) == 1
+
+
+def test_never_store_checks_run_before_the_size_checks():
+    long_and_sensitive = [sec("Notes", "Your wife likes " + " ".join(["w"] * 200))]
+    assert check_profile(long_and_sensitive, None).failed == "never_store_terms"
+    five = [sec(f"Topic {i}", "x") for i in range(5)]
+    assert check_profile(five, llm_says("yes")).failed == "never_store_model"
+    assert check_profile(five, llm_says("maybe")).failed == "never_store_unparseable"
+    assert check_profile(five, llm_says("no")).failed == "dynamic_cap"
+    too_long = [sec("Notes", " ".join(["w"] * 200))]
+    assert check_profile(too_long, llm_says("yes")).failed == "never_store_model"
+    assert check_profile(too_long, llm_says("no")).failed == "words"

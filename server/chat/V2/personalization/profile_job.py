@@ -9,6 +9,9 @@ One function, `run_profile_job`, serves every trigger. Rules kept in code:
 - model and Jev calls happen outside any database transaction
 - a failed code check leaves the Profile and the watermark alone; the third failure for one
   watermark parks the user until an explicit `run_now`
+- a run row holds no free text derived from the user: `extraction` is a counts-and-codes summary
+  (`_summary`), `profile_after` is stored only for an applied run (it then equals the stored
+  Profile), and reason and failed-check fields are fixed codes
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from chat.V2.prompts.chapters import chapter_sha, load_chapter
 
 from . import jev_questions as q
 from . import quota
-from .checks import MAX_DYNAMIC, MAX_WORDS, check_profile, never_store_text, normalize_heading
+from .checks import MAX_DYNAMIC, MAX_WORDS, check_profile, normalize_heading
 from .core_slots import CORE_HEADINGS, CORE_KEYS
 from .jev import JevClient
 from .jev_gate import ask_gate
@@ -66,7 +69,10 @@ You are given only the sections to write, each under a "## Heading" line, with i
 and the notes to use. Return only JSON, no prose:
 {"sections": [{"heading": "<the heading, unchanged>", "body": "<the new body>"}]}
 One entry per listed heading. A body is plain second-person prose. Always write a non-empty body: when the
-notes do not support a change, repeat the current body. Keep all bodies together within the word budget given."""
+notes do not support a change, repeat the current body. A new section has no current text (its
+Current line is empty): write it from the notes alone. Keep all bodies together within the word
+budget given."""
+NEW_SECTION_LITERAL = "(new section)"  # the old stand-in for "no current text"; never a valid body
 
 
 @dataclass
@@ -99,7 +105,10 @@ class _Ctx:
     since: datetime | None
     base_revision: int
     prompts: list[PromptRow] = field(default_factory=list)
-    extraction: dict = field(default_factory=dict)
+    # What the run row may keep about the run: counts and codes, never text (see `_summary`).
+    kept_count: int | None = None
+    gate: dict | None = None
+    sections: list[dict] = field(default_factory=list)
     profile_before: str = ""
     usage: _Usage = field(default_factory=_Usage)
     watermark_to: datetime | None = None
@@ -173,15 +182,17 @@ def _steps(ctx: _Ctx, now: datetime, llm: LLMClient, jev: JevClient | None) -> R
     ctx.watermark_to = max(p.server_timestamp for p in prompts)
 
     kept = [p for p in prompts if not is_sensitive(p.text)]
+    ctx.kept_count = len(kept)
     if not kept:
         return _done_nothing(ctx, "sensitive_only")
 
     _take_quota(ctx.user_id, now)
     texts = [clean_text(p.text)[:MAX_PROMPT_CHARS] for p in kept]
     gate = ask_gate(texts, settings.PERSONALIZATION_JEV_GATE, jev)
-    ctx.extraction["gate"] = {"source": gate.source, "scores": gate.scores}
+    ctx.gate = {"source": gate.source, "scores": gate.scores}
     kept = [p for i, p in enumerate(kept) if i not in gate.sensitive]
     texts = [t for i, t in enumerate(texts) if i not in gate.sensitive]
+    ctx.kept_count = len(kept)
     if not kept:
         return _done_nothing(ctx, "sensitive_only")
     if not gate.relevant:
@@ -309,8 +320,9 @@ def _extract(ctx, llm, sections, prompts, texts, slots, instructions) -> list[di
                 else 0,
             }
         )
-    ctx.extraction["extraction"] = proposals
-    ctx.extraction["sessions_in_run"] = len(session_ids)
+    ctx.sections = [
+        _section_summary(p["key"], p["action"], p["origin"], p["sessions"]) for p in proposals
+    ]
     return proposals
 
 
@@ -381,7 +393,7 @@ def _write(ctx, llm, touched: dict, sections, instructions) -> dict[str, str]:
     budget = max(MAX_WORDS - untouched_words, 0)
     blocks = []
     for heading, t in touched.items():
-        body = t["section"].body if t["section"] else "(new section)"
+        body = t["section"].body if t["section"] else ""  # a new section has no current text
         notes = "\n".join(f"- {n}" for n in t["notes"]) or "- (none)"
         blocks.append(f"## {heading}\nCurrent: {body}\nNotes:\n{notes}")
     user = (
@@ -401,12 +413,17 @@ def _write(ctx, llm, touched: dict, sections, instructions) -> dict[str, str]:
             else None
         )
         body = clean_text(entry["body"]) if heading and isinstance(entry.get("body"), str) else ""
-        if not heading or not body:  # unknown heading, or a body that is missing or empty
+        if not heading or not body or _is_placeholder(body):
+            # unknown heading, or a body that is missing, empty or the old placeholder
             raise _Fail("failed", "bad_writer_output")
         bodies[heading] = body
     if set(bodies) != set(touched):  # the writer left a requested section out
         raise _Fail("failed", "bad_writer_output")
     return bodies
+
+
+def _is_placeholder(body: str) -> bool:
+    return body.strip().strip(".").strip().lower() == NEW_SECTION_LITERAL
 
 
 def _merge(sections, touched, bodies, now):
@@ -420,11 +437,6 @@ def _merge(sections, touched, bodies, now):
         body = bodies.get(heading)
         if body is None:
             continue  # the writer left it out: unchanged
-        if not body:
-            if t["section"] is not None:
-                by_heading.pop(heading, None)
-                wrote = True
-            continue
         if t["section"] is not None:
             s = t["section"]
             if s.body != body:
@@ -478,6 +490,7 @@ def _dream_prompts(ctx: _Ctx, now: datetime, jev: JevClient | None):
         dropped |= {start + i for i in gate.sensitive}
     kept = [p for i, p in enumerate(kept) if i not in dropped]
     texts = [t for i, t in enumerate(texts) if i not in dropped]
+    ctx.kept_count = len(kept)
     return kept, texts
 
 
@@ -609,12 +622,13 @@ def _dream_steps(
         user = _dream_input(existing, kept, texts, instructions, now)
         raw = _call(ctx, llm, load_chapter(DREAM_CHAPTER), user, 1500)
         candidates = _parse_candidates(raw, len(kept))
+        ctx.sections = [
+            _section_summary(
+                c.key, "rebuild", c.origin, len({kept[n - 1].session_id for n in c.support})
+            )
+            for c in candidates
+        ]
     final, unsupported = _build_candidate(candidates, existing, kept, now)
-    ctx.extraction["dream"] = {
-        "prompts_read": len(kept),
-        "candidate": [(s.key, s.heading) for s in final],
-        "unsupported": unsupported,
-    }
     if unsupported:
         raise _Fail("rejected", "unsupported_section", "unsupported_section")
     if _same_content(final, existing):
@@ -646,57 +660,42 @@ def _chapters(window: str) -> tuple[str, ...]:
     return (DREAM_CHAPTER,) if window == "dream" else (EXTRACTION_CHAPTER, WRITER_CHAPTER)
 
 
-def _screened_extraction(extraction: dict) -> dict:
-    """The extraction with every note or heading that fails the never-store screen dropped."""
-    out = dict(extraction)
-    proposals = []
-    for p in extraction.get("extraction") or []:
-        heading = p.get("heading") or ""
-        if heading and never_store_text(heading):
-            continue
-        proposals.append(
-            {**p, "notes": [n for n in p.get("notes") or [] if not never_store_text(n)]}
-        )
-    if "extraction" in out:
-        out["extraction"] = proposals
-    return out
+def _section_summary(key, action: str, origin: str, sessions: int) -> dict:
+    """One proposed section as counts and codes: its core slot key, or "dynamic" for anything
+    else (a heading is text the user's prompts shaped, so it is never kept)."""
+    return {
+        "key": key if key in CORE_KEYS else "dynamic",
+        "action": action,
+        "origin": origin,
+        "sessions": sessions,
+    }
 
 
-def _counts_only(extraction: dict) -> dict:
-    """Counts and slot keys, no text: what a run rejected by a never-store check may keep."""
-    out = {k: v for k, v in extraction.items() if k not in ("extraction", "dream")}
-    if "extraction" in extraction:
-        out["extraction"] = [
-            {"key": p.get("key"), "action": p.get("action"), "notes": len(p.get("notes") or [])}
-            for p in extraction["extraction"]
-        ]
-    if "dream" in extraction:
-        d = extraction["dream"]
-        out["dream"] = {
-            "prompts_read": d.get("prompts_read"),
-            "candidate": [k for k, _ in d.get("candidate") or []],
+def _number(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _summary(ctx: _Ctx) -> str:
+    """What every run row keeps of the run, on every exit path: how many prompts were read and
+    screened out, the Jev gate's source and scores, and the proposed sections as slot key
+    (or "dynamic"), action, origin and session count. No notes, headings or model prose."""
+    kept = len(ctx.prompts) if ctx.kept_count is None else ctx.kept_count
+    gate = (
+        {
+            "source": str(ctx.gate.get("source")),
+            "scores": {str(k): _number(v) for k, v in (ctx.gate.get("scores") or {}).items()},
         }
-    return out
-
-
-def _extraction_text(ctx: _Ctx, *, rejected_by_check: bool) -> str:
-    if not ctx.extraction:
-        return ""
-    data = (
-        _counts_only(ctx.extraction) if rejected_by_check else _screened_extraction(ctx.extraction)
+        if ctx.gate
+        else None
     )
-    if not rejected_by_check and "dream" in data:
-        d = data["dream"]
-        data["dream"] = {
-            **d,
-            "candidate": [
-                (k, h) for k, h in d.get("candidate") or [] if not never_store_text(h or "")
-            ],
-            "unsupported": None
-            if d.get("unsupported") is None or never_store_text(str(d["unsupported"]))
-            else d["unsupported"],
+    return json.dumps(
+        {
+            "prompts_read": len(ctx.prompts),
+            "screened_out": len(ctx.prompts) - kept,
+            "gate": gate,
+            "sections": ctx.sections,
         }
-    return json.dumps(data, ensure_ascii=False, default=str)
+    )
 
 
 def _finish(
@@ -713,11 +712,11 @@ def _finish(
         watermark_from=ctx.since,
         watermark_to=ctx.watermark_to,
         prompt_ids=[p.message_id for p in ctx.prompts],
-        extraction=_extraction_text(
-            ctx, rejected_by_check=failed_check in ("never_store_terms", "never_store_model")
-        ),
-        profile_before=ctx.profile_before,
-        profile_after=extra.get("profile_after", ""),
+        extraction=_summary(ctx),
+        profile_before=ctx.profile_before,  # the stored Profile, which passed the checks
+        # only an applied run stores it: it then equals the stored Profile. A rejected or failed
+        # candidate is never persisted.
+        profile_after=extra.get("profile_after", "") if status == "applied" else "",
         chapter_hashes={name: chapter_sha(name) for name in _chapters(ctx.window)},
         model=ctx.usage.model,
         input_tokens=ctx.usage.input_tokens or None,

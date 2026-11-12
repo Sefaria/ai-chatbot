@@ -31,6 +31,8 @@ _counter = iter(range(10_000))
 
 def add_prompt(user, text, *, session="s1", at=None, **extra):
     n = next(_counter)
+    # A finished turn by default; pass processing_state="" for a message saved a moment ago.
+    extra.setdefault("processing_state", ChatMessage.ProcessingState.COMPLETED)
     msg = ChatMessage.objects.create(
         message_id=f"m{n}",
         session_id=session,
