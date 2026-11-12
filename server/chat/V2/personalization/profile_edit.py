@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from chat.V2.prompts.chapters import chapter_sha, load_chapter
 
-from .checks import _NEVER_STORE_EXTRA, check_profile, normalize_heading
+from .checks import check_profile, never_store_text, normalize_heading
 from .core_slots import CORE_HEADINGS, CORE_KEYS
 from .llm import AnthropicLLMClient, LLMClient
 from .parsing import clean_text, parse_json_object
@@ -26,7 +26,7 @@ from .profile_store import (
     SectionData,
     get_sections,
     get_settings,
-    record_run,
+    record_run_guarded,
     render_profile,
     replace_sections,
 )
@@ -119,16 +119,17 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
 
 def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
     text = clean_text(request or "")[:MAX_REQUEST]
-    rec["extraction"] = text
+    rec["request"] = text
     if not text:
         return _refuse("empty")
-    if is_sensitive(text) or _NEVER_STORE_EXTRA.search(text):
+    if never_store_text(text):
         return _refuse("never_store")
     if _HIDE_SOURCES.search(text):
         return _refuse("hide_sources")
 
     llm = llm or AnthropicLLMClient()
     current = get_settings(user_id)
+    rec["base_revision"] = current.profile_revision
     sections = get_sections(user_id)
     rec["profile_before"] = render_profile(sections)
     user = f"<profile>\n{_profile_block(sections)}\n</profile>\n<request>{text}</request>"
@@ -163,6 +164,7 @@ def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple
     final = _apply(sections, entries, timezone.now())
     if final and (result := check_profile(final, llm)) and not result.ok:
         logger.info("profile edit rejected by check: %s", result.failed)
+        rec["check_code"] = result.failed
         if result.failed in ("never_store_terms", "never_store_model"):
             return _refuse("never_store")
         return _refuse("check")
@@ -195,20 +197,47 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
         run_status = "failed"
     else:
         run_status = "rejected"
-    _record(user_id, started, rec, run_status, reason)
+    _record(user_id, started, rec, run_status, _reason_code(status, reason, rec))
     return status, reason
+
+
+REDACTED = "[redacted]"
+_CODE_BY_REASON = {text: code for code, text in REASONS.items()}
+
+
+def _reason_code(status: str, reason: str, rec: dict) -> str:
+    """A short fixed code for the run row; model prose is never stored."""
+    if status == "applied":
+        return "applied"
+    if rec.get("check_code") == "never_store_unparseable":
+        return "never_store_unparseable"
+    return _CODE_BY_REASON.get(reason, "model_refused")
+
+
+def _stored_request(status: str, rec: dict) -> str:
+    """The request text goes on the run row only for an applied edit that passes the never-store
+    screen; anything else leaves a marker."""
+    text = rec.get("request", "")
+    if not text:
+        return ""
+    return text if status == "applied" and not never_store_text(text) else REDACTED
 
 
 def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str) -> None:
     """Store the run row. A failure to store never changes the edit's result."""
     try:
-        record_run(
+        record_run_guarded(
+            expected_revision=(
+                rec["base_revision"] + (1 if status == "applied" else 0)
+                if "base_revision" in rec
+                else None
+            ),
             user_id=user_id,
             trigger="edit",
             window="edit",
             started_at=started,
             finished_at=timezone.now(),
-            extraction=rec.get("extraction", ""),
+            extraction=_stored_request(status, rec),
             profile_before=rec.get("profile_before", ""),
             profile_after=rec.get("profile_after", ""),
             chapter_hashes={CHAPTER: chapter_sha(CHAPTER)},
@@ -217,7 +246,7 @@ def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str
             output_tokens=rec.get("output_tokens"),
             cost_usd=rec.get("cost_usd"),
             status=status,
-            reason=(reason or "")[:200],
+            reason=(reason or "")[:MAX_REASON],
         )
     except Exception:
         logger.warning("Could not record the profile edit run", exc_info=True)

@@ -118,3 +118,21 @@ def test_same_heading_without_jev_or_on_error_is_uncertain(settings, monkeypatch
     settings.PERSONALIZATION_JEV_GATE = "on"
     monkeypatch.delenv("TYPESAFE_API_KEY")
     assert same_heading("a", "b", answering(0.9)) is None
+
+
+@pytest.mark.parametrize(
+    "responder",
+    [
+        lambda state, qs: {},
+        lambda state, qs: {k: JevAnswer("noul", noul=0.9) for k in list(qs)[:-1]},
+        lambda state, qs: {k: JevAnswer("noul", noul=None) for k in qs},
+        lambda state, qs: {k: JevAnswer("noul", noul=1.5) for k in qs},
+        lambda state, qs: {k: JevAnswer("noul", noul="high") for k in qs},
+        lambda state, qs: {k: JevAnswer("choice", choice="a") for k in qs},
+        lambda state, qs: dict.fromkeys(qs, "yes"),
+    ],
+)
+def test_incomplete_or_malformed_answers_fall_back(responder):
+    result = ask_gate(PROMPTS, "on", FakeJevClient(responder))
+    assert result.source == "fallback" and result.relevant
+    assert result.slots == set(CORE_KEYS) and result.sensitive == set()

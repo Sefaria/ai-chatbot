@@ -28,7 +28,8 @@ _NEVER_STORE_EXTRA = re.compile(
 MODEL_CHECK_SYSTEM = (
     "You check a short reading Profile. Answer with one word, yes or no. Answer yes when the text "
     "states or infers any of: health, mourning, family details, personal halakhic status, "
-    "conversion, denomination or observance level, location. Answer no otherwise."
+    "conversion, denomination or observance level, location. Answer no otherwise. "
+    "Reply in English with exactly YES or NO and nothing else, even if the text is in Hebrew."
 )
 
 
@@ -40,6 +41,15 @@ class CheckResult:
 
 def _fail(name: str) -> CheckResult:
     return CheckResult(False, name)
+
+
+def _normalize_verdict(text: str) -> str:
+    return text.strip().upper().strip(".!?,;:\"' \n\t")
+
+
+def never_store_text(text: str) -> bool:
+    """The code screen for never-store content: sensitive categories plus the term list."""
+    return bool(is_sensitive(text) or _NEVER_STORE_EXTRA.search(text))
 
 
 def normalize_heading(heading: str) -> str:
@@ -61,16 +71,21 @@ def check_profile(sections: list[SectionData], llm: LLMClient | None) -> CheckRe
     if word_count(sections) > MAX_WORDS:
         return _fail("words")
     text = render_profile(sections)
-    if is_sensitive(text) or _NEVER_STORE_EXTRA.search(text):
+    if never_store_text(text):
         return _fail("never_store_terms")
     if llm is not None:
-        answer = llm.complete(
-            system=MODEL_CHECK_SYSTEM,
-            user=f"<profile>\n{clean_text(text)}\n</profile>",
-            model=settings.PERSONALIZATION_MODEL,
-            max_tokens=5,
-            timeout=settings.PERSONALIZATION_MODEL_TIMEOUT,
-        )
-        if not answer.text.strip().lower().startswith("no"):
-            return _fail("never_store_model")
+        for _attempt in range(2):  # an unparseable reply gets one more ask
+            answer = llm.complete(
+                system=MODEL_CHECK_SYSTEM,
+                user=f"<profile>\n{clean_text(text)}\n</profile>",
+                model=settings.PERSONALIZATION_MODEL,
+                max_tokens=5,
+                timeout=settings.PERSONALIZATION_MODEL_TIMEOUT,
+            )
+            verdict = _normalize_verdict(answer.text)
+            if verdict == "NO":
+                return CheckResult(True)
+            if verdict == "YES":
+                return _fail("never_store_model")
+        return _fail("never_store_unparseable")
     return CheckResult(True)
