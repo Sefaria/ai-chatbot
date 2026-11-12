@@ -51,6 +51,8 @@ class SettingsData:
     notice_pending: bool = False
     show_plain_response: bool = False
     update_every_message: bool = False
+    # Not stored: whether the write that returned this object changed anything.
+    changed: bool = False
 
 
 @dataclass
@@ -61,11 +63,13 @@ class PromptRow:
     server_timestamp: datetime
 
 
-_SETTINGS_FIELDS = [f for f in SettingsData.__dataclass_fields__ if f != "user_id"]
+_SETTINGS_FIELDS = [f for f in SettingsData.__dataclass_fields__ if f not in ("user_id", "changed")]
 
 
-def _settings_data(row: PersonalizationSettings) -> SettingsData:
-    return SettingsData(user_id=row.user_id, **{f: getattr(row, f) for f in _SETTINGS_FIELDS})
+def _settings_data(row: PersonalizationSettings, *, changed: bool = False) -> SettingsData:
+    return SettingsData(
+        user_id=row.user_id, changed=changed, **{f: getattr(row, f) for f in _SETTINGS_FIELDS}
+    )
 
 
 def _locked_row(user_id: str) -> PersonalizationSettings:
@@ -81,14 +85,19 @@ def get_settings(user_id: str) -> SettingsData:
 
 
 def set_instructions(user_id: str, text: str) -> SettingsData:
+    """Store the Instructions (stripped). The date moves only when the stored text changes; the
+    result's `changed` says whether it did."""
+    text = text.strip()
     if len(text) > MAX_INSTRUCTIONS:
         raise ValueError("too_long")
     with transaction.atomic():
         row = _locked_row(user_id)
+        if row.instructions_text == text:
+            return _settings_data(row)
         row.instructions_text = text
         row.instructions_updated_at = timezone.now()
         row.save(update_fields=["instructions_text", "instructions_updated_at"])
-        return _settings_data(row)
+        return _settings_data(row, changed=True)
 
 
 def set_enabled(user_id: str, target: str, enabled: bool) -> SettingsData:
@@ -97,9 +106,11 @@ def set_enabled(user_id: str, target: str, enabled: bool) -> SettingsData:
     with transaction.atomic():
         row = _locked_row(user_id)
         field = f"{target}_enabled"
+        if getattr(row, field) == bool(enabled):
+            return _settings_data(row)
         setattr(row, field, bool(enabled))
         row.save(update_fields=[field])
-        return _settings_data(row)
+        return _settings_data(row, changed=True)
 
 
 def set_testing(

@@ -133,16 +133,16 @@ def _handle(action: str, user_id: str, data: dict):
         text = text.strip()
         if len(text) > profile_store.MAX_INSTRUCTIONS:
             return _bad_request("too_long", max=profile_store.MAX_INSTRUCTIONS)
-        profile_store.set_instructions(user_id, text)
-        _audit(action, user_id)
+        if profile_store.set_instructions(user_id, text).changed:
+            _audit(action, user_id)
         return _respond(_state(user_id))
 
     if action == "toggle":
         target, enabled = data.get("target"), data.get("enabled")
         if target not in profile_store.TARGETS or not _is_bool(enabled):
             return _bad_request()
-        profile_store.set_enabled(user_id, target, enabled)
-        _audit(action, user_id)
+        if profile_store.set_enabled(user_id, target, enabled).changed:
+            _audit(action, user_id)
         return _respond(_state(user_id))
 
     if action == "clear_profile":

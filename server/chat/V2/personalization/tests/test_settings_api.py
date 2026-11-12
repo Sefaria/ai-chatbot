@@ -144,6 +144,43 @@ def test_toggle(client):
     assert call(client, "toggle", target="profile").status_code == 400
 
 
+def _audit_lines(caplog):
+    return [r.getMessage() for r in caplog.records if "personalization_audit" in r.getMessage()]
+
+
+def test_set_instructions_empty_to_empty_is_a_no_op(client, logs):
+    r = call(client, "set_instructions", text="")
+    assert r.status_code == 200
+    assert r.json()["instructions"]["updatedAt"] is None
+    r = call(client, "set_instructions", text="   ")
+    assert r.json()["instructions"]["updatedAt"] is None
+    assert _audit_lines(logs) == []
+
+
+def test_set_instructions_same_text_keeps_the_date_and_logs_nothing(client, logs):
+    first = call(client, "set_instructions", text="be brief").json()["instructions"]["updatedAt"]
+    assert first is not None
+    assert len(_audit_lines(logs)) == 1
+    again = call(client, "set_instructions", text=" be brief ")
+    assert again.json()["instructions"]["updatedAt"] == first
+    assert len(_audit_lines(logs)) == 1
+
+
+def test_set_instructions_text_to_empty_sets_the_date(client, logs):
+    first = call(client, "set_instructions", text="be brief").json()["instructions"]["updatedAt"]
+    r = call(client, "set_instructions", text="").json()["instructions"]
+    assert r["text"] == "" and r["updatedAt"] is not None and r["updatedAt"] >= first
+    assert len(_audit_lines(logs)) == 2
+
+
+def test_toggle_to_the_same_value_logs_nothing(client, logs):
+    assert call(client, "toggle", target="profile", enabled=True).status_code == 200
+    assert _audit_lines(logs) == []
+    call(client, "toggle", target="profile", enabled=False)
+    call(client, "toggle", target="profile", enabled=False)
+    assert len(_audit_lines(logs)) == 1
+
+
 def test_unknown_field_ignored(client):
     call(client, "set_instructions", text="be brief")
     before = store.get_settings(USER_A)

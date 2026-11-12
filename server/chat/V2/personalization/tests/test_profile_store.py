@@ -62,6 +62,27 @@ def test_instructions_cap():
     assert store.get_settings("u1").instructions_text == "ש" * 300
 
 
+def test_set_instructions_changes_the_date_only_when_the_text_changes():
+    empty = store.set_instructions("u1", "")
+    assert empty.changed is False and empty.instructions_updated_at is None
+    first = store.set_instructions("u1", "  be brief ")
+    assert first.changed is True and first.instructions_text == "be brief"
+    stamp = first.instructions_updated_at
+    assert stamp is not None
+    same = store.set_instructions("u1", "be brief  ")
+    assert same.changed is False and same.instructions_updated_at == stamp
+    assert store.get_settings("u1").instructions_updated_at == stamp
+    cleared = store.set_instructions("u1", "")
+    assert cleared.changed is True and cleared.instructions_text == ""
+    assert cleared.instructions_updated_at is not None and cleared.instructions_updated_at >= stamp
+
+
+def test_set_enabled_reports_whether_it_changed():
+    assert store.set_enabled("u1", "profile", True).changed is False
+    assert store.set_enabled("u1", "profile", False).changed is True
+    assert store.set_enabled("u1", "profile", False).changed is False
+
+
 def test_set_enabled_and_testing():
     assert store.set_enabled("u1", "profile", False).profile_enabled is False
     assert store.set_enabled("u1", "instructions", False).instructions_enabled is False
