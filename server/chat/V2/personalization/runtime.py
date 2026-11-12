@@ -60,7 +60,8 @@ def context_for_request(
         if not instructions and not profile:
             return PersonalizationContext()
 
-        notice = profile_store.take_notice(user_id, message_id)
+        # The notice is about the Profile: only a turn that carries the Profile block shows it.
+        notice = profile_store.take_notice(user_id, message_id) if profile else False
         meta = {
             "personalized": True,
             "profile_on": settings_row.profile_enabled,
@@ -180,6 +181,11 @@ def queue_job(user_id: str, trigger: str) -> None:
     """Queue a Profile job on a small background pool (2 workers). One user's jobs run one at a
     time, in the order queued. Never blocks the reply and never raises."""
     global _pending
+    try:
+        if not profile_store.get_settings(user_id).profile_enabled:
+            return  # the job would do nothing: one cheap read saves the queue slot
+    except Exception:
+        logger.debug("Could not read the Profile switch; queueing anyway", exc_info=True)
     try:
         with _idle:
             _pending += 1

@@ -107,9 +107,142 @@ _SENSITIVE_HE = re.compile(
 )
 
 
+# ---- statements ABOUT THE USER in the never-store categories ------------------------------------
+# Only first-person or possessive claims match, never a bare topic word: a study assistant sees
+# "Reform", "convert", "mourner" and "wife" in ordinary questions about texts and law.
+
+_IM = r"\bI(?:['’]?m| am)\b"
+_KIN_EN = (
+    r"(?:wife|husband|spouse|son|daughter|kids|children|mother|father|mom|dad|parents|brother|"
+    r"sister|grandmother|grandfather|grandson|granddaughter|in-laws|girlfriend|boyfriend)"
+)
+_DENOM_EN = (
+    r"(?:orthodox|reform|conservative|masorti|reconstructionist|haredi|charedi|hasidic|chasidic|"
+    r"chabad|lubavitch\w*|litvish|secular|traditional|observant|religious|atheist|"
+    r"shomer\s+(?:shabbat|shabbos|mitzvot)|dati|chiloni)"
+)
+_USER_EN = re.compile(
+    "|".join(
+        [
+            # location
+            r"\b(?:I|we)\s+(?:live|reside)\s+in\b",
+            _IM + r"\s+(?:living|residing|based)\s+in\b",
+            r"\bwe['’]re\s+(?:living|based)\s+in\b",
+            # family
+            rf"\bmy\s+{_KIN_EN}\b",
+            _IM + r"\s+(?:married|divorced|widowed|a\s+(?:father|mother|dad|mom|parent))\b",
+            r"\bI\s+have\s+(?:\w+\s+)?(?:kids|children|sons?|daughters?|grandchildren)\b",
+            # health
+            r"\bmy\s+(?:diagnosis|illness|cancer|chemo\w*|surgery|medical\s+condition|disease|"
+            r"depression|anxiety|treatment)\b",
+            r"\bI\s+(?:was|have\s+been|got)\s+diagnosed\b",
+            _IM + r"\s+(?:sick(?!\s+of)|ill|unwell|in\s+(?:treatment|chemo\w*))\b",
+            r"\bI\s+(?:have|got)\s+(?:cancer|diabetes|depression|anxiety|ptsd|an?\s+illness|"
+            r"a\s+disease|a\s+chronic\s+\w+)\b",
+            r"\bI\s+suffer\s+from\b",
+            # mourning
+            _IM + r"\s+(?:in\s+mourning|mourning|a\s+mourner|an\s+avel|sitting\s+shiv\w+|"
+            r"observing\s+(?:shiva|yahrzeit))\b",
+            rf"\bmy\s+{_KIN_EN}\s+(?:just\s+)?(?:died|passed(?:\s+away)?)\b",
+            rf"\bI\s+(?:just\s+)?lost\s+my\s+{_KIN_EN}\b",
+            r"\bI\s*(?:am|['’]m)?\s+saying\s+kaddish\b",
+            # personal halakhic status
+            _IM + r"\s+(?:a\s+|an\s+)?(?:kohen|cohen|levi|levite|mamzer|agunah|aguna|"
+            r"bat\s+(?:kohen|levi))\b",
+            r"\bmy\s+(?:husband|ex|ex-husband)\s+(?:refuses|won['’]?t)\s+(?:to\s+)?give\s+me\s+a\s+get\b",
+            # conversion
+            r"\bI\s+(?:have\s+)?converted\b",
+            _IM + r"\s+(?:a\s+)?(?:converting|convert|ger|giyoret|ger\s+tzedek|jew\s+by\s+choice|"
+            r"in\s+the\s+process\s+of\s+(?:converting|conversion|giyur))\b",
+            r"\bmy\s+(?:conversion|giyur)\b",
+            r"\bI\s+went\s+through\s+(?:a\s+)?(?:conversion|giyur)\b",
+            # denomination or observance level
+            _IM + r"\s+(?:an?\s+|not\s+)?(?:very\s+|fairly\s+|modern\s+|ultra[- ]|centrist\s+)?"
+            rf"{_DENOM_EN}\b",
+            r"\bI\s+(?:don['’]?t\s+)?(?:keep|observe)\s+(?:shabbat|shabbos|shabbes|kosher|"
+            r"kashrut|the\s+sabbath)\b",
+            rf"\bI\s+grew\s+up\s+{_DENOM_EN}\b",
+        ]
+    ),
+    re.IGNORECASE,
+)
+
+# Hebrew has no usable \b next to letters, and one-letter prefixes (ב ל ה ו ש מ כ) attach to the
+# word: a term may start after a non-letter or the start, with one optional prefix, and must not
+# run into a following letter.
+_HE_L = "א-ת"
+
+
+def _he(words: str, prefixes: str = "וש") -> str:
+    prefix = f"[{prefixes}]?" if prefixes else ""
+    return rf"(?<![{_HE_L}]){prefix}(?:{words})(?![{_HE_L}])"
+
+
+_I_HE = _he("אני|אנחנו|אנו")
+_KIN_HE = "אבא|אמא|סבא|סבתא|אח|אחות|הבן|הבת|הבעל|האישה|האשה|הילד|הילדה|הילדים|הבנות|הבנים|ההורים"
+_USER_HE = re.compile(
+    "|".join(
+        [
+            # location
+            _I_HE + r"\s+(?:גר|גרה|גרים|גרות|מתגורר|מתגוררת|מתגוררים)\s+ב",
+            # family
+            _he("אשתי", "בלמכוש"),
+            _he(_KIN_HE) + r"\s+שלי",
+            _he("בן\\s+זוגי|בת\\s+זוגי", "בלמכוש"),
+            _I_HE + r"\s+(?:נשוי|נשואה|גרוש|גרושה|אלמן|אלמנה)" + rf"(?![{_HE_L}])",
+            _I_HE + r"\s+(?:אבא|אמא|אב|אם)\s+(?:של|ל)" + rf"(?![{_HE_L}])",
+            _he("יש\\s+לי")
+            + r"\s+(?:\S+\s+)?"
+            + _he("ילדים|ילד|ילדה|בנות|בן|בת|נכדים|נכד|אישה|אשה", ""),
+            # health
+            _he("יש\\s+לי") + r"\s+" + _he("סרטן|סכרת|דיכאון|חרדה|מחלה|גידול", ""),
+            _I_HE + r"\s+(?:חולה|חולים|סובל|סובלת|מטופל|מטופלת)" + rf"(?![{_HE_L}])",
+            _he("האבחנה|המחלה|הטיפול|הניתוח|הכימותרפיה") + r"\s+שלי",
+            _he("עברתי", "וש") + r"\s+(?:ניתוח|כימותרפיה|הקרנות)",
+            # mourning
+            _I_HE + r"\s+(?:באבל|אבלה)" + rf"(?![{_HE_L}])",
+            _I_HE + r"\s+אבל\s+על(?![" + _HE_L + "])",
+            _I_HE + r"\s+(?:אומר|אומרת)\s+קדיש",
+            _he("אשתי|בעלי|אחי|אחותי|בני|בתי|אמי|אבי", "בלמכוש")
+            + r"\s+(?:נפטר|נפטרה|מת|מתה)(?!["
+            + _HE_L
+            + "])",
+            _he(_KIN_HE) + r"\s+שלי\s+(?:נפטר|נפטרה|מת|מתה)",
+            _he("איבדתי")
+            + r"\s+(?:את\s+)?(?:אבא|אמא|אשתי|בעלי|אחי|אחותי|בני|בתי|הורה|ילד|ילדה|אח|אחות)",
+            # personal halakhic status
+            _I_HE
+            + r"\s+(?:כהן|לוי|ממזר|ממזרת|עגונה|כהנת|מסורבת\s+גט|בת\s+כהן|בת\s+לוי)"
+            + rf"(?![{_HE_L}])",
+            r"מסרב\s+לתת\s+לי\s+גט",
+            # conversion
+            _he("התגיירתי"),
+            _I_HE
+            + r"\s+(?:מתגייר|מתגיירת|גר\s+צדק|גיורת|בגיור|בתהליך\s+(?:של\s+)?(?:גיור|התגיירות))"
+            + rf"(?![{_HE_L}])",
+            _he("עברתי") + r"\s+גיור",
+            _he("הגיור") + r"\s+שלי",
+            # denomination or observance level
+            _I_HE + r"\s+(?:לא\s+)?(?:חרדי|חרדית|דתי|דתיה|דתייה|חילוני|חילונית|מסורתי|מסורתית|"
+            r"רפורמי|רפורמית|קונסרבטיבי|קונסרבטיבית|אורתודוכסי|אורתודוקסי|אורתודוכסית|"
+            r"אורתודוקסית|ליטאי|ליטאית|חסידי|חסידית|חב.?ד|חבדניק|חבדניקית|"
+            r"שומר\s+שבת|שומרת\s+שבת|שומר\s+מצוות|שומרת\s+מצוות|שומר\s+כשרות|שומרת\s+כשרות)"
+            + rf"(?![{_HE_L}])",
+        ]
+    )
+)
+
+
+def is_user_statement(text: str) -> bool:
+    """True for a first-person or possessive statement about the user in a never-store category
+    (health, mourning, family, personal halakhic status, conversion, denomination or observance
+    level, location), in English or Hebrew. A bare topic word does not match."""
+    return bool(_USER_EN.search(text) or _USER_HE.search(text))
+
+
 def is_sensitive(text: str) -> bool:
     """True when the text touches mourning, illness, conversion or personal halakhic status."""
-    return bool(_SENSITIVE_EN.search(text) or _SENSITIVE_HE.search(text))
+    return bool(_SENSITIVE_EN.search(text) or _SENSITIVE_HE.search(text) or is_user_statement(text))
 
 
 class SensitiveScreen(Protocol):

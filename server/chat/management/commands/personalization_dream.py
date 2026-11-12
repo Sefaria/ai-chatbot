@@ -45,7 +45,7 @@ class Command(BaseCommand):
             return
         counts: dict[str, int] = {}
         for user_id in due:
-            result = profile_job.run_profile_job(user_id, "dream", window="dream", now=now)
+            result = profile_job.run_profile_job(user_id, "dream", window="dream")
             counts[result.status] = counts.get(result.status, 0) + 1
         summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items())) or "none"
         self.stdout.write(f"dream: {len(due)} user(s) run ({summary})")

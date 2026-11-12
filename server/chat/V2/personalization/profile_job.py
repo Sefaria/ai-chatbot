@@ -61,6 +61,8 @@ MAX_PROMPT_CHARS = q.MAX_PROMPT_CHARS
 ACTIONS = ("add", "update", "confirm", "none")
 ORIGINS = ("stated", "inferred")
 REVISION_MOVED = "revision_moved"
+PROFILE_OFF = "profile_off"
+BATCH_SKIPPED = "batch_skipped"
 
 WRITER_SUFFIX = """
 
@@ -131,21 +133,32 @@ def run_profile_job(
 ) -> RunResult:
     if window not in ("session", "dream"):
         raise ValueError(f"unknown window: {window!r}")
+    if not get_settings(user_id).profile_enabled:
+        return RunResult("no_change", PROFILE_OFF)  # before any read, model or Jev call; no row
     now = now or timezone.now()
-    if not quota.acquire_job_lock(user_id, now):
+    lease = quota.acquire_job_lock(user_id, now)
+    if not lease:
         return RunResult("busy", "job_running")
     try:
         return _run(user_id, trigger, window, now, llm or AnthropicLLMClient(), jev)
     finally:
-        quota.release_job_lock(user_id)
+        quota.release_job_lock(user_id, lease)
 
 
 def _run(user_id, trigger, window, now, llm, jev) -> RunResult:
     current = get_settings(user_id)
     since = current.processed_through if window == "session" else None
     ctx = _Ctx(user_id, trigger, window, now, since, current.profile_revision)
-    if trigger != "run_now" and is_parked(user_id, window, ctx.since):
-        return RunResult("failed", "parked")
+    if trigger != "run_now":
+        stuck = _stuck_run(user_id, window, ctx.since)
+        if stuck is not None:
+            if not unprocessed_user_prompts(user_id, stuck.started_at):
+                return RunResult("failed", "parked")  # parked until a new prompt arrives
+            if window == "session" and stuck.watermark_to is not None:
+                _quarantine(ctx, stuck)
+                ctx.since = get_settings(user_id).processed_through
+                ctx.base_revision = get_settings(user_id).profile_revision
+                ctx.prompts, ctx.kept_count, ctx.watermark_to = [], None, None
     try:
         if window == "dream":
             return _dream_steps(ctx, now, llm, jev, current.processed_through)
@@ -159,9 +172,9 @@ def _run(user_id, trigger, window, now, llm, jev) -> RunResult:
         return _finish(ctx, "failed", f"error:{type(exc).__name__}")
 
 
-def is_parked(user_id: str, window: str, since: datetime | None) -> bool:
-    """The last PARK_AFTER runs all failed or were rejected for this same watermark, and no prompt
-    has arrived since the last of them (a new prompt gives the next trigger a fresh try)."""
+def _stuck_run(user_id: str, window: str, since: datetime | None):
+    """The newest run when the last PARK_AFTER runs all failed or were rejected for this same
+    watermark, else None."""
     recent = list(
         ProfileWriterRun.objects.filter(user_id=user_id, window=window)
         .exclude(reason=REVISION_MOVED)
@@ -170,8 +183,32 @@ def is_parked(user_id: str, window: str, since: datetime | None) -> bool:
     if len(recent) < PARK_AFTER or not all(
         r.status in ("failed", "rejected") and r.watermark_from == since for r in recent
     ):
-        return False
-    return not unprocessed_user_prompts(user_id, recent[0].started_at)
+        return None
+    return recent[0]
+
+
+def is_parked(user_id: str, window: str, since: datetime | None) -> bool:
+    """Stuck, and no prompt has arrived since the last failed run (a new prompt gives the next
+    trigger a fresh try: the session window quarantines the failing batch, the dream retries)."""
+    stuck = _stuck_run(user_id, window, since)
+    return stuck is not None and not unprocessed_user_prompts(user_id, stuck.started_at)
+
+
+def _quarantine(ctx: _Ctx, stuck) -> None:
+    """Skip the batch the failing runs kept reading: move the watermark past it without any model
+    call, and record one `no_change` row with the prompt ids only. Later prompts then process
+    normally. `run_now` never gets here: it stays an explicit retry of the same batch."""
+    batch = [
+        p
+        for p in unprocessed_user_prompts(ctx.user_id, ctx.since)
+        if p.server_timestamp <= stuck.watermark_to
+    ][: q.MAX_PROMPTS_PER_RUN]
+    if not batch:
+        return
+    ctx.prompts, ctx.kept_count = batch, len(batch)
+    ctx.watermark_to = max(p.server_timestamp for p in batch)
+    _advance_watermark(ctx)
+    _finish(ctx, "no_change", BATCH_SKIPPED)
 
 
 def _steps(ctx: _Ctx, now: datetime, llm: LLMClient, jev: JevClient | None) -> RunResult:
@@ -612,6 +649,10 @@ def _dream_steps(
     existing = get_sections(ctx.user_id)
     ctx.profile_before = render_profile(existing)
     kept, texts = _dream_prompts(ctx, now, jev)
+    if not kept and ctx.prompts:
+        # The window has prompts but every one was screened out: that says nothing about what the
+        # window supports, so nothing is written and the notice is left alone.
+        return _finish(ctx, "no_change", "all_screened")
     if not kept and not existing:
         return _finish(ctx, "no_change", "no_new_prompts")
 

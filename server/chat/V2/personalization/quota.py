@@ -48,7 +48,9 @@ def take_quotas(scope: str, checks) -> bool:
     return True
 
 
-def acquire_job_lock(user_id: str, now) -> bool:
+def acquire_job_lock(user_id: str, now):
+    """Take the user's lock. Returns the lease (the `started_at` written, which only this holder
+    carries) or None when a fresh lock is held. A lease is the proof of ownership for release."""
     from chat.models import LabJobLock
 
     with transaction.atomic():
@@ -58,13 +60,15 @@ def acquire_job_lock(user_id: str, now) -> bool:
             and lock.started_at is not None
             and lock.started_at > now - timedelta(seconds=LOCK_STALE_SECONDS)
         ):
-            return False
+            return None
         lock.running, lock.started_at = True, now
         lock.save(update_fields=["running", "started_at"])
-    return True
+    return now
 
 
-def release_job_lock(user_id: str) -> None:
+def release_job_lock(user_id: str, lease) -> None:
+    """Release only if the row still carries this holder's lease; a worker whose lock was taken
+    over as stale leaves the new holder's lock alone."""
     from chat.models import LabJobLock
 
-    LabJobLock.objects.filter(user_id=user_id).update(running=False)
+    LabJobLock.objects.filter(user_id=user_id, running=True, started_at=lease).update(running=False)
