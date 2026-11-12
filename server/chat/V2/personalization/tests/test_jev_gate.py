@@ -136,3 +136,25 @@ def test_incomplete_or_malformed_answers_fall_back(responder):
     result = ask_gate(PROMPTS, "on", FakeJevClient(responder))
     assert result.source == "fallback" and result.relevant
     assert result.slots == set(CORE_KEYS) and result.sensitive == set()
+
+
+class _NoAnswers:
+    """A reply object without an `answers` attribute."""
+
+
+class _NoAnswersClient:
+    model = "x"
+
+    def ask(self, state, questions):
+        return _NoAnswers()
+
+
+def test_a_response_without_answers_falls_back():
+    result = ask_gate(PROMPTS, "on", _NoAnswersClient())
+    assert result.source == "fallback" and result.relevant
+    assert result.slots == set(CORE_KEYS) and result.sensitive == set()
+
+
+def test_a_heading_check_response_without_answers_is_uncertain(settings):
+    settings.PERSONALIZATION_JEV_GATE = "on"
+    assert same_heading("a", "b", _NoAnswersClient()) is None

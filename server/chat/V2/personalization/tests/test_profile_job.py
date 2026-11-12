@@ -416,35 +416,28 @@ def _only_run():
     return ProfileWriterRun.objects.get(user_id=USER)
 
 
-def test_a_run_rejected_by_a_never_store_check_records_no_extraction_text():
-    two_sessions()
-    llm = model(
-        [item("answer_style", "Kind of answers you want", notes=("zebra-note-text",))],
-        check="yes",
-    )
-    result = run(llm)
-    assert result.status == "rejected"
-    row = _only_run()
-    assert "zebra-note-text" not in row.extraction
-    assert "answer_style" in row.extraction  # slot keys and counts stay
-
-
-def test_other_runs_drop_notes_and_headings_that_fail_the_screen():
+def test_the_extraction_is_a_summary_with_no_notes_or_headings():
     two_sessions()
     llm = model(
         [
             item(
                 "answer_style",
                 "Kind of answers you want",
-                notes=("keeps short answers", "lives in Haifa"),
+                notes=("zebra-note-text", "lives in Haifa"),
             ),
             item(None, "Based in Haifa", action="none", notes=("fine note",)),
         ]
     )
     run(llm)
     text = _only_run().extraction
-    assert "keeps short answers" in text
-    assert "Haifa" not in text
+    for fragment in ("zebra-note-text", "Haifa", "fine note", "Based in"):
+        assert fragment not in text
+    assert json.loads(text)["sections"][0] == {
+        "key": "answer_style",
+        "action": "add",
+        "origin": "inferred",
+        "sessions": 2,
+    }
 
 
 def test_a_run_finishing_after_a_clear_records_no_pre_clear_text():
@@ -522,3 +515,77 @@ def test_a_writer_that_omits_or_mangles_a_requested_section_fails_the_run():
         assert result.status == "failed" and result.reason == "bad_writer_output", reply
         assert store.get_sections(USER) == []
         assert watermark() is None or watermark() < T0
+
+
+def test_a_recent_blank_state_turn_without_a_response_is_unfinished():
+    """The chat pipeline saves the user message with a blank state and marks it STARTED a few
+    queries later; the job must not read it in between, nor move the watermark past it."""
+    from django.utils import timezone
+
+    now = timezone.now()
+    add_prompt(
+        USER, "done", session="s1", at=now - timedelta(minutes=5), processing_state="completed"
+    )
+    blank = add_prompt(
+        USER, "just saved", session="s2", at=now - timedelta(minutes=2), processing_state=""
+    )
+    add_prompt(
+        USER, "later", session="s3", at=now - timedelta(minutes=1), processing_state="completed"
+    )
+    assert [p.text for p in store.unprocessed_user_prompts(USER, None)] == ["done"]
+    two = run_profile_job(USER, "idle", now=now, llm=model())
+    assert two.status in ("no_change", "applied")
+    assert watermark() is None or watermark() < blank.server_timestamp
+
+
+def test_a_blank_state_turn_counts_as_finished_when_old_or_answered():
+    from django.utils import timezone
+
+    from chat.models import ChatMessage
+
+    now = timezone.now()
+    add_prompt(USER, "old blank", session="s1", at=now - timedelta(hours=2), processing_state="")
+    answered = add_prompt(
+        USER,
+        "answered blank",
+        session="s2",
+        at=now - timedelta(minutes=2),
+        turn_id="turn-a",
+        processing_state="",
+    )
+    ChatMessage.objects.create(
+        message_id="a1",
+        session_id="s2",
+        user_id=USER,
+        turn_id="turn-a",
+        role=ChatMessage.Role.ASSISTANT,
+        content="reply",
+        status=ChatMessage.Status.SUCCESS,
+    )
+    add_prompt(
+        USER, "unanswered blank", session="s3", at=now - timedelta(minutes=1), processing_state=""
+    )
+    got = [p.text for p in store.unprocessed_user_prompts(USER, None)]
+    assert got == ["old blank", "answered blank"] and answered
+
+
+def test_a_new_section_is_written_from_an_empty_current_body():
+    two_sessions()
+    llm = model([item("answer_style", "Kind of answers you want", sessions=1)])
+    assert run(llm).status == "applied"
+    writer = next(c for c in llm.calls if "## Output for this job" in c["system"])
+    assert "(new section)" not in writer["user"]
+    assert "Current: \n" in writer["user"]
+    assert "new section has no current text" in writer["system"]
+
+
+@pytest.mark.parametrize("echo", ["(new section)", "(New Section)", " (new section). "])
+def test_a_writer_echoing_the_new_section_placeholder_is_a_bad_output(echo):
+    two_sessions()
+    llm = model(
+        [item("answer_style", "Kind of answers you want", sessions=1)],
+        {"Kind of answers you want": echo},
+    )
+    result = run(llm)
+    assert result.status == "failed" and result.reason == "bad_writer_output"
+    assert store.get_sections(USER) == []

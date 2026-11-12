@@ -119,7 +119,6 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
 
 def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
     text = clean_text(request or "")[:MAX_REQUEST]
-    rec["request"] = text
     if not text:
         return _refuse("empty")
     if never_store_text(text):
@@ -188,8 +187,8 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
     rec: dict = {}
     try:
         status, reason = _edit(user_id, request, llm, rec)
-    except Exception:
-        _record(user_id, started, rec, "failed", "error")
+    except Exception as exc:
+        _record(user_id, started, rec, "failed", f"error:{type(exc).__name__}")
         raise
     if status == "applied":
         run_status = "applied"
@@ -201,7 +200,6 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
     return status, reason
 
 
-REDACTED = "[redacted]"
 _CODE_BY_REASON = {text: code for code, text in REASONS.items()}
 
 
@@ -214,17 +212,9 @@ def _reason_code(status: str, reason: str, rec: dict) -> str:
     return _CODE_BY_REASON.get(reason, "model_refused")
 
 
-def _stored_request(status: str, rec: dict) -> str:
-    """The request text goes on the run row only for an applied edit that passes the never-store
-    screen; anything else leaves a marker."""
-    text = rec.get("request", "")
-    if not text:
-        return ""
-    return text if status == "applied" and not never_store_text(text) else REDACTED
-
-
 def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str) -> None:
-    """Store the run row. A failure to store never changes the edit's result."""
+    """Store the run row: fixed codes, cost and the stored Profile only (`profile_after` just for an
+    applied edit). A failure to store never changes the edit's result."""
     try:
         record_run_guarded(
             expected_revision=(
@@ -237,7 +227,7 @@ def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str
             window="edit",
             started_at=started,
             finished_at=timezone.now(),
-            extraction=_stored_request(status, rec),
+            extraction="",  # the request is user text: a run row never holds it
             profile_before=rec.get("profile_before", ""),
             profile_after=rec.get("profile_after", ""),
             chapter_hashes={CHAPTER: chapter_sha(CHAPTER)},

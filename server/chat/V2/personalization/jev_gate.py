@@ -62,11 +62,13 @@ def ask_gate(prompts: list[str], mode: str, jev: JevClient | None = None) -> Gat
     state = {"learner_prompts": [p[: q.MAX_PROMPT_CHARS] for p in prompts]}
     try:
         response = _client(jev).ask(state, q.build_questions(len(prompts)))
-    except Exception as exc:  # JevError, timeouts, anything: the model path continues
+        answers = response.answers
+    except (
+        Exception
+    ) as exc:  # JevError, timeouts, a reply without answers: the model path continues
         logger.warning("jev gate fell back: %s", type(exc).__name__)
         return _open("fallback")
     questions = q.build_questions(len(prompts))
-    answers = response.answers
     if not _valid(answers, questions):
         logger.warning("jev gate fell back: incomplete or malformed answers")
         return _open("fallback")
@@ -95,7 +97,8 @@ def same_heading(a: str, b: str, jev: JevClient | None = None) -> bool | None:
         response = _client(jev).ask(
             {"headings": [a, b]}, {q.heading_key(): q.heading_question(a, b)}
         )
+        answer = response.answers.get(q.heading_key())
     except Exception as exc:
         logger.warning("jev heading check fell back: %s", type(exc).__name__)
         return None
-    return q.heading_verdict(response.answers.get(q.heading_key()))
+    return q.heading_verdict(answer)

@@ -245,7 +245,7 @@ def test_an_applied_edit_records_one_run_with_cost_and_both_profiles():
     assert edit_profile(USER, "only parsha", llm=llm)[0] == "applied"
     run = edit_runs().get()
     assert run.status == "applied" and run.window == "edit"
-    assert run.extraction == "only parsha"
+    assert run.extraction == "" and run.reason == "applied"  # the request is never stored
     assert "You study many books." in run.profile_before
     assert "You study parsha." in run.profile_after
     assert run.model and run.input_tokens and run.output_tokens and run.cost_usd is not None
@@ -295,7 +295,7 @@ def test_a_refused_request_is_not_stored_on_the_run_row():
     assert run.reason == "model_refused"
 
 
-def test_an_applied_request_is_stored_only_when_it_passes_the_screen():
+def test_the_request_is_never_stored_on_the_run_row():
     put_interests()
     reply = {
         "status": "applied",
@@ -304,10 +304,9 @@ def test_an_applied_request_is_stored_only_when_it_passes_the_screen():
     }
     edit_profile(USER, "prefer long answers", llm=edit_model(reply))
     run = _runs()[-1]
-    assert run.extraction == "prefer long answers" and run.reason == "applied"
-    # A request that is screened as never-store is refused before any model call; a marker only.
+    assert run.extraction == "" and run.reason == "applied"
     edit_profile(USER, "I am based in Haifa", llm=edit_model(reply))
-    assert _runs()[-1].extraction == "[redacted]"
+    assert _runs()[-1].extraction == ""
 
 
 def test_an_edit_that_finishes_after_a_clear_leaves_no_text_on_its_row():
@@ -341,4 +340,4 @@ def test_an_unparseable_model_check_is_visible_on_the_run_row():
     edit_profile(USER, "prefer long answers", llm=edit_model(reply, check="not sure"))
     run = _runs()[-1]
     assert run.status == "rejected" and run.reason == "never_store_unparseable"
-    assert run.extraction == "[redacted]"
+    assert run.extraction == "" and run.profile_after == ""
