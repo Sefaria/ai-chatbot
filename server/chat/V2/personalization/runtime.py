@@ -30,7 +30,7 @@ class PersonalizationContext:
 
 def notice_for_message(user_id: str, message_id: str | None) -> bool:
     """Whether the turn that answered this user message showed the one-time notice. Kept in the
-    database (not a per-process cache) so the recover path can repeat it from any worker."""
+    database, not process memory, so the recover path can repeat it from any worker."""
     try:
         return profile_store.notice_shown_for(user_id, message_id)
     except Exception:
