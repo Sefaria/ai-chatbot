@@ -29,16 +29,6 @@ _request_sefaria_base_url: contextvars.ContextVar[str | None] = contextvars.Cont
 )
 
 
-_request_from_lab_origin: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "request_from_lab_origin", default=False
-)
-
-
-def request_from_lab_origin() -> bool:
-    """True when the current request came from a lab origin (see lab_origin_allowed)."""
-    return _request_from_lab_origin.get()
-
-
 def request_sefaria_base_url() -> str | None:
     """The current request's Sefaria, or None to use the default."""
     return _request_sefaria_base_url.get()
@@ -83,40 +73,10 @@ def allowed_sefaria_base_url(origin: str | None) -> str | None:
     return f"{parts.scheme}://{host}" + (f":{port}" if port else "")
 
 
-def lab_origin_allowed(origin: str | None) -> bool:
-    """True for an Origin whose host is in PERSONALIZATION_LAB_ORIGINS (same pattern syntax as
-    CHATBOT_ALLOWED_SEFARIA_HOSTS). Only for a lab deployment: PERSONALIZATION_LAB_SEED is "true"
-    and ENVIRONMENT is set and not production. It lets the lab page's own host use anonId; it never
-    sets the request's Sefaria base URL."""
-    if not origin or os.environ.get("PERSONALIZATION_LAB_SEED") != "true":
-        return False
-    environment = (os.environ.get("ENVIRONMENT") or "").strip().lower()
-    if not environment or environment in ("prod", "production", "beta"):
-        return False
-    patterns = [
-        p.strip().lower()
-        for p in os.environ.get("PERSONALIZATION_LAB_ORIGINS", "").split(",")
-        if p.strip()
-    ]
-    try:
-        parts = urlsplit(origin.strip())
-        host = (parts.hostname or "").lower()
-    except ValueError:
-        return False
-    if parts.scheme not in ("http", "https") or not host:
-        return False
-    if parts.path not in ("", "/") or parts.query or parts.fragment:
-        return False
-    if parts.username or parts.password:
-        return False
-    return _is_allowed_host(host, patterns)
-
-
 def _clear() -> None:
     # set(None), not reset(token): a stream may be consumed in a different context
     # than the one the value was set in, where reset() would raise.
     _request_sefaria_base_url.set(None)
-    _request_from_lab_origin.set(False)
 
 
 def _clear_when_done(content):
@@ -138,7 +98,6 @@ class SefariaBaseUrlMiddleware:
     def __call__(self, request):
         origin = request.headers.get("Origin")
         _request_sefaria_base_url.set(allowed_sefaria_base_url(origin))
-        _request_from_lab_origin.set(lab_origin_allowed(origin))
         try:
             response = self.get_response(request)
         except BaseException:
