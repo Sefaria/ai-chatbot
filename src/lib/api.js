@@ -3,7 +3,6 @@
  */
 
 import { generateMessageId, getOrCreateAnonId } from './session.js';
-import { personalizationContext } from './personalization.js';
 
 /**
  * The identity fields for a request body: the user token when there is a
@@ -23,8 +22,8 @@ export function identityFields(userId) {
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
  * @property {boolean} [labs] - Whether Labs tools are enabled for this request
- * @property {string} [personalizationMode] - Test-only, from ?la_personalization=; the server honours it only for allowlisted users on a non-production deployment
- * @property {string} [personalizationInjection] - Test-only, from ?la_injection=
+ * @property {string} [personalizationMode] - "off" on the plain arm of the two-answer display
+ * @property {boolean} [labCompare] - True on the plain arm of the two-answer display
  * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
@@ -93,13 +92,6 @@ function buildMessageContext(origin = '', isStaff = false, labs = false, interfa
   if (labs) {
     context.labs = true;
   }
-  let storage = null;
-  try {
-    storage = window.sessionStorage;
-  } catch {
-    storage = null;
-  }
-  Object.assign(context, personalizationContext(window.location.search, storage));
   return context;
 }
 
@@ -285,7 +277,6 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
- *   `contextDefaults` fills context keys that are not set yet (the lab's "hybrid" default).
  *   `contextOverrides` is merged over the request context last (the lab's plain compare stream).
  * @returns {Promise<ChatResponse>}
  */
@@ -303,22 +294,16 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null, source = '', contextOverrides = null, contextDefaults = null } = options;
+  const { signal = null, source = '', contextOverrides = null } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
 
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
-  // Lab defaults (e.g. personalizationMode "hybrid") yield to anything already set, such as ?la_personalization=.
-  if (contextDefaults) {
-    for (const [key, value] of Object.entries(contextDefaults)) {
-      if (context[key] === undefined) context[key] = value;
-    }
-  }
   if (source) {
     context.source = source;
   }
-  // Lab compare: the plain stream rides with personalizationMode "off".
+  // Two-answer display: the plain stream rides with personalizationMode "off".
   if (contextOverrides) {
     Object.assign(context, contextOverrides);
   }
@@ -449,7 +434,8 @@ export async function sendMessageStream(
                   recovered: data.recovered || false,
                   narrationMessages: data.narrationMessages || [],
                   anonResponsesRemaining: data.anonResponsesRemaining,
-                  anonMessagesSent: data.anonMessagesSent
+                  anonMessagesSent: data.anonMessagesSent,
+                  personalizationNotice: data.personalizationNotice === true
                 };
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
@@ -819,60 +805,39 @@ export async function deleteConversation(apiBaseUrl, userId, sessionId) {
 }
 
 
-// --- Personalization lab (visible only when status.overrideAllowedForYou) ---
+// --- Personalization settings state ---
+
+const NO_PERSONALIZATION_STATE = {
+  labEnabled: false,
+  testing: { showPlainResponse: false, updateEveryMessage: false }
+};
 
 /**
- * Whether this user may use the lab override. Never throws: any failure means "not lab mode".
- * A logged-out visitor is only asked when an anonymous ID already exists, so asking never
- * creates one.
+ * The signed-in user's personalization state (the `State` of the settings endpoint). Never
+ * throws: any failure resolves to a state with the lab and both testing flags off.
  * @param {string} apiBaseUrl
- * @param {string} userId
- * @param {string} [storedAnonId] - the existing anonymous ID, if any
- * @returns {Promise<{overrideAllowedForYou: boolean, [key: string]: any}>}
+ * @param {string} userId - the signed user token; a signed-out visitor never calls this
+ * @returns {Promise<{labEnabled: boolean, testing: {showPlainResponse: boolean, updateEveryMessage: boolean}, [key: string]: any}>}
  */
-export async function fetchPersonalizationStatus(apiBaseUrl, userId, storedAnonId = '') {
-  const identity = userId ? { userId } : storedAnonId ? { anonId: storedAnonId } : null;
-  if (!identity) return { overrideAllowedForYou: false };
+export async function fetchPersonalizationState(apiBaseUrl, userId) {
+  if (!apiBaseUrl || !userId) return NO_PERSONALIZATION_STATE;
   try {
-    const response = await fetch(`${apiBaseUrl}/v2/personalization/status`, {
+    const response = await fetch(`${apiBaseUrl}/v2/personalization/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(identity)
+      body: JSON.stringify({ ...identityFields(userId), action: 'get' })
     });
-    if (!response.ok) return { overrideAllowedForYou: false };
+    if (!response.ok) return NO_PERSONALIZATION_STATE;
     const data = await response.json();
-    return { ...data, overrideAllowedForYou: data?.overrideAllowedForYou === true };
+    return {
+      ...data,
+      labEnabled: data?.labEnabled === true,
+      testing: {
+        showPlainResponse: data?.testing?.showPlainResponse === true,
+        updateEveryMessage: data?.testing?.updateEveryMessage === true
+      }
+    };
   } catch {
-    return { overrideAllowedForYou: false };
+    return NO_PERSONALIZATION_STATE;
   }
-}
-
-/**
- * One profile action: get, set, release, run_job, apply_candidate, discard_candidate, seed_persona.
- * Errors carry `.status` and `.code` (the server's `error`), e.g. 409 stale_revision.
- * @param {string} apiBaseUrl
- * @param {string} userId
- * @param {string} action
- * @param {Object} [args]
- * @returns {Promise<any>}
- */
-export async function personalizationProfileAction(apiBaseUrl, userId, action, args = {}) {
-  const response = await fetch(`${apiBaseUrl}/v2/personalization/profile`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...identityFields(userId), action, ...args })
-  });
-  let data = null;
-  try {
-    data = await response.json();
-  } catch {
-    // Non-JSON body: fall through to the status error.
-  }
-  if (!response.ok) {
-    const error = new Error(data?.message || data?.error || `Profile request failed: ${response.status}`);
-    error.status = response.status;
-    error.code = data?.error;
-    throw error;
-  }
-  return data;
 }

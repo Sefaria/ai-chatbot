@@ -18,7 +18,7 @@
     deleteConversation,
     identityFields,
     claimAnonChats,
-    fetchPersonalizationStatus
+    fetchPersonalizationState
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
@@ -35,7 +35,6 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import ProfilePanel from './ProfilePanel.svelte';
   import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
@@ -63,8 +62,6 @@
     'max-prompts': maxPrompts = DEFAULT_MAX_PROMPTS,
     origin: originProp = '',
     'is-moderator': isModeratorAttr = false,
-    // Demo pages: each browser is one anonymous learner; probe the lab even with a fresh anon ID.
-    'personalization-lab': personalizationLabAttr = false,
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
@@ -242,19 +239,17 @@
     .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
-  // Personalization lab: everything lab-only needs the server's overrideAllowedForYou and labEnabled;
-  // an anonymous visitor also needs the host's opt-in (labRequested, below). Signed-in users don't.
-  let labMode = $state(false);
-  let labCompare = $state(false);
+  // Personalization settings state, read once per signed-in user. It drives the two-answer display:
+  // the plain arm is asked for only when the lab is on and the user chose to see the plain response.
+  let showPlainResponse = $state(false);
   // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
   let comparePlain = $state({});
-  // One plain-arm session per main chat, so follow-up compare questions share context. Memory only.
+  // One plain-arm session per main chat, so follow-up questions share context. Memory only.
   const plainSessionIds = {};
   let widthBeforeCompare = null;
 
-  // Two columns need room: widen the panel while Compare is on, then put it back.
+  // Two columns need room: widen the panel while the plain response is shown, then put it back.
   function setCompare(on) {
-    labCompare = on;
     if (on) {
       widthBeforeCompare = panelWidth;
       panelWidth = maxCanvasWidth;
@@ -263,28 +258,16 @@
       widthBeforeCompare = null;
     }
   }
-  let settingsTab = $state('prompts');
-
-  // Opt-in from the host page attribute or ?la_lab=1; anonymous visitors need it, signed-in users don't.
-  const labRequested = (() => {
-    try {
-      if (new URLSearchParams(window.location.search).get('la_lab') === '1') return true;
-    } catch { /* no location */ }
-    return !!personalizationLabAttr && personalizationLabAttr !== 'false';
-  })();
 
   $effect(() => {
     const base = apiBaseUrl;
     const user = userId;
-    if (!base) return;
+    if (!base || !user) return;
     let current = true;
-    const anon = user ? '' : (labRequested ? getOrCreateAnonId() : getStorage(STORAGE_KEYS.ANON_ID, ''));
-    fetchPersonalizationStatus(base, user, anon).then((status) => {
+    fetchPersonalizationState(base, user).then((state) => {
       if (!current) return;
-      // A signed-in user needs no opt-in: Sefaria rewrites the page URL before the widget mounts, and
-      // only a lab deployment answers labEnabled. Anonymous visitors still need the opt-in.
-      labMode = (labRequested || !!user) && status.overrideAllowedForYou === true && status.labEnabled === true;
-      if (!labMode) labCompare = false;
+      showPlainResponse = state.labEnabled === true && state.testing?.showPlainResponse === true;
+      setCompare(showPlainResponse);
     });
     return () => { current = false; };
   });
@@ -1313,7 +1296,6 @@
   async function openSettings() {
     showSettings = true;
     settingsError = '';
-    settingsTab = isModerator ? 'prompts' : 'profile';
 
     if (isModerator && !settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
@@ -1539,7 +1521,7 @@
       toolWaitActive: false
     };
     const request = activeRequests[sendingSessionId];
-    request.compare = labMode && labCompare;
+    request.compare = showPlainResponse && !!userId;
     delete stopErrors[sendingSessionId];
     conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
@@ -1755,8 +1737,7 @@
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
       }, interfaceLang, {
-        signal: request.controller.signal, source,
-        contextDefaults: labMode ? { personalizationMode: 'hybrid' } : null
+        signal: request.controller.signal, source
       }), request.controller.signal);
 
       // Let the delayed playback and the last word's fade finish before
@@ -1810,6 +1791,7 @@
         timestamp: response.timestamp,
         status: 'sent',
         compareKey: request.compare ? request.messageId : undefined,
+        personalizationNotice: response.personalizationNotice === true,
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
@@ -2577,7 +2559,7 @@
             </HeaderButton>
             {#if showMenu}
               <div class="menu-dropdown" role="menu">
-                {#if isModerator || labMode}
+                {#if isModerator}
                   <button class="menu-item" aria-label={$_('assistant.menu.settings.aria')} onclick={() => { openSettings(); closeMenu(); }} role="menuitem">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="12" cy="12" r="3"></circle>
@@ -2616,9 +2598,13 @@
                   {$_('assistant.menu.help')}
                 </a>
                 {#if isLoggedIn}
-                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/library-assistant" role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                     {$_('assistant.menu.optout')}
+                  </a>
+                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href="/settings/library-assistant#personalization" role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.personalization')}
                   </a>
                 {/if}
               </div>
@@ -2788,16 +2774,6 @@
             <div class="settings-title">{$_('assistant.settings.title')}</div>
           </div>
 
-          {#if labMode && isModerator}
-            <div class="settings-tabs" role="tablist">
-              <button role="tab" class="settings-tab" class:active={settingsTab === 'prompts'} aria-selected={settingsTab === 'prompts'} onclick={() => (settingsTab = 'prompts')}>Prompts</button>
-              <button role="tab" class="settings-tab" class:active={settingsTab === 'profile'} aria-selected={settingsTab === 'profile'} onclick={() => (settingsTab = 'profile')}>Profile</button>
-            </div>
-          {/if}
-
-          {#if labMode && settingsTab === 'profile'}
-            <ProfilePanel {apiBaseUrl} {userId} />
-          {:else}
           {#if isLoadingSettings}
             <div class="settings-loading">{$_('assistant.settings.loading')}</div>
           {/if}
@@ -2836,7 +2812,6 @@
           </div>
 
           <p class="settings-note">{$_('assistant.settings.note')}</p>
-          {/if}
         </div>
       {:else}
       <!-- Message List -->
@@ -2884,6 +2859,13 @@
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
+            {#if feedbackProps?.personalizationNotice}
+              <p class="personalization-notice" data-testid="personalization-notice">
+                {$_('assistant.personalization.notice')}
+                <a href="/settings/library-assistant#personalization">{$_('assistant.personalization.configure')}</a>
+                <a href="/settings/library-assistant#about-personalization">{$_('assistant.personalization.learn_more')}</a>
+              </p>
+            {/if}
             {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
               <div class="message-meta">
                 {#if feedbackProps?.status === STATUS_FAILED}
@@ -3043,12 +3025,6 @@
           <p class="login-prompt-text">{$_('assistant.anon.limit_reached')}</p>
         </div>
       {:else}
-        {#if labMode}
-          <label class="lab-compare-toggle">
-            <input type="checkbox" checked={labCompare} onchange={(e) => setCompare(e.currentTarget.checked)} />
-            <span>Compare: personalized vs plain</span>
-          </label>
-        {/if}
         <footer class="lc-chatbot-input">
           <textarea
             bind:this={inputRef}
@@ -5048,41 +5024,17 @@
     cursor: not-allowed;
   }
 
-  .settings-tabs {
-    display: flex;
-    gap: 8px;
-  }
-
-  .settings-tab {
-    border: 1px solid var(--lc-border);
-    border-radius: var(--lc-radius-sm);
-    padding: 6px 12px;
-    font-size: var(--lc-font-size-sm);
-    font-weight: 600;
-    font-family: var(--lc-font);
-    cursor: pointer;
-    background: var(--lc-bg-tertiary);
-    color: var(--lc-text-secondary);
-  }
-
-  .settings-tab.active {
-    background: var(--brand-sefaria-blue);
-    color: white;
-    border-color: transparent;
-  }
-
-  /* Personalization lab: compare toggle and the two-column answer */
-  .lab-compare-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px 0;
+  /* Personalization: the notice under an answer and the two-column answer */
+  .personalization-notice {
+    margin: 6px 0 0;
     font-size: var(--lc-font-size-sm);
     color: var(--lc-text-secondary);
   }
 
-  .lab-compare-toggle input {
-    accent-color: var(--lc-primary);
+  .personalization-notice a {
+    margin-inline-start: 8px;
+    color: inherit;
+    text-decoration: underline;
   }
 
   .lab-compare {
