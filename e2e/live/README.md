@@ -57,3 +57,12 @@ results file for a clean verdict.
   again, and the step ends as "FAILED, THEN RECOVERED". `LIVE_TRACE=<file>` appends a timestamped trace of each turn.
 - "Run now" can answer `busy` while a job that a new chat started is still running, and `no_change: no_new_prompts` when
   that job has already processed the prompts; the script presses again after a busy reply and records both.
+
+## Clean re-run suite (`LIVE_SUITE=r`)
+
+`LIVE_SUITE=r` runs steps R0 to R10 (user 1) instead of the 17 numbered steps: a first-load link check, English chat before
+any Profile, Run now, the notice, Instructions, two-answer display, chat-to-edit, sensitive content, Hebrew, Clear.
+The site allows three questions per chat. The script asks at most two per chat, starts a new chat after that, and treats the
+"conversation has reached its limit" message as a normal end state. A turn can show two assistant blocks (a short "let me
+check..." line, then the answer), so questions are counted from the user's own messages. A stall is an answer that never
+completes (no final answer in 3 minutes, input disabled, no limit message).

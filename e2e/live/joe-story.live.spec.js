@@ -61,7 +61,8 @@ const quote = (label, text) => {
   console.log(`[evidence] ${line}`);
 };
 const SKIP = (process.env.LIVE_SKIP || '').split(',').map((s) => s.trim()).filter(Boolean);
-const stepIf = (id) => (!ONLY.length || ONLY.includes(String(id))) && !SKIP.includes(String(id));
+const SUITE = process.env.LIVE_SUITE || '';
+const stepIf = (id) => (String(id).startsWith('R') === (SUITE === 'r')) && (!ONLY.length || ONLY.includes(String(id))) && !SKIP.includes(String(id));
 const step = (id, title, fn) =>
   test(`${id} ${title}`, async ({ browser }) => {
     if (!stepIf(id)) test.skip(true, 'not selected by LIVE_ONLY');
@@ -113,10 +114,19 @@ const gotoAwake = async (page, url, opts = {}) => {
   const deadline = Date.now() + 5 * 60 * 1000;
   for (;;) {
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', ...opts }).catch(() => null);
-    const starting = !res || res.status() === 503 || /Environment is starting up/i.test(await page.content().catch(() => ''));
+    const starting = !res || res.status() === 503 || /Environment (is )?starting( up)?/i.test(await page.content().catch(() => ''));
     if (!starting) return res;
     if (Date.now() > deadline) throw new Error(`site did not wake within 5 minutes: ${url}`);
     await page.waitForTimeout(10_000);
+  }
+};
+
+/** Click "Continue with Email" and wait for the email field; retry the click once if the form did not open. */
+const clickEmailOption = async (page) => {
+  const field = page.locator('input[name="email"]');
+  for (let i = 0; i < 3; i++) {
+    await page.getByText('Continue with Email').click({ timeout: 60_000 }).catch(() => {});
+    if (await field.isVisible({ timeout: 10_000 }).catch(() => false)) return;
   }
 };
 
@@ -129,7 +139,7 @@ const signIn = async (browser, n) => {
   watch(page, n);
   await gotoAwake(page, `${SEFARIA}/login?next=/about`);
   await page.getByRole('button', { name: 'OK', exact: true }).click().catch(() => {});
-  await page.getByText('Continue with Email').click();
+  await clickEmailOption(page);
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.locator('input[name="password"]').press('Enter');
@@ -150,8 +160,16 @@ const signOut = async (n) => {
 
 /** A call to the personalization settings API with the page's own signed token (never printed). */
 const api = async (s, action, body = {}) => {
-  const res = await s.page.request.post(`${API_BASE}/v2/personalization/settings`, { data: { userId: s.token, action, ...body } });
-  return { status: res.status(), json: await res.json().catch(() => null) };
+  // Retry a call that answers with a server error or no JSON (a transient failure must not look like a product failure).
+  let out = { status: 0, json: null };
+  for (let i = 0; i < 3; i++) {
+    const res = await s.page.request.post(`${API_BASE}/v2/personalization/settings`, { data: { userId: s.token, action, ...body }, timeout: 60_000 }).catch(() => null);
+    if (res) out = { status: res.status(), json: await res.json().catch(() => null) };
+    if (out.json && out.status < 500) return out;
+    evidence.push(`api ${action} attempt ${i + 1}: status ${out.status}, json ${out.json ? 'yes' : 'none'}; retrying`);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return out;
 };
 
 const radio = (page, scope, label) => page.locator(`${scope} [role="radiogroup"]`).first().getByRole('radio', { name: label, exact: true });
@@ -218,24 +236,52 @@ const ask = async (s, question, opts = {}) => {
     return await askOnce(s, question, { ...opts, fresh: false });
   }
 };
+// The site allows three questions per chat; after the third answer the widget shows a limit message and disables the input.
+// That is the product working, not a stall. This script asks at most two questions per chat and starts a new chat after that.
+const MAX_PER_CHAT = 2;
+const LIMIT_TEXT = /conversation has reached its limit/i;
+const limitShown = async (la) =>
+  (await la.host.getByText(LIMIT_TEXT).first().isVisible().catch(() => false)) ||
+  (await la.messageList.locator('.limit-message').count().catch(() => 0)) > 0;
+
+/** Make sure the current chat can take one more question: start a new chat when asked to, when it already has two answers, or at its limit. */
+const ensureRoomInChat = async (la, fresh) => {
+  // Questions are counted from the user's own messages: one turn can produce two assistant blocks (a short "let me check..."
+  // line, then the answer), so counting answers would miscount.
+  const answers = await la.userMessages.count();
+  const atLimit = await limitShown(la);
+  if (!(fresh && (answers > 0 || atLimit)) && answers < MAX_PER_CHAT && !atLimit) return;
+  await la.startNewChat();
+  await expect.poll(async () => (await la.userMessages.count()) === 0 && !(await limitShown(la)), { timeout: 30_000, intervals: [500] }).toBe(true);
+  evidence.push(`started a new chat (had ${answers} questions${atLimit ? ', limit message shown' : ''})`);
+};
+
 const askOnce = async (s, question, { fresh = false, compare = false } = {}) => {
   trace(`ask start: ${question.slice(0, 40)}`);
   const page = s.page;
-  if (fresh || !page.url().includes(CHAT_PATH)) await gotoAwake(page, `${SEFARIA}${CHAT_PATH}`);
+  if (!page.url().includes(CHAT_PATH)) await gotoAwake(page, `${SEFARIA}${CHAT_PATH}`);
   const la = new AssistantPage(page);
   await expect(la.host).toHaveCount(1, { timeout: 45_000 });
   await la.open();
+  await ensureRoomInChat(la, fresh);
   const before = await la.answers.count();
   const compareBefore = await la.host.getByTestId('lab-compare').count();
   trace('sending');
   await la.send(question);
   trace('sent');
-  if (compare) await expect(la.host.getByTestId('lab-compare')).toHaveCount(compareBefore + 1, { timeout: ANSWER_MS });
-  else await expect(la.answers).toHaveCount(before + 1, { timeout: ANSWER_MS });
-  trace('answer element appeared');
-  await expect(la.host.locator('.lc-streaming-content')).toHaveCount(0, { timeout: ANSWER_MS });
-  trace('streaming gone');
-  await expect(la.input).toBeEnabled({ timeout: ANSWER_MS });
+  // One poll, with a timeout: the answer has arrived and finished streaming, and the input is enabled again or the chat
+  // shows the limit message (a normal end state after the third answer). A real stall is this poll timing out.
+  await expect
+    .poll(async () => {
+      const arrived = compare
+        ? (await la.host.getByTestId('lab-compare').count()) === compareBefore + 1
+        : (await la.answers.count()) > before;
+      if (!arrived) return false;
+      if ((await la.host.locator('.lc-streaming-content').count()) > 0) return false;
+      return (await la.input.isEnabled().catch(() => false)) || (await limitShown(la));
+    }, { timeout: ANSWER_MS, intervals: [1000], message: 'answer did not complete (no final answer, input disabled, no limit message)' })
+    .toBe(true);
+  trace('answer complete');
   // The text is final when two reads one second apart agree.
   let last = '';
   await expect
@@ -685,6 +731,330 @@ step('16b', 'Idle sweep: Profile changed on its own 36 to 45 minutes later; job 
   quote('api health', JSON.stringify(h.json));
   await shot(s.page, '16-idle-after');
   expect(changed, `Profile unchanged ${minutes} min after the question (Run now was not used)`).toBe(true);
+});
+
+// ======================================================================================================
+// Clean re-run suite (LIVE_SUITE=r): steps R0 to R10 as user 1. Each asks at most two questions per chat.
+// ======================================================================================================
+const resetUser = async (s) => {
+  await api(s, 'clear_profile');
+  await api(s, 'set_instructions', { text: '' });
+  await api(s, 'toggle', { target: 'instructions', enabled: true });
+  await api(s, 'toggle', { target: 'profile', enabled: true });
+  await api(s, 'set_testing', { showPlainResponse: false, updateEveryMessage: false });
+};
+const profileState = async (s) => (await api(s, 'get')).json?.profile || {};
+/** Poll (with a timeout) until the user's Profile text is non-empty; returns it, or '' on timeout. */
+const waitForProfile = async (s, ms, { pressRunNowAfterMs = null } = {}) => {
+  const end = Date.now() + ms;
+  const t0 = Date.now();
+  let pressed = false;
+  while (Date.now() < end) {
+    const st = await profileState(s);
+    if (st.text) return st.text;
+    if (pressRunNowAfterMs !== null && !pressed && Date.now() - t0 >= pressRunNowAfterMs) {
+      pressed = true;
+      const r = await api(s, 'run_now', { kind: 'session' });
+      evidence.push(`Run now (api) after ${Math.round((Date.now() - t0) / 1000)} s: ${r.status} ${JSON.stringify(r.json)}`);
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  return '';
+};
+const editResultText = (p) => p.locator('#profile .laEditResult, #profile [role="status"], #profile [role="alert"]').allInnerTexts();
+const hebrewShare = (t) => {
+  const letters = (t.match(/[A-Za-z֐-׿]/g) || []).length;
+  return letters ? (t.match(/[֐-׿]/g) || []).length / letters : 0;
+};
+
+step('R0', 'Start clean as user 1 (separate context): Clear Profile, Instructions empty, both switches On, testing Off', async (browser) => {
+  const s = await signIn(browser, 1);
+  await resetUser(s);
+  const st = (await api(s, 'get')).json;
+  quote('state', JSON.stringify({ profileText: st.profile.text, instructions: st.instructions, profileEnabled: st.profile.enabled, testing: st.testing }));
+  expect(st.profile.text).toBe('');
+  expect(st.instructions.text).toBe('');
+  await signOut(1);
+});
+
+step('R1', 'First-load link: Settings with ?chatbot_version as the first page after login loads the user state from the 9298 host', async (browser) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  watch(page, 1);
+  const settingsCalls = [];
+  page.on('request', (r) => { if (/personalization\/settings/.test(r.url())) settingsCalls.push(`${r.method()} ${new URL(r.url()).host}`); });
+  const { email, password } = creds(1);
+  const target = `/settings/library-assistant?chatbot_version=${CHATBOT_VERSION}`;
+  await gotoAwake(page, `${SEFARIA}/login?next=${encodeURIComponent(target)}`);
+  await page.getByRole('button', { name: 'OK', exact: true }).click().catch(() => {});
+  await clickEmailOption(page);
+  await page.locator('input[name="email"]').fill(email);
+  await page.locator('input[name="password"]').fill(password);
+  await page.locator('input[name="password"]').press('Enter');
+  await page.waitForURL((u) => u.pathname === '/settings/library-assistant', { timeout: 90_000 });
+  quote('first page after login', page.url().replace(SEFARIA, ''));
+  await expect(page.locator('#instructions')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.laProfileText')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('textarea.laInstructions')).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => settingsCalls.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  const body = await page.locator('#personalization').innerText().catch(() => '');
+  const all = await page.locator('body').innerText();
+  quote('panel text has "not available here"', /Personalization is not available here/i.test(all) ? 'YES' : 'no');
+  quote('settings requests', [...new Set(settingsCalls)].join(' ; '));
+  quote('Profile area', (await page.locator('.laProfileText').innerText()).slice(0, 120));
+  quote('Instructions card', (await updated(page, 'instructions')));
+  await shot(page, 'R1-first-load-settings');
+  expect(all).not.toMatch(/Personalization is not available here/i);
+  expect(settingsCalls.every((c) => c.includes(`${CHATBOT_VERSION}.ai-server`))).toBe(true);
+  void body;
+  const token = await page.evaluate(() => window.DJANGO_VARS?.props?.chatbot_user_token);
+  expect(token).toBeTruthy();
+  sessions[1] = { context, page, token };
+});
+
+step('R2', 'Chat before any Profile: two English questions in one chat, then a new chat on the Chassidic angle; no notice', async (browser) => {
+  const s = await signIn(browser, 1);
+  const qs = [
+    "Give me a two-sentence overview of this week's Torah portion.",
+    'Which central story or theme does the weekly Torah portion focus on?',
+    "I'm new to Chassidic thought: what is the Chassidic angle on this week's Torah portion? Please answer in English, kept simple.",
+  ];
+  for (const [i, q] of qs.entries()) {
+    const { la, text } = await ask(s, q, { fresh: i === 0 || i === 2 });
+    expect(text.length).toBeGreaterThan(40);
+    const notices = await la.lastAnswer.getByTestId(NOTICE).count();
+    quote(`answer ${i + 1} (complete; notices ${notices}; first 15 words)`, words(text));
+    await shot(s.page, `R2-chat-${i + 1}`);
+    expect(notices, `notice on answer ${i + 1}`).toBe(0);
+  }
+});
+
+step('R3', 'The Profile appears: Run now, or wait up to 2 minutes for the new-chat job', async (browser) => {
+  const s = await signIn(browser, 1);
+  await openSettings(s);
+  let text = (await profileState(s)).text;
+  if (!text) {
+    await s.page.locator('#testing-tools').getByRole('button', { name: 'Run now', exact: true }).click();
+    const result = s.page.locator('.laRunResult');
+    await expect(result).toBeVisible({ timeout: JOB_MS });
+    await expect.poll(async () => !/^(Running|Processing)/i.test((await result.innerText()).trim()), { timeout: JOB_MS, intervals: [1000] }).toBe(true);
+    quote('Run now says', (await result.innerText()).trim());
+    text = await waitForProfile(s, 2 * 60_000);
+  } else quote('Profile was already written by the new-chat job before Run now', 'yes');
+  expect(text, 'a Profile was written').not.toBe('');
+  await openSettings(s);
+  quote('Profile', await profileText(s.page));
+  quote('updated line', await updated(s.page, 'profile'));
+  await expect(s.page.locator('#profile .laUpdated')).toContainText('by LA');
+  await shot(s.page, 'R3-profile');
+});
+
+step('R4', 'Notice on the first personalised answer of a new chat, not on the second', async (browser) => {
+  const s = await signIn(browser, 1);
+  const first = await ask(s, 'Can you point me to sources about gratitude?', { fresh: true });
+  const notice = lastAnswerNotice(first.la);
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText("I'm personalizing your responses.");
+  const links = await notice.getByRole('link').evaluateAll((as) => as.map((a) => `${a.textContent.trim()} -> ${a.getAttribute('href')}`));
+  quote('notice', await notice.innerText());
+  quote('links', links.join(' ; '));
+  expect(links.length).toBe(2);
+  await shot(s.page, 'R4-notice-first');
+  const second = await ask(s, 'And one short teaching from Pirkei Avot on that theme?');
+  await expect(lastAnswerNotice(second.la)).toHaveCount(0);
+  quote('second answer', `no notice; first 15 words: ${words(second.text)}`);
+  await shot(s.page, 'R4-notice-not-repeated');
+});
+
+step('R5', 'Instructions change the answer: SHALOM-TEST on, absent when Off, then reset', async (browser) => {
+  const s = await signIn(browser, 1);
+  const p = s.page;
+  await openSettings(s);
+  await p.locator('textarea.laInstructions').fill('Always end your answer with the word SHALOM-TEST.');
+  await p.getByRole('button', { name: 'Save instructions' }).click();
+  await expect(p.locator('#instructions .laUpdated')).toContainText('by You', { timeout: 30_000 });
+  const on = await ask(s, 'In one sentence, what is the Shema?', { fresh: true });
+  quote('on: end of answer', on.text.slice(-120));
+  await shot(p, 'R5-instructions-on');
+  expect(on.text.trim()).toMatch(/SHALOM-TEST\W*$/);
+  await openSettings(s);
+  await radio(p, '#instructions', 'Off').click();
+  await expect(radio(p, '#instructions', 'Off')).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(async () => (await api(s, 'get')).json.instructions.enabled).toBe(false);
+  const off = await ask(s, 'In one sentence, what is the Amidah?', { fresh: true });
+  quote('off: end of answer', off.text.slice(-120));
+  await shot(p, 'R5-instructions-off');
+  expect(off.text).not.toContain('SHALOM-TEST');
+  await openSettings(s);
+  await radio(p, '#instructions', 'On').click();
+  await p.locator('textarea.laInstructions').fill('');
+  await p.getByRole('button', { name: 'Save instructions' }).click();
+  await expect.poll(async () => JSON.stringify((await api(s, 'get')).json.instructions)).toMatch(/"text":"","enabled":true/);
+  quote('reset', 'Instructions empty and On');
+});
+
+step('R6', 'Two answers side by side follow the switch', async (browser) => {
+  const s = await signIn(browser, 1);
+  const p = s.page;
+  await openSettings(s);
+  await p.locator('[aria-labelledby="laPlainResponseLabel"]').getByRole('radio', { name: 'On', exact: true }).click();
+  await expect.poll(async () => (await api(s, 'get')).json.testing.showPlainResponse).toBe(true);
+  await gotoAwake(p, `${SEFARIA}${CHAT_PATH}`);
+  const two = await ask(s, 'In one sentence, what is Shabbat?', { fresh: true, compare: true });
+  await expect(two.la.host.getByTestId('lab-compare-personalized').last()).toBeVisible();
+  await expect(two.la.host.getByTestId('lab-compare-plain').last()).toBeVisible();
+  quote('two columns', `personalized and plain visible: ${words(two.text, 20)}`);
+  await shot(p, 'R6-two-columns');
+  await openSettings(s);
+  await p.locator('[aria-labelledby="laPlainResponseLabel"]').getByRole('radio', { name: 'Off', exact: true }).click();
+  await expect.poll(async () => (await api(s, 'get')).json.testing.showPlainResponse).toBe(false);
+  await gotoAwake(p, `${SEFARIA}${CHAT_PATH}`);
+  const one = await ask(s, 'In one sentence, what is Havdalah?', { fresh: true });
+  const compareCount = await one.la.host.getByTestId('lab-compare').count();
+  quote('one column', `lab-compare blocks in the new chat: ${compareCount}; answer: ${words(one.text, 15)}`);
+  await shot(p, 'R6-one-column');
+  expect(compareCount).toBe(0);
+});
+
+step('R7', 'Chat-to-edit: applied (or retried once), then two refusals leave the Profile unchanged', async (browser) => {
+  const s = await signIn(browser, 1);
+  const p = s.page;
+  await openSettings(s);
+  const before = await profileText(p);
+  quote('before', `${before} || ${await updated(p, 'profile')}`);
+  const send = async (txt) => {
+    await editRequest(p, txt);
+    await expect.poll(async () => !(await p.locator('#profile').innerText()).includes('Processing…'), { timeout: 90_000, intervals: [1000] }).toBe(true);
+  };
+  await editRequest(p, 'I like chassidut, but only in the context of the parsha');
+  await expect(p.locator('#profile')).toContainText('Processing…');
+  await shot(p, 'R7-processing');
+  // Within about 30 s either the Profile changes ("by You/LA") or a message says it was being updated.
+  await expect.poll(async () => !(await p.locator('#profile').innerText()).includes('Processing…'), { timeout: 90_000, intervals: [1000] }).toBe(true);
+  let msg = (await editResultText(p)).join(' | ');
+  let sends = 1;
+  let after = await profileText(p);
+  if (after === before) {
+    quote('first send: Profile unchanged; message', msg || '(none)');
+    evidence.push('NOTE: the edit needed a second send');
+    await p.waitForTimeout(30_000);
+    await send('I like chassidut, but only in the context of the parsha');
+    sends = 2;
+    msg = (await editResultText(p)).join(' | ');
+    after = await profileText(p);
+  }
+  quote(`sends needed`, sends);
+  quote('after', `${after} || ${await updated(p, 'profile')}; message: ${msg || '(none)'}`);
+  await shot(p, 'R7-applied');
+  expect(after).not.toBe(before);
+  await expect(p.locator('#profile .laUpdated')).toContainText(/by (You\/LA|You)/);
+  for (const [i, req] of ['Please remember that my mother has been seriously ill with cancer this year.', 'Never show me sources from the Chabad movement.'].entries()) {
+    const keep = await profileText(p);
+    await send(req);
+    const resultText = await editResultText(p);
+    quote(`refusal ${i + 1} (${req.slice(0, 30)})`, resultText.join(' | ') || '(no result element found)');
+    await shot(p, `R7-refused-${i + 1}`);
+    expect(await profileText(p)).toBe(keep);
+    expect(resultText.join('').length, 'a reason is shown').toBeGreaterThan(5);
+  }
+});
+
+step('R8', 'Sensitive content: a made-up family illness does not reach the Profile', async (browser) => {
+  const s = await signIn(browser, 1);
+  await api(s, 'clear_profile');
+  await ask(s, 'My uncle Dov has a made-up illness called zorbitis and I want to visit him: what do the sources say about visiting the sick?', { fresh: true });
+  await ask(s, "I'd like to learn Ramban's commentary on Bereshit in simple English, with short answers.");
+  await openSettings(s);
+  await s.page.locator('#testing-tools').getByRole('button', { name: 'Run now', exact: true }).click();
+  const result = s.page.locator('.laRunResult');
+  await expect(result).toBeVisible({ timeout: JOB_MS });
+  await expect.poll(async () => !/^(Running|Processing)/i.test((await result.innerText()).trim()), { timeout: JOB_MS, intervals: [1000] }).toBe(true);
+  quote('Run now says', (await result.innerText()).trim());
+  const text = await waitForProfile(s, 3 * 60_000);
+  expect(text, 'a Profile was written within 3 minutes').not.toBe('');
+  await openSettings(s);
+  const shown = await profileText(s.page);
+  quote('Profile', shown);
+  quote('updated line', await updated(s.page, 'profile'));
+  await shot(s.page, 'R8-sensitive-profile');
+  expect(shown).not.toMatch(/zorbitis|uncle|dov|illness|sick|\bill\b|visiting/i);
+});
+
+step('R9', 'Hebrew (informational): Profile and reply language, then a Hebrew question', async (browser) => {
+  const s = await signIn(browser, 1);
+  await api(s, 'clear_profile');
+  await ask(s, 'מה עיקר הסיפור בפרשת השבוע?', { fresh: true });
+  await ask(s, 'תוכל להציע לי מקורות על הכרת הטוב?');
+  const t0 = Date.now();
+  let text = await waitForProfile(s, 60_000);
+  let runLine = '';
+  if (!text) {
+    await openSettings(s);
+    await s.page.locator('#testing-tools').getByRole('button', { name: 'Run now', exact: true }).click();
+    const rr = s.page.locator('.laRunResult');
+    // Informational step: if the result line never shows, say so and quote the Testing tools card instead of failing.
+    const shown = await expect(rr).toBeVisible({ timeout: 90_000 }).then(() => true, () => false);
+    if (shown) {
+      await expect.poll(async () => !/^(Running|Processing)/i.test((await rr.innerText()).trim()), { timeout: JOB_MS, intervals: [1000] }).toBe(true);
+      runLine = (await rr.innerText()).trim();
+    } else {
+      runLine = `(no result line within 90 s) Testing tools card: ${(await s.page.locator('#testing-tools').innerText()).replace(/\s+/g, ' ')}`;
+      await shot(s.page, 'R9-run-now-no-result');
+    }
+    quote(`Run now (button) after ${Math.round((Date.now() - t0) / 1000)} s says`, runLine);
+    text = await waitForProfile(s, Math.max(5_000, 3 * 60_000 - (Date.now() - t0)));
+  }
+  await openSettings(s);
+  if (text) {
+    const shown = await profileText(s.page);
+    quote('Profile', shown);
+    quote('updated line', await updated(s.page, 'profile'));
+    const lang = shown.match(/Reply language[\s\S]*?(?=\n\s*\n|$)/i);
+    quote('reply-language section', lang ? lang[0] : '(no Reply language heading)');
+  } else {
+    quote('no Profile after 3 minutes', 'true');
+    await s.page.locator('#testing-tools').getByRole('button', { name: 'Check job health' }).click();
+    await expect(s.page.locator('#testing-tools')).toContainText(/last run/i, { timeout: 30_000 });
+    const ht = await s.page.locator('#testing-tools').innerText();
+    quote('job health (page)', ht.slice(ht.indexOf('Job health')));
+    const r = await api(s, 'run_now', { kind: 'session' });
+    quote('Run now returns', `${r.status} ${JSON.stringify(r.json)}`);
+    const h = await api(s, 'health');
+    quote('job health', JSON.stringify(h.json));
+  }
+  await shot(s.page, 'R9-hebrew-profile');
+  const heb = await ask(s, 'תן לי משפט אחד על שמירת השבת.', { fresh: true });
+  const share = hebrewShare(heb.text);
+  quote('third Hebrew question: answer', `${(share * 100).toFixed(0)}% Hebrew letters; first words: ${words(heb.text, 12)}`);
+  await shot(s.page, 'R9-hebrew-answer');
+});
+
+step('R10', 'Clear: confirm dialog, Profile empty', async (browser) => {
+  const s = await signIn(browser, 1);
+  const p = s.page;
+  await openSettings(s);
+  if (!(await profileState(s)).text) {
+    // Nothing to clear yet: one learner-style question and Run now give the Profile something to clear.
+    quote('note', 'Profile was empty before this step; one question and Run now create one so the Clear dialog acts on real content');
+    await ask(s, "I'd like to learn Ramban's commentary on Bereshit in simple English, with short answers.", { fresh: true });
+    await openSettings(s);
+    await s.page.locator('#testing-tools').getByRole('button', { name: 'Run now', exact: true }).click();
+    const rr = s.page.locator('.laRunResult');
+    await expect(rr).toBeVisible({ timeout: JOB_MS });
+    await expect.poll(async () => !/^(Running|Processing)/i.test((await rr.innerText()).trim()), { timeout: JOB_MS, intervals: [1000] }).toBe(true);
+    quote('Run now says', (await rr.innerText()).trim());
+    await waitForProfile(s, 3 * 60_000);
+    await openSettings(s);
+  }
+  quote('profile before clear', (await profileText(p)).slice(0, 200));
+  await p.getByRole('button', { name: 'Clear profile' }).click();
+  await expect(p.getByRole('alertdialog')).toBeVisible();
+  quote('dialog', await p.getByRole('alertdialog').innerText());
+  await shot(p, 'R10-clear-confirm');
+  await p.getByRole('button', { name: 'Yes, clear' }).click();
+  await expect(p.locator('.laProfileText')).toHaveText(EMPTY_PROFILE, { timeout: 30_000 });
+  quote('after clear', await profileText(p));
+  await shot(p, 'R10-cleared');
 });
 
 // -------------------------------------------------------------------------------------- cleanup
