@@ -16,7 +16,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 
-from chat.V2.prompts.chapters import load_chapter
+from chat.V2.prompts.chapters import chapter_sha, load_chapter
 
 from .checks import _NEVER_STORE_EXTRA, check_profile, normalize_heading
 from .core_slots import CORE_HEADINGS, CORE_KEYS
@@ -26,6 +26,8 @@ from .profile_store import (
     SectionData,
     get_sections,
     get_settings,
+    record_run,
+    render_profile,
     replace_sections,
 )
 from .signals import is_sensitive
@@ -115,8 +117,9 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
     return ordered
 
 
-def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) -> tuple[str, str]:
+def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple[str, str]:
     text = clean_text(request or "")[:MAX_REQUEST]
+    rec["extraction"] = text
     if not text:
         return _refuse("empty")
     if is_sensitive(text) or _NEVER_STORE_EXTRA.search(text):
@@ -127,15 +130,23 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
     llm = llm or AnthropicLLMClient()
     current = get_settings(user_id)
     sections = get_sections(user_id)
+    rec["profile_before"] = render_profile(sections)
     user = f"<profile>\n{_profile_block(sections)}\n</profile>\n<request>{text}</request>"
     try:
-        raw = llm.complete(
+        result = llm.complete(
             system=load_chapter(CHAPTER),
             user=user,
             model=settings.PERSONALIZATION_MODEL,
             max_tokens=900,
             timeout=settings.PERSONALIZATION_MODEL_TIMEOUT,
-        ).text
+        )
+        raw = result.text
+        rec.update(
+            model=settings.PERSONALIZATION_MODEL,
+            input_tokens=result.input_tokens or None,
+            output_tokens=result.output_tokens or None,
+            cost_usd=round(result.cost_usd, 6) if result.input_tokens else None,
+        )
     except Exception as exc:  # a model error: nothing changes
         logger.warning("profile edit failed: %s", type(exc).__name__)
         return _refuse("bad_reply")
@@ -165,4 +176,48 @@ def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) ->
     ):
         return _refuse("changed")
     reason = clean_text(str(parsed.get("reason") or ""))[:MAX_REASON]
+    rec["profile_after"] = render_profile(final)
     return "applied", reason or "Done."
+
+
+def edit_profile(user_id: str, request: str, *, llm: LLMClient | None = None) -> tuple[str, str]:
+    """Run one edit and record it as one `ProfileWriterRun` (trigger `edit`, window `edit`)."""
+    started = timezone.now()
+    rec: dict = {}
+    try:
+        status, reason = _edit(user_id, request, llm, rec)
+    except Exception:
+        _record(user_id, started, rec, "failed", "error")
+        raise
+    if status == "applied":
+        run_status = "applied"
+    elif reason in (REASONS["bad_reply"], REASONS["changed"]):
+        run_status = "failed"
+    else:
+        run_status = "rejected"
+    _record(user_id, started, rec, run_status, reason)
+    return status, reason
+
+
+def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str) -> None:
+    """Store the run row. A failure to store never changes the edit's result."""
+    try:
+        record_run(
+            user_id=user_id,
+            trigger="edit",
+            window="edit",
+            started_at=started,
+            finished_at=timezone.now(),
+            extraction=rec.get("extraction", ""),
+            profile_before=rec.get("profile_before", ""),
+            profile_after=rec.get("profile_after", ""),
+            chapter_hashes={CHAPTER: chapter_sha(CHAPTER)},
+            model=rec.get("model", ""),
+            input_tokens=rec.get("input_tokens"),
+            output_tokens=rec.get("output_tokens"),
+            cost_usd=rec.get("cost_usd"),
+            status=status,
+            reason=(reason or "")[:200],
+        )
+    except Exception:
+        logger.warning("Could not record the profile edit run", exc_info=True)

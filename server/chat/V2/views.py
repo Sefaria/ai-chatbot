@@ -286,6 +286,31 @@ def _build_appetizer_payload(result) -> dict:
     }
 
 
+def _queue_personalization_job(
+    actor, user_id: str, *, plain: bool, first_in_session: bool, response_message
+) -> None:
+    """After a saved, successful reply on a personalized-eligible turn, queue at most one Profile
+    job: `new_chat` for the first message of a new session, else `every_message` when the user's
+    testing switch is on. Never raises and never waits."""
+    try:
+        if (
+            plain
+            or actor.is_anonymous
+            or response_message.status != ChatMessage.Status.SUCCESS
+            or not personalization_gate.enabled_for(user_id)
+        ):
+            return
+        if first_in_session:
+            trigger = "new_chat"
+        elif personalization_runtime.update_every_message(user_id):
+            trigger = "every_message"
+        else:
+            return
+        personalization_runtime.queue_job(user_id, trigger)
+    except Exception:
+        logger.warning("Could not queue the personalization job", exc_info=True)
+
+
 def _is_stream_break_test_enabled() -> bool:
     return bool(getattr(settings, "CHAT_STREAM_BREAK_TESTING_ENABLED", settings.DEBUG))
 
@@ -522,6 +547,11 @@ def chat_stream_v2(request):
         page_url=page_url,
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
+    )
+    first_in_session = not (
+        ChatMessage.objects.filter(session_id=data["sessionId"], role=ChatMessage.Role.USER)
+        .exclude(pk=user_message.pk)
+        .exists()
     )
     if appetizer_metrics.get("appetizer_data"):
         user_message.appetizer_data = appetizer_metrics["appetizer_data"]
@@ -947,6 +977,14 @@ def chat_stream_v2(request):
                     response_message_id=response_message.message_id,
                 )
 
+            _queue_personalization_job(
+                actor,
+                actor.user_id,
+                plain=context.get("personalizationMode") == "off",
+                first_in_session=first_in_session,
+                response_message=response_message,
+            )
+
             final_data = _build_response_payload(
                 response_message=response_message,
                 session_id=data["sessionId"],
@@ -1142,7 +1180,9 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
         narration_messages=narration_messages,
-        personalization_notice=personalization_runtime.notice_for_message(user_message.message_id),
+        personalization_notice=personalization_runtime.notice_for_message(
+            user_message.user_id, user_message.message_id
+        ),
     )
     payload.update(_anon_payload_fields(actor))
     recovery_status = (

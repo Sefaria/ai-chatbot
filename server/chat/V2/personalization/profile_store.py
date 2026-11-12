@@ -201,6 +201,7 @@ def clear_profile(user_id: str) -> SettingsData:
         row.profile_updated_at = now
         row.profile_updated_by = None
         row.notice_pending = False
+        row.notice_message_id = ""
         row.save(
             update_fields=[
                 "cleared_at",
@@ -209,19 +210,45 @@ def clear_profile(user_id: str) -> SettingsData:
                 "profile_updated_at",
                 "profile_updated_by",
                 "notice_pending",
+                "notice_message_id",
             ]
         )
         return _settings_data(row)
 
 
-def take_notice(user_id: str) -> bool:
-    """True once per pending notice."""
+def take_notice(user_id: str, message_id: str | None = None) -> bool:
+    """True once per pending notice. `message_id` (the user message of the turn) is remembered in
+    the database so the recover path, possibly on another process, can repeat the notice."""
     return (
         PersonalizationSettings.objects.filter(user_id=user_id, notice_pending=True).update(
-            notice_pending=False
+            notice_pending=False, notice_message_id=message_id or ""
         )
         > 0
     )
+
+
+def notice_shown_for(user_id: str, message_id: str | None) -> bool:
+    """Whether the turn of this user message consumed the notice."""
+    if not message_id:
+        return False
+    return PersonalizationSettings.objects.filter(
+        user_id=user_id, notice_message_id=message_id
+    ).exists()
+
+
+def refresh_support_dates(user_id: str, base_revision: int, dates: dict[str, datetime]) -> bool:
+    """Move `last_supported_at` forward for sections (by heading) without touching their text,
+    the revision or the notice. False, with nothing changed, when the Profile moved since
+    `base_revision` was read."""
+    with transaction.atomic():
+        row = _locked_row(user_id)
+        if row.profile_revision != base_revision:
+            return False
+        for heading, moment in dates.items():
+            ProfileSection.objects.filter(
+                user_id=user_id, heading=heading, last_supported_at__lt=moment
+            ).update(last_supported_at=moment)
+        return True
 
 
 def unprocessed_user_prompts(

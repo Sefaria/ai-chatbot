@@ -332,3 +332,19 @@ def test_payload_builder_defaults_to_no_notice():
         response_message=reply, session_id="s", turn_count=1, stats={}, personalization_notice=True
     )
     assert payload["personalizationNotice"] is True
+
+
+@pytest.mark.django_db
+def test_notice_on_recover_path_survives_a_cleared_cache(lab_on):
+    from django.core.cache import cache
+
+    seed("u1")
+    store.PersonalizationSettings.objects.filter(user_id="u1").update(notice_pending=True)
+    assert runtime.context_for_request("u1", plain=False, message_id="m-user").notice is True
+    cache.clear()  # another worker process would have an empty cache
+    assert runtime.notice_for_message("u1", "m-user") is True
+    assert runtime.notice_for_message("u1", "m-other") is False
+    assert runtime.notice_for_message("u2", "m-user") is False
+    # the next turn consumes nothing, and the notice stays tied to the turn that showed it
+    runtime.context_for_request("u1", plain=False, message_id="m-next")
+    assert runtime.notice_for_message("u1", "m-user") is True

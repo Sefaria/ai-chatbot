@@ -39,6 +39,7 @@ from .profile_store import (
     get_sections,
     get_settings,
     record_run,
+    refresh_support_dates,
     render_profile,
     replace_sections,
     unprocessed_user_prompts,
@@ -610,6 +611,12 @@ def _dream_steps(
     if unsupported:
         raise _Fail("rejected", "unsupported_section", "unsupported_section")
     if _same_content(final, existing):
+        # Nothing to write, but the window just confirmed these sections: keep their dates fresh
+        # (no revision bump, no notice) so a later run does not drop them as stale.
+        if not refresh_support_dates(
+            ctx.user_id, ctx.base_revision, {s.heading: s.last_supported_at for s in final}
+        ):
+            raise _Fail("failed", REVISION_MOVED)
         return _finish(ctx, "no_change", "dream_unchanged")
     if final:
         result = check_profile(final, llm)  # a model call: outside any transaction

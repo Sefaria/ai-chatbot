@@ -370,3 +370,20 @@ def test_the_quota_applies():
     llm = dream_model([entry("answer_style", "", "Short.", [1])])
     assert dream(llm).status == "quota" and llm.calls == []
     assert PersonalizationSettings.objects.filter(user_id=USER).count() == 0
+
+
+def test_an_unchanged_dream_refreshes_dates_without_a_revision_bump_or_notice():
+    old = NOW - timedelta(days=50)
+    prompt("a recent question", "s1", days_ago=1)
+    put(sec("Kind of answers you want", "You like short answers.", key="answer_style", at=old))
+    before = settings_row()
+    llm = dream_model([entry("answer_style", "", "You like short answers.", [1])])
+    result = dream(llm)
+    assert result.status == "no_change" and result.reason == "dream_unchanged"
+    (section,) = store.get_sections(USER)
+    assert section.last_supported_at > old
+    assert section.last_supported_at >= NOW - timedelta(days=2)
+    after = settings_row()
+    assert after.profile_revision == before.profile_revision
+    assert after.profile_updated_at == before.profile_updated_at
+    assert after.notice_pending is False

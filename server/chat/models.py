@@ -348,6 +348,8 @@ class PersonalizationSettings(models.Model):
     processed_through = models.DateTimeField(null=True, blank=True)
     cleared_at = models.DateTimeField(null=True, blank=True)
     notice_pending = models.BooleanField(default=False)
+    # The user message whose turn showed the notice, so a recovered reply can repeat it.
+    notice_message_id = models.CharField(max_length=100, blank=True, default="")
     # Lab-only testing switches.
     show_plain_response = models.BooleanField(default=False)
     update_every_message = models.BooleanField(default=False)
