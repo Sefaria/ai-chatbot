@@ -196,12 +196,11 @@
 
   <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
        ?user-id=<encrypted user token> shows it logged in as that user, and
-       ?anon-free-answers=<n> passes the host's free-answer limit,
-       ?personalization-lab=1 turns on the lab probe for a logged-out visitor.
+       ?anon-free-answers=<n> passes the host's free-answer limit.
        Runs before the widget module below, which loads deferred. -->
   <script>
     const params = new URLSearchParams(window.location.search);
-    for (const attribute of ['user-id', 'anon-free-answers', 'personalization-lab']) {
+    for (const attribute of ['user-id', 'anon-free-answers']) {
       if (params.get(attribute)) {
         document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
       }

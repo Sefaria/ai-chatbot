@@ -20,14 +20,15 @@
  *   anonymous chats (POST /v2/anon/claim), which moves them to the user, so
  *   they're in the user's chat history. (Done.)
  *
- * - Personalization lab (option `lab`): POST /v2/personalization/status says whether the
- *   visitor may use the lab override, and POST /v2/personalization/profile answers the
- *   profile actions (get, set, release, run_job, apply_candidate, discard_candidate,
- *   seed_persona) from a small in-memory profile. A chat request with
- *   context.personalizationMode "off" gets the answer `Plain answer.` and is not kept.
+ * - Personalization (option `personalization`): POST /v2/personalization/settings answers the
+ *   `get` action with a State (see the plan's Shared contracts) built from the option, or the
+ *   given error status. A chat request with context.personalizationMode "off" gets the answer
+ *   `Plain answer.` and is not kept. Answers whose number is in `noticeOnAnswers` carry
+ *   `personalizationNotice: true` in the final payload, for signed-in visitors only, like the server.
  *
  * Options:
- * - lab: { allowed: boolean, labEnabled?: boolean (default true), slots?: slot[] } turns the lab on for the visitor.
+ * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
+ *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[] }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -40,8 +41,7 @@ const LONG_ANSWER_PARAGRAPHS = 30;
  * @param {import('@playwright/test').BrowserContext} context
  * @param {{ longAnswers?: boolean }} [options]
  */
-export async function mockChatServer(context, { longAnswers = false, failedClaims = 0, lab = null } = {}) {
-  const labProfile = lab ? createLabProfile(lab) : null;
+export async function mockChatServer(context, { longAnswers = false, failedClaims = 0, personalization = null } = {}) {
   // failedClaims: how many claims fail (500) before claims work again.
   let claimsToFail = failedClaims;
   const limit = getFreeAnswerLimit();
@@ -127,6 +127,9 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       toolCalls: [],
       stats: {},
     };
+    if (body.userId && personalization?.noticeOnAnswers?.includes(n)) {
+      message.personalizationNotice = true;
+    }
     session.messages.push(
       { messageId: body.messageId, sessionId: body.sessionId, role: 'user', content: body.text, timestamp, status: 'success' },
       { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' },
@@ -210,12 +213,12 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (path.endsWith('/chat/stream')) {
       return answer(route, request.postDataJSON());
     }
-    if (path.endsWith('/v2/personalization/status')) {
-      return route.fulfill({ json: { overrideAllowedForYou: !!lab?.allowed, labEnabled: lab?.labEnabled !== false, mode: 'lab' } });
-    }
-    if (path.endsWith('/v2/personalization/profile')) {
-      if (!labProfile || !lab.allowed) return route.fulfill({ status: 404, json: { error: 'not_found' } });
-      return labProfile.handle(route, request.postDataJSON());
+    if (path.endsWith('/v2/personalization/settings')) {
+      const body = request.postDataJSON();
+      if (!personalization || body.anonId || personalization.status) {
+        return route.fulfill({ status: personalization?.status ?? 404, json: { error: 'not_found' } });
+      }
+      return route.fulfill({ json: personalizationState(personalization) });
     }
     if (path.endsWith('/v2/anon/claim')) {
       return claim(route, request.postDataJSON());
@@ -245,70 +248,12 @@ function sseEvent(event, data) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-const DEFAULT_LAB_SLOTS = [
-  { slot: 'learning_level', value: 'beginner', status: 'stated', evidence: ['e1', 'e2'], updatedAt: '2026-11-10T09:00:00Z', expiresAt: null, slotSetVersion: 1 },
-  { slot: 'interests', value: ['Talmud', 'ethics'], status: 'inferred', evidence: ['e3'], updatedAt: '2026-11-10T09:05:00Z', expiresAt: null, slotSetVersion: 1 },
-];
-
-/** An in-memory profile for the lab actions. Synthetic data only. */
-function createLabProfile({ slots = DEFAULT_LAB_SLOTS } = {}) {
-  let revision = 1;
-  let current = slots.map((slot) => ({ ...slot }));
-  let candidate = null;
-
-  const payload = () => ({
-    storeUserId: 'lab-user',
-    revision,
-    slots: current,
-    settings: {},
-    proposals: [],
-    observations: [],
-    quarantinedObservations: [],
-  });
-
+/** The settings State for the mock's `personalization` option. Synthetic data only. */
+function personalizationState({ labEnabled = false, showPlainResponse = false, updateEveryMessage = false } = {}) {
   return {
-    handle(route, body) {
-      switch (body.action) {
-        case 'get':
-          return route.fulfill({ json: payload() });
-        case 'set': {
-          current = current.map((s) => (s.slot === body.slot ? { ...s, value: body.value, status: 'stated' } : s));
-          revision += 1;
-          return route.fulfill({ json: payload() });
-        }
-        case 'release': {
-          current = current.filter((s) => s.slot !== body.slot);
-          revision += 1;
-          return route.fulfill({ json: payload() });
-        }
-        case 'run_job':
-          candidate = {
-            status: 'candidate',
-            changes: [{ slot: 'learning_level', old: 'beginner', new: 'intermediate', reason: 'Asked about commentaries twice' }],
-            conflicts: [],
-            observationsRead: 7,
-            tokens: 1234,
-            costUsd: 0.0123,
-            revision,
-          };
-          return route.fulfill({ json: candidate });
-        case 'apply_candidate': {
-          if (!candidate) return route.fulfill({ status: 409, json: { error: 'stale_revision' } });
-          candidate.changes.forEach((c) => {
-            current = current.map((s) => (s.slot === c.slot ? { ...s, value: c.new } : s));
-          });
-          candidate = null;
-          revision += 1;
-          return route.fulfill({ json: { applied: true, profile: payload() } });
-        }
-        case 'discard_candidate':
-          candidate = null;
-          return route.fulfill({ json: { discarded: true } });
-        case 'seed_persona':
-          return route.fulfill({ json: { seeded: body.turns.length - (body.turns.filter((t) => t.user.includes('SKIPME')).length), skipped: body.turns.filter((t) => t.user.includes('SKIPME')).length } });
-        default:
-          return route.fulfill({ status: 400, json: { error: 'unknown_action' } });
-      }
-    },
+    instructions: { text: '', enabled: true, updatedAt: null },
+    profile: { text: '', sections: [], enabled: true, updatedAt: null, updatedBy: null, revision: 0 },
+    labEnabled,
+    testing: { showPlainResponse, updateEveryMessage },
   };
 }

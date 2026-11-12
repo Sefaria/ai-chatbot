@@ -1,376 +1,154 @@
 /**
- * Personalization lab: compare, Profile tab, the job, Load learner. All of it shows only when
- * the server says overrideAllowedForYou. The chat and profile servers are mocked
- * (support/mockChatServer.js); fixtures are synthetic.
+ * Personalization in the widget: the two menu links, the notice under a personalized answer, and
+ * the two-answer display that the settings state switches on. The chat and settings servers are
+ * mocked (support/mockChatServer.js); fixtures are synthetic.
  */
 import { test, expect } from '@playwright/test';
 import { mockChatServer } from './support/mockChatServer.js';
-import { AssistantPage } from './pages/assistantPage.js';
+import { AssistantPage, t } from './pages/assistantPage.js';
 
-async function setUp(page, context, lab) {
-  await mockChatServer(context, { lab });
+async function signedIn(page, context, personalization) {
+  await mockChatServer(context, { personalization });
   const assistant = new AssistantPage(page);
-  // ?la_lab=1 is the host's opt-in; only anonymous visitors need it, signed-in users rely on the server.
-  await page.goto(`/?user-id=${encodeURIComponent('test-user-token')}&la_lab=1`);
-  await expect(assistant.host).toHaveCount(1);
+  await assistant.logIn();
   await assistant.open();
   return assistant;
 }
 
-/** Open Settings (the lab user is not a moderator, so it lands on the Profile tab). */
-async function openProfile(assistant) {
-  await assistant.openMoreOptions();
-  await assistant.menu.getByRole('menuitem', { name: 'Open settings' }).click();
-  await expect(assistant.host.getByTestId('lab-profile')).toBeVisible();
+const plainColumn = (assistant) => assistant.host.getByTestId('lab-compare-plain');
+const notice = (assistant) => assistant.host.getByTestId('personalization-notice');
+
+function watchStreams(page) {
+  const streams = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
+  });
+  return streams;
 }
 
-const compareToggle = (assistant) => assistant.host.getByLabel('Compare: personalized vs plain');
-
-test.describe('lab UI hidden', () => {
-  test('nothing lab-related shows when the override is not allowed', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: false });
-    await expect(assistant.input).toBeVisible();
-    await expect(compareToggle(assistant)).toHaveCount(0);
+test.describe('menu', () => {
+  test('a signed-in user gets the opt-out and Personalization links to the Library Assistant settings', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, null);
     await assistant.openMoreOptions();
-    await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
+    const optOut = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.optOut.aria') });
+    const personalization = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.personalization.aria') });
+    await expect(optOut).toHaveAttribute('href', '/settings/library-assistant');
+    await expect(personalization).toHaveAttribute('href', '/settings/library-assistant#personalization');
+    await expect(personalization).toContainText(t('assistant.menu.personalization'));
   });
 
-  test('a signed-in user the lab server allows sees the lab without the opt-in', async ({ page, context }) => {
-    // Sefaria's ?chatbot_version=<n> loads the widget on pages whose URL Sefaria rewrites, so a
-    // signed-in user relies on the server alone: overrideAllowedForYou and labEnabled.
-    await mockChatServer(context, { lab: { allowed: true } });
+  test('a signed-out visitor sees neither link', async ({ page, context }) => {
+    await mockChatServer(context, { personalization: { labEnabled: true, showPlainResponse: true } });
     const assistant = new AssistantPage(page);
-    await assistant.logIn();
+    await assistant.goto();
     await assistant.open();
-    await expect(compareToggle(assistant)).toHaveCount(1);
-
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
-    });
-    await compareToggle(assistant).check();
-    await assistant.send('What is a mitzvah?');
-    await expect(assistant.host.getByTestId('lab-compare-plain')).toContainText('Plain answer.');
-    expect(requests).toHaveLength(2);
-    // The personalized arm asks for hybrid, the plain arm for off: not both off.
-    expect(requests.map((r) => r.context.personalizationMode).sort()).toEqual(['hybrid', 'off']);
-  });
-
-  test('a logged-out visitor sees nothing without the opt-in', async ({ page, context }) => {
-    await mockChatServer(context, { lab: { allowed: true } });
-    const assistant = new AssistantPage(page);
-    await page.goto('/');
-    await assistant.open();
-    await expect(assistant.input).toBeVisible();
-    await expect(compareToggle(assistant)).toHaveCount(0);
-  });
-
-  test('allowed and opted in but the server has no lab (labEnabled false) shows nothing', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true, labEnabled: false });
-    await expect(assistant.input).toBeVisible();
-    await expect(compareToggle(assistant)).toHaveCount(0);
     await assistant.openMoreOptions();
-    await expect(assistant.menu.getByRole('menuitem', { name: 'Open settings' })).toHaveCount(0);
-  });
-
-  test('nothing lab-related shows without the lab at all', async ({ page, context }) => {
-    const assistant = await setUp(page, context, null);
-    await expect(compareToggle(assistant)).toHaveCount(0);
+    await expect(assistant.menu.getByRole('menuitem', { name: t('assistant.menu.personalization.aria') })).toHaveCount(0);
+    await expect(assistant.menu.getByRole('menuitem', { name: t('assistant.menu.optOut.aria') })).toHaveCount(0);
   });
 });
 
-test.describe('compare', () => {
-  test('one question shows a Personalized and a Plain answer side by side', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
-    });
-    await compareToggle(assistant).check();
+test.describe('notice', () => {
+  test('shows under a flagged answer with both links, and not under an unflagged one', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+    await assistant.ask('What is a mitzvah?');
+    await expect(notice(assistant)).toHaveCount(1);
+    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
+    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.configure') }))
+      .toHaveAttribute('href', '/settings/library-assistant#personalization');
+    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.learn_more') }))
+      .toHaveAttribute('href', '/settings/library-assistant#about-personalization');
+
+    await assistant.ask('And a minhag?');
+    await expect(assistant.answers).toHaveCount(2);
+    await expect(notice(assistant)).toHaveCount(1); // still only the first answer's
+  });
+
+  test('is absent when the final payload does not carry the flag', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true });
+    await assistant.ask('What is a mitzvah?');
+    await expect(notice(assistant)).toHaveCount(0);
+  });
+});
+
+test.describe('two answers', () => {
+  test('appear side by side only when the state says lab on and show-plain on', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
+    const streams = watchStreams(page);
     await assistant.send('What is a mitzvah?');
 
     const personalized = assistant.host.getByTestId('lab-compare-personalized');
-    const plain = assistant.host.getByTestId('lab-compare-plain');
-    await expect(personalized).toContainText('Personalized');
     await expect(personalized).toContainText('Answer 1.');
-    await expect(plain).toContainText('Plain');
-    await expect(plain).toContainText('Plain answer.');
-
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
     const a = await personalized.boundingBox();
-    const b = await plain.boundingBox();
-    expect(Math.abs(a.y - b.y)).toBeLessThan(4); // same row: side by side
+    const b = await plainColumn(assistant).boundingBox();
+    expect(Math.abs(a.y - b.y)).toBeLessThan(4);
     expect(b.x).toBeGreaterThan(a.x);
 
-    // Two streams; the plain one is "off" in its own session.
-    expect(requests).toHaveLength(2);
-    const off = requests.find((r) => r.context.personalizationMode === 'off');
-    expect(off.context.labCompare).toBe(true); // only the plain arm says so
-    expect(requests.filter((r) => r.context.labCompare)).toHaveLength(1);
-    const normal = requests.find((r) => r.context.personalizationMode !== 'off');
+    expect(streams).toHaveLength(2);
+    const off = streams.find((r) => r.context.personalizationMode === 'off');
+    expect(off.context.labCompare).toBe(true);
+    expect(streams.filter((r) => r.context.labCompare)).toHaveLength(1);
+    const normal = streams.find((r) => r.context.personalizationMode !== 'off');
+    expect(normal.context.personalizationMode).toBeUndefined();
     expect(off.sessionId).not.toBe(normal.sessionId);
-    await expect(assistant.answers).toHaveCount(2); // personalized bubble + plain bubble, one turn
   });
 
-  test('the plain arm keeps one session per chat and gets a new one in a new chat', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
-    });
-    await compareToggle(assistant).check();
-    const plainStreams = () => requests.filter((r) => r.context.personalizationMode === 'off');
-    const plainCells = assistant.host.getByTestId('lab-compare-plain');
-
-    await assistant.send('What is a mitzvah?');
-    await expect(plainCells).toHaveCount(1);
-    await expect(plainCells.last()).toContainText('Plain answer.');
-    await assistant.send('And a minhag?');
-    await expect(plainCells).toHaveCount(2);
-    await expect(plainCells.last()).toContainText('Plain answer.');
-
-    const [first, second] = plainStreams();
-    expect(second.sessionId).toBe(first.sessionId);
-    expect(second.messageId).not.toBe(first.messageId);
-
-    await assistant.startNewChat();
-    await assistant.send('What is a halacha?');
-    await expect.poll(() => plainStreams().length).toBe(3);
-    expect(plainStreams()[2].sessionId).not.toBe(first.sessionId);
-  });
-
-  test('Stop cancels both the personalized and the plain turn', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    const streams = [];
-    const cancels = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
-      if (r.url().endsWith('/v2/chat/cancel')) cancels.push(r.postDataJSON());
-    });
-    await page.route('**/chat/stream', () => {}); // both streams stay open until stopped
-    await compareToggle(assistant).check();
-    await assistant.send('What is a mitzvah?');
-    await expect.poll(() => streams.length).toBe(2);
-    await assistant.host.getByRole('button', { name: 'Stop' }).click();
-    await expect.poll(() => cancels.length).toBeGreaterThanOrEqual(2);
-    for (const stream of streams) {
-      expect(cancels).toContainEqual(
-        expect.objectContaining({ sessionId: stream.sessionId, messageId: stream.messageId }),
-      );
-    }
-    expect(new Set(streams.map((s) => s.messageId)).size).toBe(2);
-  });
-
-  test('Stop stays available and cancels the plain arm when the personalized one finished first', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    const streams = [];
-    const cancels = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
-      if (r.url().endsWith('/v2/chat/cancel')) cancels.push(r.postDataJSON());
-    });
-    // The plain arm (personalization off) never answers; the personalized one uses the mock.
-    await page.route('**/chat/stream', (route) => {
-      if (route.request().postDataJSON().context?.personalizationMode === 'off') return;
-      return route.fallback();
-    });
-    await compareToggle(assistant).check();
-    await assistant.send('What is a mitzvah?');
-    await expect(assistant.host.getByTestId('lab-compare-personalized')).toContainText('Answer 1.');
-    const stop = assistant.host.getByRole('button', { name: 'Stop' });
-    await expect(stop).toBeVisible(); // the plain arm is still running
-    await stop.click();
-    const plainStream = streams.find((s) => s.context.personalizationMode === 'off');
-    await expect.poll(() => cancels).toContainEqual(
-      expect.objectContaining({ sessionId: plainStream.sessionId, messageId: plainStream.messageId }),
-    );
-    await expect(stop).toHaveCount(0);
-  });
-
-  test('a new question is ignored while the plain arm streams, and works once it settles', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    const streams = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
-    });
-    let releasePlain;
-    const plainGate = new Promise((resolve) => { releasePlain = resolve; });
-    await page.route('**/chat/stream', async (route) => {
-      if (route.request().postDataJSON().context?.personalizationMode === 'off') {
-        await plainGate;
-        return route.fallback();
-      }
-      return route.fallback();
-    });
-    await compareToggle(assistant).check();
-    await assistant.send('What is a mitzvah?');
-    await expect(assistant.host.getByTestId('lab-compare-personalized')).toContainText('Answer 1.');
-    await expect(assistant.host.getByRole('button', { name: 'Stop' })).toBeVisible(); // plain still running
-    const before = streams.length;
-    await assistant.input.fill('A second question');
-    await assistant.input.press('Enter');
-    await page.waitForTimeout(500);
-    expect(streams.length).toBe(before);
-    await expect(assistant.input).toHaveValue('A second question');
-    releasePlain();
-    await expect(assistant.host.getByRole('button', { name: 'Stop' })).toHaveCount(0);
-    await assistant.input.press('Enter');
-    await expect.poll(() => streams.length).toBeGreaterThan(before);
-  });
-
-  test('without the toggle a question gets one normal answer', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await assistant.ask('Hello');
-    await expect(assistant.host.getByTestId('lab-compare')).toHaveCount(0);
-  });
-});
-
-test.describe('profile tab', () => {
-  test('lists the slots', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    const rows = assistant.host.locator('.slot-row');
-    await expect(rows).toHaveCount(2);
-    await expect(rows.first()).toContainText('learning_level');
-    await expect(rows.first()).toContainText('beginner');
-    await expect(rows.first()).toContainText('stated');
-    await expect(rows.first()).toContainText('2 evidence');
-  });
-
-  test('editing a value saves it', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    const row = assistant.host.locator('.slot-row[data-slot="learning_level"]');
-    await row.getByRole('button', { name: 'Edit' }).click();
-    await row.getByRole('textbox').fill('advanced');
-    await row.getByRole('button', { name: 'Save' }).click();
-    await expect(row).toContainText('advanced');
-  });
-
-  test('run the job shows a change; Apply refreshes the slots', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    await assistant.host.getByRole('button', { name: 'Run the job' }).click();
-    const result = assistant.host.getByTestId('lab-job-result');
-    await expect(result).toContainText('beginner → intermediate');
-    await expect(result).toContainText('Asked about commentaries twice');
-    await expect(result).toContainText('7 observations read');
-    await result.getByRole('button', { name: 'Apply' }).click();
-    await expect(assistant.host.locator('.slot-row[data-slot="learning_level"]')).toContainText('intermediate');
-    await expect(result).toHaveCount(0);
-  });
-
-  test('load learner posts the file turns and reports how many', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    const posted = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/v2/personalization/profile') && r.postDataJSON().action === 'seed_persona') {
-        posted.push(r.postDataJSON());
-      }
-    });
-    const turns = [
-      { user: 'Q one', assistant: 'A one', sessionId: 's1', ts: '2026-01-01T10:00:00Z' },
-      { user: 'Q two', assistant: 'A two', sessionId: 's1', ts: '2026-01-01T10:01:00Z' },
-    ];
-    await assistant.host.getByLabel('Load learner file').setInputFiles({
-      name: 'learner.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ label: 'Synthetic learner', turns })),
-    });
-    await expect(assistant.host.getByText('seeded 2 turns', { exact: true })).toBeVisible();
-    expect(posted).toHaveLength(1);
-    expect(posted[0].turns).toEqual(turns);
-  });
-
-  test('a rate-limited job run shows a clear message', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    await page.route('**/v2/personalization/profile', (route) => {
-      if (route.request().postDataJSON().action === 'run_job') {
-        return route.fulfill({ status: 429, json: { error: 'rate_limited' } });
-      }
-      return route.fallback();
-    });
-    await assistant.host.getByRole('button', { name: 'Run the job' }).click();
-    await expect(assistant.host.getByText('Too many lab runs right now')).toBeVisible();
-  });
-
-  test('load learner reports skipped turns', async ({ page, context }) => {
-    const assistant = await setUp(page, context, { allowed: true });
-    await openProfile(assistant);
-    const turns = [{ user: 'Q one' }, { user: 'SKIPME two' }];
-    await assistant.host.getByLabel('Load learner file').setInputFiles({
-      name: 'learner.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({ turns })),
-    });
-    await expect(assistant.host.getByText('seeded 1 turns, skipped 1')).toBeVisible();
-  });
-});
-
-test.describe('logged-out lab visitor', () => {
-  async function fresh(page, context, query) {
-    await mockChatServer(context, { lab: { allowed: true } });
-    const assistant = new AssistantPage(page);
-    await page.goto(`/${query}`);
-    await expect(assistant.host).toHaveCount(1);
-    await assistant.open();
-    return assistant;
-  }
-
-  test('a fresh browser with the personalization-lab attribute sees the lab UI and sends hybrid', async ({ page, context }) => {
-    const assistant = await fresh(page, context, '?personalization-lab=1');
-    await expect(compareToggle(assistant)).toBeVisible();
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
-    });
-    await assistant.ask('Hello');
-    expect(requests[0].anonId).toBeTruthy();
-    expect(requests[0].context.personalizationMode).toBe('hybrid');
-  });
-
-  test('?la_lab=1 also turns it on, and ?la_personalization= wins over the hybrid default', async ({ page, context }) => {
-    const assistant = await fresh(page, context, '?la_lab=1&la_personalization=injected');
-    await expect(compareToggle(assistant)).toBeVisible();
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
-    });
-    await assistant.ask('Hello');
-    expect(requests[0].context.personalizationMode).toBe('injected');
-  });
-
-  test('without the attribute a fresh browser is unchanged: no probe, no lab UI, no mode', async ({ page, context }) => {
-    const probes = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/v2/personalization/status')) probes.push(r.url());
-    });
-    const assistant = await fresh(page, context, '');
+  test('there is no Compare checkbox any more', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
     await expect(assistant.input).toBeVisible();
-    await expect(compareToggle(assistant)).toHaveCount(0);
-    const requests = [];
-    page.on('request', (r) => {
-      if (r.url().endsWith('/chat/stream')) requests.push(r.postDataJSON());
+    await expect(assistant.host.getByRole('checkbox')).toHaveCount(0);
+  });
+
+  for (const [name, state] of [
+    ['show-plain is off', { labEnabled: true, showPlainResponse: false }],
+    ['the lab is off', { labEnabled: false, showPlainResponse: true }],
+    ['the settings call fails', { status: 500, labEnabled: true, showPlainResponse: true }],
+    ['the settings call is 404', { status: 404 }],
+  ]) {
+    test(`one normal answer when ${name}`, async ({ page, context }) => {
+      const assistant = await signedIn(page, context, state);
+      const streams = watchStreams(page);
+      await assistant.ask('Hello');
+      await expect(plainColumn(assistant)).toHaveCount(0);
+      expect(streams).toHaveLength(1);
+      expect(streams[0].context.personalizationMode).toBeUndefined();
     });
+  }
+});
+
+test.describe('signed out', () => {
+  test('never fetches the state, never shows two columns or a notice', async ({ page, context }) => {
+    await mockChatServer(context, {
+      personalization: { labEnabled: true, showPlainResponse: true, noticeOnAnswers: [1] },
+    });
+    const personalizationCalls = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/v2/personalization/')) personalizationCalls.push(r.url());
+    });
+    const assistant = new AssistantPage(page);
+    await assistant.goto();
+    await assistant.open();
+    const streams = watchStreams(page);
     await assistant.ask('Hello');
-    expect(requests[0].context.personalizationMode).toBeUndefined();
-    expect(probes).toHaveLength(0);
+    await expect(plainColumn(assistant)).toHaveCount(0);
+    await expect(notice(assistant)).toHaveCount(0);
+    expect(streams).toHaveLength(1);
+    expect(personalizationCalls).toEqual([]);
   });
 });
 
-test('a list slot is edited as comma-separated text and saved as an array', async ({ page, context }) => {
-  const assistant = await setUp(page, context, { allowed: true });
-  await openProfile(assistant);
-  const row = assistant.host.locator('.slot-row[data-slot="interests"]');
-  await expect(row).toContainText('Talmud, ethics');
-  const posted = [];
-  page.on('request', (r) => {
-    if (r.url().endsWith('/v2/personalization/profile') && r.postDataJSON().action === 'set') posted.push(r.postDataJSON());
+test.describe('state request', () => {
+  test('is one POST with the token in the body as userId and action get', async ({ page, context }) => {
+    await mockChatServer(context, { personalization: { labEnabled: true } });
+    const bodies = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/v2/personalization/settings')) bodies.push(r.postDataJSON());
+    });
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    await assistant.open();
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0]).toEqual({ userId: 'test-user-token', action: 'get' });
   });
-  await row.getByRole('button', { name: 'Edit' }).click();
-  await row.getByRole('textbox').fill('Talmud, ethics, Halakha');
-  await row.getByRole('button', { name: 'Save' }).click();
-  await expect(row).toContainText('Talmud, ethics, Halakha');
-  expect(posted[0].value).toEqual(['Talmud', 'ethics', 'Halakha']);
 });
