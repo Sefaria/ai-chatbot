@@ -98,8 +98,7 @@ def test_profile_framing_states_the_guardrails():
 
 def test_message_context_defaults():
     context = MessageContext()
-    assert context.profile_text is None and context.profile_slots_used == []
-    assert MessageContext().profile_slots_used is not context.profile_slots_used
+    assert context.profile_text is None and context.instructions_text is None
 
 
 def _logged_metadata(context):
@@ -109,18 +108,18 @@ def _logged_metadata(context):
 
 
 def test_trace_metadata_marks_personalized_turns():
-    context = MessageContext(profile_text="- A: b", profile_slots_used=["answer_style"])
-    metadata = _logged_metadata(context)
+    metadata = _logged_metadata(MessageContext(profile_text="- A: b"))
     assert metadata["personalized"] is True
-    assert metadata["slots_used"] == ["answer_style"]
+    assert _logged_metadata(MessageContext(instructions_text="Be brief."))["personalized"] is True
 
 
 def test_trace_metadata_unchanged_without_profile():
     metadata = _logged_metadata(MessageContext())
-    assert "personalized" not in metadata and "slots_used" not in metadata
+    assert "personalized" not in metadata
 
 
-def test_mode_defaults_to_off():
+def test_the_gate_is_off_by_default():
     from django.conf import settings
 
-    assert settings.PERSONALIZATION_MODE == "off"
+    assert settings.PERSONALIZATION_OVERRIDE_ENABLED is False
+    assert settings.PERSONALIZATION_JEV_GATE == "off"

@@ -48,7 +48,7 @@ class LLMResult:
 
 class LLMClient(Protocol):
     def complete(
-        self, *, system: str, user: str, model: str, max_tokens: int = 600
+        self, *, system: str, user: str, model: str, max_tokens: int = 600, timeout: float = 20.0
     ) -> LLMResult: ...
 
 
@@ -59,8 +59,8 @@ class FakeLLMClient:
         self.responder = responder
         self.calls: list[dict[str, str]] = []
 
-    def complete(self, *, system, user, model, max_tokens=600):
-        self.calls.append({"system": system, "user": user, "model": model})
+    def complete(self, *, system, user, model, max_tokens=600, timeout=20.0):
+        self.calls.append({"system": system, "user": user, "model": model, "timeout": timeout})
         text = self.responder(system, user)
         tokens_in = (len(system) + len(user)) // 4
         tokens_out = len(text) // 4
@@ -75,7 +75,7 @@ class AnthropicLLMClient:
     def __init__(self, client: Any = None):
         self._client = client
 
-    def complete(self, *, system, user, model, max_tokens=600):
+    def complete(self, *, system, user, model, max_tokens=600, timeout=20.0):
         from chat.V2.pricing import tracked_messages_create
         from chat.V2.utils import get_anthropic_client
 
@@ -86,6 +86,7 @@ class AnthropicLLMClient:
             model=model,
             max_tokens=max_tokens,
             temperature=0,
+            timeout=timeout,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -128,9 +129,9 @@ class ClaudeCodeLLMClient:
         self.overhead[model] = raw_in
         return raw_in
 
-    def complete(self, *, system, user, model, max_tokens=600):
+    def complete(self, *, system, user, model, max_tokens=600, timeout=None):
         started = time.perf_counter()
-        text, raw_in, tokens_out = self._run(system=system, user=user, model=model)
+        text, raw_in, tokens_out = self._run(system=system, user=user, model=model, timeout=timeout)
         latency_ms = int((time.perf_counter() - started) * 1000)
         tokens_in = max(0, raw_in - self.overhead.get(model, 0))
         return LLMResult(
@@ -142,7 +143,9 @@ class ClaudeCodeLLMClient:
             raw_in,
         )
 
-    def _run(self, *, system: str, user: str, model: str) -> tuple[str, int, int]:
+    def _run(
+        self, *, system: str, user: str, model: str, timeout: float | None = None
+    ) -> tuple[str, int, int]:
         argv = [
             self.claude_bin, "-p", user, "--model", model, "--system-prompt", system,
             "--tools", "", "--strict-mcp-config", "--disable-slash-commands",
@@ -165,7 +168,7 @@ class ClaudeCodeLLMClient:
                         argv,
                         capture_output=True,
                         text=True,
-                        timeout=self.timeout,
+                        timeout=timeout or self.timeout,
                         cwd=cwd,
                         env=env,
                         stdin=subprocess.DEVNULL,

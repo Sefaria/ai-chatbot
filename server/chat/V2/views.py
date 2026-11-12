@@ -24,7 +24,6 @@ import concurrent.futures
 import contextvars
 import json
 import logging
-import os
 import queue
 import threading
 import time
@@ -70,7 +69,6 @@ from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .personalization import gate as personalization_gate
 from .personalization import runtime as personalization_runtime
-from .personalization.types import Turn as PersonalizationTurn
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .sentry import capture_exception, capture_message
@@ -324,47 +322,16 @@ _bt_config = get_braintrust_config()
 _bt_logger = None
 
 
-def _resolve_personalization(persistent_user_id, context):
-    """The gate's verdict for this request and, when personalization is on, the profile to render.
-
-    With the feature off this calls the gate only. A failure anywhere leaves the turn
-    unpersonalized."""
-    try:
-        config = personalization_gate.resolve(
-            settings,
-            persistent_user_id,
-            personalization_gate.RequestedPersonalization.from_context(context),
-        )
-    except Exception as exc:
-        logger.exception("Personalization gate failed; continuing unpersonalized")
-        capture_exception(exc, endpoint="chat_stream_v2", phase="personalization_gate")
-        config = personalization_gate.PersonalizationConfig(
-            "off", "always", "off", False, None, persistent_user_id
-        )
-    if config.source == "off":
-        return config, None
-    return config, personalization_runtime.profile_for_request(config, timezone.now())
-
-
 def _lab_compare_hidden(persistent_user_id, context) -> bool:
     """True when the plain arm of a lab compare asked for a hidden session and may have one.
 
-    Honoured only on a lab deployment, for a caller allowed the personalization override, on a
+    Honoured only on a lab deployment, for a signed-in user the personalization gate admits, on a
     request that turns personalization off; anywhere else `labCompare` is ignored."""
     if context.get("labCompare") is not True or context.get("personalizationMode") != "off":
         return False
     return (
-        os.environ.get("PERSONALIZATION_LAB_SEED") == "true"
-        and personalization_gate._non_production_environment()
-        and personalization_gate.override_allowed(settings, persistent_user_id)
+        personalization_gate.enabled_for(persistent_user_id) and personalization_gate.lab_enabled()
     )
-
-
-def _submit_personalization_update(config, turn, agent_response):
-    """Queue the memory update for a saved turn: never for off, a fixture, or a refused reply."""
-    if config.source == "off" or config.fixture_profile is not None or agent_response.refused:
-        return
-    personalization_runtime.submit_after_turn(config, turn, agent_response.span_export)
 
 
 def _get_bt_logger():
@@ -557,7 +524,10 @@ def chat_stream_v2(request):
         user_message.save(update_fields=["appetizer_data"])
     _mark_turn_started(user_message.id)
 
-    personalization, profile = _resolve_personalization(actor.user_id, context)
+    personalization = personalization_runtime.context_for_request(
+        actor.user_id,
+        plain=context.get("personalizationMode") == "off",
+    )
 
     msg_context = MessageContext(
         summary_text=summary_text,
@@ -571,11 +541,9 @@ def chat_stream_v2(request):
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
-        profile_text=(profile.text or None) if profile else None,
-        profile_slots_used=list(profile.slots_used) if profile and profile.text else [],
-        personalization_meta=personalization_gate.trace_metadata(
-            personalization, profile, settings.PERSONALIZATION_MODEL
-        ),
+        profile_text=personalization.profile_text,
+        instructions_text=personalization.instructions_text,
+        personalization_meta=personalization.meta or None,
     )
 
     def generate_sse():
@@ -955,19 +923,6 @@ def chat_stream_v2(request):
                     response_message_id=response_message.message_id,
                 )
 
-            _submit_personalization_update(
-                personalization,
-                PersonalizationTurn(
-                    user_id=personalization.store_user_id,
-                    session_id=data["sessionId"],
-                    message_id=data["messageId"],
-                    user_message=data["text"],
-                    assistant_response=agent_response.content,
-                    at=timezone.now(),
-                ),
-                agent_response,
-            )
-
             try:
                 logging_service.update_session_success(
                     session=session,
@@ -1281,8 +1236,6 @@ def anon_claim_v2(request):
             user_id=actor.user_id
         )
         ChatMessage.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
-        if personalization_gate.memory_enabled(settings):
-            personalization_runtime.move_profile(anon_user_id, actor.user_id)
 
     return Response({"claimedSessions": claimed})
 

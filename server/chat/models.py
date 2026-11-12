@@ -323,123 +323,93 @@ class ChatMessage(models.Model):
         return f"turn_{uuid.uuid4().hex[:16]}"
 
 
-class ProfileSlot(models.Model):
-    """One memory slot of a learner profile (see chat/V2/personalization)."""
-
-    class Status(models.TextChoices):
-        INFERRED = "inferred", "Inferred"
-        STATED = "stated", "Stated"
-
-    user_id = models.CharField(max_length=100, db_index=True)
-    slot_key = models.CharField(max_length=64)
-    value = models.JSONField()
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.INFERRED)
-    # Current evidence ({quote, session_id, message_id, at}), not a history.
-    evidence = models.JSONField(default=list, blank=True)
-    slot_set_version = models.CharField(max_length=16, default="v1")
-    updated_at = models.DateTimeField()
-    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["user_id", "slot_key"], name="uniq_profile_slot")
-        ]
-
-    def __str__(self):
-        return f"{self.user_id}:{self.slot_key}"
-
-
-class ProfileObservation(models.Model):
-    """Raw log of a learner's prompts, read by the batch job."""
-
-    user_id = models.CharField(max_length=100, db_index=True)
-    session_id = models.CharField(max_length=100)
-    message_id = models.CharField(max_length=100)
-    text = models.TextField()
-    signals = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField()
-    consumed_at = models.DateTimeField(null=True, blank=True)
-    # A turn holding a standing instruction that was not cleared as safe: the text is emptied.
-    quarantined = models.BooleanField(default=False)
-    # The learner's prompt was about a daf-a-day cycle (lab signal; set by code).
-    dafka = models.BooleanField(default=False)
-
-    class Meta:
-        ordering = ["created_at", "id"]
-        indexes = [models.Index(fields=["user_id", "created_at"])]
-        constraints = [
-            # A retried turn is observed once.
-            models.UniqueConstraint(
-                fields=["user_id", "message_id"], name="uniq_profile_observation_user_message"
-            )
-        ]
-
-
 def new_proposal_id() -> str:
+    """Kept only because an applied migration (0016) refers to it."""
     return uuid.uuid4().hex
 
 
-class ProfileProposal(models.Model):
-    """A slot value the learner is asked to confirm before it is stored as stated."""
+class PersonalizationSettings(models.Model):
+    """One row per signed-in user: Instructions, the Profile switches and the writer's watermark."""
 
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        ACCEPTED = "accepted", "Accepted"
-        REJECTED = "rejected", "Rejected"
+    MAX_INSTRUCTIONS = 300
 
-    id = models.CharField(max_length=32, primary_key=True, default=new_proposal_id, editable=False)
+    user_id = models.CharField(max_length=100, unique=True)
+    # Written by the user; the 300-character cap is a column limit as well as an API check.
+    instructions_text = models.CharField(max_length=300, blank=True, default="")
+    instructions_enabled = models.BooleanField(default=True)
+    instructions_updated_at = models.DateTimeField(null=True, blank=True)
+    profile_enabled = models.BooleanField(default=True)
+    profile_updated_at = models.DateTimeField(null=True, blank=True)
+    # "la" (the writer) or "you_la" (the user asked LA to edit); None before the first write.
+    profile_updated_by = models.CharField(max_length=10, null=True, blank=True)
+    # Bumped by every applied write, so a write computed from an older Profile is refused.
+    profile_revision = models.PositiveIntegerField(default=0)
+    # Time of the newest prompt already processed (the watermark) and of the last Clear.
+    processed_through = models.DateTimeField(null=True, blank=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+    notice_pending = models.BooleanField(default=False)
+    # Lab-only testing switches.
+    show_plain_response = models.BooleanField(default=False)
+    update_every_message = models.BooleanField(default=False)
+
+
+class ProfileSection(models.Model):
+    """One section of a user's Profile: a core slot or a dynamic section LA opened."""
+
+    class Kind(models.TextChoices):
+        CORE = "core", "Core"
+        DYNAMIC = "dynamic", "Dynamic"
+
+    class Origin(models.TextChoices):
+        STATED = "stated", "Stated"
+        INFERRED = "inferred", "Inferred"
+
     user_id = models.CharField(max_length=100, db_index=True)
-    slot_key = models.CharField(max_length=64)
-    value = models.JSONField()
-    quote = models.TextField(blank=True, default="")
-    # The observation it came from is the row with the same (user_id, message_id).
-    source_message_id = models.CharField(max_length=100, blank=True, default="")
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    created_at = models.DateTimeField()
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    # The core slot key; null for a dynamic section.
+    key = models.CharField(max_length=40, null=True, blank=True)
+    heading = models.CharField(max_length=100)
+    body = models.TextField()
+    origin = models.CharField(max_length=10, choices=Origin.choices, default=Origin.INFERRED)
+    last_supported_at = models.DateTimeField()
+    position = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ["created_at"]
+        ordering = ["position"]
         constraints = [
-            # One pending confirmation per slot.
             models.UniqueConstraint(
-                fields=["user_id", "slot_key"],
-                condition=models.Q(status="pending"),
-                name="uniq_pending_proposal_user_slot",
+                fields=["user_id", "heading"], name="uniq_profile_section_heading"
             )
         ]
 
 
-class ProfileSettings(models.Model):
-    """Two separate learner toggles: use the profile, and keep storing it."""
-
-    user_id = models.CharField(max_length=100, unique=True)
-    personalize_enabled = models.BooleanField(default=True)
-    store_enabled = models.BooleanField(default=True)
-    # Bumped by every applied profile write (store._locked_write), so a write computed from an
-    # older profile is refused as stale.
-    revision = models.PositiveIntegerField(default=0)
-    # The learner has seen the first-visit notice about the profile.
-    notice_shown = models.BooleanField(default=False)
-
-
-class ProfileCandidate(models.Model):
-    """A proposed profile held beside the real one; the prompt never reads it."""
-
-    user_id = models.CharField(max_length=100, unique=True)
-    slots = models.JSONField(default=dict)
-    changes = models.JSONField(default=list)
-    base_revision = models.PositiveIntegerField(default=0)
-    created = models.DateTimeField(auto_now_add=True)
-
-
-class LabVote(models.Model):
-    """One learner's pick between two arms of a lab pair."""
+class ProfileWriterRun(models.Model):
+    """One run of the Profile job, kept for review and for a later judge."""
 
     user_id = models.CharField(max_length=100, db_index=True)
-    pair_id = models.CharField(max_length=100, unique=True)
-    choice = models.CharField(max_length=32)
-    left_arm = models.CharField(max_length=64)
-    created = models.DateTimeField(auto_now_add=True)
+    trigger = models.CharField(max_length=20)
+    window = models.CharField(max_length=10, default="session")
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    watermark_from = models.DateTimeField(null=True, blank=True)
+    watermark_to = models.DateTimeField(null=True, blank=True)
+    prompt_ids = models.JSONField(default=list)
+    # The text fields below are blanked when the user clears their Profile.
+    extraction = models.TextField(blank=True, default="")
+    profile_before = models.TextField(blank=True, default="")
+    profile_after = models.TextField(blank=True, default="")
+    chapter_hashes = models.JSONField(default=dict)
+    model = models.CharField(max_length=100, blank=True, default="")
+    input_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, null=True, blank=True)
+    # applied | no_change | rejected | failed
+    status = models.CharField(max_length=12)
+    failed_check = models.CharField(max_length=40, blank=True, default="")
+    reason = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=["user_id", "started_at"])]
 
 
 class LabQuota(models.Model):

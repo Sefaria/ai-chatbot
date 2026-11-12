@@ -1,6 +1,0 @@
-{
-  "id": "consolidate",
-  "question": "The \"Run the job\" job: how should the profile be consolidated, and who decides when the result is applied?",
-  "why": "Mickey's button (27:28) and Yotam's ask to model it on Claude's dreaming. The job's rules are in the spec. `syn2` includes personas with a planted correction, a planted unclear conflict, a slot set by hand, and an instruction hidden inside a prompt.",
-  "source": "wiki/meta/spec-2026-11-10-la-personalization-lab-test-tree.md, heading \"Aspect `consolidate`: the \\\"Run the job\\\" job\""
-}

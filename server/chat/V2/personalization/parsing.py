@@ -7,6 +7,24 @@ import re
 import unicodedata
 from collections import Counter
 
+_BRACKETS = str.maketrans({"<": "‹", ">": "›"})
+
+
+def clean_text(value: str) -> str:
+    """Make free text safe to place in a prompt: no control characters, no line breaks, no tags.
+
+    Whitespace and control characters collapse to single spaces (or vanish), and angle brackets
+    become single guillemets, so a value can never close a prompt block or open a tag.
+    """
+    chars = []
+    for ch in value:
+        if ch.isspace() or unicodedata.category(ch) in ("Zl", "Zp"):
+            chars.append(" ")
+        elif unicodedata.category(ch) != "Cc":
+            chars.append(ch)
+    return " ".join("".join(chars).translate(_BRACKETS).split())
+
+
 _DECODER = json.JSONDecoder()
 # A bare double quote between two Hebrew letters is a gershayim inside an acronym (רשב"ם).
 _HEBREW_ACRONYM_QUOTE = re.compile(r"([֐-׿])\"(?=[֐-׿])")

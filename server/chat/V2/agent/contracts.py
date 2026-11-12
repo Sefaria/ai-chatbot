@@ -57,10 +57,10 @@ class MessageContext:
     sefaria_user_id: str | None = None
     encrypted_user_token: str | None = None
     turn_number: int | None = None
-    # Learner profile rendered for the prompt (dark feature, see chat/V2/personalization).
+    # The user's Profile and Instructions for the prompt (see chat/V2/personalization).
     profile_text: str | None = None
-    profile_slots_used: list[str] = field(default_factory=list)
-    # Root-span metadata built by personalization.gate.trace_metadata; None leaves the trace alone.
+    instructions_text: str | None = None
+    # Root-span metadata from personalization.runtime; None leaves the trace alone.
     personalization_meta: dict[str, Any] | None = None
 
 

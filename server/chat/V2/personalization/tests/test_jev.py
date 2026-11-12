@@ -13,7 +13,6 @@ from chat.V2.personalization.jev import (
     JevQuestion,
 )
 from chat.V2.personalization.llm import estimate_cost
-from chat.V2.personalization.strategies import typed_questions as q
 
 SECRET = "fake-test-value-123"
 
@@ -119,32 +118,3 @@ def test_fake_client_counts_tokens_and_records_calls():
 
 def test_jev_price_is_in_the_table():
     assert estimate_cost("jev-1.13.0", 1_000_000, 5_000_000) == pytest.approx(0.042)
-
-
-# -- question definitions ------------------------------------------------------------------
-
-
-def test_choice_options_match_the_registry(registry):
-    questions = q.choice_questions(registry)
-    for key in q.CHOICE_SLOTS:
-        options = list(questions[key].criteria)
-        assert options == [*registry.get(key).allowed, q.UNCLEAR]
-        assert all(questions[key].criteria[o] for o in options)  # a one-line description each
-
-
-def test_category_questions_cover_every_registry_category(registry):
-    questions = q.category_questions(registry)
-    allowed = registry.get("text_categories").allowed
-    assert list(questions) == [f"category:{c}" for c in allowed]
-    assert set(q.CATEGORY_DESCRIPTIONS) == set(allowed)
-    assert all(x.type == "noul" and "learner_prompts" in x.instructions for x in questions.values())
-
-
-def test_instruction_questions_and_pinned_values():
-    questions = q.instruction_questions()
-    assert set(questions) == {q.STYLE_KEY, q.EXCLUDE_KEY}
-    assert all("`message`" in x.instructions for x in questions.values())
-    assert q.JEV_MODEL == "jev-1.13.0"
-    assert (q.SET_MIN_CONFIDENCE, q.CHANGE_MIN_CONFIDENCE) == (0.5, 0.75)
-    assert (q.CATEGORY_MIN_NOUL, q.INSTRUCTION_MIN_NOUL) == (0.65, 0.65)
-    assert (q.WINDOW_PROMPTS, q.PROMPT_CHARS) == (12, 500)
