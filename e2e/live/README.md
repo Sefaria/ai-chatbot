@@ -1,45 +1,59 @@
-# Live end-to-end check: the "Joe" story
+# Live end-to-end check: the "Joe" story, against a deployed cauldron
 
-Drives a real browser against the real Sefaria site, the real chatbot server and the real model.
-It spends model calls (about 20 chat turns plus Profile-job runs). It is skipped unless `LIVE=1`,
-and it has its own config, so `npx playwright test` never runs it.
+Drives a real browser (Playwright, Chromium) against a deployed Sefaria cauldron and a deployed preview chatbot
+server, with real model calls and two real throwaway users. 17 steps. It spends model calls (about 25 chat turns
+plus Profile-job runs) and takes about 70 minutes, because step 16 waits for the idle sweep. It is skipped unless
+`LIVE=1`, and it has its own config, so `npx playwright test` never runs it.
 
-## Start the servers
+Each step records PASS or FAIL, with the evidence it saw, into a results JSON file and never aborts the run. A step
+that fails and passes on a later rerun is "FAILED, THEN RECOVERED" in the report: the file keeps every attempt.
 
-Chatbot (`server/`, a NEW Postgres database, e.g. `poc_live`; run `manage.py migrate` once):
-`DB_NAME=poc_live ENVIRONMENT=dev PERSONALIZATION_OVERRIDE_ENABLED=true PERSONALIZATION_OVERRIDE_ALLOW_ALL=true PERSONALIZATION_LAB_SEED=true`
-plus, from your env files, `ANTHROPIC_API_KEY`, `BRAINTRUST_API_KEY`, `BRAINTRUST_PROJECT`, `CHATBOT_USER_TOKEN_SECRET`
-(and, for the Jev gate, `PERSONALIZATION_JEV_GATE=on` with `TYPESAFE_API_KEY`).
-Load the env file with a loader that handles values with spaces (`set -a; . file` breaks on `BRAINTRUST_PROJECT`).
-Then `python manage.py runserver 127.0.0.1:8765 --noreload`.
+## Prerequisites
 
-Widget dev server (repo root): `VITE_SEFARIA_HOSTNAMES=localhost,127.0.0.1 npx vite --port 5173 --strictPort`.
-
-Sefaria (worktree with the Settings tab): in the git-ignored `sefaria/local_settings.py` set
-`CHATBOT_API_BASE_URL = "http://127.0.0.1:8765/api"`, `CHATBOT_USE_LOCAL_SCRIPT = True` and a `CHATBOT_USER_ID_SECRET`
-equal to the chatbot's `CHATBOT_USER_TOKEN_SECRET`. Run `npm run build-client` (so the bundle has the new tab),
-`python manage.py migrate` (the login needs the allauth tables), then `python manage.py runserver 127.0.0.1:8000 --noreload`.
-Create a FRESH test user per full run (step 1 expects "Last updated: Never") with its Library Assistant setting on.
+- Two existing users with the Library Assistant setting on (sign-up has a reCAPTCHA, so the script cannot create them).
+  Step 1 expects user 1 to be fresh ("Last updated: Never"); step 14 expects user 2 to have an empty Profile and Instructions.
+- The cauldron may be scaled down; the script waits up to 5 minutes for "Environment is starting up".
+- The preview chatbot server runs with personalization on for signed-in users, the Jev gate on, and the 5-minute sweep.
 
 ## Run
 
-    LIVE=1 LIVE_SEFARIA_USER=<email> LIVE_SEFARIA_PASSWORD=<password> LIVE_SHOTS_DIR=<dir> \
-      npx playwright test -c e2e/live/playwright.live.config.js
+    LIVE=1 LIVE_USER1_EMAIL=... LIVE_USER1_PASSWORD=... LIVE_USER2_EMAIL=... LIVE_USER2_PASSWORD=... \
+      LIVE_SHOTS_DIR=<dir> npx playwright test -c e2e/live/playwright.live.config.js
 
-Env var names: `LIVE`, `LIVE_SEFARIA_URL` (default `http://localhost:8000`), `LIVE_SEFARIA_USER`, `LIVE_SEFARIA_PASSWORD`,
-`LIVE_SHOTS_DIR` (screenshots, default `test-results/live-shots`), `LIVE_CHAT_PATH` (page hosting the chat, default `/about`:
-reader pages crash on a local Mongo without calendar data). Tests are serial and share state; run one with `-g "<title words>"`.
+Read the credentials from mode-600 files into the variables; never put a password on a command line you echo.
 
-## Automated: steps 1 to 9
+Environment variable names:
 
-Settings tab, Instructions 301/300, three chat turns with no notice, Run now, notice once, Instructions on/off injection,
-two-answer display, chat-to-edit (applied and refused), Clear. Needs a working model key.
+| Name | Meaning | Default |
+|---|---|---|
+| `LIVE` | must be set to run | skipped |
+| `LIVE_USER1_EMAIL`, `LIVE_USER1_PASSWORD` | user 1, runs the main story | required |
+| `LIVE_USER2_EMAIL`, `LIVE_USER2_PASSWORD` | user 2, isolation and keyboard steps | required |
+| `LIVE_SEFARIA_URL` | the cauldron site | `https://www.la-p13n.cauldron.sefaria.org` |
+| `LIVE_CHATBOT_VERSION` | the `?chatbot_version=` value, opened once per browser context | `9298` |
+| `LIVE_CHATBOT_API` | the preview app's API base, for the direct API calls | `https://<version>.ai-server.coolifydev.sefaria.org/api` |
+| `LIVE_CHAT_PATH` | the library page hosting the chat | `/Genesis.1` |
+| `LIVE_SHOTS_DIR` | screenshots | `test-results/live-shots` |
+| `LIVE_RESULTS_FILE` | the results JSON (attempts are appended) | `<shots dir>/results.json` |
+| `LIVE_ONLY` | comma list of steps to run, e.g. `3,4,5` (`16a` and `16b` are the two halves of step 16) | all |
+| `LIVE_SKIP` | comma list of steps to skip | none |
+| `LIVE_TRACE` | file for a timestamped trace of each chat turn | off |
+| `LIVE_IDLE_FIRST_LOOK_MIN`, `LIVE_IDLE_GIVE_UP_MIN` | step 16 window after the question | `36`, `46` |
 
-## Manual (DB or shell)
+Execution order is 1 to 13, 15, 16a, 14, 17, 16b, then a cleanup test (Clear both Profiles, empty Instructions,
+switches back on, sign out). Step 16a signs user 1 out and 16b signs back in after the wait, so user 1 does nothing in
+between; steps 14 and 17 use user 2 meanwhile. The last test fails if any recorded attempt failed, so use a fresh
+results file for a clean verdict.
 
-- Step 6 last part: Profile switched off, confirm no Profile block reached the prompt (trace metadata or the run/turn record).
-- Step 9 end: after Clear, ask a question, Run now, check `ProfileWriterRun.prompt_ids` only holds post-Clear prompts.
-- Step 10 idle sweep: `manage.py personalization_sweep --dry-run`, then backdate the prompt's `server_timestamp` (and the user's
-  `cleared_at`/`processed_through` if later) 31 minutes and run the sweep twice.
-- Steps 11 to 15: Dream now and job health (API), isolation with a second token, sensitive-content check, `ProfileWriterRun` rows,
-  Braintrust spans, a Hebrew question.
+## Notes learned from running it
+
+- Opening the chat page in a new chat session can itself start a Profile job for the earlier session (the `new_chat`
+  trigger), so a Profile can appear without pressing Run now. Do not open extra chats against user 1 before step 3.
+- The first page load of a fresh session with `?chatbot_version=9298` in the URL leaves the Settings panel pointing at the
+  default chatbot host (it shows "Personalization is not available here."); the script opens `/about?chatbot_version=...`
+  once, then goes to Settings.
+- A chat turn can stall: the answer stops after its first "let me search..." line, the input stays disabled, and a page
+  reload does not free it. The script records a stall (with a screenshot), then starts a new chat from the menu and asks
+  again, and the step ends as "FAILED, THEN RECOVERED". `LIVE_TRACE=<file>` appends a timestamped trace of each turn.
+- "Run now" can answer `busy` while a job that a new chat started is still running, and `no_change: no_new_prompts` when
+  that job has already processed the prompts; the script presses again after a busy reply and records both.

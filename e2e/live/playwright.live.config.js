@@ -6,7 +6,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: '.',
   testMatch: /.*\.live\.spec\.js/,
-  timeout: 20 * 60 * 1000,
+  timeout: 70 * 60 * 1000,
   workers: 1,
   fullyParallel: false,
   retries: 0,
@@ -15,5 +15,7 @@ export default defineConfig({
     browserName: 'chromium',
     viewport: { width: 1280, height: 900 },
     trace: 'off',
+    actionTimeout: 60_000,
+    navigationTimeout: 90_000,
   },
 });
