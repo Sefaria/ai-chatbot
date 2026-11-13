@@ -321,3 +321,98 @@ class ChatMessage(models.Model):
     def generate_turn_id(cls):
         """Generate a unique turn ID."""
         return f"turn_{uuid.uuid4().hex[:16]}"
+
+
+class ProfileSlot(models.Model):
+    """One memory slot of a learner profile (see chat/V2/personalization)."""
+
+    class Status(models.TextChoices):
+        INFERRED = "inferred", "Inferred"
+        STATED = "stated", "Stated"
+
+    user_id = models.CharField(max_length=100, db_index=True)
+    slot_key = models.CharField(max_length=64)
+    value = models.JSONField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.INFERRED)
+    # Current evidence ({quote, session_id, message_id, at}), not a history.
+    evidence = models.JSONField(default=list, blank=True)
+    slot_set_version = models.CharField(max_length=16, default="v1")
+    updated_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user_id", "slot_key"], name="uniq_profile_slot")
+        ]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.slot_key}"
+
+
+class ProfileObservation(models.Model):
+    """Raw log of a learner's prompts, read by the batch job."""
+
+    user_id = models.CharField(max_length=100, db_index=True)
+    session_id = models.CharField(max_length=100)
+    message_id = models.CharField(max_length=100)
+    text = models.TextField()
+    signals = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    # A turn holding a standing instruction that was not cleared as safe: the text is emptied.
+    quarantined = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [models.Index(fields=["user_id", "created_at"])]
+        constraints = [
+            # A retried turn is observed once.
+            models.UniqueConstraint(
+                fields=["user_id", "message_id"], name="uniq_profile_observation_user_message"
+            )
+        ]
+
+
+def new_proposal_id() -> str:
+    return uuid.uuid4().hex
+
+
+class ProfileProposal(models.Model):
+    """A slot value the learner is asked to confirm before it is stored as stated."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+
+    id = models.CharField(max_length=32, primary_key=True, default=new_proposal_id, editable=False)
+    user_id = models.CharField(max_length=100, db_index=True)
+    slot_key = models.CharField(max_length=64)
+    value = models.JSONField()
+    quote = models.TextField(blank=True, default="")
+    # The observation it came from is the row with the same (user_id, message_id).
+    source_message_id = models.CharField(max_length=100, blank=True, default="")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            # One pending confirmation per slot.
+            models.UniqueConstraint(
+                fields=["user_id", "slot_key"],
+                condition=models.Q(status="pending"),
+                name="uniq_pending_proposal_user_slot",
+            )
+        ]
+
+
+class ProfileSettings(models.Model):
+    """Two separate learner toggles: use the profile, and keep storing it."""
+
+    user_id = models.CharField(max_length=100, unique=True)
+    personalize_enabled = models.BooleanField(default=True)
+    store_enabled = models.BooleanField(default=True)
+    # Bumped by every applied profile write (store._locked_write), so a write computed from an
+    # older profile is refused as stale.
+    revision = models.PositiveIntegerField(default=0)
