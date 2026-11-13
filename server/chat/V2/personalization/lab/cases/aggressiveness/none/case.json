@@ -1,0 +1,59 @@
+{
+  "id": "aggressiveness/none",
+  "question": "The control: is the chat untouched?",
+  "why": "Mickey's three arms (23:10 to 24:37) and \"remember everything, see what mistakes it makes\". The no-personalization arm is the control the other two are read against.",
+  "source": "wiki/meta/spec-2026-11-10-la-personalization-lab-test-tree.md, heading \"Aspect `aggressiveness`: none, light or aggressive?\", row `none`",
+  "hypothesis": "Yes: with personalization off every prompt equals main's prompt byte for byte, and no profile table is written.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "main_ref": "origin/main"
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "byte_identical_off",
+    "store_writes",
+    "runs_identical"
+  ],
+  "keep_if": [
+    {
+      "metric": "byte_identical_off",
+      "agg": "each",
+      "op": "==",
+      "value": 1.0,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "store_writes",
+      "agg": "each",
+      "op": "==",
+      "value": 0,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "runs_identical",
+      "agg": "min",
+      "op": "==",
+      "value": 1,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "none: no model call (the three runs are deterministic replays; the lab's live command makes one headless calibration call per invocation, which this case never uses)",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: `syn2` replayed with personalization off",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized) and Amendment A2 maps the row's `syn2` bars onto it: every bar the row puts on syn2 applies to anon-personas. The case is deterministic, so per A2 it replays all 188 personas of anon-personas (no seeded sample). syn1 stays as the reference, reported beside and never alone. Results on anon-personas are numbers only (counts and ratios).",
+      "amendment": "A2"
+    },
+    {
+      "date": "2026-11-11",
+      "from": "plan Task 8 paragraph on `none`",
+      "what": "The prompts are built by the branch's own `build_turn_prompt` with the production off-path (gate.resolve, then runtime.profile_for_request, with the profile store replaced by a store that counts every write call) and compared with the same prompt built by `build_prompt` from `git show config.main_ref:server/chat/V2/prompts/prompt_fragments.py`, loaded in an isolated module namespace. The core prompt, summary and page url are fixed synthetic strings (the real core prompt lives in Braintrust); summary and page url are switched on for fixed turn positions so every branch of the builder is compared. byte_identical_off and store_writes are the core's counted metrics, read from the replay's diagnostics. Prompt hashes (SHA-256 of both prompts, per turn) are kept in the replay's diagnostics and are not part of the result files; no prompt text is stored anywhere."
+    }
+  ],
+  "status": "planned"
+}
