@@ -1,0 +1,97 @@
+{
+ "case_sha": "f594fb482e878fd91bfa9d000f91eb36a80990dc",
+ "cost": {
+  "calls": 104,
+  "in_tokens": 120760,
+  "out_tokens": 37539,
+  "typed_requests": 104,
+  "usd": 0.30845500000000015
+ },
+ "dataset": {
+  "kind": "real",
+  "n": 20,
+  "name": "anon-personas",
+  "sha256": "0a89da7095237ec54ebc4940c53ae86f949d26570dc75759d03e7c9aafe2211d"
+ },
+ "git_sha": "723e33bcd0bb532f58234ee2041b3baa9fcaf4cb",
+ "id": "aggressiveness/aggressive",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "fill_rate_at_k@2": 0.7733333333333333,
+  "fill_rate_at_k@4": 0.84,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.75,
+  "flips_per_10_turns": 4.903846153846154,
+  "outlier_flips": 3,
+  "run_agreement": 0.9069767441860465,
+  "turns_to_fill": 1,
+  "wrong_slot_turns": 0.8461538461538461
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": null,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "fill_rate_at_k@2": [
+   58,
+   75
+  ],
+  "fill_rate_at_k@4": [
+   63,
+   75
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   15,
+   20
+  ],
+  "flips_per_10_turns": [
+   510,
+   104
+  ],
+  "run_agreement": [
+   78,
+   86
+  ],
+  "wrong_slot_turns": [
+   88,
+   104
+  ]
+ },
+ "run": 2,
+ "schema": 1,
+ "started_at": "2026-11-11T10:28:37+00:00",
+ "steps": [
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 104,
+   "n_out": 136,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 20,
+   "n_out": 9,
+   "name": "score"
+  }
+ ]
+}

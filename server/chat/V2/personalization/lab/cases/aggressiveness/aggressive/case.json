@@ -1,0 +1,60 @@
+{
+  "id": "aggressiveness/aggressive",
+  "question": "What mistakes does a profile make when every prompt may rewrite it?",
+  "why": "Mickey's three arms (23:10 to 24:37) and \"remember everything, see what mistakes it makes\". The aggressive arm is the one whose mistakes are the result.",
+  "source": "wiki/meta/spec-2026-11-10-la-personalization-lab-test-tree.md, heading \"Aspect `aggressiveness`: none, light or aggressive?\", row `aggressive`",
+  "hypothesis": "Every prompt may rewrite the profile: it fills by turn 2 and flips on outliers; useful as the \"what mistakes it makes\" arm.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-4-5-20251001",
+    "min_support": 1,
+    "ratio": 0.0,
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "turns_to_fill",
+    "first_session_fill",
+    "outlier_flips",
+    "flips_per_10_turns",
+    "wrong_slot_turns",
+    "fill_rate_at_k",
+    "run_agreement"
+  ],
+  "keep_if": [
+    {
+      "metric": "turns_to_fill",
+      "agg": "mean",
+      "op": "<=",
+      "value": 2,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "first_session_fill",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.9,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 0.5M Haiku tokens (the test tree's estimate); one typed call per turn on the 20-persona sample and syn1, about 185 calls per run, 3 runs",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: `syn2` and `real1`",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2 maps the row: every bar the row puts on syn2 applies to anon-personas, and the real1 extras (fill_rate_at_k, run_agreement, flips_per_10_turns) are computed on the same anon-personas runs, numbers only. As a model case it runs the A2 seeded sample of anon-personas, the same one as reverify/heldout-personas: sample_dataset anon-personas, sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20). syn1 stays as the reference, reported beside, never alone.",
+      "amendment": "A2",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "agg": "The row says `turns_to_fill` median <= 2. The kit's aggregations are mean, min, max, pooled and each, and the metric is itself a median over slots, so the bar reads the mean of the three runs' medians (agg mean); the bar value is not loosened. first_session_fill names no aggregation: default mean.",
+      "no_bar": "outlier_flips, flips_per_10_turns and wrong_slot_turns are reported with no bar (the mistakes are the result). fill_rate_at_k (k = 2, 4, 8) and run_agreement are the real1 extras, reported with no bar.",
+      "arm": "min_support 1, ratio 0.0: the latest confident signal wins (P/arms.py, ArmUpdater); no nightly job, so the arms differ only in their update rule."
+    }
+  ],
+  "status": "planned"
+}
