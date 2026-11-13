@@ -1,0 +1,82 @@
+{
+  "id": "extract/jev",
+  "question": "The same questions answered by Jev",
+  "why": "The core technique (transcript 4:17 to 6:44). It decides the vendor question and the cost.",
+  "source": "The core technique (transcript 4:17 to 6:44)",
+  "hypothesis": "Highest accuracy on closed sets, lower on Hebrew prompts.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-4-5-20251001",
+    "strategy": "hybrid_jev",
+    "typed": "jev",
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "slot_accuracy",
+    "over_inferred",
+    "first_session_fill",
+    "slot_accuracy_by_lang@he",
+    "slot_accuracy_by_lang@en",
+    "over_inferred_by_lang@he",
+    "over_inferred_by_lang@en",
+    "slot_accuracy_on@language",
+    "slot_accuracy_on@text_categories",
+    "over_inferred_on@text_categories",
+    "fill_rate_at_k",
+    "flips_per_10_turns",
+    "calls_per_turn",
+    "usd_per_1000_turns",
+    "sensitive_dropped_share"
+  ],
+  "keep_if": [
+    {
+      "metric": "slot_accuracy",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.85,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy",
+      "agg": "min",
+      "op": ">=",
+      "value": 0.8,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "over_inferred",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.05,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "first_session_fill",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.75,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 330 Jev requests (the test tree's estimate): about 105 typed requests per run on the 20-persona sample (315 over three runs), plus about 76 per run on syn1 (228); measured on extract/haiku-typed's runs, which asked the same questions. The model batch step adds a few Haiku calls per persona.",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: syn2 only (synthetic text)",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2, decision 3 (Yotam, 2026-11-11), allows Jev on the anonymized sample only, so the row's 'syn2 only (synthetic text)' becomes the seeded 20-persona sample of anon-personas. As a model case it runs the A2 seeded sample, the same one as reverify/heldout-personas and extract/haiku-typed: sample_dataset anon-personas, sample_size 20, sample_seed 20261110, random.Random(seed).sample(sorted(user_ids), 20). syn1 (synthetic) stays as the reference, reported beside, never alone. The runner still refuses to build a Jev client for a real dataset that is not anonymized; that guard is unchanged.",
+      "cost": "Running all 188 personas of anon-personas would cost about 9x the planned budget.",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "bars": "The accuracy bars are copied from extract/haiku-typed (the row says 'same accuracy bars'): slot_accuracy mean >= 0.85 and min >= 0.80, over_inferred <= 0.05, first_session_fill >= 0.75, all on anon-personas. The row names no aggregation for the last two, so each uses the default, mean. haiku-typed's run_agreement bar is a real1 clause of that row; this row has none, so run_agreement is not a bar here.",
+      "language": "'Reported separately for Hebrew and English prompts' is the metrics slot_accuracy_by_lang@he, slot_accuracy_by_lang@en, over_inferred_by_lang@he and over_inferred_by_lang@en (aspect metrics, extract/metrics.py), with no bar: the figures on the overall bars stay the only gates. A persona is Hebrew when more than half of its prompts hold more Hebrew-block letters than Latin letters; every other persona (a tie, or no prompt) is English.",
+      "typed": "Strategy hybrid_jev: one Jev request per turn over the last 12 prompts through JevTypedClient (jev-1.13.0), plus one small request per standing instruction. The replay pipeline already simulates the learner's tap on each proposal for this strategy and counts Jev's requests as typed_questions, so pipeline.py adds nothing to it. The live run needs PERSONALIZATION_ALLOW_JEV=true and TYPESAFE_API_KEY in the shell; without either the case is recorded invalid."
+    }
+  ],
+  "status": "planned"
+}

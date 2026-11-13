@@ -1,0 +1,166 @@
+{
+ "case_sha": "9911ada7fde45b1b938872a1fabcf1ca5a3ca246",
+ "cost": {
+  "calls": 142,
+  "in_tokens": 168580,
+  "out_tokens": 2499,
+  "typed_requests": 105,
+  "usd": 0.05023136000000001
+ },
+ "dataset": {
+  "kind": "real",
+  "n": 20,
+  "name": "anon-personas",
+  "sha256": "0a89da7095237ec54ebc4940c53ae86f949d26570dc75759d03e7c9aafe2211d"
+ },
+ "git_sha": "6b7cc277adc1ea842127f8bac7aac03b69021339",
+ "id": "extract/jev",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "calls_per_turn": 1.3653846153846154,
+  "fill_rate_at_k@2": 0.6266666666666667,
+  "fill_rate_at_k@4": 0.7333333333333333,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.75,
+  "flips_per_10_turns": 0.8653846153846154,
+  "over_inferred": 0.26153846153846155,
+  "over_inferred_by_lang@en": 0.2127659574468085,
+  "over_inferred_by_lang@he": 0.3888888888888889,
+  "over_inferred_on@text_categories": null,
+  "sensitive_dropped_share": 0.0,
+  "slot_accuracy": 0.6811594202898551,
+  "slot_accuracy_by_lang@en": 0.6585365853658537,
+  "slot_accuracy_by_lang@he": 0.7142857142857143,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.45,
+  "usd_per_1000_turns": 0.4829938461538462
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": null,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   142,
+   104
+  ],
+  "fill_rate_at_k@2": [
+   47,
+   75
+  ],
+  "fill_rate_at_k@4": [
+   55,
+   75
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   15,
+   20
+  ],
+  "flips_per_10_turns": [
+   90,
+   104
+  ],
+  "over_inferred": [
+   17,
+   65
+  ],
+  "over_inferred_by_lang@en": [
+   10,
+   47
+  ],
+  "over_inferred_by_lang@he": [
+   7,
+   18
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   0
+  ],
+  "sensitive_dropped_share": [
+   0,
+   104
+  ],
+  "slot_accuracy": [
+   47,
+   69
+  ],
+  "slot_accuracy_by_lang@en": [
+   27,
+   41
+  ],
+  "slot_accuracy_by_lang@he": [
+   20,
+   28
+  ],
+  "slot_accuracy_on@language": [
+   20,
+   20
+  ],
+  "slot_accuracy_on@text_categories": [
+   9,
+   20
+  ]
+ },
+ "run": 1,
+ "schema": 1,
+ "started_at": "2026-11-11T08:31:22+00:00",
+ "steps": [
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 37,
+   "n_out": 83,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 20,
+   "n_out": 17,
+   "name": "score"
+  }
+ ]
+}

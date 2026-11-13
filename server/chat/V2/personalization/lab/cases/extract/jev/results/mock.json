@@ -1,0 +1,235 @@
+{
+ "case_sha": "9911ada7fde45b1b938872a1fabcf1ca5a3ca246",
+ "cost": {
+  "calls": 20,
+  "in_tokens": 16683,
+  "out_tokens": 42,
+  "typed_requests": 14,
+  "usd": 0.004643054
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 6,
+  "name": "mock",
+  "sha256": "034e6388d4edbd8a86f55910d6273d92701f173778862c6f0840bfe79f069f7c"
+ },
+ "git_sha": "c9ddc7c627a86a47e77d9660f2f3d1cc2da97ac4",
+ "id": "extract/jev",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "calls_per_turn": 1.25,
+  "fill_rate_at_k@2": 0.875,
+  "fill_rate_at_k@4": null,
+  "fill_rate_at_k@8": null,
+  "first_session_fill": 0.6666666666666666,
+  "flips_per_10_turns": 0.625,
+  "over_inferred": 0.038461538461538464,
+  "over_inferred_by_lang@en": 0.05263157894736842,
+  "over_inferred_by_lang@he": 0.0,
+  "over_inferred_on@text_categories": 0.0,
+  "sensitive_dropped_share": 0.0625,
+  "slot_accuracy": 0.8125,
+  "slot_accuracy_by_lang@en": 1.0,
+  "slot_accuracy_by_lang@he": 0.5714285714285714,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.6666666666666666,
+  "usd_per_1000_turns": 0.29019087499999996
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "intermediate",
+    "preferred_language": "he",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "basic",
+    "preferred_language": "en"
+   },
+   "persona": "cal",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "he"
+   },
+   "persona": "dee",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en",
+    "terminology_comfort": "comfortable"
+   },
+   "persona": "eve",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "hebrew_fluency": "basic",
+    "preferred_language": "en"
+   },
+   "persona": "gil",
+   "turns": 2,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   20,
+   16
+  ],
+  "fill_rate_at_k@2": [
+   14,
+   16
+  ],
+  "fill_rate_at_k@4": [
+   0,
+   0
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "first_session_fill": [
+   4,
+   6
+  ],
+  "flips_per_10_turns": [
+   10,
+   16
+  ],
+  "over_inferred": [
+   1,
+   26
+  ],
+  "over_inferred_by_lang@en": [
+   1,
+   19
+  ],
+  "over_inferred_by_lang@he": [
+   0,
+   7
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   3
+  ],
+  "sensitive_dropped_share": [
+   1,
+   16
+  ],
+  "slot_accuracy": [
+   13,
+   16
+  ],
+  "slot_accuracy_by_lang@en": [
+   9,
+   9
+  ],
+  "slot_accuracy_by_lang@he": [
+   4,
+   7
+  ],
+  "slot_accuracy_on@language": [
+   6,
+   6
+  ],
+  "slot_accuracy_on@text_categories": [
+   2,
+   3
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T08:24:25+00:00",
+ "steps": [
+  {
+   "n_in": 16,
+   "n_out": 16,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 16,
+   "n_out": 15,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 6,
+   "n_out": 16,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 6,
+   "n_out": 17,
+   "name": "score"
+  }
+ ]
+}
