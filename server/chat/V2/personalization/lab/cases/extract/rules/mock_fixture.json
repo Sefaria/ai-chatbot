@@ -1,0 +1,337 @@
+{
+ "note": "Invented fixture for the mock; no real text.",
+ "personas": [
+  {
+   "id": "ana",
+   "user_id": "mock:ana",
+   "trap": "two prompts name Talmud corpora, Rashi once",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ana-s1",
+     "turns": [
+      {
+       "id": "ana-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "What does the Talmud say about lending?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Explain Berakhot 2a",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ana-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "Who is Rashi?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "text_categories": {
+     "must_include": [
+      "Talmud"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "dov",
+   "user_id": "mock:dov",
+   "trap": "Hebrew prompts, one recurring corpus",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "dov-s1",
+     "turns": [
+      {
+       "id": "dov-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "תסביר לי את המשנה הזאת",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "dov-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "איך לומדים משנה בקלות",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "dov-3",
+       "at": "2026-11-04T09:03:00Z",
+       "user": "ומה לגבי הזוהר?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "he"
+    },
+    "text_categories": {
+     "must_include": [
+      "Mishnah"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "eli",
+   "user_id": "mock:eli",
+   "trap": "one mention is not a fill",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "eli-s1",
+     "turns": [
+      {
+       "id": "eli-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Who is Rashi?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "eli-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "How do I find a good chavruta?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "fay",
+   "user_id": "mock:fay",
+   "trap": "the sensitive turn is dropped before it counts",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "fay-s1",
+     "turns": [
+      {
+       "id": "fay-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "My mother died last week, what does the Talmud say about mourning?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "fay-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Show me a Talmud page on charity",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "gil",
+   "user_id": "mock:gil",
+   "trap": "language moves from en to he over sessions",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "gil-s1",
+     "turns": [
+      {
+       "id": "gil-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Show me Genesis chapter one",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "gil-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "Who wrote it?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    },
+    {
+     "session_id": "gil-s2",
+     "turns": [
+      {
+       "id": "gil-3",
+       "at": "2026-11-05T09:03:00Z",
+       "user": "בראשית פרק שתיים",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "gil-4",
+       "at": "2026-11-05T09:04:00Z",
+       "user": "מה זה אומר?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    },
+    {
+     "session_id": "gil-s3",
+     "turns": [
+      {
+       "id": "gil-5",
+       "at": "2026-11-06T09:05:00Z",
+       "user": "תסביר את הפסוק",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "gil-6",
+       "at": "2026-11-06T09:06:00Z",
+       "user": "ומה הפירוש?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "he"
+    },
+    "text_categories": {
+     "must_include": [
+      "Tanakh"
+     ]
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "hana",
+   "user_id": "mock:hana",
+   "trap": "an instruction turn does not count as interest",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "hana-s1",
+     "turns": [
+      {
+       "id": "hana-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "From now on never show me Zohar sources",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "hana-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "What is the Zohar?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    }
+   },
+   "checks": []
+  },
+  {
+   "id": "ivy",
+   "user_id": "mock:ivy",
+   "trap": "no letters, no language",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ivy-s1",
+     "turns": [
+      {
+       "id": "ivy-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "123 456",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ivy-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "???",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {},
+   "checks": []
+  },
+  {
+   "id": "jon",
+   "user_id": "mock:jon",
+   "trap": "a recurring-corpus rule misses a single mention",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "jon-s1",
+     "turns": [
+      {
+       "id": "jon-1",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Where do I start with Halakhah?",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "jon-2",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "What is a good intro book?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "text_categories": {
+     "must_include": [
+      "Halakhah"
+     ]
+    }
+   },
+   "checks": []
+  }
+ ]
+}

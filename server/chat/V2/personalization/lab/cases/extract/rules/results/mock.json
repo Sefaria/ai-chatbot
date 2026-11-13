@@ -1,0 +1,204 @@
+{
+ "case_sha": "6791480df2d76500257eb3c54ea28aba64a88693",
+ "cost": {
+  "calls": 0,
+  "in_tokens": 0,
+  "out_tokens": 0,
+  "typed_requests": 0,
+  "usd": 0
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 8,
+  "name": "mock",
+  "sha256": "c8b2cc1c7f5594e75e8caa1ad309d92899411f83e037a0c8799f7bdcb7a1f22a"
+ },
+ "git_sha": "a37bee604de1531531b3ae9854ce9015340cb9a6",
+ "id": "extract/rules",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "calls_per_turn": 0.0,
+  "fill_rate_at_k@2": 0.8181818181818182,
+  "fill_rate_at_k@4": 1.0,
+  "fill_rate_at_k@8": null,
+  "flips_per_10_turns": 0.45454545454545453,
+  "over_inferred": 0.0,
+  "over_inferred_on@language": 0.0,
+  "over_inferred_on@text_categories": 0.0,
+  "run_agreement": null,
+  "runs_identical": null,
+  "sensitive_dropped_share": 0.045454545454545456,
+  "slot_accuracy": 0.9090909090909091,
+  "slot_accuracy_on@language": 1.0,
+  "slot_accuracy_on@text_categories": 0.75,
+  "usd_per_1000_turns": 0.0
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ana",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "he",
+    "text_categories": [
+     "Mishnah"
+    ]
+   },
+   "persona": "dov",
+   "turns": 3,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "eli",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "fay",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "he",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "gil",
+   "turns": 6,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "hana",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {},
+   "persona": "ivy",
+   "turns": 2,
+   "variant": ""
+  },
+  {
+   "checks": [],
+   "final_profile": {
+    "preferred_language": "en"
+   },
+   "persona": "jon",
+   "turns": 2,
+   "variant": ""
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "calls_per_turn": [
+   0,
+   22
+  ],
+  "fill_rate_at_k@2": [
+   9,
+   11
+  ],
+  "fill_rate_at_k@4": [
+   2,
+   2
+  ],
+  "fill_rate_at_k@8": [
+   0,
+   0
+  ],
+  "flips_per_10_turns": [
+   10,
+   22
+  ],
+  "over_inferred": [
+   0,
+   45
+  ],
+  "over_inferred_on@language": [
+   0,
+   1
+  ],
+  "over_inferred_on@text_categories": [
+   0,
+   4
+  ],
+  "sensitive_dropped_share": [
+   1,
+   22
+  ],
+  "slot_accuracy": [
+   10,
+   11
+  ],
+  "slot_accuracy_on@language": [
+   7,
+   7
+  ],
+  "slot_accuracy_on@text_categories": [
+   3,
+   4
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-11T07:13:11+00:00",
+ "steps": [
+  {
+   "n_in": 22,
+   "n_out": 22,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 22,
+   "n_out": 21,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": 21,
+   "n_out": 7,
+   "name": "detect_language"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "write_profile"
+  },
+  {
+   "n_in": 8,
+   "n_out": 15,
+   "name": "score"
+  }
+ ]
+}

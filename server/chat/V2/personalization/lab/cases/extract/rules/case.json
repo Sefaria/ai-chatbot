@@ -1,0 +1,86 @@
+{
+  "id": "extract/rules",
+  "question": "How far does code alone get (language, corpora named, vocabulary lexicon)?",
+  "why": "The core technique (transcript 4:17 to 6:44). It decides the vendor question and the cost.",
+  "source": "The core technique (transcript 4:17 to 6:44)",
+  "hypothesis": "Exact on language, useful on text categories, empty on the rest.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "rules": "code signals only (P/signals.py): language by session votes, text categories named in at least two prompts"
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "slot_accuracy_on",
+    "over_inferred_on",
+    "slot_accuracy",
+    "over_inferred",
+    "calls_per_turn",
+    "runs_identical",
+    "fill_rate_at_k",
+    "run_agreement",
+    "flips_per_10_turns",
+    "sensitive_dropped_share",
+    "usd_per_1000_turns"
+  ],
+  "keep_if": [
+    {
+      "metric": "slot_accuracy_on@language",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.9,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy_on@text_categories",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.9,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "over_inferred_on@language",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.02,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "over_inferred_on@text_categories",
+      "agg": "mean",
+      "op": "<=",
+      "value": 0.02,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "calls_per_turn",
+      "agg": "mean",
+      "op": "==",
+      "value": 0,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "runs_identical",
+      "agg": "mean",
+      "op": "==",
+      "value": 1,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "none: no model call, so the three live runs cost nothing",
+  "deviations": [
+    {
+      "date": "2026-11-11",
+      "from": "test tree row: syn2 and real1",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); Amendment A2 maps the row: every bar the row puts on syn2 applies to anon-personas, and the real1 aggregates (fill_rate_at_k, run_agreement, flips_per_10_turns, sensitive_dropped_share, calls_per_turn, usd_per_1000_turns) are computed on the same anon-personas runs, numbers only. syn1 stays as the reference, reported beside, never alone. This is a deterministic case, so per A2 it runs ALL 188 personas of anon-personas (no seeded sample); there is no sample_dataset in the config.",
+      "cost": "none",
+      "labels": "Labels on anon-personas were written by headless Claude and are not human-reviewed (A2, decision 1): every verdict carries the caveat 'labels not human-reviewed'.",
+      "groups": "'On language and on text categories, each' is expressed as the aspect metrics slot_accuracy_on and over_inferred_on with the parameters language (slot preferred_language) and text_categories (slot text_categories), defined on lab/extract/aspect; the bars' numbers are the row's, unchanged.",
+      "agg": "The row names no aggregation, so each bar uses the default, mean; the case is deterministic, so mean, min and max coincide."
+    }
+  ],
+  "status": "planned"
+}
