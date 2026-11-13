@@ -1,0 +1,72 @@
+{
+  "id": "reverify/heldout-personas",
+  "question": "Do the five designs score on anon-personas what they scored on syn1?",
+  "why": "Mickey's action item for Yotam (recap). The 96%, the \"under $1\" and the 35 of 36 came from personas written by the designs' author, a design tuned on them, and prompts chosen to benefit.",
+  "source": "Mickey's action item for Yotam (recap)",
+  "hypothesis": "The ranking holds (E first, D last) but E drops below 96%, because E's thresholds were fitted on syn1.",
+  "engine": "offline",
+  "task": "replay",
+  "config": {
+    "model": "claude-haiku-4-5-20251001",
+    "variants": [
+      "realtime",
+      "nightly",
+      "hybrid",
+      "explicit",
+      "hybrid_jev"
+    ],
+    "sample_dataset": "anon-personas",
+    "sample_size": 20,
+    "sample_seed": 20261110
+  },
+  "datasets": [
+    "syn1",
+    "anon-personas"
+  ],
+  "metrics": [
+    "slot_accuracy",
+    "checks_passed",
+    "lead_over_next"
+  ],
+  "keep_if": [
+    {
+      "metric": "slot_accuracy@hybrid_jev",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.91,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "slot_accuracy@hybrid_jev",
+      "agg": "min",
+      "op": ">=",
+      "value": 0.88,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "lead_over_next@hybrid_jev",
+      "agg": "min",
+      "op": ">",
+      "value": 0,
+      "dataset": "anon-personas"
+    },
+    {
+      "metric": "checks_passed@hybrid_jev",
+      "agg": "mean",
+      "op": ">=",
+      "value": 0.9,
+      "dataset": "anon-personas"
+    }
+  ],
+  "cost_estimate": "about 1.2M Haiku tokens, 330 Jev requests (the test tree's estimate); anon-personas is capped at a fixed sample of 20 personas, so the estimate is an upper reading",
+  "deviations": [
+    {
+      "date": "2026-11-10",
+      "from": "test tree row: all of syn2",
+      "what": "Amendment A1 replaces syn2 with anon-personas (kind real, anonymized); every bar the row puts on syn2 applies to anon-personas. syn1 stays as the reference. Yotam's decision (2026-11-10): the case runs a FIXED SEEDED SAMPLE of 20 personas from anon-personas, chosen by sorting user_ids and taking random.Random(sample_seed).sample(sorted_ids, sample_size); the sample is reproducible and pre-registered here.",
+      "cost": "Running all 188 personas of anon-personas would cost about 14x the planned budget.",
+      "jev": "Design E (hybrid_jev) may run on anon-personas because it is anonymized. If TYPESAFE_API_KEY or PERSONALIZATION_ALLOW_JEV=true is absent at run time, E is recorded invalid for that run and the verdict is inconclusive. Results on anon-personas are numbers only."
+    }
+  ],
+  "status": "planned"
+}

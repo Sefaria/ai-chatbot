@@ -1,0 +1,140 @@
+{
+ "case_sha": "84d0d0b90d54dfef29eecb799d88e17f3c78e21f",
+ "cost": {
+  "calls": 320,
+  "in_tokens": 326560,
+  "out_tokens": 28219,
+  "typed_requests": 105,
+  "usd": 0.33681135999999995
+ },
+ "dataset": {
+  "kind": "real",
+  "n": 20,
+  "name": "anon-personas",
+  "sha256": "0a89da7095237ec54ebc4940c53ae86f949d26570dc75759d03e7c9aafe2211d"
+ },
+ "git_sha": "559f5a1cb19a5dbc7e8c149589f7603d524b8238",
+ "id": "reverify/heldout-personas",
+ "invalid": 0,
+ "kind": "live",
+ "metrics": {
+  "checks_passed@explicit": null,
+  "checks_passed@hybrid": null,
+  "checks_passed@hybrid_jev": null,
+  "checks_passed@nightly": null,
+  "checks_passed@realtime": null,
+  "lead_over_next@explicit": -0.6714285714285714,
+  "lead_over_next@hybrid": -0.17867494824016555,
+  "lead_over_next@hybrid_jev": 0.12857142857142856,
+  "lead_over_next@nightly": -0.17142857142857137,
+  "lead_over_next@realtime": -0.12857142857142856,
+  "slot_accuracy@explicit": 0.0,
+  "slot_accuracy@hybrid": 0.4927536231884058,
+  "slot_accuracy@hybrid_jev": 0.6714285714285714,
+  "slot_accuracy@nightly": 0.5,
+  "slot_accuracy@realtime": 0.5428571428571428
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": null,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "checks_passed@explicit": [
+   0,
+   0
+  ],
+  "checks_passed@hybrid": [
+   0,
+   0
+  ],
+  "checks_passed@hybrid_jev": [
+   0,
+   0
+  ],
+  "checks_passed@nightly": [
+   0,
+   0
+  ],
+  "checks_passed@realtime": [
+   0,
+   0
+  ],
+  "slot_accuracy@explicit": [
+   0,
+   69
+  ],
+  "slot_accuracy@hybrid": [
+   34,
+   69
+  ],
+  "slot_accuracy@hybrid_jev": [
+   47,
+   70
+  ],
+  "slot_accuracy@nightly": [
+   35,
+   70
+  ],
+  "slot_accuracy@realtime": [
+   38,
+   70
+  ]
+ },
+ "run": 1,
+ "schema": 1,
+ "started_at": "2026-11-10T21:15:40+00:00",
+ "steps": [
+  {
+   "n_in": 104,
+   "n_out": 104,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 416,
+   "n_out": 416,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 215,
+   "n_out": 246,
+   "name": "write_profile"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 20,
+   "n_out": 15,
+   "name": "score"
+  }
+ ]
+}

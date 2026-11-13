@@ -1,0 +1,340 @@
+{
+ "case_sha": "84d0d0b90d54dfef29eecb799d88e17f3c78e21f",
+ "cost": {
+  "calls": 18,
+  "in_tokens": 14867,
+  "out_tokens": 2157,
+  "typed_requests": 6,
+  "usd": 0.020354260000000002
+ },
+ "dataset": {
+  "kind": "synthetic",
+  "n": 2,
+  "name": "mock",
+  "sha256": "2dd47bc4550babd2ea9500530daa4eedf6d6cf5e5a1d9ab0478b57b6473d3d04"
+ },
+ "git_sha": "c8881b5677177afae1369277047d63a10ae5a46b",
+ "id": "reverify/heldout-personas",
+ "invalid": 0,
+ "kind": "mock",
+ "metrics": {
+  "checks_passed@explicit": 0.0,
+  "checks_passed@hybrid": 1.0,
+  "checks_passed@hybrid_jev": 1.0,
+  "checks_passed@nightly": 0.0,
+  "checks_passed@realtime": 1.0,
+  "lead_over_next@explicit": -1.0,
+  "lead_over_next@hybrid": -0.5,
+  "lead_over_next@hybrid_jev": 0.0,
+  "lead_over_next@nightly": -0.5,
+  "lead_over_next@realtime": 0.0,
+  "slot_accuracy@explicit": 0.0,
+  "slot_accuracy@hybrid": 0.5,
+  "slot_accuracy@hybrid_jev": 1.0,
+  "slot_accuracy@nightly": 0.5,
+  "slot_accuracy@realtime": 1.0
+ },
+ "model": "claude-haiku-4-5-20251001",
+ "per_item": [
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ava-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ava-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ben-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ben-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "preferred_language": "he",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": "realtime"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ava-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "ava-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "preferred_language": "en",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ben-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "ben-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "preferred_language": "he",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": "nightly"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ava-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ava-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "preferred_language": "en",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ben-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ben-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "preferred_language": "he",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": "hybrid"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ava-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "ava-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "ava",
+   "turns": 3,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ben-1: missing",
+     "passed": false,
+     "slot": "preferred_language",
+     "turn": "ben-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {},
+   "persona": "ben",
+   "turns": 3,
+   "variant": "explicit"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ava-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ava-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "hebrew_fluency": "none",
+    "preferred_language": "en",
+    "terminology_comfort": "new",
+    "text_categories": [
+     "Tanakh"
+    ]
+   },
+   "persona": "ava",
+   "turns": 3,
+   "variant": "hybrid_jev"
+  },
+  {
+   "checks": [
+    {
+     "detail": "preferred_language after ben-1: correct",
+     "passed": true,
+     "slot": "preferred_language",
+     "turn": "ben-1",
+     "type": "available_by_turn"
+    }
+   ],
+   "final_profile": {
+    "hebrew_fluency": "fluent",
+    "preferred_language": "he",
+    "terminology_comfort": "comfortable",
+    "text_categories": [
+     "Talmud"
+    ]
+   },
+   "persona": "ben",
+   "turns": 3,
+   "variant": "hybrid_jev"
+  }
+ ],
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "ratios": {
+  "checks_passed@explicit": [
+   0,
+   2
+  ],
+  "checks_passed@hybrid": [
+   2,
+   2
+  ],
+  "checks_passed@hybrid_jev": [
+   2,
+   2
+  ],
+  "checks_passed@nightly": [
+   0,
+   2
+  ],
+  "checks_passed@realtime": [
+   2,
+   2
+  ],
+  "slot_accuracy@explicit": [
+   0,
+   8
+  ],
+  "slot_accuracy@hybrid": [
+   4,
+   8
+  ],
+  "slot_accuracy@hybrid_jev": [
+   8,
+   8
+  ],
+  "slot_accuracy@nightly": [
+   4,
+   8
+  ],
+  "slot_accuracy@realtime": [
+   8,
+   8
+  ]
+ },
+ "run": 0,
+ "schema": 1,
+ "started_at": "2026-11-10T20:34:15+00:00",
+ "steps": [
+  {
+   "n_in": 6,
+   "n_out": 6,
+   "name": "load_turns"
+  },
+  {
+   "n_in": 24,
+   "n_out": 24,
+   "name": "screen_sensitive"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "find_instructions"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_turn"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "verify_evidence"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "validate_values"
+  },
+  {
+   "n_in": 12,
+   "n_out": 24,
+   "name": "write_profile"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "extract_batch"
+  },
+  {
+   "n_in": null,
+   "n_out": null,
+   "name": "typed_questions"
+  },
+  {
+   "n_in": 2,
+   "n_out": 15,
+   "name": "score"
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+{
+ "bars": [
+  {
+   "agg": "mean",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": false,
+   "metric": "slot_accuracy@hybrid_jev",
+   "observed": 0.6761904761904761,
+   "op": ">=",
+   "state": "fails",
+   "target": 0.91,
+   "why": ""
+  },
+  {
+   "agg": "min",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": false,
+   "metric": "slot_accuracy@hybrid_jev",
+   "observed": 0.6714285714285714,
+   "op": ">=",
+   "state": "fails",
+   "target": 0.88,
+   "why": ""
+  },
+  {
+   "agg": "min",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": true,
+   "metric": "lead_over_next@hybrid_jev",
+   "observed": 0.0714285714285714,
+   "op": ">",
+   "state": "holds",
+   "target": 0,
+   "why": ""
+  },
+  {
+   "agg": "mean",
+   "dataset": "anon-personas",
+   "expected_to_fail": false,
+   "holds": null,
+   "metric": "checks_passed@hybrid_jev",
+   "observed": null,
+   "op": ">=",
+   "state": "inconclusive",
+   "target": 0.9,
+   "why": "a run has no value for this metric"
+  }
+ ],
+ "case_sha": "84d0d0b90d54dfef29eecb799d88e17f3c78e21f",
+ "id": "reverify/heldout-personas",
+ "note": "",
+ "privacy": {
+  "exclusion_stored": 0,
+  "sensitive_reached_model": 0,
+  "stated_overwritten": 0
+ },
+ "reasons": [],
+ "runs": 6,
+ "verdict": "drop"
+}

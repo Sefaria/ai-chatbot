@@ -1,0 +1,119 @@
+{
+ "note": "Invented fixture for the mock; no real text.",
+ "personas": [
+  {
+   "id": "ava",
+   "user_id": "mock:ava",
+   "trap": "fixture",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ava-s1",
+     "turns": [
+      {
+       "id": "ava-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "Please explain this week's parsha in English, I am new to all of this and read no Hebrew",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "Who is Rashi? I am a beginner",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ava-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "What is a midrash, in simple words?",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "en"
+    },
+    "hebrew_fluency": {
+     "value": "none"
+    },
+    "terminology_comfort": {
+     "value": "new"
+    },
+    "text_categories": {
+     "must_include": [
+      "Tanakh"
+     ]
+    }
+   },
+   "checks": [
+    {
+     "type": "available_by_turn",
+     "slot": "preferred_language",
+     "turn": "ava-1"
+    }
+   ]
+  },
+  {
+   "id": "ben",
+   "user_id": "mock:ben",
+   "trap": "fixture",
+   "interview": null,
+   "sessions": [
+    {
+     "session_id": "ben-s1",
+     "turns": [
+      {
+       "id": "ben-1",
+       "at": "2026-11-04T09:00:00Z",
+       "user": "הראה לי את הגמרא בבא בתרא דף ג",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-2",
+       "at": "2026-11-04T09:01:00Z",
+       "user": "אני לומד דף יומי כל בוקר, עברית שוטפת זה בסדר",
+       "assistant": "ok",
+       "tags": []
+      },
+      {
+       "id": "ben-3",
+       "at": "2026-11-04T09:02:00Z",
+       "user": "רש\"י על הסוגיה הזאת בבקשה",
+       "assistant": "ok",
+       "tags": []
+      }
+     ]
+    }
+   ],
+   "golden": {
+    "preferred_language": {
+     "value": "he"
+    },
+    "hebrew_fluency": {
+     "value": "fluent"
+    },
+    "terminology_comfort": {
+     "value": "comfortable"
+    },
+    "text_categories": {
+     "must_include": [
+      "Talmud"
+     ]
+    }
+   },
+   "checks": [
+    {
+     "type": "available_by_turn",
+     "slot": "preferred_language",
+     "turn": "ben-1"
+    }
+   ]
+  }
+ ]
+}
