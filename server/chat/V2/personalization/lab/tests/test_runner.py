@@ -498,3 +498,14 @@ def test_a_replay_pipeline_module_may_report_counts_per_variant(tmp_path):
     result = run(case, pipeline_module=module)
     assert seen == [("realtime", 1), ("explicit", 1)]
     assert result["metrics"] == {"overhead_tokens@realtime": 480, "recount_gap@explicit": 0.0}
+
+
+def test_explain_lines_hook_is_printed_by_explain(tmp_path, capsys):
+    directory = write_case(tmp_path, metrics=["slot_accuracy"])
+    (directory / "pipeline.py").write_text(
+        "from chat.V2.personalization.lab.replay import strategy_pipeline as build\n"
+        "def explain_lines(case, read):\n    return [f'hook {case.id} {read(\"mock.json\")}']\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["--cases-root", str(tmp_path), "explain", "a/x"]) == 0
+    assert "hook a/x None" in capsys.readouterr().out

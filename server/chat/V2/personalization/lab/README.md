@@ -65,7 +65,10 @@ metric with `params` (`fill_rate_at_k`: 2, 4, 8) `name@param` or `name@variant/p
 - `pairs`, `script`: run by the lab app (see the plan, Task 15).
 
 Optional hooks for `LAB run <id> --mock`: `mock_llm()`, `mock_typed()`, `mock_items()`. Without
-them the mock uses an empty fake model on the case's first dataset.
+them the mock uses an empty fake model on the case's first dataset. Other optional hooks:
+`select_items(items, config, dataset) -> items` (a reproducible subset, such as a seeded sample,
+applied before every run) and `explain_lines(case, read) -> [str]` (extra lines for `LAB explain`;
+`read(name)` returns a result file or None).
 
 A pipeline for answer-side metrics reports `RunData.counts`: a ratio metric reads `counts[name]`
 over `counts[name + "_of"]`; a count metric reads `counts[name]`.
