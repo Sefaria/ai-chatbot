@@ -1,7 +1,7 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
-  import { designSystemStyle } from '../lib/designSystem.js';
+  import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
@@ -65,8 +65,26 @@
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    // A Sefaria/design-system branch or commit to preview on top of the bundled tokens. Only
+    // non-production hosts pass it (see src/lib/designSystem.js).
+    'design-system-preview': designSystemPreview = ''
   } = $props();
+
+  let designSystemPreviewCss = $state('');
+  $effect(() => {
+    const ref = designSystemPreview;
+    let current = true;
+    designSystemPreviewCss = '';
+    if (ref) {
+      fetchPreviewCss(ref).then((css) => {
+        if (current) designSystemPreviewCss = css;
+      });
+    }
+    return () => {
+      current = false;
+    };
+  });
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -2372,8 +2390,12 @@
 
 </script>
 
-<!-- Design system tokens; see src/lib/designSystem.js -->
-{@html designSystemStyle}
+<!-- Design system tokens (see src/lib/designSystem.js), as text, never as HTML. A preview, when the
+     host asks for one, comes after the bundled tokens and overrides them. -->
+<svelte:element this={'style'} data-design-system>{designSystemCss}</svelte:element>
+{#if designSystemPreviewCss}
+  <svelte:element this={'style'} data-design-system-preview>{designSystemPreviewCss}</svelte:element>
+{/if}
 
 <div
   class="lc-chatbot-container"
