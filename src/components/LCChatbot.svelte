@@ -1,6 +1,7 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
+  import { designSystemStyle } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
@@ -2371,6 +2372,9 @@
 
 </script>
 
+<!-- Design system tokens; see src/lib/designSystem.js -->
+{@html designSystemStyle}
+
 <div
   class="lc-chatbot-container"
   class:mode-floating={layout === 'floating'}
@@ -3011,32 +3015,11 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    /* Figma design tokens (canonical) */
-    --global-dimension-0: 0px;
-    --global-dimension-100: 8px;
-    --global-dimension-150: 12px;
-    --global-dimension-200: 16px;
-    --global-dimension-250: 20px;
-    --global-dimension-300: 24px;
-    --space-1: 4px;
-    --spacing-spacing-large: 16px;
-    --spacing-spacing-medium: 12px;
-    --semantic-action-primary: #18345D;
-    --semantic-text-link: #18345D;
-    --semantic-text-primary: #121212;
-    --semantic-text-secondary: #575757;
-    --semantic-text-muted: #707070;
-    --core-blue-tbr-100: #F0F7FF;
-    --core-blue-tbr-200: #DDEEFF;
-    --core-base-white: #FFFFFF;
-    --core-neutral-gray-100: #EEEEEE;
-    --core-neutral-gray-300: #CCCCCC;
-    --functional-icon-icon-primary: #666666;
-    --semantic-icon-muted: #6F6F6F;
+    /* Core and semantic tokens come from @sefaria/design-system (injected at the top of the markup).
+       Don't redefine them here; to change one, change it in the design system. */
 
-    /* Component tokens — aliased to Figma tokens where applicable */
+    /* Component tokens: the Library Assistant's own layer. Point them at semantic tokens. */
     --lc-primary: var(--semantic-action-primary);
-    --brand-sefaria-blue: #18345D;
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;

@@ -7,6 +7,13 @@ on:
   pull_request:
 
 jobs:
+  design-system-pin:
+    name: Design system is pinned to a release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/check-design-system-pin.mjs
+
   test:
     name: Tests
     runs-on: ubuntu-latest
