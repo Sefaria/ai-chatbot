@@ -28,16 +28,16 @@ async function mockPreviewFiles(page, cssFor) {
 
 test('the bundled design-system tokens apply', async ({ page }) => {
   await new AssistantPage(page).goto();
-  expect(await token(page, '--brand-sefaria-blue')).toBe('#18345D');
+  expect(await token(page, '--core-navy-700')).toBe('#18345D');
 });
 
 test('a preview loads that version of the design system on top of the bundled one', async ({ page }) => {
   const requested = await mockPreviewFiles(page, (path) =>
-    path.endsWith('/core.css') ? ':root, :host { --brand-sefaria-blue: #FF0000; }' : ''
+    path.endsWith('/core.css') ? ':root, :host { --core-navy-700: #FF0000; }' : ''
   );
   await page.goto('/?design-system-preview=penina/new-colors');
 
-  await expect.poll(() => token(page, '--brand-sefaria-blue')).toBe('#FF0000');
+  await expect.poll(() => token(page, '--core-navy-700')).toBe('#FF0000');
   expect(requested.sort()).toEqual([
     '/Sefaria/design-system/penina/new-colors/core.css',
     '/Sefaria/design-system/penina/new-colors/semantic.css',
@@ -47,20 +47,20 @@ test('a preview loads that version of the design system on top of the bundled on
 test('preview CSS is text: markup in it never becomes elements', async ({ page }) => {
   await mockPreviewFiles(
     page,
-    () => ':root, :host { --brand-sefaria-blue: #00FF00; } </style><img src="x" onerror="window.injected = true">'
+    () => ':root, :host { --core-navy-700: #00FF00; } </style><img src="x" onerror="window.injected = true">'
   );
   await page.goto('/?design-system-preview=main');
 
-  await expect.poll(() => token(page, '--brand-sefaria-blue')).toBe('#00FF00');
+  await expect.poll(() => token(page, '--core-navy-700')).toBe('#00FF00');
   expect(await page.evaluate(() => document.querySelector('lc-chatbot').shadowRoot.querySelector('img[src="x"]'))).toBeNull();
   expect(await page.evaluate(() => window.injected)).toBeUndefined();
 });
 
 test('a preview that is not a branch name or commit is ignored', async ({ page }) => {
-  const requested = await mockPreviewFiles(page, () => ':root, :host { --brand-sefaria-blue: #FF0000; }');
+  const requested = await mockPreviewFiles(page, () => ':root, :host { --core-navy-700: #FF0000; }');
   await page.goto(`/?design-system-preview=${encodeURIComponent('../../evil/repo/main')}`);
   await expect(page.locator('lc-chatbot')).toHaveCount(1);
 
-  expect(await token(page, '--brand-sefaria-blue')).toBe('#18345D');
+  expect(await token(page, '--core-navy-700')).toBe('#18345D');
   expect(requested).toEqual([]);
 });

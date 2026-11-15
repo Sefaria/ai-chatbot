@@ -22,7 +22,7 @@
     "vite": "^5.4.0"
   },
   "dependencies": {
-    "@sefaria/design-system": "github:Sefaria/design-system#v1.0.0",
+    "@sefaria/design-system": "github:Sefaria/design-system#tokens/core-and-semantic",
     "dompurify": "^3.2.0",
     "marked": "^15.0.0",
     "svelte-i18n": "^4.0.1"
