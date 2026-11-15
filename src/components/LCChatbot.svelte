@@ -424,6 +424,8 @@
   $effect(() => {
     // Initialize session
     clearLoggedInChatWhenLoggedOut(!!userId);
+    // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
+    if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
@@ -2155,7 +2157,6 @@
     dispatchEvent('launcher_visibility', { hidden });
   }
 
-  // Sign-up returns the visitor to the page they were on
   // Log-in and sign-up links that return the visitor to the page they were on
   function accountUrl(path) {
     return `${sefariaBase()}/${path}?next=${encodeURIComponent(location.pathname + location.search)}`;

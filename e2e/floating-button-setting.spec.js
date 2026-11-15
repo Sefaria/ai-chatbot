@@ -71,6 +71,19 @@ test('the host is told each change, so it can save it to the account', async ({ 
   expect(await assistant.launcherVisibilityEvents()).toEqual([true, false]);
 });
 
+test("logging out shows the Ask button again; the hidden choice stays in the user's account", async ({ page, context }) => {
+  const assistant = await setUp(page, context, { loggedIn: true });
+  await assistant.openFloatingButtonSetting();
+  await assistant.floatingButtonSwitch.click();
+  await assistant.closeFloatingButtonSetting();
+  await assistant.close();
+  await expect(assistant.trigger).toHaveCount(0);
+
+  await assistant.goto();
+  if (await assistant.panel.isVisible()) await assistant.close();
+  await expect(assistant.trigger).toBeVisible();
+});
+
 test("a logged-in user's saved choice wins over this browser's", async ({ page, context }) => {
   // Hidden on another device: hidden here, though this browser never hid it
   let assistant = await setUp(page, context, { loggedIn: true, savedHideLauncher: true });
