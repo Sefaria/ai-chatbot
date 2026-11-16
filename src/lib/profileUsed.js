@@ -1,7 +1,8 @@
 // The answering model ends a personalized lab answer with `<profile_used>…</profile_used>`.
 // While the answer streams, the widget hides what the server will take off the end: every closed
 // tag at the end (in a loop, like the server's split), an opening tag still waiting for its close,
-// and a trailing piece of an opening tag that may still become one. The grammar is the server's
+// and a trailing piece of an opening tag that may still become one. A closed tag right before the
+// closing sign-off paragraph (after HTML) is hidden too, and the sign-off text stays visible. The grammar is the server's
 // (`<\s*profile_used\s*>`, any case). A tag in the middle of the text is never hidden: the server
 // only takes tags off the end, so the widget shows what the server keeps.
 
@@ -22,6 +23,36 @@ const PARTIAL_OPEN = new RegExp(
     '$',
   'i'
 );
+// The core format's closing sign-off paragraph, as the server accepts it after a tag
+// (`<p class="response-signoff">` with plain or curly quotes, inner text without markup).
+const SIGNOFF_OPENER = '<p class="response-signoff">';
+const SIGNOFF_REST = /^[^<]*(?:<|<\/|<\/p|<\/p>\s*)?$/i;
+const TAG_WITH_REST = new RegExp(
+  String.raw`${OPEN_SRC}((?:(?!${OPEN_SRC}|${CLOSE_SRC})[\s\S])*)${CLOSE_SRC}(\s*)`,
+  'gi'
+);
+
+/** True when the text is a start (or the whole) of one sign-off paragraph, nothing after it but whitespace. */
+function isSignoffPrefix(rest) {
+  if (!rest) return false;
+  for (let i = 0; i < Math.min(rest.length, SIGNOFF_OPENER.length); i += 1) {
+    const expected = SIGNOFF_OPENER[i];
+    const ok = expected === '"' ? /["\u201c\u201d]/.test(rest[i]) : rest[i].toLowerCase() === expected;
+    if (!ok) return false;
+  }
+  return rest.length <= SIGNOFF_OPENER.length || SIGNOFF_REST.test(rest.slice(SIGNOFF_OPENER.length));
+}
+
+/** The text with a closed tag taken out of between HTML and a (possibly incomplete) sign-off paragraph, or null. */
+function cutBeforeSignoff(text) {
+  let found = null;
+  for (const match of text.matchAll(TAG_WITH_REST)) {
+    const rest = text.slice(match.index + match[0].length);
+    const before = text.slice(0, match.index).trimEnd();
+    if (before.endsWith('>') && isSignoffPrefix(rest)) found = { match, before, rest };
+  }
+  return found && `${found.before}\n${found.rest}`;
+}
 const NOTHING_LINE = 'Nothing from your profile changed this answer.';
 const FROM_LINE = /^From your profile, I took [^\r\n<>]{1,250} into account\.$/;
 
@@ -38,6 +69,8 @@ function cutUnclosed(text) {
 export function hideProfileUsed(text) {
   let shown = text;
   for (;;) {
+    const beforeSignoff = cutBeforeSignoff(shown);
+    if (beforeSignoff !== null) return beforeSignoff;
     const partial = PARTIAL_OPEN.exec(shown);
     if (partial) {
       shown = shown.slice(0, partial.index);

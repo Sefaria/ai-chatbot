@@ -168,6 +168,19 @@ const RECOVERED = {
   narrationMessages: []
 };
 
+test('profile used: a tag before a sign-off paragraph is hidden, the sign-off stays visible', () => {
+  const tag = '<profile_used>From your profile, I took your taste into account.</profile_used>';
+  const signoff = '<p class="response-signoff">Would you like more?</p>';
+  const head = '<p class="response-generic">Hi.</p>';
+  assert.equal(hideProfileUsed(`${head}\n${tag}\n${signoff}`), `${head}\n${signoff}`);
+  assert.equal(hideProfileUsed(`${head}\n${tag}\n<p class="response-sig`), `${head}\n<p class="response-sig`);
+  assert.equal(hideProfileUsed(`${head}\n${tag}\n<p class="response-signoff">Would yo`), `${head}\n<p class="response-signoff">Would yo`);
+  // Not after markup, or with markup in the sign-off: the server keeps the tag, so the widget shows it.
+  assert.equal(hideProfileUsed(`Hi.\n${tag}\n${signoff}`), `Hi.\n${tag}\n${signoff}`);
+  const marked = `${head}\n${tag}\n<p class="response-signoff">Would <b>you</b>?</p>`;
+  assert.equal(hideProfileUsed(marked), marked);
+});
+
 test('recover: the recovered answer carries the notice and the line, mapped like the stream final', async () => {
   const result = await recoverWith({ ...RECOVERED, personalizationNotice: true, profileUsed: RECOVER_LINE });
   assert.equal(result.personalizationNotice, true);

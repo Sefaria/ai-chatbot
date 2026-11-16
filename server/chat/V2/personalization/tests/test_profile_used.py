@@ -155,6 +155,41 @@ def test_split_profile_used_body_is_always_a_prefix_of_the_input(text):
         assert not re.search(r"<img\s+src", body, re.I)
 
 
+SIGNOFF = '<p class="response-signoff">Would you like more on Rashi?</p>'
+ANSWER_HTML = '<p class="response-generic">An answer.</p>'
+
+
+def test_split_profile_used_tag_before_a_valid_signoff_keeps_both_line_and_signoff():
+    text = f"{ANSWER_HTML}\n{TAG}\n{SIGNOFF}\n"
+    assert split_profile_used(text) == (f"{ANSWER_HTML}\n{SIGNOFF}", LINE)
+
+
+def test_split_profile_used_tag_before_a_curly_quoted_signoff():
+    signoff = "<p class=\u201dresponse-signoff\u201d>Would you like more?</p>"
+    text = f"{ANSWER_HTML}{TAG}  {signoff}"
+    assert split_profile_used(text) == (f"{ANSWER_HTML}\n{signoff}", LINE)
+
+
+def test_split_profile_used_tag_before_a_signoff_with_markup_is_unchanged():
+    text = f'{ANSWER_HTML}\n{TAG}\n<p class="response-signoff">Would <b>you</b> like?</p>'
+    assert split_profile_used(text) == (text, None)
+
+
+def test_split_profile_used_tag_before_a_signoff_needs_html_before_it():
+    text = f"An answer.\n{TAG}\n{SIGNOFF}"
+    assert split_profile_used(text) == (text, None)
+
+
+def test_split_profile_used_tag_before_two_signoffs_is_unchanged():
+    text = f"{ANSWER_HTML}{TAG}{SIGNOFF}{SIGNOFF}"
+    assert split_profile_used(text) == (text, None)
+
+
+def test_split_profile_used_wrong_shape_before_a_signoff_is_removed_without_a_line():
+    text = f"{ANSWER_HTML}\n<profile_used>Free text.</profile_used>\n{SIGNOFF}"
+    assert split_profile_used(text) == (f"{ANSWER_HTML}\n{SIGNOFF}", None)
+
+
 # -- prompt -----------------------------------------------------------------------------------
 
 
