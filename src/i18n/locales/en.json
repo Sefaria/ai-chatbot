@@ -106,6 +106,7 @@
     "assistant.thinking.hanukkah.03": "Gathering sources like gelt",
     "assistant.thinking.hanukkah.04": "Kindling the first source",
     "assistant.thinking.hanukkah.05": "Reading by the light of the shamash",
+    "assistant.thinking.hanukkah.initial": "Spinning through the library",
     "assistant.thinking.hanukkah.final": "Kindling a response",
     "assistant.stop.error": "Couldn’t confirm the stop. Please try Stop again.",
     "assistant.stop.message": "Stopped generating. You can edit your question below, or write a new one.",
