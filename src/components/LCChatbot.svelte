@@ -34,7 +34,7 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
+  import { setLocale, _, getThinkingMessageKeys, getFinalThinkingKey } from '../i18n/index.js';
   import { get } from 'svelte/store';
   import { isHanukkah } from '../lib/hanukkah.js';
 
@@ -220,6 +220,7 @@
   // Hanukkah dreidel and lines; re-checked each time the thinking state starts.
   let hanukkah = $state(isHanukkah());
   let thinkingMessageKeys = []; // filled by startThinkingMessages()
+  let finalThinkingKey = $derived(getFinalThinkingKey({ hanukkah, lang: interfaceLang }));
   let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
   let thinkingMessageFadeTimeout = null;
@@ -2883,7 +2884,7 @@
                       <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                     {/if}
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey === 'assistant.thinking.final' ? finalThinkingKey : thinkingMessageKey)}</span>
                     </span>
                   </div>
                 </div>
