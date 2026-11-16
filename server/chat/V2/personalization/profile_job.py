@@ -237,11 +237,10 @@ def _steps(ctx: _Ctx, now: datetime, llm: LLMClient, jev: JevClient | None) -> R
 
     sections = get_sections(ctx.user_id)
     ctx.profile_before = render_profile(sections)
-    instructions = clean_text(get_settings(ctx.user_id).instructions_text)
-    proposals = _extract(ctx, llm, sections, kept, texts, gate.slots, instructions)
+    proposals = _extract(ctx, llm, sections, kept, texts, gate.slots)
     newest = max(p.server_timestamp for p in kept)
     new_sections, touched = _apply_proposals(sections, proposals, gate.slots, newest)
-    bodies = _write(ctx, llm, touched, new_sections, instructions)
+    bodies = _write(ctx, llm, touched, new_sections)
     final, wrote = _merge(new_sections, touched, bodies, now)
     if final == sections:
         return _done_nothing(ctx, "nothing_to_write")
@@ -317,7 +316,7 @@ def _call(ctx: _Ctx, llm: LLMClient, system: str, user: str, max_tokens: int) ->
     return result.text
 
 
-def _extract(ctx, llm, sections, prompts, texts, slots, instructions) -> list[dict]:
+def _extract(ctx, llm, sections, prompts, texts, slots) -> list[dict]:
     session_ids = {}
     lines = []
     for p, text in zip(prompts, texts, strict=True):
@@ -329,7 +328,6 @@ def _extract(ctx, llm, sections, prompts, texts, slots, instructions) -> list[di
     user = (
         f"<headings>\n{headings}\n</headings>\n"
         f"<allowed_core_slots>{allowed}</allowed_core_slots>\n"
-        f"<instructions>{instructions or '(none)'}</instructions>\n"
         f"<language_signal>{language}</language_signal>\n"
         f"<prompts>\n" + "\n".join(lines) + "\n</prompts>"
     )
@@ -423,7 +421,7 @@ def _touch(existing, p, newest, heading, kind) -> dict:
     }
 
 
-def _write(ctx, llm, touched: dict, sections, instructions) -> dict[str, str]:
+def _write(ctx, llm, touched: dict, sections) -> dict[str, str]:
     if not touched:
         return {}
     untouched_words = sum(len(s.body.split()) for s in sections if s.heading not in touched)
@@ -434,7 +432,6 @@ def _write(ctx, llm, touched: dict, sections, instructions) -> dict[str, str]:
         notes = "\n".join(f"- {n}" for n in t["notes"]) or "- (none)"
         blocks.append(f"## {heading}\nCurrent: {body}\nNotes:\n{notes}")
     user = (
-        f"<instructions>{instructions or '(none)'}</instructions>\n"
         f"<word_budget>{budget}</word_budget>\n<sections>\n" + "\n\n".join(blocks) + "\n</sections>"
     )
     raw = _call(ctx, llm, load_chapter(WRITER_CHAPTER) + WRITER_SUFFIX, user, 900)
@@ -531,7 +528,7 @@ def _dream_prompts(ctx: _Ctx, now: datetime, jev: JevClient | None):
     return kept, texts
 
 
-def _dream_input(sections, kept, texts, instructions, now) -> str:
+def _dream_input(sections, kept, texts, now) -> str:
     current = (
         "\n\n".join(
             f"[{s.key or 'dynamic'}] {s.heading} ({s.origin}, last supported "
@@ -548,7 +545,6 @@ def _dream_input(sections, kept, texts, instructions, now) -> str:
     return (
         f"<today>{now.date().isoformat()}</today>\n"
         f"<current_profile>\n{current}\n</current_profile>\n"
-        f"<instructions>{instructions or '(none)'}</instructions>\n"
         f"<allowed_core_slots>{', '.join(CORE_KEYS)}</allowed_core_slots>\n"
         f"<prompts>\n" + "\n".join(lines) + "\n</prompts>"
     )
@@ -659,8 +655,7 @@ def _dream_steps(
     candidates: list[_Candidate] = []
     if kept:
         _take_quota(ctx.user_id, now)
-        instructions = clean_text(get_settings(ctx.user_id).instructions_text)
-        user = _dream_input(existing, kept, texts, instructions, now)
+        user = _dream_input(existing, kept, texts, now)
         raw = _call(ctx, llm, load_chapter(DREAM_CHAPTER), user, 1500)
         candidates = _parse_candidates(raw, len(kept))
         ctx.sections = [

@@ -639,3 +639,18 @@ def test_a_job_that_loses_the_revision_race_to_an_edit_does_not_clobber_it():
     assert sections["Kind of answers you want"].origin == "stated"
     assert sections["Current interests"].body == "Body of Current interests."
     assert store.get_settings(USER).profile_updated_by == "la"
+
+
+def test_instructions_never_reach_profile_writing():
+    two_sessions()
+    store.set_instructions(USER, "ZZ-INSTRUCTIONS-SENTINEL")
+    llm = model([item("answer_style", "Kind of answers you want", sessions=1)])
+    result = run(llm)
+    assert result.status == "applied"
+    writer = load_chapter("profile_writer")
+    assert any(c["system"] == EXTRACTION for c in llm.calls)
+    assert any(c["system"].startswith(writer) for c in llm.calls)
+    for c in llm.calls:
+        for text in (c["system"], c["user"]):
+            assert "ZZ-INSTRUCTIONS-SENTINEL" not in text
+            assert "<instructions>" not in text

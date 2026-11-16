@@ -387,3 +387,15 @@ def test_an_unchanged_dream_refreshes_dates_without_a_revision_bump_or_notice():
     assert after.profile_revision == before.profile_revision
     assert after.profile_updated_at == before.profile_updated_at
     assert after.notice_pending is False
+
+
+def test_instructions_never_reach_the_dream():
+    prompt("a recent question", "s1")
+    store.set_instructions(USER, "ZZ-INSTRUCTIONS-SENTINEL")
+    llm = dream_model([entry("answer_style", "", "You like short answers.", [1])])
+    assert dream(llm).status == "applied"
+    assert any(c["system"] == DREAM for c in llm.calls)
+    for c in llm.calls:
+        for text in (c["system"], c["user"]):
+            assert "ZZ-INSTRUCTIONS-SENTINEL" not in text
+            assert "<instructions>" not in text

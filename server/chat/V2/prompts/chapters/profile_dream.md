@@ -8,7 +8,6 @@ You receive:
 - TODAY: the date, for absolute dates
 - CURRENT PROFILE: the stored sections, each tagged `[slot key]` or `[dynamic]`, with its origin
   (`stated` or `inferred`) and when it was last supported (may be none)
-- INSTRUCTIONS: what the user typed themselves (context only; never copy it into the Profile)
 - ALLOWED CORE SLOTS: the eight core slot keys
 - PROMPTS: every screened prompt of the window, numbered `[P1]`, `[P2]`, ..., with a session label
   and a date
@@ -36,7 +35,6 @@ observance level, location. If a prompt touches these, give it no section.
 ## Rules for the text
 - Second person, plain prose. Describe their learning, not the person. Map, never a level.
 - All bodies together stay under 150 words.
-- Do not repeat the Instructions.
 
 ## Output
 Only JSON, no prose, in this shape:

@@ -1,7 +1,6 @@
 ## Task
 Rewrite the user's Profile from:
 - CURRENT PROFILE (may be blank)
-- INSTRUCTIONS (for context only)
 - NEW ACTIVITY since the last update (prompts, follow-ups)
 Output the full new Profile.
 
@@ -25,7 +24,6 @@ seek out · kind of answers they want · learning rhythm (daf, parsha, teaching)
 Rules
 - Second person, plain prose, under 150 words.
 - Describe their learning, not the person. Map, never a level.
-- Don't repeat the Instructions.
 - Never store or infer: health, mourning, family details, personal halachic
   status, conversion, denomination or observance level, location.
 

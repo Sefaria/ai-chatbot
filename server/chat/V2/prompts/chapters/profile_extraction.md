@@ -6,7 +6,6 @@ material a writer will use, as JSON.
 You receive:
 - HEADINGS: the sections the Profile already has (may be none)
 - ALLOWED CORE SLOTS: the core slots this run may touch (a closed list; touch nothing else)
-- INSTRUCTIONS: what the user typed themselves (context only; never copy it into notes)
 - LANGUAGE SIGNAL: the language the prompts were written in, from a rule, not from you
 - PROMPTS: the new prompts, each tagged with a session label
 
