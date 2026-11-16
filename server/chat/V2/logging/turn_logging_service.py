@@ -66,6 +66,7 @@ class TurnLoggingService:
         agent_response: AgentResponse,
         latency_ms: int,
         model_name: str,
+        personalization: dict | None = None,
     ) -> TurnLoggingResult:
         # The question's current owner: a logged-out visitor's chats may have been
         # claimed by their account while this answer was generated.
@@ -111,6 +112,7 @@ class TurnLoggingService:
             cache_creation_tokens=agent_response.cache_creation_tokens,
             cache_read_tokens=agent_response.cache_read_tokens,
             total_cost_usd=agent_response.total_cost_usd,
+            personalization=personalization or None,
         )
 
         user_message.response_message = response_message

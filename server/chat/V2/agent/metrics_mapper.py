@@ -74,6 +74,7 @@ def build_agent_response(
     usage: UsageMetrics,
     total_cost_usd: float | None,
     narration_segments: list[str] | None = None,
+    profile_used: str | None = None,
 ) -> AgentResponse:
     return AgentResponse(
         content=content,
@@ -88,4 +89,5 @@ def build_agent_response(
         cache_read_tokens=usage.cache_read_tokens,
         total_cost_usd=total_cost_usd,
         narration_segments=narration_segments or [],
+        profile_used=profile_used,
     )

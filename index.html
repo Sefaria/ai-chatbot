@@ -196,7 +196,8 @@
 
   <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
        ?user-id=<encrypted user token> shows it logged in as that user, and
-       ?anon-free-answers=<n> passes the host's free-answer limit.
+       ?anon-free-answers=<n> passes the host's free-answer limit, and
+       ?start-closed (or =true) starts it closed whatever its saved state.
        Runs before the widget module below, which loads deferred. -->
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -204,6 +205,10 @@
       if (params.get(attribute)) {
         document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
       }
+    }
+    // ?start-closed (bare) sets the bare attribute; ?start-closed=false sets "false".
+    if (params.has('start-closed')) {
+      document.querySelector('lc-chatbot').setAttribute('start-closed', params.get('start-closed'));
     }
   </script>
 

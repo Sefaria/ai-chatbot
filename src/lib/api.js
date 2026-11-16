@@ -22,6 +22,8 @@ export function identityFields(userId) {
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
  * @property {boolean} [labs] - Whether Labs tools are enabled for this request
+ * @property {string} [personalizationMode] - "off" on the plain arm of the two-answer display
+ * @property {boolean} [labCompare] - True on the plain arm of the two-answer display
  * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
@@ -128,6 +130,31 @@ async function reportClientStreamEvent(
   } catch {
     // Avoid cascading client-side telemetry failures into the chat flow.
   }
+}
+
+/**
+ * The final answer as the widget uses it, from the stream's final `message` event or a recovered
+ * message (/v2/chat/recover): both carry the same payload, so both map the same way, the
+ * personalization notice and the profile-used line included.
+ * @param {Object} data - The server's final message payload
+ */
+function toFinalMessage(data) {
+  return {
+    messageId: data.messageId,
+    sessionId: data.sessionId,
+    timestamp: data.timestamp,
+    markdown: data.markdown,
+    traceId: data.traceId,
+    toolCalls: data.toolCalls,
+    stats: data.stats,
+    session: data.session,
+    recovered: data.recovered || false,
+    narrationMessages: data.narrationMessages || [],
+    anonResponsesRemaining: data.anonResponsesRemaining,
+    anonMessagesSent: data.anonMessagesSent,
+    personalizationNotice: data.personalizationNotice === true,
+    profileUsed: typeof data.profileUsed === 'string' ? data.profileUsed : undefined
+  };
 }
 
 async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
@@ -275,6 +302,7 @@ export async function sendMessage(apiBaseUrl, userId, sessionId, text) {
  * @param {{signal?: AbortSignal, source?: string}} [options] - `signal` aborts the stream; the resulting
  *   AbortError is re-thrown untouched so callers can tell a deliberate stop from a failure.
  *   `source` is where on the host page the question was asked from (e.g. 'search_no_results').
+ *   `contextOverrides` is merged over the request context last (the lab's plain compare stream).
  * @returns {Promise<ChatResponse>}
  */
 export async function sendMessageStream(
@@ -291,7 +319,7 @@ export async function sendMessageStream(
   interfaceLang = '',
   options = {}
 ) {
-  const { signal = null, source = '' } = options;
+  const { signal = null, source = '', contextOverrides = null } = options;
 
   const messageId = requestMetadata?.messageId || generateMessageId();
   const timestamp = requestMetadata?.timestamp || new Date().toISOString();
@@ -299,6 +327,10 @@ export async function sendMessageStream(
   const context = buildMessageContext(origin, isStaff, labs, interfaceLang);
   if (source) {
     context.source = source;
+  }
+  // Two-answer display: the plain stream rides with personalizationMode "off".
+  if (contextOverrides) {
+    Object.assign(context, contextOverrides);
   }
   if (shouldForceStreamBreak(text)) {
     context.forceStreamBreakBeforeFinal = true;
@@ -354,10 +386,11 @@ export async function sendMessageStream(
       throw error;
     }
     if (recovered?.status === 'complete') {
+      const message = toFinalMessage(recovered.message);
       if (callbacks.onMessage) {
-        callbacks.onMessage(recovered.message);
+        callbacks.onMessage(message);
       }
-      return recovered.message;
+      return message;
     }
     throw error;
   }
@@ -415,20 +448,7 @@ export async function sendMessageStream(
               } else if (currentEvent === 'partial' && callbacks.onPartial) {
                 callbacks.onPartial(data.text || '');
               } else if (currentEvent === 'message') {
-                finalMessage = {
-                  messageId: data.messageId,
-                  sessionId: data.sessionId,
-                  timestamp: data.timestamp,
-                  markdown: data.markdown,
-                  traceId: data.traceId,
-                  toolCalls: data.toolCalls,
-                  stats: data.stats,
-                  session: data.session,
-                  recovered: data.recovered || false,
-                  narrationMessages: data.narrationMessages || [],
-                  anonResponsesRemaining: data.anonResponsesRemaining,
-                  anonMessagesSent: data.anonMessagesSent
-                };
+                finalMessage = toFinalMessage(data);
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
                 }
@@ -529,10 +549,11 @@ export async function sendMessageStream(
         context,
         timestamp
       });
+      const message = toFinalMessage(recovered.message);
       if (callbacks.onMessage) {
-        callbacks.onMessage(recovered.message);
+        callbacks.onMessage(message);
       }
-      return recovered.message;
+      return message;
     }
     if (recovered?.status === 'failed') {
       const error = new Error(recovered.error || streamError || 'Recovered failed response');
@@ -794,4 +815,42 @@ export async function deleteConversation(apiBaseUrl, userId, sessionId) {
   }
 
   return response.json();
+}
+
+
+// --- Personalization settings state ---
+
+const NO_PERSONALIZATION_STATE = {
+  labEnabled: false,
+  testing: { showPlainResponse: false, updateEveryMessage: false }
+};
+
+/**
+ * The signed-in user's personalization state (the `State` of the settings endpoint). Never
+ * throws: any failure resolves to a state with the lab and both testing flags off.
+ * @param {string} apiBaseUrl
+ * @param {string} userId - the signed user token; a signed-out visitor never calls this
+ * @returns {Promise<{labEnabled: boolean, testing: {showPlainResponse: boolean, updateEveryMessage: boolean}, [key: string]: any}>}
+ */
+export async function fetchPersonalizationState(apiBaseUrl, userId) {
+  if (!apiBaseUrl || !userId) return NO_PERSONALIZATION_STATE;
+  try {
+    const response = await fetch(`${apiBaseUrl}/v2/personalization/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...identityFields(userId), action: 'get' })
+    });
+    if (!response.ok) return NO_PERSONALIZATION_STATE;
+    const data = await response.json();
+    return {
+      ...data,
+      labEnabled: data?.labEnabled === true,
+      testing: {
+        showPlainResponse: data?.testing?.showPlainResponse === true,
+        updateEveryMessage: data?.testing?.updateEveryMessage === true
+      }
+    };
+  } catch {
+    return NO_PERSONALIZATION_STATE;
+  }
 }
