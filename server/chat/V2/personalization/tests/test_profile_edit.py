@@ -111,11 +111,9 @@ def test_a_model_refusal_changes_nothing():
     [
         ("remember that I am based in Haifa", "location"),
         ("note my mother's illness", "health"),
-        ("never show me sources from the zebra school", "Instructions"),
-        ("hide commentators I dislike", "Instructions"),
     ],
 )
-def test_never_store_and_hide_requests_are_refused_without_a_model_call(request_text, fragment):
+def test_never_store_requests_are_refused_without_a_model_call(request_text, fragment):
     put_interests()
     before = snapshot()
     llm = edit_model({"status": "applied", "sections": []})
@@ -495,3 +493,73 @@ def test_the_whole_edit_shares_one_model_budget(settings):
     status, _ = edit_profile(USER, "only parsha", llm=llm)
     assert status == "refused" and time.monotonic() - started < 1
     assert all(c["timeout"] <= 0.3 for c in llm.calls) and len(llm.calls) == 1
+
+
+def _put_rows(*rows):
+    rev = store.get_settings(USER).profile_revision
+    store.replace_sections(
+        USER, rev, list(rows), updated_by="la", processed_through=None, set_notice=False
+    )
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "I'm only interested in Ramban to tell you the truth",
+        "don't show me other commentators, only Ramban",
+    ],
+)
+def test_a_commentator_preference_is_not_refused_by_code(request_text):
+    put_interests()
+    reply = {
+        "status": "applied",
+        "reason": "Noted.",
+        "sections": [
+            {
+                "key": "commentators",
+                "heading": "x",
+                "body": "You are only interested in Ramban.",
+            }
+        ],
+    }
+    llm = edit_model(reply)
+    status, _ = edit_profile(USER, request_text, llm=llm)
+    assert status == "applied" and llm.calls
+    by_key = {s.key: s for s in store.get_sections(USER)}
+    assert by_key["commentators"].body == "You are only interested in Ramban."
+    assert by_key["commentators"].origin == "stated"
+
+
+def test_a_core_update_matches_by_key_not_heading_and_leaves_no_duplicate():
+    _put_rows(
+        SectionData(
+            "commentators", "core", "Old wording of the heading", "You read Rashi.", "inferred", T, 0
+        )
+    )
+    reply = {
+        "status": "applied",
+        "reason": "ok",
+        "sections": [{"key": "commentators", "heading": "Other", "body": "You read Ramban."}],
+    }
+    assert edit_profile(USER, "Ramban please", llm=edit_model(reply))[0] == "applied"
+    sections = store.get_sections(USER)
+    assert [(s.key, s.body, s.origin) for s in sections] == [
+        ("commentators", "You read Ramban.", "stated")
+    ]
+
+
+def test_a_dynamic_update_with_the_exact_heading_replaces_it():
+    _put_rows(SectionData(None, "dynamic", "Teaching", "You teach on Fridays.", "stated", T, 0))
+    reply = {
+        "status": "applied",
+        "reason": "ok",
+        "sections": [{"key": None, "heading": "Teaching", "body": "You teach on Sundays."}],
+    }
+    assert edit_profile(USER, "I teach on Sundays", llm=edit_model(reply))[0] == "applied"
+    sections = store.get_sections(USER)
+    assert [(s.heading, s.body) for s in sections] == [("Teaching", "You teach on Sundays.")]
+
+
+def test_the_chapter_no_longer_sends_preferences_to_instructions():
+    assert "belong in Instructions" not in EDIT
+    assert "When in doubt, refuse" not in EDIT

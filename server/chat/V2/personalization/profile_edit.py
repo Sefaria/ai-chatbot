@@ -1,7 +1,7 @@
 """Chat-to-edit: one synchronous model call that changes the Profile, or refuses.
 
 The Settings box sends a request of at most 300 characters. Code refuses the clear cases first
-(never-store topics, hiding sources or voices) without a model call; the model handles the rest
+(never-store topics) without a model call; the model handles the rest
 and may refuse too. A change goes through the same code checks as a job write and is stored only
 if the Profile revision is still the one it was computed from. The quota is taken by the API
 handler. Returns ("applied" | "refused", reason); on a refusal nothing changed.
@@ -10,7 +10,6 @@ handler. Returns ("applied" | "refused", reason); on a refusal nothing changed.
 from __future__ import annotations
 
 import logging
-import re
 import time
 from datetime import datetime
 
@@ -39,17 +38,8 @@ CHAPTER = "profile_edit"
 MAX_REQUEST = 300
 MAX_REASON = 200
 
-# Asking to hide, drop or rank sources or voices: that belongs in Instructions.
-_HIDE_SOURCES = re.compile(
-    r"\b(hide|exclude|block|never\s+show|don'?t\s+show|do\s+not\s+show|stop\s+showing|avoid|"
-    r"ignore|never\s+cite|don'?t\s+cite|never\s+use|don'?t\s+use)\b.{0,60}"
-    r"\b(sources?|voices?|commentators?|authors?|books?)\b",
-    re.IGNORECASE,
-)
-
 REASONS = {
     "never_store": "LA does not keep anything about health, family, location, observance or the like.",
-    "hide_sources": "Hiding sources or voices belongs in Instructions, where you set the wording.",
     "profile_off": "Your Profile is off. Turn it on in Settings to change it.",
     "empty": "Tell LA what to change, in a few words.",
     "bad_reply": "LA could not make that change. Please try again.",
@@ -92,8 +82,14 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
     """The sections with the edits in; each edited section is `stated`. An empty body removes."""
     rows = [SectionData(**vars(s)) for s in sections]
     for e in entries:
-        norm = normalize_heading(e["heading"])
-        match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
+        if e["key"]:  # a core slot is matched by its key, whatever its stored heading says
+            match = next((r for r in rows if r.key == e["key"]), None)
+        else:
+            norm = normalize_heading(e["heading"])
+            match = next(
+                (r for r in rows if r.kind != "core" and normalize_heading(r.heading) == norm),
+                None,
+            )
         if not e["body"]:
             if match:
                 rows.remove(match)
@@ -143,8 +139,6 @@ def _edit(user_id: str, request: str, llm: LLMClient | None, rec: dict) -> tuple
         return _refuse("empty")
     if never_store_text(text):
         return _refuse("never_store")
-    if _HIDE_SOURCES.search(text):
-        return _refuse("hide_sources")
 
     # No retries inside the SDK (they would multiply the timeout); the deadline covers the whole edit.
     base = llm or AnthropicLLMClient()
