@@ -309,9 +309,12 @@ def test_lab_only_actions_404_off_lab(client, action, fields):
 def test_set_testing_on_lab(client, lab):
     r = call(client, "set_testing", showPlainResponse=True)
     assert r.status_code == 200
-    assert r.json()["testing"] == {"showPlainResponse": True, "updateEveryMessage": False}
+    flags = lambda r: {  # noqa: E731
+        k: v for k, v in r.json()["testing"].items() if k not in ("recentRuns", "jobState")
+    }
+    assert flags(r) == {"showPlainResponse": True, "updateEveryMessage": False}
     r = call(client, "set_testing", updateEveryMessage=True)
-    assert r.json()["testing"] == {"showPlainResponse": True, "updateEveryMessage": True}
+    assert flags(r) == {"showPlainResponse": True, "updateEveryMessage": True}
     assert call(client, "set_testing", showPlainResponse="yes").status_code == 400
 
 
@@ -603,3 +606,60 @@ def test_a_busy_edit_returns_200_with_the_fixed_reason_and_the_current_state(cli
     assert r.json()["profile"]["sections"][0]["body"] == "You study widely."
     assert r.json()["profile"]["updatedBy"] == "la"
     assert ProfileWriterRun.objects.filter(trigger="edit", reason="busy").count() == 1
+
+
+def _run_row(n, **kw):
+    now = timezone.now()
+    fields = dict(
+        user_id=USER_A,
+        trigger="session_end",
+        window="session",
+        started_at=now - timedelta(minutes=60 - n),
+        status="applied",
+        reason="",
+        extraction="PRIVATE EXTRACTION",
+        profile_before="PRIVATE BEFORE",
+        profile_after="PRIVATE AFTER",
+    )
+    fields.update(kw)
+    return ProfileWriterRun.objects.create(**fields)
+
+
+def test_get_state_lists_recent_runs_without_text(client, lab):
+    for n in range(12):
+        _run_row(n, reason=f"r{n}")
+    ProfileWriterRun.objects.create(
+        user_id=USER_B, trigger="x", started_at=timezone.now(), status="applied"
+    )
+    runs = call(client, "get").json()["testing"]["recentRuns"]
+    assert len(runs) == 10
+    assert [r["reason"] for r in runs] == [f"r{n}" for n in range(11, 1, -1)]
+    for r in runs:
+        assert set(r) == {"startedAt", "trigger", "window", "status", "reason"}
+    assert "PRIVATE" not in json.dumps(runs)
+    _run_row(99, started_at=timezone.now() - timedelta(days=1))
+    ProfileWriterRun.objects.filter(reason="r11").update(reason="")
+    assert call(client, "get").json()["testing"]["recentRuns"][0]["reason"] is None
+
+
+def test_recent_runs_absent_without_lab(client):
+    _run_row(1)
+    testing = call(client, "get").json()["testing"]
+    assert "recentRuns" not in testing and "jobState" not in testing
+
+
+def test_job_state_reports_quota_lock_and_park(client, lab):
+    now = timezone.now()
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    for _ in range(3):
+        assert quota.take_quota("job", USER_A, hour, 10)
+    state = call(client, "get").json()["testing"]["jobState"]
+    assert state == {"hourUsed": 3, "hourLimit": 10, "lockHeld": False, "parked": False}
+    assert quota.acquire_job_lock(USER_A, now)
+    assert call(client, "get").json()["testing"]["jobState"]["lockHeld"] is True
+    from chat.models import LabJobLock
+
+    LabJobLock.objects.filter(user_id=USER_A).update(
+        started_at=now - timedelta(seconds=quota.LOCK_STALE_SECONDS + 5)
+    )
+    assert call(client, "get").json()["testing"]["jobState"]["lockHeld"] is False

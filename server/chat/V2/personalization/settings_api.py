@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import serializers, status
@@ -71,10 +72,52 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
+RECENT_RUNS = 10
+
+
+def _lab_diagnostics(user_id: str, processed_through) -> dict:
+    """Why did the Profile not update: the user's latest runs (no text) and the job's limits."""
+    from ...models import LabJobLock, LabQuota, ProfileWriterRun
+
+    now = timezone.now()
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    runs = ProfileWriterRun.objects.filter(user_id=user_id).order_by("-started_at", "-id")[
+        :RECENT_RUNS
+    ]
+    used = (
+        LabQuota.objects.filter(scope="job", key=user_id, window_start=hour)
+        .values_list("count", flat=True)
+        .first()
+    )
+    lock = LabJobLock.objects.filter(user_id=user_id).first()
+    stale_before = now - timedelta(seconds=quota.LOCK_STALE_SECONDS)
+    return {
+        "recentRuns": [
+            {
+                "startedAt": _iso(r.started_at),
+                "trigger": r.trigger,
+                "window": r.window,
+                "status": r.status,
+                "reason": r.reason or None,
+            }
+            for r in runs
+        ],
+        "jobState": {
+            "hourUsed": used or 0,
+            "hourLimit": quota.limit("PERSONALIZATION_JOB_PER_HOUR", quota.JOB_PER_HOUR_DEFAULT),
+            "lockHeld": bool(
+                lock and lock.running and lock.started_at and lock.started_at > stale_before
+            ),
+            "parked": profile_job.is_parked(user_id, "session", processed_through),
+        },
+    }
+
+
 def _state(user_id: str) -> dict:
     settings_ = profile_store.get_settings(user_id)
     sections = profile_store.get_sections(user_id)
-    return {
+    lab = gate.lab_enabled()
+    state = {
         "instructions": {
             "text": settings_.instructions_text,
             "enabled": settings_.instructions_enabled,
@@ -88,12 +131,15 @@ def _state(user_id: str) -> dict:
             "updatedBy": settings_.profile_updated_by,
             "revision": settings_.profile_revision,
         },
-        "labEnabled": gate.lab_enabled(),
+        "labEnabled": lab,
         "testing": {
             "showPlainResponse": settings_.show_plain_response,
             "updateEveryMessage": settings_.update_every_message,
         },
     }
+    if lab:
+        state["testing"].update(_lab_diagnostics(user_id, settings_.processed_through))
+    return state
 
 
 def _audit(action: str, user_id: str) -> None:
