@@ -7,6 +7,16 @@ import logging
 import os
 from typing import Any
 
+_SDK_DEBUG_OFF_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def _sdk_debug_enabled() -> bool:
+    """Read CLAUDE_SDK_DEBUG. Unset keeps debug on; explicit falsy strings turn it off."""
+    raw = os.environ.get("CLAUDE_SDK_DEBUG")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in _SDK_DEBUG_OFF_VALUES
+
 
 class SDKOptionsBuilder:
     """Builds ClaudeAgentOptions compatible with multiple SDK versions."""
@@ -64,7 +74,7 @@ class SDKOptionsBuilder:
             "allowed_tools": allowed_tools,
         }
 
-        debug_enabled = os.environ.get("CLAUDE_SDK_DEBUG", 1)
+        debug_enabled = _sdk_debug_enabled()
 
         if self._supports_option("max_tokens"):
             options_kwargs["max_tokens"] = self.max_tokens
