@@ -563,3 +563,80 @@ def test_a_dynamic_update_with_the_exact_heading_replaces_it():
 def test_the_chapter_no_longer_sends_preferences_to_instructions():
     assert "belong in Instructions" not in EDIT
     assert "When in doubt, refuse" not in EDIT
+
+
+# -- a core section named by its heading only ---------------------------------------------------
+
+
+def _commentators(heading="Commentators you seek out"):
+    return SectionData("commentators", "core", heading, "You read Rashi.", "inferred", T, 0)
+
+
+def _apply_reply(*sections):
+    return {"status": "applied", "reason": "ok", "sections": list(sections)}
+
+
+@pytest.mark.parametrize("heading", ["Commentators you seek out", "Old wording of the heading"])
+def test_a_heading_only_update_of_a_core_section_replaces_its_body_in_one_row(heading):
+    _put_rows(_commentators(heading))
+    reply = _apply_reply(
+        {"key": None, "heading": f"  {heading.upper()} ", "body": "You read Ramban."}
+    )
+    assert edit_profile(USER, "Ramban please", llm=edit_model(reply))[0] == "applied"
+    sections = store.get_sections(USER)
+    assert [(s.key, s.kind, s.heading, s.body, s.origin) for s in sections] == [
+        ("commentators", "core", heading, "You read Ramban.", "stated")
+    ]
+
+
+def test_a_heading_only_removal_of_a_core_section_removes_the_row():
+    put_interests()
+    reply = _apply_reply({"key": None, "heading": "Kind of answers you want", "body": ""})
+    assert edit_profile(USER, "drop the answer style", llm=edit_model(reply))[0] == "applied"
+    assert [s.key for s in store.get_sections(USER)] == ["current_interests"]
+
+
+def test_a_new_section_with_a_core_heading_is_added_as_that_core_slot():
+    put_interests()
+    reply = _apply_reply(
+        {"key": None, "heading": "Commentators you seek out", "body": "You read Rashi."}
+    )
+    assert edit_profile(USER, "I read Rashi", llm=edit_model(reply))[0] == "applied"
+    sections = store.get_sections(USER)
+    assert [(s.key, s.kind) for s in sections] == [
+        ("current_interests", "core"),
+        ("commentators", "core"),
+        ("answer_style", "core"),
+    ]
+    assert not [s for s in sections if s.kind == "dynamic"]
+
+
+def test_a_model_entry_without_a_key_does_not_raise():
+    from chat.V2.personalization.profile_edit import _apply
+
+    _put_rows(SectionData(None, "dynamic", "Teaching", "You teach on Fridays.", "stated", T, 0))
+    rows = _apply(
+        store.get_sections(USER), [{"heading": "Teaching", "body": "You teach on Sundays."}], T
+    )
+    assert [(r.heading, r.body) for r in rows] == [("Teaching", "You teach on Sundays.")]
+    reply = _apply_reply({"heading": "Teaching", "body": "You teach on Mondays."})
+    assert edit_profile(USER, "Mondays now", llm=edit_model(reply))[0] == "applied"
+    assert [(s.heading, s.body) for s in store.get_sections(USER)] == [
+        ("Teaching", "You teach on Mondays.")
+    ]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"key": "commentators", "body": "You read Ramban."},  # no heading
+        {"key": "commentators", "heading": None, "body": "You read Ramban."},
+        {"key": None, "heading": "Teaching"},  # no body
+    ],
+)
+def test_an_entry_missing_its_heading_or_body_is_a_bad_reply(entry):
+    put_interests()
+    before = snapshot()
+    status, reason = edit_profile(USER, "Ramban please", llm=edit_model(_apply_reply(entry)))
+    assert (status, reason) == ("refused", "LA could not make that change. Please try again.")
+    assert snapshot() == before

@@ -1192,7 +1192,14 @@ def chat_recover_v2(request):
         if user_message.turn_id
         else []
     )
-    stored_notice, stored_line = response_message.personalization_shown()
+    # The notice and the line the answer was shown with come back on the lab only, like history.
+    stored_notice, stored_line = False, None
+    if personalization_gate.lab_enabled():
+        stored_notice, stored_line = response_message.personalization_shown()
+        # An answer saved before the message kept it: the settings row still knows the notice turn.
+        stored_notice = stored_notice or personalization_runtime.notice_for_message(
+            user_message.user_id, user_message.message_id
+        )
     payload = _build_response_payload(
         response_message=response_message,
         session_id=user_message.session_id,
@@ -1200,11 +1207,7 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
         narration_messages=narration_messages,
-        # An answer saved before the message kept it: the settings row still knows the notice turn.
-        personalization_notice=stored_notice
-        or personalization_runtime.notice_for_message(
-            user_message.user_id, user_message.message_id
-        ),
+        personalization_notice=stored_notice,
         profile_used=stored_line,
     )
     payload.update(_anon_payload_fields(actor))

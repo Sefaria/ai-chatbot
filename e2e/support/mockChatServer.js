@@ -33,11 +33,14 @@
  *   `profileUsedForgotten: true` streams the answer alone and sends no `profileUsed`.
  *   `profileUsedDeltas` (strings) replaces those two pieces: the first is sent with the answer, the
  *   rest as partial events of their own.
+ * - `recoverAnswers` (answer numbers): those answers' streams end without the final message, and
+ *   POST /v2/chat/recover returns it, notice and line included, like the server's recover path.
  *
  * Options:
  * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
  *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[],
- *   profileUsed?: string, profileUsedForgotten?: boolean, profileUsedDeltas?: string[] }
+ *   profileUsed?: string, profileUsedForgotten?: boolean, profileUsedDeltas?: string[],
+ *   recoverAnswers?: number[] }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -57,6 +60,8 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
   let answersGiven = 0;
   /** sessionId → { owner, messages } — owner is the anonId or the user token. */
   const sessions = new Map();
+  /** user messageId → the final message the recover path returns (option `recoverAnswers`). */
+  const recoverable = new Map();
 
   function answerText(n) {
     if (!longAnswers) {
@@ -168,6 +173,15 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (message.personalizationNotice) saved.personalizationNotice = true;
     if (message.profileUsed) saved.profileUsed = message.profileUsed;
 
+    if (personalization?.recoverAnswers?.includes(n)) {
+      recoverable.set(body.messageId, { ...message, recovered: true, narrationMessages: [] });
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + streamed,
+      });
+    }
+
     return route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
@@ -250,6 +264,8 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       return claim(route, request.postDataJSON());
     }
     if (path.endsWith('/v2/chat/recover')) {
+      const message = recoverable.get(request.postDataJSON()?.messageId);
+      if (message) return route.fulfill({ json: { status: 'complete', requestFound: true, message } });
       return route.fulfill({ json: { status: 'failed' } });
     }
     if (path.endsWith('/v2/prompts/defaults')) {

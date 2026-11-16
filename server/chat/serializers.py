@@ -5,6 +5,7 @@ Serializers for chat API.
 from rest_framework import serializers
 
 from .models import ChatMessage
+from .V2.personalization import gate as personalization_gate
 
 
 class MessageContextSerializer(serializers.Serializer):
@@ -169,8 +170,10 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         # The personalization notice and the profile-used line an answer was shown with, under the
-        # same keys as the live answer's payload, each only when the answer had it.
+        # same keys as the live answer's payload, each only when the answer had it; lab only.
         data = super().to_representation(instance)
+        if not personalization_gate.lab_enabled():
+            return data
         notice, line = instance.personalization_shown()
         if notice:
             data["personalizationNotice"] = True

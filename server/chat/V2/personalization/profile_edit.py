@@ -66,30 +66,41 @@ def _entries(parsed: dict) -> list[dict] | None:
         return None
     out = []
     for entry in raw:
-        if not isinstance(entry, dict) or not isinstance(entry.get("body"), str):
+        # Every entry carries a heading and a body (strings); `key` may be absent or null.
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("body"), str)
+            or not isinstance(entry.get("heading"), str)
+        ):
             return None
         key = entry.get("key")
         if key is not None and key not in CORE_KEYS:
             return None
-        heading = CORE_HEADINGS[key] if key else clean_text(str(entry.get("heading") or ""))[:100]
+        heading = CORE_HEADINGS[key] if key else clean_text(entry["heading"])[:100]
         if not heading or (key is None and is_sensitive(heading)):
             return None
         out.append({"key": key, "heading": heading, "body": clean_text(entry["body"])})
     return out
 
 
+_CORE_KEY_BY_HEADING = {normalize_heading(h): k for k, h in CORE_HEADINGS.items()}
+
+
 def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> list[SectionData]:
-    """The sections with the edits in; each edited section is `stated`. An empty body removes."""
+    """The sections with the edits in; each edited section is `stated`. An empty body removes.
+
+    An entry with a `key` matches that core slot, whatever its stored heading says. An entry
+    without one matches by heading any row, core or dynamic; a heading that names a core slot is
+    that slot, so a core heading never becomes a dynamic section."""
     rows = [SectionData(**vars(s)) for s in sections]
     for e in entries:
-        if e["key"]:  # a core slot is matched by its key, whatever its stored heading says
-            match = next((r for r in rows if r.key == e["key"]), None)
-        else:
+        key = e.get("key")
+        if not key:
             norm = normalize_heading(e["heading"])
-            match = next(
-                (r for r in rows if r.kind != "core" and normalize_heading(r.heading) == norm),
-                None,
-            )
+            match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
+            key = match.key if match else _CORE_KEY_BY_HEADING.get(norm)
+        if key:
+            match = next((r for r in rows if r.key == key), None)
         if not e["body"]:
             if match:
                 rows.remove(match)
@@ -99,9 +110,9 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
         else:
             rows.append(
                 SectionData(
-                    e["key"],
-                    "core" if e["key"] else "dynamic",
-                    e["heading"],
+                    key,
+                    "core" if key else "dynamic",
+                    CORE_HEADINGS[key] if key else e["heading"],
                     e["body"],
                     "stated",
                     now,

@@ -237,10 +237,11 @@ class TurnOrchestrator:
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
-        # The model's `<profile_used>` line comes from the text that is returned: the draft, or the
-        # last link repair when there is one. Only a tag that ends that text is taken off (before
-        # link repair, the trace, the saved message and the payload); anything else stays as
-        # written. Only a turn that asked for the line is split.
+        # The model's `<profile_used>` line comes from the draft; a link repair whose text ends in a
+        # valid tag replaces it, and one without keeps the draft's line (repair rewrites links, not
+        # the line). Only a tag that ends a text is taken off (before link repair, the trace, the
+        # saved message and the payload); anything else stays as written. Only a turn that asked
+        # for the line is split. No line goes with the fallback message.
         ask_profile_used = bool(context.ask_profile_used)
 
         def split_draft(text: str) -> tuple[str, str | None]:
@@ -284,9 +285,10 @@ class TurnOrchestrator:
                 on_first_final_text_delta=emit_synthesis_status_once,
                 should_cancel=should_cancel,
             )
-            # The repaired text replaces the draft, so its own trailing tag (or none) decides the
-            # line: a line is never kept from a text that is not returned.
-            output, profile_used = split_draft(repair_result.final_text)
+            # The repaired text replaces the draft; its own valid trailing tag wins, otherwise the
+            # line already validated from the draft stays.
+            output, repaired_line = split_draft(repair_result.final_text)
+            profile_used = repaired_line or profile_used
             output = output or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)
             sdk_result.llm_call_count += repair_result.llm_call_count

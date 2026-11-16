@@ -305,7 +305,7 @@ def test_gate_failure_falls_back(lab_on):
 
 
 @pytest.mark.django_db
-def test_notice_on_recover_path(lab_on):
+def test_notice_on_recover_path(lab_seed):
     seed("u1")
     store.PersonalizationSettings.objects.filter(user_id="u1").update(notice_pending=True)
     assert runtime.context_for_request("u1", plain=False, message_id="m-user").notice is True

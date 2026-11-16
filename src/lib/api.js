@@ -132,6 +132,31 @@ async function reportClientStreamEvent(
   }
 }
 
+/**
+ * The final answer as the widget uses it, from the stream's final `message` event or a recovered
+ * message (/v2/chat/recover): both carry the same payload, so both map the same way, the
+ * personalization notice and the profile-used line included.
+ * @param {Object} data - The server's final message payload
+ */
+function toFinalMessage(data) {
+  return {
+    messageId: data.messageId,
+    sessionId: data.sessionId,
+    timestamp: data.timestamp,
+    markdown: data.markdown,
+    traceId: data.traceId,
+    toolCalls: data.toolCalls,
+    stats: data.stats,
+    session: data.session,
+    recovered: data.recovered || false,
+    narrationMessages: data.narrationMessages || [],
+    anonResponsesRemaining: data.anonResponsesRemaining,
+    anonMessagesSent: data.anonMessagesSent,
+    personalizationNotice: data.personalizationNotice === true,
+    profileUsed: typeof data.profileUsed === 'string' ? data.profileUsed : undefined
+  };
+}
+
 async function recoverStreamMessage(apiBaseUrl, { userId, sessionId, messageId, context }) {
   const fallbackDeadline = Date.now() + STREAM_RECOVERY_TIMEOUT_MS;
   let heartbeatDeadline = null;
@@ -361,10 +386,11 @@ export async function sendMessageStream(
       throw error;
     }
     if (recovered?.status === 'complete') {
+      const message = toFinalMessage(recovered.message);
       if (callbacks.onMessage) {
-        callbacks.onMessage(recovered.message);
+        callbacks.onMessage(message);
       }
-      return recovered.message;
+      return message;
     }
     throw error;
   }
@@ -422,22 +448,7 @@ export async function sendMessageStream(
               } else if (currentEvent === 'partial' && callbacks.onPartial) {
                 callbacks.onPartial(data.text || '');
               } else if (currentEvent === 'message') {
-                finalMessage = {
-                  messageId: data.messageId,
-                  sessionId: data.sessionId,
-                  timestamp: data.timestamp,
-                  markdown: data.markdown,
-                  traceId: data.traceId,
-                  toolCalls: data.toolCalls,
-                  stats: data.stats,
-                  session: data.session,
-                  recovered: data.recovered || false,
-                  narrationMessages: data.narrationMessages || [],
-                  anonResponsesRemaining: data.anonResponsesRemaining,
-                  anonMessagesSent: data.anonMessagesSent,
-                  personalizationNotice: data.personalizationNotice === true,
-                  profileUsed: typeof data.profileUsed === 'string' ? data.profileUsed : undefined
-                };
+                finalMessage = toFinalMessage(data);
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);
                 }
@@ -538,10 +549,11 @@ export async function sendMessageStream(
         context,
         timestamp
       });
+      const message = toFinalMessage(recovered.message);
       if (callbacks.onMessage) {
-        callbacks.onMessage(recovered.message);
+        callbacks.onMessage(message);
       }
-      return recovered.message;
+      return message;
     }
     if (recovered?.status === 'failed') {
       const error = new Error(recovered.error || streamError || 'Recovered failed response');

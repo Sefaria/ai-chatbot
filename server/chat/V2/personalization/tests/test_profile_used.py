@@ -364,14 +364,39 @@ async def test_profile_used_after_a_link_repair_comes_from_the_repaired_text():
         f"The repaired answer. {TAG} More text.",  # not at the end
     ],
 )
-async def test_profile_used_is_none_when_the_repaired_text_has_no_valid_trailing_tag(repaired_text):
+async def test_profile_used_the_draft_line_is_kept_when_the_repaired_text_has_no_valid_trailing_tag(
+    repaired_text,
+):
+    # Link repair rewrites links, not the line: the draft's already-validated line stays.
     orchestrator, _, trace, validator = make_orchestrator(
         [f"The answer.\n{TAG}", repaired_text], valid=(False, True)
     )
     response = await run_turn(orchestrator, validator)
-    assert response.profile_used is None  # never the first draft's line
-    assert trace.log_success.call_args.kwargs["profile_used"] is None
+    assert response.profile_used == LINE
+    assert trace.log_success.call_args.kwargs["profile_used"] == LINE
     assert response.content == split_profile_used(repaired_text)[0]
+
+
+@pytest.mark.asyncio
+async def test_profile_used_no_line_when_neither_the_draft_nor_the_repair_has_one():
+    orchestrator, _, _, validator = make_orchestrator(
+        ["The answer.", "The repaired answer."], valid=(False, True)
+    )
+    response = await run_turn(orchestrator, validator)
+    assert response.content == "The repaired answer." and response.profile_used is None
+
+
+@pytest.mark.asyncio
+async def test_profile_used_is_none_when_the_repair_returns_the_fallback():
+    from chat.V2.agent.turn_orchestrator import ERROR_FALLBACK_MESSAGE
+
+    orchestrator, _, trace, validator = make_orchestrator(
+        [f"The answer.\n{TAG}", ERROR_FALLBACK_MESSAGE], valid=(False, True)
+    )
+    response = await run_turn(orchestrator, validator)
+    assert response.content == ERROR_FALLBACK_MESSAGE
+    assert response.profile_used is None
+    assert trace.log_success.call_args.kwargs["profile_used"] is None
 
 
 @pytest.mark.asyncio
@@ -583,6 +608,20 @@ def test_a_turn_without_the_notice_or_a_line_stores_nothing(lab_on):  # noqa: F8
     # the user's own message never carries them
     user_message = _get("/api/history", sessionId="sess-none")["messages"][0]
     assert user_message["role"] == "user" and "profileUsed" not in user_message
+
+
+@pytest.mark.django_db
+def test_history_and_recover_leave_out_the_notice_and_the_line_when_the_lab_is_off(
+    lab_on,  # noqa: F811
+):
+    # The answer keeps both, but off the lab neither history nor recover returns them.
+    lab_on.setenv("PERSONALIZATION_LAB_SEED", "true")
+    seed("user_123")
+    saved = _turn("sess-off", "m-off", notice=True, line=LINE)
+    assert saved.personalization == {"notice": True, "profileUsed": LINE}
+    lab_on.delenv("PERSONALIZATION_LAB_SEED")
+    for message in (_history_answer("sess-off"), _recover("sess-off", "m-off")):
+        assert "personalizationNotice" not in message and "profileUsed" not in message
 
 
 def ChatMessage_assistant(session):

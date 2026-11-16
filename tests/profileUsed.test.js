@@ -116,3 +116,68 @@ test('profile used: the visible text only grows for a spaced tag and for two tra
     assert.equal(previous, 'Answer.');
   }
 });
+
+// -- recover: an answer whose stream broke comes back from /v2/chat/recover -----------------------
+
+const RECOVER_LINE = 'From your profile, I took your preference for short answers into account.';
+
+async function recoverWith(message) {
+  const { sendMessageStream } = await import('../src/lib/api.js');
+  const original = globalThis.fetch;
+  globalThis.window = { location: { href: 'https://www.sefaria.org/texts' } };
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/chat/stream')) {
+      // The stream ends before the final message event.
+      return new Response('event: partial\ndata: {"text":"Answer"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' }
+      });
+    }
+    if (String(url).endsWith('/v2/chat/recover')) {
+      return Response.json({ status: 'complete', requestFound: true, message });
+    }
+    return Response.json({ success: true });
+  };
+  const delivered = [];
+  try {
+    const result = await sendMessageStream(
+      '/api', 'u', 's', 'question',
+      { onMessage: (m) => delivered.push(m) },
+      {}, '', false, false,
+      { messageId: 'm', timestamp: new Date().toISOString() },
+      'en'
+    );
+    assert.equal(delivered.length, 1);
+    assert.deepEqual(delivered[0], result);
+    return result;
+  } finally {
+    globalThis.fetch = original;
+    delete globalThis.window;
+  }
+}
+
+const RECOVERED = {
+  messageId: 'r1',
+  sessionId: 's',
+  timestamp: '2026-11-16T00:00:00Z',
+  markdown: 'Answer 1.',
+  traceId: null,
+  toolCalls: [],
+  stats: {},
+  session: { turnCount: 1 },
+  recovered: true,
+  narrationMessages: []
+};
+
+test('recover: the recovered answer carries the notice and the line, mapped like the stream final', async () => {
+  const result = await recoverWith({ ...RECOVERED, personalizationNotice: true, profileUsed: RECOVER_LINE });
+  assert.equal(result.personalizationNotice, true);
+  assert.equal(result.profileUsed, RECOVER_LINE);
+  assert.equal(result.recovered, true);
+  assert.equal(result.markdown, 'Answer 1.');
+});
+
+test('recover: a notice or line of the wrong type is dropped, like the stream final', async () => {
+  const result = await recoverWith({ ...RECOVERED, personalizationNotice: 'true', profileUsed: 7 });
+  assert.equal(result.personalizationNotice, false);
+  assert.equal(result.profileUsed, undefined);
+});

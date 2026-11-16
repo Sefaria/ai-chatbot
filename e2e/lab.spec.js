@@ -125,6 +125,17 @@ test.describe('a past chat', () => {
     await expectNoticeAndLine(assistant);
   });
 
+  test('recovered after a broken stream shows the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { ...options, recoverAnswers: [1] });
+    const recovers = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/v2/chat/recover')) recovers.push(r.postDataJSON());
+    });
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+    expect(recovers.length).toBeGreaterThan(0);
+  });
+
   test('reloaded from the server keeps the notice and the green line', async ({ page, context }) => {
     const assistant = await signedIn(page, context, options);
     await assistant.ask('What is a mitzvah?');
