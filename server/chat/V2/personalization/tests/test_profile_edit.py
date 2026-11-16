@@ -640,3 +640,29 @@ def test_an_entry_missing_its_heading_or_body_is_a_bad_reply(entry):
     status, reason = edit_profile(USER, "Ramban please", llm=edit_model(_apply_reply(entry)))
     assert (status, reason) == ("refused", "LA could not make that change. Please try again.")
     assert snapshot() == before
+
+
+def _core_and_dynamic_interests():
+    # In memory: the table's unique heading index would refuse both rows.
+    return [
+        SectionData("current_interests", "core", "Current interests", "Old core.", "inferred", T, 0),
+        SectionData(None, "dynamic", "Current interests", "Old dynamic.", "stated", T, 1),
+    ]
+
+
+def test_a_keyless_update_of_a_core_heading_hits_the_core_slot_and_drops_the_dynamic_twin():
+    from chat.V2.personalization.profile_edit import _apply
+
+    rows = _apply(
+        _core_and_dynamic_interests(), [{"heading": "current  INTERESTS", "body": "New body."}], T
+    )
+    assert [(r.key, r.kind, r.heading, r.body) for r in rows] == [
+        ("current_interests", "core", "Current interests", "New body.")
+    ]
+
+
+def test_a_keyless_removal_of_a_core_heading_removes_core_and_dynamic_rows():
+    from chat.V2.personalization.profile_edit import _apply
+
+    rows = _apply(_core_and_dynamic_interests(), [{"heading": "Current interests", "body": ""}], T)
+    assert not [r for r in rows if r.heading == "Current interests"]

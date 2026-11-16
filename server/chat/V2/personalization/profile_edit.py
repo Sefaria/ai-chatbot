@@ -97,8 +97,15 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
         key = e.get("key")
         if not key:
             norm = normalize_heading(e["heading"])
-            match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
-            key = match.key if match else _CORE_KEY_BY_HEADING.get(norm)
+            key = _CORE_KEY_BY_HEADING.get(norm)
+            if key:
+                # A core heading is the core slot: drop dynamic rows that repeat it.
+                rows = [
+                    r for r in rows if not (r.kind != "core" and normalize_heading(r.heading) == norm)
+                ]
+            else:
+                match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
+                key = match.key if match else None
         if key:
             match = next((r for r in rows if r.key == key), None)
         if not e["body"]:

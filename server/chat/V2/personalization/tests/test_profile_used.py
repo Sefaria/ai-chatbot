@@ -714,3 +714,15 @@ def test_profile_used_payload_key_only_when_present():
     base = {"response_message": reply, "session_id": "s", "turn_count": 1, "stats": {}}
     assert "profileUsed" not in views._build_response_payload(**base)
     assert views._build_response_payload(**base, profile_used="L")["profileUsed"] == "L"
+
+
+def test_split_profile_used_signoff_case_drops_earlier_tags_and_keeps_last_valid_line():
+    x = "From your profile, I took X into account."
+    y = "From your profile, I took Y into account."
+    text = (
+        f"<p>A</p><profile_used>{x}</profile_used><profile_used>{y}</profile_used>\n"
+        '<p class="response-signoff">More?</p>'
+    )
+    body, line = split_profile_used(text)
+    assert "profile_used" not in body
+    assert line == y
