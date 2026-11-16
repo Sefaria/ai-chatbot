@@ -22,7 +22,28 @@ export function isPreviewRef(ref) {
   return typeof ref === 'string' && ref.length <= 100 && REF.test(ref) && !ref.includes('..');
 }
 
-/** The CSS of that design-system version, or '' if `ref` isn't valid or the files can't be loaded. */
+// A preview is unreviewed CSS (any branch, or a commit), so it's used only if it is nothing but
+// token declarations: `:root, :host` blocks (or their dark-mode form) of `--name: value;` lines, with
+// no URL functions, at-rules, escapes or markup. Custom properties alone can't load anything or draw
+// over the page. Rejecting is safer than stripping, which CSS escapes can get around.
+const BLOCK_SELECTOR = String.raw`(?::root\s*,\s*:host|:root\[data-theme="dark"\]\s*,\s*:host\(\[data-theme="dark"\]\))`;
+const DECLARATION = String.raw`\s*--[A-Za-z0-9-]+\s*:[^;{}@\\<]*;`;
+const TOKEN_CSS = new RegExp(String.raw`^\s*(?:${BLOCK_SELECTOR}\s*\{(?:${DECLARATION})*\s*\}\s*)*$`);
+const URL_FUNCTION = /(?:url|image-set|image|cross-fade|element|expression)\s*\(/i;
+const MAX_PREVIEW_LENGTH = 200_000;
+
+/** Whether `css` holds only design-system token declarations (see above). */
+export function isTokenCss(css) {
+  if (typeof css !== 'string' || css.length > MAX_PREVIEW_LENGTH) return false;
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  return TOKEN_CSS.test(text) && !URL_FUNCTION.test(text);
+}
+
+/**
+ * The CSS of that design-system version, or '' if `ref` isn't valid, the files can't be loaded, or
+ * they hold anything but tokens. For hosts outside production only: Sefaria never passes the
+ * attribute in production.
+ */
 export async function fetchPreviewCss(ref, fetchImpl = fetch) {
   if (!isPreviewRef(ref)) return '';
   try {
@@ -33,7 +54,9 @@ export async function fetchPreviewCss(ref, fetchImpl = fetch) {
         return response.text();
       })
     );
-    return files.join('\n');
+    const css = files.join('\n');
+    if (!isTokenCss(css)) throw new Error('it holds something other than token declarations');
+    return css;
   } catch (error) {
     console.warn(`Design system preview "${ref}" couldn't be loaded:`, error);
     return '';
