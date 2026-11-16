@@ -237,9 +237,10 @@ class TurnOrchestrator:
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
-        # The model's `<profile_used>` line is kept from the first draft. Only a tag that ends the
-        # draft is taken off (before link repair, the trace, the saved message and the payload);
-        # anything else stays as written. Only a turn that asked for the line is split.
+        # The model's `<profile_used>` line comes from the text that is returned: the draft, or the
+        # last link repair when there is one. Only a tag that ends that text is taken off (before
+        # link repair, the trace, the saved message and the payload); anything else stays as
+        # written. Only a turn that asked for the line is split.
         ask_profile_used = bool(context.ask_profile_used)
 
         def split_draft(text: str) -> tuple[str, str | None]:
@@ -283,7 +284,10 @@ class TurnOrchestrator:
                 on_first_final_text_delta=emit_synthesis_status_once,
                 should_cancel=should_cancel,
             )
-            output = split_draft(repair_result.final_text)[0] or ERROR_FALLBACK_MESSAGE
+            # The repaired text replaces the draft, so its own trailing tag (or none) decides the
+            # line: a line is never kept from a text that is not returned.
+            output, profile_used = split_draft(repair_result.final_text)
+            output = output or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)
             sdk_result.llm_call_count += repair_result.llm_call_count
             if repair_result.total_cost_usd is not None:

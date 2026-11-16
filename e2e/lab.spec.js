@@ -171,7 +171,8 @@ test.describe('profile used', () => {
   const LINE = 'From your profile, I took your preference for short answers into account.';
   const GREEN = 'rgb(26, 127, 55)'; // #1a7f37
 
-  /** Record every moment the widget's DOM shows any part of the tag. */
+  /** Record every moment the widget's DOM shows any part of the tag, or the line inside the answer
+   * text (a whole tag rendered as markup shows only its inner text). */
   async function watchForTagText(page) {
     await page.evaluate(() => {
       window.tagSightings = [];
@@ -179,6 +180,9 @@ test.describe('profile used', () => {
       setInterval(() => {
         const text = root()?.textContent ?? '';
         if (/profile_|<profile|used>|<\/profile/.test(text)) window.tagSightings.push(text.slice(0, 200));
+        for (const answer of root()?.querySelectorAll('.message-content') ?? []) {
+          if (/from your profile/i.test(answer.textContent)) window.tagSightings.push(answer.textContent.slice(0, 200));
+        }
       }, 5);
     });
   }
@@ -253,6 +257,23 @@ test.describe('profile used', () => {
     expect(plainStreams[0]).not.toMatch(/profile_used|profileUsed/);
     expect(await sightings(page)).toEqual([]);
   });
+
+  for (const [name, deltas] of [
+    ['an opening tag with a space, split before its ">"', [' <profile_used ', `>${LINE}</profile_used>`]],
+    ['an opening tag with a space before its name', ['\n< profile_used', `>${LINE}</profile_used>`]],
+    ['two trailing tags, the second one split', [
+      `\n\n<profile_used>${LINE}</profile_used>`, `<profile_used>${LINE}`, '</profile_used>',
+    ]],
+  ]) {
+    test(`profile used: no tag text is ever visible for ${name}`, async ({ page, context }) => {
+      const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE, profileUsedDeltas: deltas });
+      await watchForTagText(page);
+      await assistant.ask('What is a mitzvah?');
+      await expect(line(assistant)).toHaveText(LINE);
+      await expect(assistant.lastAnswer).toContainText('Answer 1.');
+      expect(await sightings(page)).toEqual([]);
+    });
+  }
 
   test('profile used: no line under an answer whose payload does not carry it', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true });

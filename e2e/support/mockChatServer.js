@@ -29,11 +29,13 @@
  *   then `<profile_` / `used>LINE</profile_used>` in two partial events (a tag split across two
  *   deltas), and the final payload carries `profileUsed: LINE` with the tag stripped from `markdown`.
  *   `profileUsedForgotten: true` streams the answer alone and sends no `profileUsed`.
+ *   `profileUsedDeltas` (strings) replaces those two pieces: the first is sent with the answer, the
+ *   rest as partial events of their own.
  *
  * Options:
  * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
  *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[],
- *   profileUsed?: string, profileUsedForgotten?: boolean }
+ *   profileUsed?: string, profileUsedForgotten?: boolean, profileUsedDeltas?: string[] }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -152,9 +154,8 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (body.userId && body.context?.personalizationMode !== 'off' && personalization?.profileUsed) {
       const line = personalization.profileUsed;
       const forgotten = personalization.profileUsedForgotten === true;
-      const deltas = forgotten
-        ? [message.markdown]
-        : [`${message.markdown}\n\n<profile_`, `used>${line}</profile_used>`];
+      const tail = personalization.profileUsedDeltas ?? ['\n\n<profile_', `used>${line}</profile_used>`];
+      const deltas = forgotten ? [message.markdown] : [message.markdown + tail[0], ...tail.slice(1)];
       streamed =
         sseEvent('progress', { type: 'status', text: 'Synthesizing response...' }) +
         deltas.map((text) => sseEvent('partial', { text })).join('') +

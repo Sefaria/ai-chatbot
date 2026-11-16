@@ -286,11 +286,21 @@ def make_orchestrator(final_texts, *, valid=(True,)):
     return orchestrator, runner, trace, validator
 
 
+def _turn_patches(validator):
+    from contextlib import ExitStack
+
+    stack = ExitStack()
+    stack.enter_context(
+        patch("chat.V2.agent.turn_orchestrator.ResponseLinkValidator", return_value=validator)
+    )
+    stack.enter_context(
+        patch("chat.V2.agent.turn_orchestrator.current_span", return_value=MagicMock())
+    )
+    return stack
+
+
 async def run_turn(orchestrator, validator, context=None):
-    with (
-        patch("chat.V2.agent.turn_orchestrator.ResponseLinkValidator", return_value=validator),
-        patch("chat.V2.agent.turn_orchestrator.current_span", return_value=MagicMock()),
-    ):
+    with _turn_patches(validator):
         return await orchestrator.run_turn(
             messages=[ConversationMessage("user", "hi")],
             core_prompt_id=None,
@@ -329,18 +339,39 @@ async def test_profile_used_mid_answer_tag_stays_as_model_text():
 
 
 @pytest.mark.asyncio
-async def test_profile_used_survives_a_link_repair_and_never_reaches_the_repair_prompt():
+async def test_profile_used_after_a_link_repair_comes_from_the_repaired_text():
     repaired = "The repaired answer."
+    other = "From your profile, I took your interest in Ramban into account."
     orchestrator, runner, trace, validator = make_orchestrator(
-        [f"The answer.\n{TAG}", f"{repaired}\n<profile_used>second line</profile_used>"],
+        [f"The answer.\n{TAG}", f"{repaired}\n<profile_used>{other}</profile_used>"],
         valid=(False, True),
     )
     response = await run_turn(orchestrator, validator)
     repair_prompt = runner.run.call_args_list[1].kwargs["prompt_text"]
     assert "profile_used" not in repair_prompt and "The answer." in repair_prompt
     assert response.content == repaired
-    assert response.profile_used == LINE  # the first draft's line is kept
+    assert response.profile_used == other  # the line of the text actually returned
+    assert trace.log_success.call_args.kwargs["profile_used"] == other
     assert "profile_used" not in trace.log_success.call_args.kwargs["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "repaired_text",
+    [
+        "The repaired answer.",  # no tag
+        "The repaired answer.\n<profile_used>second line</profile_used>",  # wrong shape
+        f"The repaired answer. {TAG} More text.",  # not at the end
+    ],
+)
+async def test_profile_used_is_none_when_the_repaired_text_has_no_valid_trailing_tag(repaired_text):
+    orchestrator, _, trace, validator = make_orchestrator(
+        [f"The answer.\n{TAG}", repaired_text], valid=(False, True)
+    )
+    response = await run_turn(orchestrator, validator)
+    assert response.profile_used is None  # never the first draft's line
+    assert trace.log_success.call_args.kwargs["profile_used"] is None
+    assert response.content == split_profile_used(repaired_text)[0]
 
 
 @pytest.mark.asyncio
@@ -367,10 +398,20 @@ async def test_profile_used_is_none_with_the_fallback_after_failed_repair():
 )
 async def test_profile_used_untouched_when_not_asked(context):
     draft = f"Use <profile_used>a</profile_used> and <profile_used>unclosed"
-    orchestrator, _, trace, validator = make_orchestrator([draft])
+    orchestrator, runner, trace, validator = make_orchestrator([draft])
     if context is None:
-        context = MessageContext(profile_text="PROF", ask_profile_used=False)
-    response = await run_turn(orchestrator, validator, context)
+        # No context at all: the agent service fills in an empty one, which never asks for the line.
+        from chat.V2.agent.claude_service import ClaudeAgentService
+
+        service = object.__new__(ClaudeAgentService)
+        service._orchestrator = orchestrator
+        service.braintrust_logging_enabled = False
+        with _turn_patches(validator):
+            response = await service.send_message([ConversationMessage("user", "hi")], context=None)
+        assert runner.run.call_count == 1
+        assert "profile_used" not in runner.run.call_args.kwargs["prompt_text"]
+    else:
+        response = await run_turn(orchestrator, validator, context)
     assert response.content == draft
     assert response.profile_used is None
     assert trace.log_success.call_args.kwargs["profile_used"] is None

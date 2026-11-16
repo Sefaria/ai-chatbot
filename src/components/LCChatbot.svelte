@@ -3,6 +3,7 @@
 <script>
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
+  import { resyncPlayback } from '../lib/playbackSync.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
@@ -1535,8 +1536,8 @@
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
       contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
       toolWaitActive: false,
-      // The raw streamed text and how much of it was handed to playback (see hideProfileUsed).
-      rawStreamText: '', shownStreamLength: 0
+      // The raw streamed text and the part of it handed to playback (see hideProfileUsed).
+      rawStreamText: '', shownStreamText: ''
     };
     const request = activeRequests[sendingSessionId];
     request.compare = showPlainResponse && !!userId;
@@ -1664,7 +1665,8 @@
         // A backgrounded session has nothing on screen to hold, so skip the wait.
         const revealAt = isForeground ? Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS) : performance.now();
         request.streamTimer = setTimeout(() => {
-          request.streamDelayMs = revealAt - request.streamQueue[0].at;
+          // The queue can be empty here: text handed over can be taken back (see onPartial).
+          request.streamDelayMs = revealAt - (request.streamQueue[0]?.at ?? revealAt);
           // Stop cycling through loading messages, but keep "Synthesizing
           // response" up (no fade) rather than switching to a static
           // "Writing…" label -- it shimmers again whenever playback hits a
@@ -1746,12 +1748,23 @@
         },
         onPartial: (delta) => {
           if (request.stopping || !delta) return;
-          // Never let the `<profile_used>` tag (or a start of it) reach the screen.
+          // Never let the `<profile_used>` tag (or a start of it) reach the screen. The visible text
+          // can shrink or change at its end, so playback follows it: text handed over before and no
+          // longer visible is taken back from the queue, or from what was already played.
           request.rawStreamText += delta;
           const visible = hideProfileUsed(request.rawStreamText);
-          const fresh = visible.slice(request.shownStreamLength);
-          request.shownStreamLength = visible.length;
-          if (fresh) queueStreamDelta(fresh);
+          const sync = resyncPlayback(request.shownStreamText, request.streamQueue, visible);
+          request.streamQueue = sync.queue;
+          request.shownStreamText = visible;
+          if (sync.played !== null) {
+            request.playedStreamText = sync.played.split(TOOL_WAIT_MARKER).join('');
+            if (request.streamingMarkdown.length > request.playedStreamText.length) {
+              request.streamingMarkdown = '';
+              showCompleteWords();
+              if (sessionId === sendingSessionId) streamingMarkdown = request.streamingMarkdown;
+            }
+          }
+          if (sync.fresh) queueStreamDelta(sync.fresh);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);

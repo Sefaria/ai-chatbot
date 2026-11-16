@@ -625,21 +625,64 @@ def _run_row(n, **kw):
     return ProfileWriterRun.objects.create(**fields)
 
 
+_CODES = ["no_new_prompts", "nothing_to_write", "busy", "words", "revision_moved", "applied"]
+
+
+def _code(n):
+    return _CODES[n % len(_CODES)]
+
+
 def test_get_state_lists_recent_runs_without_text(client, lab):
     for n in range(12):
-        _run_row(n, reason=f"r{n}")
+        _run_row(n, reason=_code(n))
     ProfileWriterRun.objects.create(
         user_id=USER_B, trigger="x", started_at=timezone.now(), status="applied"
     )
     runs = call(client, "get").json()["testing"]["recentRuns"]
     assert len(runs) == 10
-    assert [r["reason"] for r in runs] == [f"r{n}" for n in range(11, 1, -1)]
+    assert [r["reason"] for r in runs] == [_code(n) for n in range(11, 1, -1)]
     for r in runs:
         assert set(r) == {"startedAt", "trigger", "window", "status", "reason"}
     assert "PRIVATE" not in json.dumps(runs)
     _run_row(99, started_at=timezone.now() - timedelta(days=1))
-    ProfileWriterRun.objects.filter(reason="r11").update(reason="")
+    ProfileWriterRun.objects.filter(reason=_code(11)).update(reason="")
     assert call(client, "get").json()["testing"]["recentRuns"][0]["reason"] is None
+
+
+@pytest.mark.parametrize(
+    "stored, shown",
+    [
+        ("no_new_prompts", "no_new_prompts"),
+        ("error:ValueError", "error:ValueError"),
+        ("never_store_terms", "never_store_terms"),
+        ("model_refused", "model_refused"),
+        ("hide_sources", "hide_sources"),
+        ("Hiding sources or voices belongs in Instructions, where you set the wording.", None),
+        ("The learner asked about a made-up topic.", None),
+        ("error:not a name", None),
+        ("", None),
+    ],
+)
+def test_recent_runs_reason_only_from_the_fixed_codes(client, lab, stored, shown):
+    _run_row(1, reason=stored)
+    assert call(client, "get").json()["testing"]["recentRuns"][0]["reason"] == shown
+
+
+def test_every_reason_code_the_job_and_the_edit_write_is_allowed():
+    import pathlib
+    import re
+
+    from chat.V2.personalization import profile_edit, settings_api
+
+    here = pathlib.Path(settings_api.__file__).parent
+    job = (here / "profile_job.py").read_text()
+    written = set(re.findall(r'_Fail\(\s*"\w+",\s*"(\w+)"', job))
+    written |= set(re.findall(r'_finish\(ctx,\s*"\w+",\s*"(\w+)"', job))
+    written |= set(re.findall(r'_done_nothing\(ctx,\s*"(\w+)"', job))
+    written |= set(re.findall(r'_fail\("(\w+)"\)', (here / "checks.py").read_text()))
+    written |= set(profile_edit.REASONS) | {"applied", "never_store_unparseable", "model_refused"}
+    assert {"no_new_prompts", "bad_writer_output", "words", "dream_unchanged"} <= written
+    assert written <= settings_api.RUN_REASON_CODES
 
 
 def test_recent_runs_reads_only_the_five_fields_it_returns(client, lab):

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import timedelta
 
 from django.utils import timezone
@@ -32,6 +33,58 @@ audit_logger = logging.getLogger("chat.personalization.audit")
 
 MAX_REQUEST = profile_store.MAX_INSTRUCTIONS
 NO_STORE = "no-store, private"
+
+# The fixed reason codes a run row can hold: the Profile job (profile_job.py), its checks
+# (checks.py) and chat-to-edit (profile_edit.py). `recentRuns` returns a reason only when it is one
+# of these, so nothing else a row may hold ever reaches the page. A test keeps this list in step.
+RUN_REASON_CODES = frozenset(
+    {
+        # profile_job.py
+        profile_job.REVISION_MOVED,
+        profile_job.PROFILE_OFF,
+        profile_job.BATCH_SKIPPED,
+        "no_new_prompts",
+        "sensitive_only",
+        "not_relevant",
+        "nothing_to_write",
+        "check",
+        "bad_extraction",
+        "bad_writer_output",
+        "bad_dream_output",
+        "all_screened",
+        "unsupported_section",
+        "dream_unchanged",
+        "over_limit",
+        # checks.py
+        "empty_section",
+        "duplicate_heading",
+        "never_store_terms",
+        "never_store_model",
+        "never_store_unparseable",
+        "dynamic_cap",
+        "words",
+        # profile_edit.py (its REASONS keys, including retired ones still in old rows)
+        *profile_edit.REASONS,
+        "never_store",
+        "hide_sources",
+        "profile_off",
+        "empty",
+        "bad_reply",
+        "changed",
+        "busy",
+        "applied",
+        "model_refused",
+    }
+)
+# profile_job.py records an unexpected exception as `error:<exception class name>`.
+_ERROR_REASON = re.compile(r"error:[A-Za-z_][A-Za-z0-9_]{0,99}")
+
+
+def _run_reason(reason: str | None) -> str | None:
+    if reason and (reason in RUN_REASON_CODES or _ERROR_REASON.fullmatch(reason)):
+        return reason
+    return None
+
 
 ACTIONS = (
     "get",
@@ -100,7 +153,7 @@ def _lab_diagnostics(user_id: str, processed_through) -> dict:
                 "trigger": r.trigger,
                 "window": r.window,
                 "status": r.status,
-                "reason": r.reason or None,
+                "reason": _run_reason(r.reason),
             }
             for r in runs
         ],
