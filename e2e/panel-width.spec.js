@@ -58,6 +58,24 @@ test.describe('widget resizes past 640px', () => {
     await expect.poll(() => width(assistant)).toBeLessThanOrEqual(968);
   });
 
+  test('history open on a narrow desktop: panel within the viewport, canvas not squeezed', async ({ page, context }) => {
+    const assistant = await opened(page, context, { width: 700, height: 900 });
+    await assistant.openHistory();
+    const w = await width(assistant);
+    expect(w).toBeLessThanOrEqual(668);
+    const historyWidth = (await assistant.historyPanel.boundingBox()).width;
+    expect(w - historyWidth).toBeGreaterThanOrEqual(Math.min(300, 668 - historyWidth));
+    await dragWestHandleTo(assistant, page, 690);
+    expect(await width(assistant)).toBeLessThanOrEqual(668);
+    expect((await width(assistant)) - historyWidth).toBeGreaterThanOrEqual(300);
+  });
+
+  test('history open at the smallest desktop width: never wider than the viewport bound', async ({ page, context }) => {
+    const assistant = await opened(page, context, { width: 610, height: 900 });
+    await assistant.openHistory();
+    expect(await width(assistant)).toBeLessThanOrEqual(578);
+  });
+
   test('resizes past 640 does not apply on a phone: the widget is full screen', async ({ page, context }) => {
     const assistant = await opened(page, context, { width: 400, height: 800 });
     const box = await assistant.panel.boundingBox();

@@ -9,7 +9,7 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..personalization.profile_used import split_profile_used
+from ..personalization.profile_used import split_profile_used, wrapped_answer
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     SECTION_SEPARATOR,
@@ -239,7 +239,20 @@ class TurnOrchestrator:
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
         # The model's `<profile_used>` line is kept from the first draft; the tag itself never
         # reaches link repair, the trace, the saved message or the payload.
-        output, profile_used = split_profile_used(sdk_result.final_text.strip())
+        # Only a turn that asked for the line is split; otherwise the text stays as written.
+        ask_profile_used = bool(context.ask_profile_used)
+
+        def split_draft(text: str) -> tuple[str, str | None]:
+            text = text.strip()
+            if not ask_profile_used:
+                return text, None
+            body, line = split_profile_used(text)
+            if not body:
+                # The model wrapped the whole answer in the tag: keep it, never the fallback.
+                return wrapped_answer(text), None
+            return body, line
+
+        output, profile_used = split_draft(sdk_result.final_text)
         output = output or ERROR_FALLBACK_MESSAGE
         validation_result = await validator.validate_response(output)
         repair_attempts = 0
@@ -269,9 +282,7 @@ class TurnOrchestrator:
                 on_first_final_text_delta=emit_synthesis_status_once,
                 should_cancel=should_cancel,
             )
-            output = (
-                split_profile_used(repair_result.final_text.strip())[0] or ERROR_FALLBACK_MESSAGE
-            )
+            output = split_draft(repair_result.final_text)[0] or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)
             sdk_result.llm_call_count += repair_result.llm_call_count
             if repair_result.total_cost_usd is not None:

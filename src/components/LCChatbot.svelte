@@ -339,9 +339,10 @@
   // The window may be as wide as the viewport less a 32px margin; the history panel is inside that bound.
   let viewportWidth = $state(window.innerWidth);
   let maxPanelWidth = $derived(Math.max(MIN_WIDTH, viewportWidth - VIEWPORT_MARGIN));
+  // The canvas keeps MIN_WIDTH, but the viewport bound wins when both cannot fit.
   let maxCanvasWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH, maxPanelWidth - HISTORY_PANEL_WIDTH) : maxPanelWidth);
   let visiblePanelWidth = $derived(showHistoryPanel
-    ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH)
+    ? Math.min(maxPanelWidth, Math.max(MIN_WIDTH, Math.min(panelWidth, maxCanvasWidth)) + HISTORY_PANEL_WIDTH)
     : Math.min(panelWidth, maxPanelWidth));
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
   // Once the answer is fully on screen, the rest of the turn (link validation,
@@ -1041,7 +1042,7 @@
 
   function openHistoryPanel() {
     canvasWidthBeforeHistoryPanel = panelWidth;
-    panelWidth = Math.min(panelWidth, maxPanelWidth - HISTORY_PANEL_WIDTH);
+    panelWidth = Math.max(MIN_WIDTH, Math.min(panelWidth, maxPanelWidth - HISTORY_PANEL_WIDTH));
     showHistoryPanel = true;
     track('assistant_click', { feature_name: 'chat_history_toggle' });
   }

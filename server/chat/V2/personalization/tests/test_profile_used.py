@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.test import override_settings
 
 from chat.V2.agent.contracts import ConversationMessage, MessageContext
 from chat.V2.agent.guardrail_gate import DefaultGuardrailGate
@@ -38,10 +37,13 @@ def test_split_profile_used_one_tag():
 
 
 def test_split_profile_used_two_tags_keeps_the_last_line():
-    text = "A <profile_used>first</profile_used> B\n<profile_used> second </profile_used>"
+    text = (
+        "A <profile_used>From your profile, first</profile_used> B\n"
+        "<profile_used> Nothing from your profile changed this. </profile_used>"
+    )
     clean, line = split_profile_used(text)
     assert "profile_used" not in clean
-    assert line == "second"
+    assert line == "Nothing from your profile changed this."
 
 
 def test_split_profile_used_mid_text():
@@ -61,12 +63,56 @@ def test_split_profile_used_unclosed_after_a_closed_one():
 
 
 def test_split_profile_used_caps_the_line_at_300_characters():
-    _, line = split_profile_used("A <profile_used>" + "x" * 500 + "</profile_used>")
+    _, line = split_profile_used(
+        "A <profile_used>From your profile " + "x" * 500 + "</profile_used>"
+    )
     assert len(line) == 300
 
 
 def test_split_profile_used_empty_tag_gives_no_line():
     assert split_profile_used("A <profile_used>  </profile_used>") == ("A", None)
+
+
+def test_split_profile_used_removed_spans_never_join_the_text_around_them():
+    clean, line = split_profile_used(
+        "<img<profile_used>x</profile_used> src=x onerror=alert(1)>"
+    )
+    assert "<img src" not in clean and "<img<" not in clean
+    assert line is None
+    clean, _ = split_profile_used("ab<profile_used>x</profile_used>cd")
+    assert clean != "abcd" and "ab" in clean and "cd" in clean
+    clean, _ = split_profile_used("<im<profile_used>x")
+    assert clean == "<im"
+    clean, _ = split_profile_used("one<profile_used>x</profile_used>two<profile_used>y")
+    assert clean.split() == ["one", "two"]
+
+
+@pytest.mark.parametrize(
+    "inner",
+    [
+        "Rashi was important to you.",
+        "from your profile, lowercase",
+        "From your profile, <b>bold</b>",
+        "From your profile a > b",
+        "From your profile <profile_used>nested</profile_used>",
+    ],
+)
+def test_split_profile_used_rejects_a_line_that_is_not_the_agreed_shape(inner):
+    clean, line = split_profile_used(f"An answer. <profile_used>{inner}</profile_used>")
+    assert line is None
+    assert "profile_used" not in clean
+
+
+def test_split_profile_used_nested_tags_leave_no_literal_tag_anywhere():
+    text = "A <profile_used>From your profile <profile_used>x</profile_used></profile_used> B"
+    clean, line = split_profile_used(text)
+    assert "profile_used" not in clean
+    assert line is None or "<" not in line
+
+
+def test_split_profile_used_accepts_both_agreed_openings():
+    assert split_profile_used("A <profile_used>From your profile, x.</profile_used>")[1]
+    assert split_profile_used("A <profile_used>Nothing from your profile changed this.</profile_used>")[1]
 
 
 # -- prompt -----------------------------------------------------------------------------------
@@ -196,7 +242,7 @@ def make_orchestrator(final_texts, *, valid=(True,)):
     return orchestrator, runner, trace, validator
 
 
-async def run_turn(orchestrator, validator):
+async def run_turn(orchestrator, validator, context=None):
     with (
         patch("chat.V2.agent.turn_orchestrator.ResponseLinkValidator", return_value=validator),
         patch("chat.V2.agent.turn_orchestrator.current_span", return_value=MagicMock()),
@@ -205,7 +251,7 @@ async def run_turn(orchestrator, validator):
             messages=[ConversationMessage("user", "hi")],
             core_prompt_id=None,
             on_progress=None,
-            context=MessageContext(profile_text="PROF", ask_profile_used=True),
+            context=context or MessageContext(profile_text="PROF", ask_profile_used=True),
         )
 
 
@@ -260,6 +306,65 @@ async def test_profile_used_is_not_in_the_fallback_after_failed_repair():
     )
     response = await run_turn(orchestrator, validator)
     assert "profile_used" not in response.content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "context",
+    [
+        MessageContext(profile_text="PROF", ask_profile_used=False),
+        MessageContext(),
+        None,
+    ],
+)
+async def test_profile_used_untouched_when_not_asked(context):
+    draft = f"Use <profile_used>a</profile_used> and <profile_used>unclosed"
+    orchestrator, _, trace, validator = make_orchestrator([draft])
+    if context is None:
+        context = MessageContext(profile_text="PROF", ask_profile_used=False)
+    response = await run_turn(orchestrator, validator, context)
+    assert response.content == draft
+    assert response.profile_used is None
+    assert trace.log_success.call_args.kwargs["profile_used"] is None
+
+
+@pytest.mark.asyncio
+async def test_profile_used_whole_answer_in_the_tag_is_kept_not_replaced_by_the_fallback():
+    from chat.V2.agent.turn_orchestrator import ERROR_FALLBACK_MESSAGE
+
+    orchestrator, _, _, validator = make_orchestrator(
+        ["<profile_used>The whole <b>answer</b> here.</profile_used>"]
+    )
+    response = await run_turn(orchestrator, validator)
+    assert response.content == "The whole answer here."
+    assert response.content != ERROR_FALLBACK_MESSAGE
+    assert response.profile_used is None
+
+
+@pytest.mark.asyncio
+async def test_profile_used_unclosed_whole_answer_is_kept():
+    orchestrator, _, _, validator = make_orchestrator(["<profile_used>Half an answer"])
+    response = await run_turn(orchestrator, validator)
+    assert response.content == "Half an answer" and response.profile_used is None
+
+
+@pytest.mark.asyncio
+async def test_profile_used_whole_answer_in_the_tag_after_a_link_repair():
+    orchestrator, _, _, validator = make_orchestrator(
+        [f"The answer.\n{TAG}", "<profile_used>Repaired answer.</profile_used>"],
+        valid=(False, True),
+    )
+    response = await run_turn(orchestrator, validator)
+    assert response.content == "Repaired answer."
+
+
+@pytest.mark.asyncio
+async def test_profile_used_an_empty_draft_still_falls_back():
+    from chat.V2.agent.turn_orchestrator import ERROR_FALLBACK_MESSAGE
+
+    orchestrator, _, _, validator = make_orchestrator(["<profile_used> </profile_used>"])
+    response = await run_turn(orchestrator, validator)
+    assert response.content == ERROR_FALLBACK_MESSAGE
 
 
 # -- views ------------------------------------------------------------------------------------
