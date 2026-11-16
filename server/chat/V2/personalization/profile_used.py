@@ -27,9 +27,6 @@ _BEFORE_SIGNOFF = re.compile(
     rf"{_OPEN}((?:(?!{_OPEN}|{_CLOSE}).)*){_CLOSE}\s*({_SIGNOFF})\s*\Z",
     re.IGNORECASE | re.DOTALL,
 )
-_CLOSED_TAG = re.compile(
-    rf"{_OPEN}((?:(?!{_OPEN}|{_CLOSE}).)*){_CLOSE}", re.IGNORECASE | re.DOTALL
-)
 _ANY_TAG = re.compile(rf"{_OPEN}|{_CLOSE}", re.IGNORECASE)
 _FROM_LINE = re.compile(r"From your profile, I took [^\r\n<>]{1,250} into account\.")
 
@@ -53,11 +50,9 @@ def split_profile_used(text: str) -> tuple[str, str | None]:
     if signoff is not None:
         before = text[: signoff.start()].rstrip()
         if before.endswith(">"):
-            # Earlier closed tags left in the text before the cut go too; the last valid line wins.
-            inners = [m.group(1) for m in _CLOSED_TAG.finditer(before)] + [signoff.group(1)]
-            line = next((v for i in reversed(inners) if (v := valid_line(i))), None)
-            before = _CLOSED_TAG.sub("", before)
-            return f"{before.rstrip()}\n{signoff.group(2)}", line
+            # Only the tag right before the sign-off is cut: nothing is removed from the middle of
+            # the text, so the kept text cannot be rejoined into new markup.
+            return f"{before}\n{signoff.group(2)}", valid_line(signoff.group(1))
     body = text
     line = None
     while (match := _TRAILING.search(body)) is not None:

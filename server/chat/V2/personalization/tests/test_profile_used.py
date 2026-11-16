@@ -716,7 +716,8 @@ def test_profile_used_payload_key_only_when_present():
     assert views._build_response_payload(**base, profile_used="L")["profileUsed"] == "L"
 
 
-def test_split_profile_used_signoff_case_drops_earlier_tags_and_keeps_last_valid_line():
+def test_split_profile_used_signoff_case_cuts_only_the_tag_before_the_signoff():
+    # Never removes text from the middle: an earlier tag stays as model text (the widget sanitizes it).
     x = "From your profile, I took X into account."
     y = "From your profile, I took Y into account."
     text = (
@@ -724,5 +725,5 @@ def test_split_profile_used_signoff_case_drops_earlier_tags_and_keeps_last_valid
         '<p class="response-signoff">More?</p>'
     )
     body, line = split_profile_used(text)
-    assert "profile_used" not in body
+    assert body == f'<p>A</p><profile_used>{x}</profile_used>\n<p class="response-signoff">More?</p>'
     assert line == y
