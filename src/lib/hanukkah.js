@@ -19,5 +19,6 @@ function forcedHanukkah() {
 }
 
 export function isHanukkah(now = new Date()) {
-  return forcedHanukkah() ?? (now >= HANUKKAH_START && now < HANUKKAH_END);
+  // PREVIEW ONLY (design/dreidel-loader-preview): always on so the Cauldron/Coolify preview shows it. Never merge.
+  return forcedHanukkah() ?? true;
 }
