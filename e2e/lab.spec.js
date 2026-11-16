@@ -394,26 +394,43 @@ test.describe('profile used', () => {
 });
 
 test.describe('start-closed', () => {
-  test('a host page that asks for room gets the assistant closed, without losing its saved open state', async ({ page, context }) => {
+  const savedOpen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('lc_chatbot:ui') || 'null')?.isOpen);
+  const userQuery = () => `user-id=${encodeURIComponent(LOGGED_IN_USER)}`;
+  let LOGGED_IN_USER;
+
+  async function savedAsOpen(page, context) {
     await mockChatServer(context, {});
     const assistant = new AssistantPage(page);
     await assistant.logIn();
-    await assistant.open(); // saved as open
+    LOGGED_IN_USER = await assistant.host.getAttribute('user-id');
+    if (await assistant.panel.isVisible()) await assistant.close();
+    await assistant.open();
+    expect(await savedOpen(page)).toBe(true);
+    return assistant;
+  }
 
-    await page.goto(`/?user-id=${encodeURIComponent(await assistant.host.getAttribute('user-id'))}&start-closed=true`);
-    await expect(assistant.trigger).toBeVisible();
-    await expect(assistant.panel).toBeHidden();
+  for (const [label, value] of [['bare', ''], ['true', 'true']]) {
+    test(`a host page that asks for room (${label} attribute) gets the assistant closed, its saved open state kept`, async ({ page, context }) => {
+      const assistant = await savedAsOpen(page, context);
+      await page.goto(`/?${userQuery()}&start-closed${value === '' ? '' : `=${value}`}`);
+      await expect(assistant.trigger).toBeVisible();
+      await expect(assistant.panel).toBeHidden();
+      expect(await savedOpen(page)).toBe(true);
 
-    await assistant.logIn(); // a page without the attribute opens as saved
+      await assistant.logIn(); // a page without the attribute opens as saved
+      await expect(assistant.panel).toBeVisible();
+    });
+  }
+
+  test('start-closed="false" opens as saved', async ({ page, context }) => {
+    const assistant = await savedAsOpen(page, context);
+    await page.goto(`/?${userQuery()}&start-closed=false`);
     await expect(assistant.panel).toBeVisible();
   });
 
   test('the pill still opens the assistant on a start-closed page', async ({ page, context }) => {
-    await mockChatServer(context, {});
-    const assistant = new AssistantPage(page);
-    await assistant.logIn();
-    const userId = await assistant.host.getAttribute('user-id');
-    await page.goto(`/?user-id=${encodeURIComponent(userId)}&start-closed=true`);
+    const assistant = await savedAsOpen(page, context);
+    await page.goto(`/?${userQuery()}&start-closed=true`);
     await expect(assistant.panel).toBeHidden();
     await assistant.trigger.click();
     await expect(assistant.panel).toBeVisible();

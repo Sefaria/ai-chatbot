@@ -112,7 +112,7 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       });
       // The real plain arm does not stream and ends well after the personalized answer.
       const delay = personalization?.plainDelayMs ?? 0;
-      return delay ? new Promise((done) => setTimeout(() => send().then(done, done), delay)) : send();
+      return delay ? new Promise((wait) => setTimeout(wait, delay)).then(send) : send();
     }
     const owner = body.userId || body.anonId;
     let remaining;

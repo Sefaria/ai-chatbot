@@ -76,7 +76,8 @@
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
-  let startClosed = $derived(!!startClosedAttr && startClosedAttr !== 'false');
+  // A bare attribute arrives as "" and counts as set; absent, false or "false" does not.
+  let startClosed = $derived(startClosedAttr != null && startClosedAttr !== false && startClosedAttr !== 'false');
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
