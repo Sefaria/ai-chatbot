@@ -62,6 +62,8 @@ class MessageContext:
     instructions_text: str | None = None
     # Root-span metadata from personalization.runtime; None leaves the trace alone.
     personalization_meta: dict[str, Any] | None = None
+    # Lab only: the answering prompt asks for the `<profile_used>` line.
+    ask_profile_used: bool = False
 
 
 @dataclass
@@ -87,6 +89,8 @@ class AgentResponse:
     narration_segments: list[str] = field(default_factory=list)
     # The turn's root span, exported so the after-turn memory update can log a child span.
     span_export: str | None = None
+    # The line the model wrote about what the Profile changed (lab only); never part of `content`.
+    profile_used: str | None = None
 
 
 ProgressCallback = Callable[[AgentProgressUpdate], None]

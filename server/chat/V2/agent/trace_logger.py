@@ -86,6 +86,7 @@ class BraintrustTraceLogger:
         content: str,
         tool_calls: list[dict[str, Any]],
         metrics: dict[str, Any],
+        profile_used: str | None = None,
     ) -> None:
         refs = extract_refs(tool_calls)
         span_output: dict[str, Any] = {
@@ -97,4 +98,6 @@ class BraintrustTraceLogger:
             "refs": refs,
             "tool_calls": tool_calls,
         }
+        if profile_used:
+            span_metadata["profile_used"] = profile_used
         bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)

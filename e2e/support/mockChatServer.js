@@ -25,10 +25,15 @@
  *   given error status. A chat request with context.personalizationMode "off" gets the answer
  *   `Plain answer.` and is not kept. Answers whose number is in `noticeOnAnswers` carry
  *   `personalizationNotice: true` in the final payload, for signed-in visitors only, like the server.
+ * - `profileUsed` (a line of text): signed-in answers stream like the model writes them, the answer
+ *   then `<profile_` / `used>LINE</profile_used>` in two partial events (a tag split across two
+ *   deltas), and the final payload carries `profileUsed: LINE` with the tag stripped from `markdown`.
+ *   `profileUsedForgotten: true` streams the answer alone and sends no `profileUsed`.
  *
  * Options:
  * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
- *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[] }
+ *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[],
+ *   profileUsed?: string, profileUsedForgotten?: boolean }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -142,10 +147,24 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       }
     }
 
+    let streamed = '';
+    if (body.userId && personalization?.profileUsed) {
+      const line = personalization.profileUsed;
+      const forgotten = personalization.profileUsedForgotten === true;
+      const deltas = forgotten
+        ? [message.markdown]
+        : [`${message.markdown}\n\n<profile_`, `used>${line}</profile_used>`];
+      streamed =
+        sseEvent('progress', { type: 'status', text: 'Synthesizing response...' }) +
+        deltas.map((text) => sseEvent('partial', { text })).join('') +
+        sseEvent('progress', { type: 'content_done', text: null });
+      if (!forgotten) message.profileUsed = line;
+    }
+
     return route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
-      body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + sseEvent('message', message),
+      body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + streamed + sseEvent('message', message),
     });
   }
 
