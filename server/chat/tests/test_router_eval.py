@@ -75,6 +75,6 @@ def test_router_classification(user_input, expected_route):
 
     client = anthropic.Anthropic()
     actual_route = _classify(client, _system_prompt, user_input)
-    assert actual_route == expected_route, (
-        f"Input: {user_input!r}\nExpected: {expected_route}, Got: {actual_route}"
-    )
+    assert (
+        actual_route == expected_route
+    ), f"Input: {user_input!r}\nExpected: {expected_route}, Got: {actual_route}"
