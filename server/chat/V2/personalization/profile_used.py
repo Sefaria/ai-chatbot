@@ -28,13 +28,17 @@ _BEFORE_SIGNOFF = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _ANY_TAG = re.compile(rf"{_OPEN}|{_CLOSE}", re.IGNORECASE)
-_FROM_LINE = re.compile(r"From your profile, I took [^\r\n<>]{1,250} into account\.")
+# One line of at most 300 characters, starting "From your profile" or "Nothing from your profile",
+# ending with a period, with no angle brackets. The model sometimes adds a clause; the line is debug.
+_LINE = re.compile(r"(?:From|Nothing from) your profile[^\r\n<>]{1,280}\.")
+MAX_LINE = 300
 
 
 def valid_line(inner: str) -> str | None:
-    """The line when it is one of the two agreed shapes, else None."""
+    """The line when it is one sentence starting "From your profile" or "Nothing from your
+    profile" (at most 300 characters, no newline, no angle brackets), else None."""
     line = inner.strip()
-    if line == NOTHING_LINE or _FROM_LINE.fullmatch(line):
+    if len(line) <= MAX_LINE and _LINE.fullmatch(line):
         return line
     return None
 

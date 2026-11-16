@@ -94,10 +94,8 @@ def test_split_profile_used_unclosed_tag_is_kept():
         "From your profile, I took a > b into account.",
         "from your profile, i took Rashi into account.",
         "From your profile, I took Rashi into account",
-        "From your profile, I took  into account.",
-        "From your profile, I took " + "x" * 251 + " into account.",
+        "From your profile, I took " + "x" * 300 + " into account.",
         "Nothing from your profile changed this answer",
-        "Nothing from your profile changed this answer. Really.",
         "  ",
     ],
 )
@@ -727,3 +725,13 @@ def test_split_profile_used_signoff_case_cuts_only_the_tag_before_the_signoff():
     body, line = split_profile_used(text)
     assert body == f'<p>A</p><profile_used>{x}</profile_used>\n<p class="response-signoff">More?</p>'
     assert line == y
+
+
+def test_split_profile_used_keeps_a_longer_from_your_profile_sentence():
+    # Seen live 2026-11-16: the model added a clause after "into account"; the line is debug, so
+    # any one-line sentence that starts "From your profile" is kept.
+    sentence = (
+        "From your profile, I took your interest in Ramban into account, so I kept the answer "
+        "brief and offering a Ramban follow-up."
+    )
+    assert split_profile_used(f"<p>A.</p>\n<profile_used>{sentence}</profile_used>")[1] == sentence

@@ -53,8 +53,8 @@ function cutBeforeSignoff(text) {
   }
   return found && `${found.before}\n${found.rest}`;
 }
-const NOTHING_LINE = 'Nothing from your profile changed this answer.';
-const FROM_LINE = /^From your profile, I took [^\r\n<>]{1,250} into account\.$/;
+// Same rule as the server: one sentence starting "From your profile" or "Nothing from your profile", at most 300 characters.
+const LINE = /^(?:From|Nothing from) your profile[^\r\n<>]{1,280}\.$/;
 
 /** The text before an opening tag that ends the text without a close, or null. */
 function cutUnclosed(text) {
@@ -92,5 +92,5 @@ export function hideProfileUsed(text) {
 
 /** True when the line is one of the two shapes the server accepts. */
 export function isProfileUsedLine(line) {
-  return typeof line === 'string' && (line === NOTHING_LINE || FROM_LINE.test(line));
+  return typeof line === 'string' && line.length <= 300 && LINE.test(line);
 }
