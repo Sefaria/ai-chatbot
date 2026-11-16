@@ -435,7 +435,8 @@ export async function sendMessageStream(
                   narrationMessages: data.narrationMessages || [],
                   anonResponsesRemaining: data.anonResponsesRemaining,
                   anonMessagesSent: data.anonMessagesSent,
-                  personalizationNotice: data.personalizationNotice === true
+                  personalizationNotice: data.personalizationNotice === true,
+                  profileUsed: typeof data.profileUsed === 'string' ? data.profileUsed : undefined
                 };
                 if (callbacks.onMessage) {
                   callbacks.onMessage(finalMessage);

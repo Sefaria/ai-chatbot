@@ -166,3 +166,63 @@ test.describe('state request', () => {
     expect(bodies[0]).toEqual({ userId: 'test-user-token', action: 'get' });
   });
 });
+
+test.describe('profile used', () => {
+  const LINE = 'From your profile, I took your preference for short answers into account.';
+  const GREEN = 'rgb(26, 127, 55)'; // #1a7f37
+
+  /** Record every moment the widget's DOM shows any part of the tag. */
+  async function watchForTagText(page) {
+    await page.evaluate(() => {
+      window.tagSightings = [];
+      const root = () => document.querySelector('lc-chatbot')?.shadowRoot ?? document.querySelector('lc-chatbot');
+      setInterval(() => {
+        const text = root()?.textContent ?? '';
+        if (/profile_|<profile|used>|<\/profile/.test(text)) window.tagSightings.push(text.slice(0, 200));
+      }, 5);
+    });
+  }
+  const sightings = (page) => page.evaluate(() => window.tagSightings);
+  const line = (assistant) => assistant.host.getByTestId('profile-used');
+
+  test('profile used: the line is the last thing in the answer, in green, and no tag text is ever visible', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    await expect(line(assistant)).toHaveText(LINE);
+    await expect(line(assistant)).toHaveCSS('color', GREEN);
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    // directly after the answer text, before the notice and the feedback buttons
+    const follows = await line(assistant).evaluate((el) => el.previousElementSibling?.classList.contains('message-content'));
+    expect(follows).toBe(true);
+    expect(await sightings(page)).toEqual([]);
+    await expect(assistant.lastAnswer).not.toContainText('profile_used');
+  });
+
+  test('profile used: a model that forgot the tag still shows the full answer and no line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE, profileUsedForgotten: true });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    await expect(line(assistant)).toHaveCount(0);
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: the Personalized column carries the line and the Plain column does not', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, profileUsed: LINE });
+    await watchForTagText(page);
+    await assistant.send('What is a mitzvah?');
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized.getByTestId('profile-used')).toHaveText(LINE);
+    await expect(personalized.getByTestId('profile-used')).toHaveCSS('color', GREEN);
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    await expect(plainColumn(assistant).getByTestId('profile-used')).toHaveCount(0);
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: no line under an answer whose payload does not carry it', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true });
+    await assistant.ask('What is a mitzvah?');
+    await expect(line(assistant)).toHaveCount(0);
+  });
+});

@@ -2,6 +2,7 @@
 
 <script>
   import { waitForTurn } from '../lib/turnOutcome.js';
+  import { hideProfileUsed } from '../lib/profileUsed.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
@@ -1532,7 +1533,9 @@
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
       contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
-      toolWaitActive: false
+      toolWaitActive: false,
+      // The raw streamed text and how much of it was handed to playback (see hideProfileUsed).
+      rawStreamText: '', shownStreamLength: 0
     };
     const request = activeRequests[sendingSessionId];
     request.compare = showPlainResponse && !!userId;
@@ -1742,7 +1745,12 @@
         },
         onPartial: (delta) => {
           if (request.stopping || !delta) return;
-          queueStreamDelta(delta);
+          // Never let the `<profile_used>` tag (or a start of it) reach the screen.
+          request.rawStreamText += delta;
+          const visible = hideProfileUsed(request.rawStreamText);
+          const fresh = visible.slice(request.shownStreamLength);
+          request.shownStreamLength = visible.length;
+          if (fresh) queueStreamDelta(fresh);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1806,6 +1814,7 @@
         status: 'sent',
         compareKey: request.compare ? request.messageId : undefined,
         personalizationNotice: response.personalizationNotice === true,
+        profileUsed: typeof response.profileUsed === 'string' ? response.profileUsed : null,
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
@@ -2877,6 +2886,9 @@
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
+            {#if feedbackProps?.profileUsed}
+              <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
+            {/if}
             {#if feedbackProps?.personalizationNotice}
               <p class="personalization-notice" data-testid="personalization-notice">
                 {$_('assistant.personalization.notice')}
@@ -5039,6 +5051,12 @@
   }
 
   /* Personalization: the notice under an answer and the two-column answer */
+  .profile-used {
+    margin: 8px 0 0;
+    font-size: var(--lc-font-size-sm);
+    color: #1a7f37;
+  }
+
   .personalization-notice {
     margin: 6px 0 0;
     font-size: var(--lc-font-size-sm);

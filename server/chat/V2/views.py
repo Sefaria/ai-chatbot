@@ -237,6 +237,7 @@ def _build_response_payload(
     recovered: bool = False,
     narration_messages: list | None = None,
     personalization_notice: bool = False,
+    profile_used: str | None = None,
 ) -> dict:
     payload = {
         "messageId": response_message.message_id,
@@ -253,6 +254,8 @@ def _build_response_payload(
     }
     if personalization_notice:
         payload["personalizationNotice"] = True
+    if profile_used:
+        payload["profileUsed"] = profile_used
     return payload
 
 
@@ -579,6 +582,7 @@ def chat_stream_v2(request):
         profile_text=personalization.profile_text,
         instructions_text=personalization.instructions_text,
         personalization_meta=personalization.meta or None,
+        ask_profile_used=personalization.ask_profile_used,
     )
 
     def generate_sse():
@@ -993,6 +997,7 @@ def chat_stream_v2(request):
                 stats=logging_result.stats,
                 narration_messages=logging_result.narration_messages,
                 personalization_notice=personalization.notice,
+                profile_used=agent_response.profile_used,
             )
             final_data.update(_anon_payload_fields(actor))
 

@@ -67,6 +67,7 @@ def build_prompt(
     page_url: str | None = None,
     instructions_text: str | None = None,
     profile_text: str | None = None,
+    ask_profile_used: bool = False,
 ) -> tuple[str, bool]:
     """Assemble a prompt from a user message, optional system instructions, and context.
 
@@ -101,6 +102,8 @@ def build_prompt(
     ]
     if blocks:
         parts.append(load_chapter("personalization_answering"))
+        if ask_profile_used and profile_text:
+            parts.append(load_chapter("personalization_profile_used"))
         parts.extend(blocks)
     if summary_text:
         parts.append(CONVERSATION_SUMMARY_SECTION.format(summary_text=summary_text))

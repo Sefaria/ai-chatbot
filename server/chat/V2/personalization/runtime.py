@@ -26,6 +26,8 @@ class PersonalizationContext:
     profile_text: str | None = None
     meta: dict = field(default_factory=dict)
     notice: bool = False
+    # Ask the model to end with the `<profile_used>` line (lab only, Profile block injected).
+    ask_profile_used: bool = False
 
 
 def notice_for_message(user_id: str, message_id: str | None) -> bool:
@@ -78,6 +80,7 @@ def context_for_request(
             profile_text=profile or None,
             meta=meta,
             notice=notice,
+            ask_profile_used=bool(profile) and gate.lab_enabled(),
         )
     except Exception:
         logger.warning("Personalization failed; answering without it", exc_info=True)
