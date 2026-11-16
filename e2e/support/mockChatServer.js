@@ -40,7 +40,7 @@
  * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
  *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[],
  *   profileUsed?: string, profileUsedForgotten?: boolean, profileUsedDeltas?: string[],
- *   recoverAnswers?: number[] }
+ *   recoverAnswers?: number[], plainDelayMs?: number (the plain answer arrives this late) }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -105,11 +105,14 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
         toolCalls: [],
         stats: {},
       };
-      return route.fulfill({
+      const send = () => route.fulfill({
         status: 200,
         contentType: 'text/event-stream',
         body: sseEvent('message', message),
       });
+      // The real plain arm does not stream and ends well after the personalized answer.
+      const delay = personalization?.plainDelayMs ?? 0;
+      return delay ? new Promise((done) => setTimeout(() => send().then(done, done), delay)) : send();
     }
     const owner = body.userId || body.anonId;
     let remaining;

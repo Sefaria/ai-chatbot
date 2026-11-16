@@ -18,6 +18,18 @@ async function signedIn(page, context, personalization) {
 const plainColumn = (assistant) => assistant.host.getByTestId('lab-compare-plain');
 const notice = (assistant) => assistant.host.getByTestId('personalization-notice');
 
+async function dragPanelTo(assistant, page, targetWidth) {
+  const handle = assistant.host.locator('.resize-w');
+  const hb = await handle.boundingBox();
+  const start = (await assistant.panel.boundingBox()).width;
+  const x = hb.x + hb.width / 2;
+  const y = hb.y + hb.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - (targetWidth - start), y, { steps: 8 });
+  await page.mouse.up();
+}
+
 function watchStreams(page) {
   const streams = [];
   page.on('request', (r) => {
@@ -152,7 +164,7 @@ test.describe('a past chat', () => {
 });
 
 test.describe('two answers', () => {
-  test('appear side by side only when the state says lab on and show-plain on', async ({ page, context }) => {
+  test('appear only when the state says lab on and show-plain on, each from its own stream', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
     const streams = watchStreams(page);
     await assistant.send('What is a mitzvah?');
@@ -160,10 +172,6 @@ test.describe('two answers', () => {
     const personalized = assistant.host.getByTestId('lab-compare-personalized');
     await expect(personalized).toContainText('Answer 1.');
     await expect(plainColumn(assistant)).toContainText('Plain answer.');
-    const a = await personalized.boundingBox();
-    const b = await plainColumn(assistant).boundingBox();
-    expect(Math.abs(a.y - b.y)).toBeLessThan(4);
-    expect(b.x).toBeGreaterThan(a.x);
 
     expect(streams).toHaveLength(2);
     const off = streams.find((r) => r.context.personalizationMode === 'off');
@@ -172,6 +180,43 @@ test.describe('two answers', () => {
     const normal = streams.find((r) => r.context.personalizationMode !== 'off');
     expect(normal.context.personalizationMode).toBeUndefined();
     expect(off.sessionId).not.toBe(normal.sessionId);
+  });
+
+  test('stack at the default panel width: Plain, still loading, sits under Personalized at full width', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, plainDelayMs: 3000 });
+    await assistant.send('What is a mitzvah?');
+
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized).toContainText('Answer 1.');
+    await expect(plainColumn(assistant)).toContainText('Loading…');
+    const panel = await assistant.panel.boundingBox();
+    const a = await personalized.boundingBox();
+    const b = await plainColumn(assistant).boundingBox();
+    expect(panel.width).toBeLessThan(400); // the panel is not widened for the two answers
+    expect(a.width).toBeGreaterThan(panel.width * 0.8);
+    expect(b.width).toBeGreaterThan(panel.width * 0.8);
+    expect(Math.abs(a.x - b.x)).toBeLessThan(4);
+    expect(b.y).toBeGreaterThanOrEqual(a.y + a.height);
+
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+  });
+
+  test('sit side by side once the panel is wide enough for two columns', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
+    await dragPanelTo(assistant, page, 900);
+    await assistant.send('What is a mitzvah?');
+
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized).toContainText('Answer 1.');
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    const a = await personalized.boundingBox();
+    const b = await plainColumn(assistant).boundingBox();
+    expect(Math.abs(a.y - b.y)).toBeLessThan(4);
+    expect(b.x).toBeGreaterThan(a.x + a.width);
+    expect(a.width).toBeGreaterThan(300);
+    expect(b.width).toBeGreaterThan(300);
   });
 
   test('there is no Compare checkbox any more', async ({ page, context }) => {
@@ -345,5 +390,32 @@ test.describe('profile used', () => {
     const assistant = await signedIn(page, context, { labEnabled: true });
     await assistant.ask('What is a mitzvah?');
     await expect(line(assistant)).toHaveCount(0);
+  });
+});
+
+test.describe('start-closed', () => {
+  test('a host page that asks for room gets the assistant closed, without losing its saved open state', async ({ page, context }) => {
+    await mockChatServer(context, {});
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    await assistant.open(); // saved as open
+
+    await page.goto(`/?user-id=${encodeURIComponent(await assistant.host.getAttribute('user-id'))}&start-closed=true`);
+    await expect(assistant.trigger).toBeVisible();
+    await expect(assistant.panel).toBeHidden();
+
+    await assistant.logIn(); // a page without the attribute opens as saved
+    await expect(assistant.panel).toBeVisible();
+  });
+
+  test('the pill still opens the assistant on a start-closed page', async ({ page, context }) => {
+    await mockChatServer(context, {});
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    const userId = await assistant.host.getAttribute('user-id');
+    await page.goto(`/?user-id=${encodeURIComponent(userId)}&start-closed=true`);
+    await expect(assistant.panel).toBeHidden();
+    await assistant.trigger.click();
+    await expect(assistant.panel).toBeVisible();
   });
 });

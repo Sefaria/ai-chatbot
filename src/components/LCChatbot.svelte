@@ -67,12 +67,16 @@
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
-    'interface-lang': interfaceLang = 'en'
+    'interface-lang': interfaceLang = 'en',
+    // The host page needs its own space (Sefaria's Settings page): start closed, whatever the saved
+    // state says, without changing it. The pill still opens the assistant.
+    'start-closed': startClosedAttr = false
   } = $props();
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
+  let startClosed = $derived(!!startClosedAttr && startClosedAttr !== 'false');
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
@@ -248,18 +252,6 @@
   let comparePlain = $state({});
   // One plain-arm session per main chat, so follow-up questions share context. Memory only.
   const plainSessionIds = {};
-  let widthBeforeCompare = null;
-
-  // Two columns need room: widen the panel while the plain response is shown, then put it back.
-  function setCompare(on) {
-    if (on) {
-      widthBeforeCompare = panelWidth;
-      panelWidth = Math.max(panelWidth, Math.min(maxCanvasWidth, COMPARE_WIDTH));
-    } else if (widthBeforeCompare !== null) {
-      panelWidth = widthBeforeCompare;
-      widthBeforeCompare = null;
-    }
-  }
 
   $effect(() => {
     const base = apiBaseUrl;
@@ -269,7 +261,6 @@
     fetchPersonalizationState(base, user).then((state) => {
       if (!current) return;
       showPlainResponse = state.labEnabled === true && state.testing?.showPlainResponse === true;
-      setCompare(showPlainResponse);
     });
     return () => { current = false; };
   });
@@ -424,8 +415,6 @@
   const MIN_WIDTH = 300;
   const MIN_HEIGHT = 456;
   const VIEWPORT_MARGIN = 32;
-  // Compare view (two columns) widens the panel to this much, or the viewport bound if smaller
-  const COMPARE_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
   // Settles once a just-logged-in user's logged-out chats are claimed (see
@@ -469,7 +458,7 @@
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
-    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
+    isOpen = !untrack(() => isFullscreen) && !untrack(() => startClosed) && (savedUI?.isOpen ?? defaultOpen);
     // Except on its own history entry: Back from a host page opened inside the sheet (e.g.
     // Sefaria's sign-up form) returns to the sheet as the visitor left it, open, and the next
     // Back closes it as usual.
@@ -2967,6 +2956,7 @@
               {/if}
               {#if item.compareKey && comparePlain[item.compareKey]}
                 {@const plain = comparePlain[item.compareKey]}
+                <div class="lab-compare-wrap">
                 <div class="lab-compare" data-testid="lab-compare">
                   <div class="lab-compare-col" data-testid="lab-compare-personalized">
                     <div class="lab-compare-label">Personalized</div>
@@ -2988,6 +2978,7 @@
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               {:else}
                 {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
@@ -5099,10 +5090,22 @@
     text-decoration: underline;
   }
 
+  /* The two answers stack (Personalized, then Plain) and sit side by side only when the panel,
+     not the viewport, has room for two readable columns. */
+  .lab-compare-wrap {
+    container-type: inline-size;
+  }
+
   .lab-compare {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+  }
+
+  @container (min-width: 640px) {
+    .lab-compare {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .lab-compare-col {
