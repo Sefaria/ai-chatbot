@@ -158,3 +158,11 @@ def test_a_response_without_answers_falls_back():
 def test_a_heading_check_response_without_answers_is_uncertain(settings):
     settings.PERSONALIZATION_JEV_GATE = "on"
     assert same_heading("a", "b", _NoAnswersClient()) is None
+
+
+def test_relevance_question_counts_topics_and_commentators_asked_about():
+    # A plain topic or commentator question is evidence of interests (Mickey, 2026-11-16: the Profile
+    # never updated a second time because such prompts scored "not relevant" and were skipped).
+    text = q.RELEVANT.instructions
+    for phrase in ("subjects", "texts", "commentators", "interested in"):
+        assert phrase in text

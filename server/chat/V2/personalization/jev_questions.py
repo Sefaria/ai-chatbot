@@ -33,8 +33,9 @@ NEVER_STORE = (
 RELEVANT_KEY = "relevant"
 RELEVANT = JevQuestion(
     "noul",
-    "Does any of these prompts say something about how this person learns or what they want from "
-    "answers (language, reading level, interests, preferred kind of answer, learning habits)?",
+    "Does any of these prompts show something about this person as a learner: what subjects, "
+    "texts, commentators or questions they are interested in, or how they learn or want answers "
+    "(language, reading level, preferred kind of answer, learning habits)?",
 )
 
 SLOT_QUESTIONS = {
