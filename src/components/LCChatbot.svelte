@@ -252,7 +252,7 @@
   function setCompare(on) {
     if (on) {
       widthBeforeCompare = panelWidth;
-      panelWidth = maxCanvasWidth;
+      panelWidth = Math.max(panelWidth, Math.min(maxCanvasWidth, COMPARE_WIDTH));
     } else if (widthBeforeCompare !== null) {
       panelWidth = widthBeforeCompare;
       widthBeforeCompare = null;
@@ -335,8 +335,13 @@
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
-  let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
-  let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
+  // The window may be as wide as the viewport less a 32px margin; the history panel is inside that bound.
+  let viewportWidth = $state(window.innerWidth);
+  let maxPanelWidth = $derived(Math.max(MIN_WIDTH, viewportWidth - VIEWPORT_MARGIN));
+  let maxCanvasWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH, maxPanelWidth - HISTORY_PANEL_WIDTH) : maxPanelWidth);
+  let visiblePanelWidth = $derived(showHistoryPanel
+    ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH)
+    : Math.min(panelWidth, maxPanelWidth));
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
   // Once the answer is fully on screen, the rest of the turn (link validation,
   // persistence) runs invisibly server-side and isn't something to wait on or
@@ -415,7 +420,9 @@
   // Size constraints
   const MIN_WIDTH = 300;
   const MIN_HEIGHT = 456;
-  const MAX_WIDTH = 640;
+  const VIEWPORT_MARGIN = 32;
+  // Compare view (two columns) widens the panel to this much, or the viewport bound if smaller
+  const COMPARE_WIDTH = 640;
   const MAX_HEIGHT_RATIO = 0.8;
 
   // Settles once a just-logged-in user's logged-out chats are claimed (see
@@ -477,7 +484,7 @@
     const savedSize = getStorage(STORAGE_KEYS.SIZE, null);
     if (savedSize) {
       const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
-      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, MAX_WIDTH));
+      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, maxPanelWidth));
       panelHeight = Math.max(MIN_HEIGHT, Math.min(savedSize.height, maxHeight));
     }
 
@@ -871,6 +878,13 @@
   // Removed by the host (e.g. it shows its own page): the next Back is the host's (sheetHistory.js)
   $effect(() => () => forgetSheetEntry());
 
+  // Keep the width bound in step with the window (a saved wider width is clamped by maxPanelWidth)
+  $effect(() => {
+    const sync = () => { viewportWidth = window.innerWidth; };
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  });
+
   $effect(() => {
     const query = window.matchMedia(FULLSCREEN_QUERY);
     const sync = () => {
@@ -1026,7 +1040,7 @@
 
   function openHistoryPanel() {
     canvasWidthBeforeHistoryPanel = panelWidth;
-    panelWidth = Math.min(panelWidth, MAX_WIDTH - HISTORY_PANEL_WIDTH);
+    panelWidth = Math.min(panelWidth, maxPanelWidth - HISTORY_PANEL_WIDTH);
     showHistoryPanel = true;
     track('assistant_click', { feature_name: 'chat_history_toggle' });
   }
@@ -1034,7 +1048,7 @@
   function closeHistoryPanel(featureName = 'chat_history_minimize') {
     showHistoryPanel = false;
     if (canvasWidthBeforeHistoryPanel != null) {
-      panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, MAX_WIDTH));
+      panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, maxPanelWidth));
       canvasWidthBeforeHistoryPanel = null;
     }
     resetHistorySearchState();
@@ -2153,8 +2167,7 @@
 
       if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
-        const maxWidth = showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH;
-        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
+        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxCanvasWidth));
       }
 
       if (allowVertical) {
@@ -4439,10 +4452,6 @@
   }
   .interface-hebrew .message.assistant .message-content :global(li) {
     margin-bottom: 10px;
-  }
-
-  .message-content {
-    max-width: 560px;
   }
 
   .message.user .message-content {
