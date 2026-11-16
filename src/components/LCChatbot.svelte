@@ -2907,11 +2907,13 @@
               <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
             {/if}
             {#if feedbackProps?.personalizationNotice}
-              <p class="personalization-notice" data-testid="personalization-notice">
-                {$_('assistant.personalization.notice')}
-                <a href="/settings/library-assistant#personalization">{$_('assistant.personalization.configure')}</a>
-                <a href="/settings/library-assistant#about-personalization">{$_('assistant.personalization.learn_more')}</a>
-              </p>
+              <div class="la-personalization-notice">
+                <p class="personalization-notice" data-testid="personalization-notice">
+                  {$_('assistant.personalization.notice')}
+                  <a href="/settings/library-assistant#personalization">{$_('assistant.personalization.configure')}</a>
+                  <a href="/settings/library-assistant#about-personalization">{$_('assistant.personalization.learn_more')}</a>
+                </p>
+              </div>
             {/if}
             {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
               <div class="message-meta">
@@ -5076,10 +5078,19 @@
     color: #1a7f37;
   }
 
-  .personalization-notice {
+  /* The notice's container, as the product owner set it */
+  .la-personalization-notice {
     margin: 6px 0 0;
+    background-color: #f3e8ff;
+    border: 2px solid #4c1d95;
+    color: #2e1065;
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .personalization-notice {
+    margin: 0;
     font-size: var(--lc-font-size-sm);
-    color: var(--lc-text-secondary);
   }
 
   .personalization-notice a {

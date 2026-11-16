@@ -78,6 +78,21 @@ test.describe('notice', () => {
     });
   }
 
+  test('sits in a light purple container with a dark purple border', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+    await assistant.ask('What is a mitzvah?');
+    const container = assistant.host.locator('.la-personalization-notice');
+    await expect(container).toHaveCount(1);
+    await expect(container.getByTestId('personalization-notice')).toBeVisible();
+    await expect(container).toHaveCSS('background-color', 'rgb(243, 232, 255)');
+    await expect(container).toHaveCSS('border-top-color', 'rgb(76, 29, 149)');
+    await expect(container).toHaveCSS('border-top-width', '2px');
+    await expect(container).toHaveCSS('border-top-style', 'solid');
+    await expect(container).toHaveCSS('color', 'rgb(46, 16, 101)');
+    await expect(container).toHaveCSS('padding-top', '16px');
+    await expect(container).toHaveCSS('border-top-left-radius', '8px');
+  });
+
   test('is absent when the final payload does not carry the flag', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true });
     await assistant.ask('What is a mitzvah?');
