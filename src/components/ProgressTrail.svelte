@@ -237,7 +237,7 @@
      which owns truncation (overflow/ellipsis). An inline-block here produced an
      odd dangling underline and a second truncation context. */
   :global(.trail-ref-link) {
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     font-family: var(--lc-font);
     font-size: 12px;
     font-weight: 600;
