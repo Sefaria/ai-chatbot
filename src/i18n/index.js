@@ -36,10 +36,16 @@ export function getThinkingMessageKeys({ hanukkah = false, lang = 'en' } = {}) {
   return numberedKeys('array');
 }
 
-// The last thinking line ("Synthesizing response"), same Hanukkah and Hebrew rules as above.
-export function getFinalThinkingKey({ hanukkah = false, lang = 'en' } = {}) {
-  const key = 'assistant.thinking.hanukkah.final';
-  return hanukkah && (lang !== 'he' || he[key]) ? key : 'assistant.thinking.final';
+// Hanukkah versions of the first ("Thinking") and last ("Synthesizing response")
+// thinking lines, same Hanukkah and Hebrew rules as above.
+const HANUKKAH_LABELS = {
+  'assistant.loading.initial': 'assistant.thinking.hanukkah.initial',
+  'assistant.thinking.final': 'assistant.thinking.hanukkah.final',
+};
+
+export function getThinkingLabelKey(key, { hanukkah = false, lang = 'en' } = {}) {
+  const hanukkahKey = HANUKKAH_LABELS[key];
+  return hanukkah && hanukkahKey && (lang !== 'he' || he[hanukkahKey]) ? hanukkahKey : key;
 }
 
 export { _, locale, getLocaleFromNavigator };
