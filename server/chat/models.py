@@ -295,6 +295,10 @@ class ChatMessage(models.Model):
         blank=True,
         help_text="Prompt-level topic appetizer metadata displayed in chat history",
     )
+    # Personalization shown with this assistant message, so history and recover show it again:
+    # {"notice": true} when the turn showed the notice, "profileUsed": the line when one was kept.
+    # Null when neither.
+    personalization = models.JSONField(null=True, blank=True)
     input_tokens = models.IntegerField(null=True, blank=True)
     output_tokens = models.IntegerField(null=True, blank=True)
     cache_creation_tokens = models.IntegerField(null=True, blank=True)
@@ -311,6 +315,12 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."
+
+    def personalization_shown(self) -> tuple[bool, str | None]:
+        """(the notice was shown, the profile-used line) kept on this message; (False, None)."""
+        record = self.personalization if isinstance(self.personalization, dict) else {}
+        line = record.get("profileUsed")
+        return record.get("notice") is True, line if isinstance(line, str) and line else None
 
     @classmethod
     def generate_message_id(cls):

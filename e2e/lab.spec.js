@@ -85,6 +85,46 @@ test.describe('notice', () => {
   });
 });
 
+test.describe('a past chat', () => {
+  const LINE = 'From your profile, I took your preference for short answers into account.';
+  const options = { labEnabled: true, noticeOnAnswers: [1], profileUsed: LINE };
+
+  async function expectNoticeAndLine(assistant) {
+    await expect(assistant.answers).toHaveCount(1);
+    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
+    await expect(assistant.host.getByTestId('profile-used')).toHaveText(LINE);
+    await expect(assistant.host.getByTestId('profile-used')).toHaveCSS('color', 'rgb(26, 127, 55)');
+  }
+
+  test('opened from chat history keeps the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, options);
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+
+    await assistant.logIn(); // a reload: nothing is kept in memory
+    await assistant.open();
+    await assistant.startNewChat();
+    await assistant.openHistory();
+    await expect(assistant.historyConversations).toHaveCount(1);
+    await assistant.historyConversations.first().click();
+    await expectNoticeAndLine(assistant);
+  });
+
+  test('reloaded from the server keeps the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, options);
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+
+    // Only the server's copy is left: the widget loads the open chat's messages from history.
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (/messages/.test(key)) localStorage.removeItem(key);
+    });
+    await assistant.logIn();
+    await assistant.open();
+    await expectNoticeAndLine(assistant);
+  });
+});
+
 test.describe('two answers', () => {
   test('appear side by side only when the state says lab on and show-plain on', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });

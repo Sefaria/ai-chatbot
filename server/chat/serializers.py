@@ -167,6 +167,17 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
     def get_responseMessageId(self, obj):
         return obj.response_message.message_id if obj.response_message else None
 
+    def to_representation(self, instance):
+        # The personalization notice and the profile-used line an answer was shown with, under the
+        # same keys as the live answer's payload, each only when the answer had it.
+        data = super().to_representation(instance)
+        notice, line = instance.personalization_shown()
+        if notice:
+            data["personalizationNotice"] = True
+        if line:
+            data["profileUsed"] = line
+        return data
+
 
 class HistoryResponseSerializer(serializers.Serializer):
     """Response format for history endpoint."""

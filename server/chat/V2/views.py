@@ -259,6 +259,17 @@ def _build_response_payload(
     return payload
 
 
+def _personalization_record(*, notice: bool, profile_used: str | None) -> dict | None:
+    """What the assistant message keeps of the turn's personalization, so history and recover show
+    it again: the notice flag and the profile-used line, each only when the turn had it."""
+    record = {}
+    if notice:
+        record["notice"] = True
+    if profile_used:
+        record["profileUsed"] = profile_used
+    return record or None
+
+
 def _anon_payload_fields(actor) -> dict:
     """For a logged-out visitor under a limit: how many free answers are left. At the
     limit, also how many questions they sent (for analytics; only then, so other
@@ -915,6 +926,9 @@ def chat_stream_v2(request):
                     agent_response=agent_response,
                     latency_ms=latency_ms,
                     model_name=agent_response.model or "unknown",
+                    personalization=_personalization_record(
+                        notice=personalization.notice, profile_used=agent_response.profile_used
+                    ),
                 )
                 response_message = logging_result.response_message
                 if free_answer and response_message.status == ChatMessage.Status.SUCCESS:
@@ -1178,6 +1192,7 @@ def chat_recover_v2(request):
         if user_message.turn_id
         else []
     )
+    stored_notice, stored_line = response_message.personalization_shown()
     payload = _build_response_payload(
         response_message=response_message,
         session_id=user_message.session_id,
@@ -1185,9 +1200,12 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
         narration_messages=narration_messages,
-        personalization_notice=personalization_runtime.notice_for_message(
+        # An answer saved before the message kept it: the settings row still knows the notice turn.
+        personalization_notice=stored_notice
+        or personalization_runtime.notice_for_message(
             user_message.user_id, user_message.message_id
         ),
+        profile_used=stored_line,
     )
     payload.update(_anon_payload_fields(actor))
     recovery_status = (

@@ -25,6 +25,8 @@
  *   given error status. A chat request with context.personalizationMode "off" gets the answer
  *   `Plain answer.` and is not kept. Answers whose number is in `noticeOnAnswers` carry
  *   `personalizationNotice: true` in the final payload, for signed-in visitors only, like the server.
+ * - Like the server, the session keeps `personalizationNotice` and `profileUsed` on the answer, so
+ *   the history (`/history`, `/history/conversations/:id`) returns them for a past chat.
  * - `profileUsed` (a line of text): signed-in answers stream like the model writes them, the answer
  *   then `<profile_` / `used>LINE</profile_used>` in two partial events (a tag split across two
  *   deltas), and the final payload carries `profileUsed: LINE` with the tag stripped from `markdown`.
@@ -137,9 +139,10 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (body.userId && personalization?.noticeOnAnswers?.includes(n)) {
       message.personalizationNotice = true;
     }
+    const saved = { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' };
     session.messages.push(
       { messageId: body.messageId, sessionId: body.sessionId, role: 'user', content: body.text, timestamp, status: 'success' },
-      { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' },
+      saved,
     );
     if (remaining !== undefined) {
       message.anonResponsesRemaining = remaining;
@@ -162,6 +165,8 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
         sseEvent('progress', { type: 'content_done', text: null });
       if (!forgotten) message.profileUsed = line;
     }
+    if (message.personalizationNotice) saved.personalizationNotice = true;
+    if (message.profileUsed) saved.profileUsed = message.profileUsed;
 
     return route.fulfill({
       status: 200,

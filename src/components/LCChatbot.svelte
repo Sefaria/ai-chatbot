@@ -1245,6 +1245,9 @@
       traceId: null,
       toolCalls: item.toolCalls || null,
       appetizerData: item.appetizerData || null,
+      // Shown with the answer when it was given; the server keeps both on the answer.
+      personalizationNotice: item.personalizationNotice === true,
+      profileUsed: typeof item.profileUsed === 'string' ? item.profileUsed : null,
       locationRef: item.locationRef || (item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null),
       noEntryAnimation: true
     }))));

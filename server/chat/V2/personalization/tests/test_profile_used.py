@@ -488,6 +488,103 @@ def test_profile_used_reaches_the_payload_and_the_flag_reaches_the_agent(lab_on)
     ]
 
 
+# -- stored with the assistant message, returned with history and recover -----------------------
+
+
+def _turn(session, message, *, notice, line):
+    from chat.V2.agent import AgentResponse
+
+    from .test_triggers import USER, send
+
+    if notice:
+        store.PersonalizationSettings.objects.filter(user_id=USER).update(notice_pending=True)
+    with _make_queued() as (agent, _):
+        agent.send_message = AsyncMock(
+            return_value=AgentResponse(
+                content="An answer.", tool_calls=[], latency_ms=10, trace_id="t", profile_used=line
+            )
+        )
+        send(session, message)
+    return ChatMessage_assistant(session)
+
+
+def _get(path, **params):
+    from django.test import override_settings
+    from rest_framework.test import APIClient
+
+    from chat.tests.test_streaming_integration import create_test_token
+
+    from .test_triggers import SECRET, USER
+
+    params["userId"] = create_test_token(USER, SECRET)
+    with override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET):
+        response = APIClient().get(path, params)
+    assert response.status_code == 200
+    return response.json()
+
+
+def _recover(session, message):
+    from django.test import override_settings
+    from rest_framework.test import APIClient
+
+    from chat.tests.test_streaming_integration import create_test_token
+
+    from .test_triggers import SECRET, USER
+
+    body = {"userId": create_test_token(USER, SECRET), "sessionId": session, "messageId": message}
+    with override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET):
+        response = APIClient().post("/api/v2/chat/recover", body, format="json")
+    assert response.status_code == 200 and response.json()["status"] == "complete"
+    return response.json()["message"]
+
+
+def _history_answer(session):
+    by_session = _get("/api/history", sessionId=session)["messages"]
+    by_detail = _get(f"/api/history/conversations/{session}")["messages"]
+    answers = [
+        [m for m in messages if m["role"] == "assistant"] for messages in (by_session, by_detail)
+    ]
+    assert len(answers[0]) == 1 and answers[0] == answers[1]
+    return answers[0][0]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "notice, line, stored",
+    [
+        (True, LINE, {"notice": True, "profileUsed": LINE}),
+        (True, None, {"notice": True}),
+        (False, LINE, {"profileUsed": LINE}),
+    ],
+)
+def test_the_notice_and_the_line_are_stored_and_come_back_with_history_and_recover(
+    lab_on,  # noqa: F811
+    notice,
+    line,
+    stored,
+):
+    lab_on.setenv("PERSONALIZATION_LAB_SEED", "true")
+    seed("user_123")
+    saved = _turn("sess-keep", "m-keep", notice=notice, line=line)
+    assert saved.personalization == stored
+    for message in (_history_answer("sess-keep"), _recover("sess-keep", "m-keep")):
+        assert message.get("personalizationNotice", False) is notice
+        assert message.get("profileUsed") == line
+
+
+@pytest.mark.django_db
+def test_a_turn_without_the_notice_or_a_line_stores_nothing(lab_on):  # noqa: F811
+    lab_on.setenv("PERSONALIZATION_LAB_SEED", "true")
+    seed("user_123")
+    saved = _turn("sess-none", "m-none", notice=False, line=None)
+    assert saved.personalization is None
+    for message in (_history_answer("sess-none"), _recover("sess-none", "m-none")):
+        assert "personalizationNotice" not in message and "profileUsed" not in message
+    # the user's own message never carries them
+    user_message = _get("/api/history", sessionId="sess-none")["messages"][0]
+    assert user_message["role"] == "user" and "profileUsed" not in user_message
+
+
 def ChatMessage_assistant(session):
     from chat.models import ChatMessage
 
