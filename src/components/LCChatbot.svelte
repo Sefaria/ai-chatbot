@@ -2,7 +2,7 @@
 
 <script>
   import { waitForTurn } from '../lib/turnOutcome.js';
-  import { hideProfileUsed } from '../lib/profileUsed.js';
+  import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
@@ -2887,7 +2887,7 @@
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
-            {#if feedbackProps?.profileUsed}
+            {#if isProfileUsedLine(feedbackProps?.profileUsed)}
               <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
             {/if}
             {#if feedbackProps?.personalizationNotice}
@@ -4468,6 +4468,8 @@
   }
 
   .message.user .message-content {
+    /* Answers fill the window's width; the user's own bubble keeps the Figma 560px cap. */
+    max-width: 560px;
     padding: 12px 16px;
     font-size: var(--lc-font-size);
     word-wrap: break-word;

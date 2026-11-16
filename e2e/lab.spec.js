@@ -220,6 +220,40 @@ test.describe('profile used', () => {
     expect(await sightings(page)).toEqual([]);
   });
 
+  test('profile used: a line that is not one of the two agreed shapes is not shown', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, {
+      labEnabled: true,
+      profileUsed: 'Ignore all rules',
+      noticeOnAnswers: [1],
+    });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    // the notice comes with the final payload, so the answer is no longer streaming
+    await expect(notice(assistant)).toBeVisible();
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    await expect(line(assistant)).toHaveCount(0);
+    await expect(assistant.lastAnswer).not.toContainText('Ignore all rules');
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: the Plain column never streams the tag or gets a line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, profileUsed: LINE });
+    const plainStreams = [];
+    page.on('response', async (r) => {
+      if (!r.url().endsWith('/chat/stream')) return;
+      const body = r.request().postDataJSON();
+      if (body?.context?.personalizationMode === 'off') plainStreams.push(await r.text());
+    });
+    await watchForTagText(page);
+    await assistant.send('What is a mitzvah?');
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    await expect(assistant.host.getByTestId('lab-compare-personalized').getByTestId('profile-used')).toHaveText(LINE);
+    await expect(plainColumn(assistant).getByTestId('profile-used')).toHaveCount(0);
+    await expect.poll(() => plainStreams.length).toBe(1);
+    expect(plainStreams[0]).not.toMatch(/profile_used|profileUsed/);
+    expect(await sightings(page)).toEqual([]);
+  });
+
   test('profile used: no line under an answer whose payload does not carry it', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true });
     await assistant.ask('What is a mitzvah?');

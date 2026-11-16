@@ -148,7 +148,8 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     }
 
     let streamed = '';
-    if (body.userId && personalization?.profileUsed) {
+    // Like the server: the plain arm (mode 'off') is never asked for the line (it returns above).
+    if (body.userId && body.context?.personalizationMode !== 'off' && personalization?.profileUsed) {
       const line = personalization.profileUsed;
       const forgotten = personalization.profileUsedForgotten === true;
       const deltas = forgotten

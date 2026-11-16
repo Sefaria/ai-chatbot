@@ -642,6 +642,26 @@ def test_get_state_lists_recent_runs_without_text(client, lab):
     assert call(client, "get").json()["testing"]["recentRuns"][0]["reason"] is None
 
 
+def test_recent_runs_reads_only_the_five_fields_it_returns(client, lab):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    _run_row(1)
+    table = ProfileWriterRun._meta.db_table
+    with CaptureQueriesContext(connection) as queries:
+        call(client, "get")
+    # the recentRuns query (newest first by started_at); the parked check reads runs separately
+    run_selects = [
+        q["sql"]
+        for q in queries
+        if f'FROM "{table}"' in q["sql"] and f'"{table}"."started_at" DESC' in q["sql"]
+    ]
+    assert len(run_selects) == 1
+    for sql in run_selects:
+        for private in ("extraction", "profile_before", "profile_after"):
+            assert f'"{table}"."{private}"' not in sql
+
+
 def test_recent_runs_absent_without_lab(client):
     _run_row(1)
     testing = call(client, "get").json()["testing"]

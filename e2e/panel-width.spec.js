@@ -76,6 +76,14 @@ test.describe('widget resizes past 640px', () => {
     expect(await width(assistant)).toBeLessThanOrEqual(578);
   });
 
+  test('resizes past 640: a long question bubble still stops at 560px', async ({ page, context }) => {
+    const assistant = await opened(page, context, { width: 1600, height: 900 });
+    await dragWestHandleTo(assistant, page, 1300);
+    await assistant.ask('What does the commentary say about this verse '.repeat(8).trim());
+    const bubble = assistant.userMessages.last().locator('.message-content');
+    expect((await bubble.boundingBox()).width).toBeLessThanOrEqual(560);
+  });
+
   test('resizes past 640 does not apply on a phone: the widget is full screen', async ({ page, context }) => {
     const assistant = await opened(page, context, { width: 400, height: 800 });
     const box = await assistant.panel.boundingBox();

@@ -81,9 +81,11 @@ def _lab_diagnostics(user_id: str, processed_through) -> dict:
 
     now = timezone.now()
     hour = now.replace(minute=0, second=0, microsecond=0)
-    runs = ProfileWriterRun.objects.filter(user_id=user_id).order_by("-started_at", "-id")[
-        :RECENT_RUNS
-    ]
+    runs = (
+        ProfileWriterRun.objects.filter(user_id=user_id)
+        .order_by("-started_at", "-id")
+        .only("started_at", "trigger", "window", "status", "reason")[:RECENT_RUNS]
+    )
     used = (
         LabQuota.objects.filter(scope="job", key=user_id, window_start=hour)
         .values_list("count", flat=True)

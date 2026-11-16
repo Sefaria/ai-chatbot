@@ -1,47 +1,50 @@
-"""The "From your profile, I took ... into account" line. The answering model writes it inside a
-`<profile_used>` tag; the orchestrator splits it off so the tag never reaches storage or the user."""
+"""The "From your profile, I took ... into account" line. The answering model ends its answer with
+the line inside a `<profile_used>` tag; the orchestrator takes the tag off the end.
+
+Only a tag at the very end of the text is taken off, so the remaining text is always a prefix of
+what the model wrote: nothing is cut out of the middle, and no text can join into new markup. A tag
+anywhere else, or an unclosed one, stays as ordinary model output (the widget sanitizes it)."""
 
 from __future__ import annotations
 
 import re
 
-TAG_OPEN = "<profile_used>"
-TAG_CLOSE = "</profile_used>"
-MAX_LENGTH = 300
-LINE_OPENINGS = ("From your profile", "Nothing from your profile")
+NOTHING_LINE = "Nothing from your profile changed this answer."
 
-_CLOSED = re.compile(r"<profile_used>(.*?)</profile_used>", re.DOTALL)
-_STRAY_CLOSE = re.compile(r"</profile_used>")
-_MARKUP = re.compile(r"<[^<>]*>")
+_OPEN = r"<\s*profile_used\s*>"
+_CLOSE = r"<\s*/\s*profile_used\s*>"
+# The last tag that ends the text: its inner text holds no other opening or closing tag.
+_TRAILING = re.compile(
+    rf"{_OPEN}((?:(?!{_OPEN}|{_CLOSE}).)*){_CLOSE}\s*\Z", re.IGNORECASE | re.DOTALL
+)
+_ANY_TAG = re.compile(rf"{_OPEN}|{_CLOSE}", re.IGNORECASE)
+_FROM_LINE = re.compile(r"From your profile, I took [^\r\n<>]{1,250} into account\.")
 
 
-def _valid_line(inner: str) -> str | None:
+def valid_line(inner: str) -> str | None:
+    """The line when it is one of the two agreed shapes, else None."""
     line = inner.strip()
-    if not line.startswith(LINE_OPENINGS) or "<" in line or ">" in line:
-        return None
-    return line[:MAX_LENGTH]
+    if line == NOTHING_LINE or _FROM_LINE.fullmatch(line):
+        return line
+    return None
 
 
 def split_profile_used(text: str) -> tuple[str, str | None]:
-    """Remove every `<profile_used>...</profile_used>`, any unclosed `<profile_used>` through the
-    end, and any stray closing tag. Each removed span leaves one space, so the text on either
-    side never joins into new markup. Returns (clean text, the last closed tag's line when it
-    starts with "From your profile" or "Nothing from your profile", has no angle brackets and
-    is at most 300 characters; otherwise None)."""
+    """Take every `<profile_used>...</profile_used>` off the end of the text (case-insensitive,
+    spaces allowed inside the tags) and return (the text before them, rstripped; the line of the
+    last of them whose inner text is one of the two agreed shapes, or None). A text that does not
+    end with a closed tag is returned unchanged."""
+    body = text
     line = None
-    for match in _CLOSED.finditer(text):
-        if match.group(1).strip():
-            line = _valid_line(match.group(1))
-    clean = _CLOSED.sub(" ", text)
-    cut = clean.find(TAG_OPEN)
-    if cut != -1:
-        clean = clean[:cut] + " "
-    clean = _STRAY_CLOSE.sub(" ", clean)
-    return clean.strip(), line
+    while (match := _TRAILING.search(body)) is not None:
+        if line is None:
+            line = valid_line(match.group(1))
+        body = body[: match.start()].rstrip()
+    if body == text:
+        return text, None
+    return body, line
 
 
-def wrapped_answer(text: str) -> str:
-    """The text of an answer the model wrapped entirely in the tag: the tags and any other markup
-    and every angle bracket removed, so it can be shown as the answer."""
-    stripped = _MARKUP.sub("", text)
-    return stripped.replace("<", "").replace(">", "").strip()
+def only_tags(text: str) -> bool:
+    """True when the text holds nothing but `<profile_used>` tags and whitespace."""
+    return not _ANY_TAG.sub("", text).strip()

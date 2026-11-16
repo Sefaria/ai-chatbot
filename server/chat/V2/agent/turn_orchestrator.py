@@ -9,7 +9,7 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
-from ..personalization.profile_used import split_profile_used, wrapped_answer
+from ..personalization.profile_used import only_tags, split_profile_used
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     SECTION_SEPARATOR,
@@ -237,9 +237,9 @@ class TurnOrchestrator:
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
-        # The model's `<profile_used>` line is kept from the first draft; the tag itself never
-        # reaches link repair, the trace, the saved message or the payload.
-        # Only a turn that asked for the line is split; otherwise the text stays as written.
+        # The model's `<profile_used>` line is kept from the first draft. Only a tag that ends the
+        # draft is taken off (before link repair, the trace, the saved message and the payload);
+        # anything else stays as written. Only a turn that asked for the line is split.
         ask_profile_used = bool(context.ask_profile_used)
 
         def split_draft(text: str) -> tuple[str, str | None]:
@@ -248,8 +248,9 @@ class TurnOrchestrator:
                 return text, None
             body, line = split_profile_used(text)
             if not body:
-                # The model wrapped the whole answer in the tag: keep it, never the fallback.
-                return wrapped_answer(text), None
+                # The model wrapped the whole answer in the tag: keep it as written (never the
+                # fallback), unless there is nothing but empty tags.
+                return ("" if only_tags(text) else text), None
             return body, line
 
         output, profile_used = split_draft(sdk_result.final_text)
@@ -294,6 +295,9 @@ class TurnOrchestrator:
 
         if not validation_result.is_valid:
             output = ERROR_FALLBACK_MESSAGE
+        if output == ERROR_FALLBACK_MESSAGE:
+            # No line under the error message.
+            profile_used = None
 
         latency_ms = int((time.time() - start_time) * 1000)
         trace_id = sdk_result.trace_id or bt_span.id

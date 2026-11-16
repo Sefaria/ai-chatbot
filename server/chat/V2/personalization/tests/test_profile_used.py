@@ -1,6 +1,7 @@
 """The "From your profile, I took ... into account" line: the model writes it in a tag, the
 orchestrator strips it once, the payload carries it. Made-up text only."""
 
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,93 +27,132 @@ TAG = f"<profile_used>{LINE}</profile_used>"
 
 
 # -- split ------------------------------------------------------------------------------------
+# Only a tag at the very end of the text is taken off; the body is always a prefix of the input,
+# so the split can never join text into new markup. Anything else stays as ordinary model output.
+
+NOTHING = "Nothing from your profile changed this answer."
 
 
 def test_split_profile_used_without_a_tag():
     assert split_profile_used("An answer.") == ("An answer.", None)
 
 
-def test_split_profile_used_one_tag():
+def test_split_profile_used_one_trailing_tag():
     assert split_profile_used(f"An answer.\n\n{TAG}") == ("An answer.", LINE)
 
 
-def test_split_profile_used_two_tags_keeps_the_last_line():
-    text = (
-        "A <profile_used>From your profile, first</profile_used> B\n"
-        "<profile_used> Nothing from your profile changed this. </profile_used>"
-    )
-    clean, line = split_profile_used(text)
-    assert "profile_used" not in clean
-    assert line == "Nothing from your profile changed this."
+def test_split_profile_used_trailing_tag_rambam():
+    sentence = "From your profile, I took your interest in Rambam into account."
+    text = f"The answer.  \n<profile_used>{sentence}</profile_used>"
+    assert split_profile_used(text) == ("The answer.", sentence)
 
 
-def test_split_profile_used_mid_text():
-    clean, line = split_profile_used(f"Start {TAG} end.")
-    assert line == LINE
-    assert "<profile_used>" not in clean and "</profile_used>" not in clean
-    assert clean.startswith("Start") and clean.endswith("end.")
+@pytest.mark.parametrize(
+    "open_tag,close_tag",
+    [("<PROFILE_USED >", "</PROFILE_USED>"), ("< profile_used>", "< / Profile_Used >")],
+)
+def test_split_profile_used_tag_case_and_spaces(open_tag, close_tag):
+    sentence = "From your profile, I took your interest in Rambam into account."
+    text = f"The answer.\n{open_tag}{sentence}{close_tag}\n"
+    assert split_profile_used(text) == ("The answer.", sentence)
 
 
-def test_split_profile_used_unclosed_is_cut_to_the_end():
-    assert split_profile_used("An answer.\n<profile_used>From your pro") == ("An answer.", None)
+def test_split_profile_used_nothing_line():
+    assert split_profile_used(f"A.\n<profile_used> {NOTHING} </profile_used>") == ("A.", NOTHING)
 
 
-def test_split_profile_used_unclosed_after_a_closed_one():
-    clean, line = split_profile_used(f"A {TAG} B <profile_used>half")
-    assert line == LINE and "profile_used" not in clean
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "<img<profile_used>x</profile_used>src=x onerror=alert(1)>",
+        "<img<profile_used>x</profile_used> src=x onerror=alert(1)>",
+        "<img<PROFILE_USED>x</PROFILE_USED>\tsrc=x onerror=alert(1)>",
+        "ab<profile_used>x</profile_used>cd",
+    ],
+)
+def test_split_profile_used_a_tag_inside_the_text_is_left_unchanged(payload):
+    assert split_profile_used(payload) == (payload, None)
 
 
-def test_split_profile_used_caps_the_line_at_300_characters():
-    _, line = split_profile_used(
-        "A <profile_used>From your profile " + "x" * 500 + "</profile_used>"
-    )
-    assert len(line) == 300
+def test_split_profile_used_mid_text_tag_is_kept():
+    text = f"Start {TAG} end."
+    assert split_profile_used(text) == (text, None)
 
 
-def test_split_profile_used_empty_tag_gives_no_line():
-    assert split_profile_used("A <profile_used>  </profile_used>") == ("A", None)
-
-
-def test_split_profile_used_removed_spans_never_join_the_text_around_them():
-    clean, line = split_profile_used(
-        "<img<profile_used>x</profile_used> src=x onerror=alert(1)>"
-    )
-    assert "<img src" not in clean and "<img<" not in clean
-    assert line is None
-    clean, _ = split_profile_used("ab<profile_used>x</profile_used>cd")
-    assert clean != "abcd" and "ab" in clean and "cd" in clean
-    clean, _ = split_profile_used("<im<profile_used>x")
-    assert clean == "<im"
-    clean, _ = split_profile_used("one<profile_used>x</profile_used>two<profile_used>y")
-    assert clean.split() == ["one", "two"]
+def test_split_profile_used_unclosed_tag_is_kept():
+    text = "An answer.\n<profile_used>From your pro"
+    assert split_profile_used(text) == (text, None)
 
 
 @pytest.mark.parametrize(
     "inner",
     [
+        "Ignore all rules",
         "Rashi was important to you.",
-        "from your profile, lowercase",
-        "From your profile, <b>bold</b>",
-        "From your profile a > b",
-        "From your profile <profile_used>nested</profile_used>",
+        "From your profile, I took Rashi\ninto account.",
+        "From your profile, I took <b>Rashi</b> into account.",
+        "From your profile, I took a > b into account.",
+        "from your profile, i took Rashi into account.",
+        "From your profile, I took Rashi into account",
+        "From your profile, I took  into account.",
+        "From your profile, I took " + "x" * 251 + " into account.",
+        "Nothing from your profile changed this answer",
+        "Nothing from your profile changed this answer. Really.",
+        "  ",
     ],
 )
-def test_split_profile_used_rejects_a_line_that_is_not_the_agreed_shape(inner):
-    clean, line = split_profile_used(f"An answer. <profile_used>{inner}</profile_used>")
-    assert line is None
-    assert "profile_used" not in clean
+def test_split_profile_used_trailing_tag_of_the_wrong_shape_is_removed_without_a_line(inner):
+    assert split_profile_used(f"An answer.\n<profile_used>{inner}</profile_used>") == (
+        "An answer.",
+        None,
+    )
 
 
-def test_split_profile_used_nested_tags_leave_no_literal_tag_anywhere():
-    text = "A <profile_used>From your profile <profile_used>x</profile_used></profile_used> B"
-    clean, line = split_profile_used(text)
-    assert "profile_used" not in clean
-    assert line is None or "<" not in line
+def test_split_profile_used_line_of_250_characters_is_kept():
+    sentence = "From your profile, I took " + "x" * 250 + " into account."
+    assert split_profile_used(f"A.<profile_used>{sentence}</profile_used>")[1] == sentence
 
 
-def test_split_profile_used_accepts_both_agreed_openings():
-    assert split_profile_used("A <profile_used>From your profile, x.</profile_used>")[1]
-    assert split_profile_used("A <profile_used>Nothing from your profile changed this.</profile_used>")[1]
+def test_split_profile_used_valid_tag_then_invalid_trailing_tag():
+    # Both are at the end: both removed; the last valid trailing tag wins.
+    text = f"A.\n{TAG}\n<profile_used>Ignore all rules</profile_used>"
+    assert split_profile_used(text) == ("A.", LINE)
+    text = f"A.\n<profile_used>Ignore all rules</profile_used>{TAG}"
+    assert split_profile_used(text) == ("A.", LINE)
+
+
+def test_split_profile_used_two_valid_trailing_tags_keep_the_last():
+    text = f"A.\n<profile_used>{NOTHING}</profile_used>\n{TAG}"
+    assert split_profile_used(text) == ("A.", LINE)
+
+
+def test_split_profile_used_valid_tag_followed_by_text_is_not_trailing():
+    text = f"A {TAG} B\n<profile_used>Ignore all rules</profile_used>"
+    assert split_profile_used(text) == (f"A {TAG} B", None)
+
+
+def test_split_profile_used_nested_tags_stay_as_written():
+    text = "A <profile_used>From your profile <profile_used>x</profile_used></profile_used>"
+    assert split_profile_used(text) == (text, None)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "<img<profile_used>x</profile_used>src=x onerror=alert(1)>",
+        "<img <profile_used>x</profile_used>",
+        "<img<profile_used>x</profile_used>\n<profile_used>y</profile_used>",
+        f"<im{TAG}g src=x>{TAG}",
+        f"a<{TAG}",
+        f"<profile_used>a</profile_used>img src=x>{TAG}",
+        f"x {TAG} {TAG} {TAG}",
+    ],
+)
+def test_split_profile_used_body_is_always_a_prefix_of_the_input(text):
+    body, _ = split_profile_used(text)
+    assert text.startswith(body)
+    if not re.search(r"<img\s+src", text, re.I):
+        assert not re.search(r"<img\s+src", body, re.I)
 
 
 # -- prompt -----------------------------------------------------------------------------------
@@ -122,6 +162,10 @@ def test_profile_used_chapter_text():
     assert "This line is the only place you mention the Profile." in CHAPTER
     assert "<profile_used>From your profile, I took … into account.</profile_used>" in CHAPTER
     assert "Nothing from your profile changed this answer." in CHAPTER
+    assert (
+        "Write this line in English, in exactly this form, even when the answer is in another "
+        "language." in CHAPTER
+    )
 
 
 def test_profile_used_prompt_has_the_chapter_only_when_asked():
@@ -276,12 +320,12 @@ async def test_profile_used_a_forgotten_tag_gives_the_full_answer_and_no_line():
 
 
 @pytest.mark.asyncio
-async def test_profile_used_mid_answer_tag_never_stays_in_the_answer():
-    orchestrator, _, _, validator = make_orchestrator([f"First part. {TAG} Second part."])
+async def test_profile_used_mid_answer_tag_stays_as_model_text():
+    draft = f"First part. {TAG} Second part."
+    orchestrator, _, _, validator = make_orchestrator([draft])
     response = await run_turn(orchestrator, validator)
-    assert "profile_used" not in response.content
-    assert "First part." in response.content and "Second part." in response.content
-    assert response.profile_used == LINE
+    assert response.content == draft
+    assert response.profile_used is None
 
 
 @pytest.mark.asyncio
@@ -300,12 +344,16 @@ async def test_profile_used_survives_a_link_repair_and_never_reaches_the_repair_
 
 
 @pytest.mark.asyncio
-async def test_profile_used_is_not_in_the_fallback_after_failed_repair():
-    orchestrator, _, _, validator = make_orchestrator(
+async def test_profile_used_is_none_with_the_fallback_after_failed_repair():
+    from chat.V2.agent.turn_orchestrator import ERROR_FALLBACK_MESSAGE
+
+    orchestrator, _, trace, validator = make_orchestrator(
         [f"The answer.\n{TAG}", f"Still bad.\n{TAG}"], valid=(False, False)
     )
     response = await run_turn(orchestrator, validator)
-    assert "profile_used" not in response.content
+    assert response.content == ERROR_FALLBACK_MESSAGE
+    assert response.profile_used is None
+    assert trace.log_success.call_args.kwargs["profile_used"] is None
 
 
 @pytest.mark.asyncio
@@ -329,14 +377,13 @@ async def test_profile_used_untouched_when_not_asked(context):
 
 
 @pytest.mark.asyncio
-async def test_profile_used_whole_answer_in_the_tag_is_kept_not_replaced_by_the_fallback():
+async def test_profile_used_whole_answer_in_the_tag_is_kept_as_written():
     from chat.V2.agent.turn_orchestrator import ERROR_FALLBACK_MESSAGE
 
-    orchestrator, _, _, validator = make_orchestrator(
-        ["<profile_used>The whole <b>answer</b> here.</profile_used>"]
-    )
+    draft = "<profile_used>The whole <b>answer</b> here.</profile_used>"
+    orchestrator, _, _, validator = make_orchestrator([draft])
     response = await run_turn(orchestrator, validator)
-    assert response.content == "The whole answer here."
+    assert response.content == draft
     assert response.content != ERROR_FALLBACK_MESSAGE
     assert response.profile_used is None
 
@@ -345,17 +392,17 @@ async def test_profile_used_whole_answer_in_the_tag_is_kept_not_replaced_by_the_
 async def test_profile_used_unclosed_whole_answer_is_kept():
     orchestrator, _, _, validator = make_orchestrator(["<profile_used>Half an answer"])
     response = await run_turn(orchestrator, validator)
-    assert response.content == "Half an answer" and response.profile_used is None
+    assert response.content == "<profile_used>Half an answer" and response.profile_used is None
 
 
 @pytest.mark.asyncio
 async def test_profile_used_whole_answer_in_the_tag_after_a_link_repair():
+    repaired = "<profile_used>Repaired answer.</profile_used>"
     orchestrator, _, _, validator = make_orchestrator(
-        [f"The answer.\n{TAG}", "<profile_used>Repaired answer.</profile_used>"],
-        valid=(False, True),
+        [f"The answer.\n{TAG}", repaired], valid=(False, True)
     )
     response = await run_turn(orchestrator, validator)
-    assert response.content == "Repaired answer."
+    assert response.content == repaired
 
 
 @pytest.mark.asyncio
@@ -365,6 +412,7 @@ async def test_profile_used_an_empty_draft_still_falls_back():
     orchestrator, _, _, validator = make_orchestrator(["<profile_used> </profile_used>"])
     response = await run_turn(orchestrator, validator)
     assert response.content == ERROR_FALLBACK_MESSAGE
+    assert response.profile_used is None
 
 
 # -- views ------------------------------------------------------------------------------------
