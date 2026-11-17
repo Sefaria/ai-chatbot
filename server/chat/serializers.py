@@ -113,8 +113,12 @@ MAX_ANTHROPIC_MESSAGES = 200
 MAX_ANTHROPIC_TEXT_CHARS = 200_000
 
 
+def _serialized_length(value) -> int:
+    return len(json.dumps(value, default=str))
+
+
 def _message_text_length(content) -> int:
-    """Length of the text carried by one message's content (string or blocks); non-text blocks count by serialized size."""
+    """Size carried by one message's content: text counts by length, everything else by serialized size."""
     if isinstance(content, str):
         return len(content)
     if isinstance(content, list):
@@ -126,11 +130,17 @@ def _message_text_length(content) -> int:
                 text = block.get("text")
                 if block.get("type") == "text" and isinstance(text, str):
                     total += len(text)
+                    # Any additional fields on a text block count in full too.
+                    extras = {k: v for k, v in block.items() if k not in ("type", "text")}
+                    if extras:
+                        total += _serialized_length(extras)
                 else:
                     # Non-text blocks (tool input/results, images) count by serialized size.
-                    total += len(json.dumps(block, default=str))
+                    total += _serialized_length(block)
+            else:
+                total += _serialized_length(block)
         return total
-    return 0
+    return _serialized_length(content)
 
 
 class AnthropicRequestSerializer(serializers.Serializer):

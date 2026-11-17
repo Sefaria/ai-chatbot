@@ -1,5 +1,7 @@
 """Tests for API serializers - request validation, response formatting."""
 
+import json
+
 import pytest
 from django.utils import timezone
 
@@ -12,6 +14,7 @@ from chat.serializers import (
     ChatResponseSerializer,
     HistoryMessageSerializer,
     MessageContextSerializer,
+    _message_text_length,
 )
 
 
@@ -288,13 +291,42 @@ class TestAnthropicRequestSerializer:
         assert not serializer.is_valid()
         assert "messages" in serializer.errors
 
-    def test_malformed_text_values_contribute_nothing_to_the_total(self):
+    def test_malformed_text_values_count_by_serialized_size(self):
+        assert _message_text_length([{"type": "text", "text": 123}]) == len(
+            json.dumps({"type": "text", "text": 123})
+        )
+        assert _message_text_length(42) == 2
         messages = [
             {"role": "user", "content": [{"type": "text", "text": 123}]},
             {"role": "user", "content": 42},
         ]
         serializer = AnthropicRequestSerializer(data={"messages": messages})
         assert serializer.is_valid(), serializer.errors
+
+    def test_nested_arrays_count_toward_the_limit(self):
+        messages = [{"role": "user", "content": [["z" * MAX_ANTHROPIC_TEXT_CHARS]]}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_extra_fields_on_text_blocks_count_toward_the_limit(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "hi", "extra": "z" * MAX_ANTHROPIC_TEXT_CHARS}
+                ],
+            }
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_dict_content_counts_toward_the_limit(self):
+        messages = [{"role": "user", "content": {"k": "z" * MAX_ANTHROPIC_TEXT_CHARS}}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
 
     def test_non_text_blocks_count_toward_the_limit(self):
         messages = [
