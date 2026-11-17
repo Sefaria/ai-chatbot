@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from chat.models import ChatMessage
 from chat.serializers import (
+    MAX_ANTHROPIC_BLOCKS_PER_MESSAGE,
     MAX_ANTHROPIC_MESSAGES,
     MAX_ANTHROPIC_TEXT_CHARS,
     AnthropicRequestSerializer,
@@ -350,4 +351,31 @@ class TestAnthropicRequestSerializer:
             {"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": "x"}}]}
         ]
         serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert serializer.is_valid(), serializer.errors
+
+
+class TestAnthropicMessageMeasurementHardening:
+    def test_deeply_nested_content_is_a_validation_error(self):
+        nested = current = {}
+        for _ in range(100_000):
+            current["a"] = {}
+            current = current["a"]
+        messages = [{"role": "user", "content": [{"type": "tool_result", "content": nested}]}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_too_many_empty_blocks_rejected(self):
+        blocks = [{"type": "text", "text": ""}] * (MAX_ANTHROPIC_BLOCKS_PER_MESSAGE + 1)
+        serializer = AnthropicRequestSerializer(
+            data={"messages": [{"role": "user", "content": blocks}]}
+        )
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_block_count_at_limit_accepted(self):
+        blocks = [{"type": "text", "text": ""}] * MAX_ANTHROPIC_BLOCKS_PER_MESSAGE
+        serializer = AnthropicRequestSerializer(
+            data={"messages": [{"role": "user", "content": blocks}]}
+        )
         assert serializer.is_valid(), serializer.errors

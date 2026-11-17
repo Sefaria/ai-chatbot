@@ -111,6 +111,8 @@ class AnonClaimRequestSerializer(serializers.Serializer):
 # without constraining real conversations.
 MAX_ANTHROPIC_MESSAGES = 200
 MAX_ANTHROPIC_TEXT_CHARS = 200_000
+# Content blocks allowed in a single message; empty blocks add no text, so bound the count itself.
+MAX_ANTHROPIC_BLOCKS_PER_MESSAGE = 1_000
 
 
 def _serialized_length(value) -> int:
@@ -156,7 +158,17 @@ class AnthropicRequestSerializer(serializers.Serializer):
     metadata = serializers.DictField(required=False)
 
     def validate_messages(self, messages):
-        total_chars = sum(_message_text_length(msg.get("content")) for msg in messages)
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list) and len(content) > MAX_ANTHROPIC_BLOCKS_PER_MESSAGE:
+                raise serializers.ValidationError(
+                    f"A message may contain at most {MAX_ANTHROPIC_BLOCKS_PER_MESSAGE} content blocks."
+                )
+        try:
+            total_chars = sum(_message_text_length(msg.get("content")) for msg in messages)
+        except Exception as exc:
+            # Unmeasurable content (excess nesting, unserializable values) is a client error, not a 500.
+            raise serializers.ValidationError("Message content could not be measured.") from exc
         if total_chars > MAX_ANTHROPIC_TEXT_CHARS:
             raise serializers.ValidationError(
                 f"Total message text exceeds {MAX_ANTHROPIC_TEXT_CHARS} characters."
