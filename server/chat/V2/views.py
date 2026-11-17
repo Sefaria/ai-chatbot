@@ -1289,6 +1289,14 @@ def chat_feedback_v2(request):
     if not session_owned:
         return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    # The feedback must refer to a message that exists in that owned session.
+    message_in_session = ChatMessage.objects.filter(
+        message_id=data["messageId"],
+        session_id=data["sessionId"],
+    ).exists()
+    if not message_in_session:
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     bt_logger = _get_bt_logger()
 
     feedback_reason = (data.get("feedbackReason") or "").strip()

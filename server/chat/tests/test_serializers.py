@@ -288,17 +288,34 @@ class TestAnthropicRequestSerializer:
         assert not serializer.is_valid()
         assert "messages" in serializer.errors
 
-    def test_total_text_counts_text_blocks_only(self):
-        # Non-text blocks and non-string text values contribute nothing to the total.
+    def test_malformed_text_values_contribute_nothing_to_the_total(self):
+        messages = [
+            {"role": "user", "content": [{"type": "text", "text": 123}]},
+            {"role": "user", "content": 42},
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert serializer.is_valid(), serializer.errors
+
+    def test_non_text_blocks_count_toward_the_limit(self):
         messages = [
             {
                 "role": "user",
                 "content": [
-                    {"type": "image", "source": {"data": "z" * (MAX_ANTHROPIC_TEXT_CHARS * 2)}}
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "t1",
+                        "content": "z" * MAX_ANTHROPIC_TEXT_CHARS,
+                    }
                 ],
-            },
-            {"role": "user", "content": [{"type": "text", "text": 123}]},
-            {"role": "user", "content": 42},
+            }
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_small_non_text_blocks_are_valid(self):
+        messages = [
+            {"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": "x"}}]}
         ]
         serializer = AnthropicRequestSerializer(data={"messages": messages})
         assert serializer.is_valid(), serializer.errors

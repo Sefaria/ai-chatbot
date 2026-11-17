@@ -2,6 +2,8 @@
 Serializers for chat API.
 """
 
+import json
+
 from rest_framework import serializers
 
 from .models import ChatMessage
@@ -112,7 +114,7 @@ MAX_ANTHROPIC_TEXT_CHARS = 200_000
 
 
 def _message_text_length(content) -> int:
-    """Length of the text carried by one message's content (string or text blocks)."""
+    """Length of the text carried by one message's content (string or blocks); non-text blocks count by serialized size."""
     if isinstance(content, str):
         return len(content)
     if isinstance(content, list):
@@ -120,10 +122,13 @@ def _message_text_length(content) -> int:
         for block in content:
             if isinstance(block, str):
                 total += len(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
+            elif isinstance(block, dict):
                 text = block.get("text")
-                if isinstance(text, str):
+                if block.get("type") == "text" and isinstance(text, str):
                     total += len(text)
+                else:
+                    # Non-text blocks (tool input/results, images) count by serialized size.
+                    total += len(json.dumps(block, default=str))
         return total
     return 0
 
