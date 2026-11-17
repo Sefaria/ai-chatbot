@@ -16,7 +16,7 @@ def client():
 
 @pytest.fixture
 def token():
-    return create_test_token("user_history", SECRET)
+    return create_test_token("synthetic-user-1", SECRET)
 
 
 def _create_conversation(
@@ -29,7 +29,7 @@ def _create_conversation(
 ):
     session = ChatSession.objects.create(
         session_id=session_id,
-        user_id="user_history",
+        user_id="synthetic-user-1",
         title=title,
         turn_count=1,
         message_count=2,
@@ -37,7 +37,7 @@ def _create_conversation(
     user_message = ChatMessage.objects.create(
         message_id=f"msg_user_{session_id}",
         session_id=session_id,
-        user_id="user_history",
+        user_id="synthetic-user-1",
         turn_id=f"turn_{session_id}",
         role=ChatMessage.Role.USER,
         content=user_content,
@@ -48,7 +48,7 @@ def _create_conversation(
     assistant_message = ChatMessage.objects.create(
         message_id=f"msg_assistant_{session_id}",
         session_id=session_id,
-        user_id="user_history",
+        user_id="synthetic-user-1",
         turn_id=f"turn_{session_id}",
         role=ChatMessage.Role.ASSISTANT,
         content=assistant_content,
@@ -103,7 +103,7 @@ def test_conversation_list_and_load_include_appetizer_data(client, token):
 def test_prompt_only_conversation_appears_before_response_finishes(client, token):
     session = ChatSession.objects.create(
         session_id="sess_processing",
-        user_id="user_history",
+        user_id="synthetic-user-1",
         title="what is teshuva?",
         turn_count=0,
         message_count=1,
@@ -111,7 +111,7 @@ def test_prompt_only_conversation_appears_before_response_finishes(client, token
     ChatMessage.objects.create(
         message_id="msg_user_processing",
         session_id=session.session_id,
-        user_id="user_history",
+        user_id="synthetic-user-1",
         turn_id="turn_processing",
         role=ChatMessage.Role.USER,
         content="what is teshuva?",
@@ -268,23 +268,25 @@ def _call(client, method, url, params, user_id):
 @pytest.mark.django_db
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
 @pytest.mark.parametrize("method,url,params", HISTORY_URLS)
-def test_history_rejects_raw_id_instead_of_token(client, method, url, params):
-    _create_conversation(session_id="sess_history_a", title="Mine", user_content="private question")
+def test_history_rejects_unverified_identity(client, method, url, params):
+    _create_conversation(
+        session_id="sess_history_a", title="Mine", user_content="synthetic message"
+    )
 
-    response = _call(client, method, url, params, "user_history")
+    response = _call(client, method, url, params, "synthetic-user-1")
 
     assert response.status_code == 403
-    assert "private question" not in str(response.data)
+    assert "synthetic message" not in str(response.data)
     assert ChatSession.objects.get(session_id="sess_history_a").is_deleted is False
     assert ChatSession.objects.get(session_id="sess_history_a").title == "Mine"
 
 
 @pytest.mark.django_db
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_history_rejects_raw_hashed_id_instead_of_token(client):
+def test_history_rejects_unverified_hashed_identity(client):
     import hashlib
 
-    hashed = hashlib.sha256(b"186013").hexdigest()
+    hashed = hashlib.sha256(b"synthetic-user-2").hexdigest()
     ChatSession.objects.create(
         session_id="sess_hashed", user_id=hashed, turn_count=1, message_count=1
     )
@@ -295,8 +297,8 @@ def test_history_rejects_raw_hashed_id_instead_of_token(client):
 
 @pytest.mark.django_db
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_history_rejects_token_signed_with_other_secret(client):
-    forged = create_test_token("user_history", "some-other-secret")
+def test_history_rejects_token_from_other_issuer(client):
+    forged = create_test_token("synthetic-user-1", "some-other-secret")
 
     assert client.get("/api/history/conversations", {"userId": forged}).status_code == 403
 
@@ -307,7 +309,7 @@ def test_history_rejects_expired_token(client):
     from datetime import timedelta
 
     expired = create_test_token(
-        "user_history", SECRET, expires_at=timezone.now() - timedelta(hours=1)
+        "synthetic-user-1", SECRET, expires_at=timezone.now() - timedelta(hours=1)
     )
 
     assert client.get("/api/history/conversations", {"userId": expired}).status_code == 403
@@ -317,12 +319,14 @@ def test_history_rejects_expired_token(client):
 @override_settings(CHATBOT_USER_TOKEN_SECRET="")
 @pytest.mark.parametrize("method,url,params", HISTORY_URLS)
 def test_history_unset_secret_returns_503(client, method, url, params):
-    _create_conversation(session_id="sess_history_a", title="Mine", user_content="private question")
+    _create_conversation(
+        session_id="sess_history_a", title="Mine", user_content="synthetic message"
+    )
 
-    response = _call(client, method, url, params, "user_history")
+    response = _call(client, method, url, params, "synthetic-user-1")
 
     assert response.status_code == 503
-    assert "private question" not in str(response.data)
+    assert "synthetic message" not in str(response.data)
 
 
 @pytest.mark.django_db
@@ -337,7 +341,7 @@ def test_history_endpoint_accepts_token_minted_like_sefaria_project(client):
 
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    sefaria_user_id = 186013
+    sefaria_user_id = 424242
     hashed = hashlib.sha256(str(sefaria_user_id).encode("utf-8")).hexdigest()
     payload = {
         "id": hashed,
@@ -400,3 +404,48 @@ def test_reload_prompts_accepts_correct_admin_token(client, monkeypatch):
 
     assert response.status_code == 200
     service.invalidate_cache.assert_called_once()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("debug,expected", [(False, 503), (True, 200)])
+def test_history_default_token_secret_only_allowed_in_debug(client, debug, expected):
+    default = "secret"
+    token = create_test_token("synthetic-user-1", default)
+    with override_settings(CHATBOT_USER_TOKEN_SECRET=default, DEBUG=debug):
+        response = client.get("/api/history/conversations", {"userId": token})
+    assert response.status_code == expected
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize("limit", ["abc", "0", "-5", "1.5"])
+def test_history_rejects_invalid_limit(client, token, limit):
+    response = client.get("/api/history", {"userId": token, "sessionId": "sess_x", "limit": limit})
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_history_invalid_limit_still_requires_valid_identity(client):
+    response = client.get(
+        "/api/history", {"userId": "not-a-token", "sessionId": "sess_x", "limit": "abc"}
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize("method", ["patch", "delete"])
+@pytest.mark.parametrize("bad", [12345, ["a"], {"a": 1}, True, 0, "x" * 5000])
+def test_history_rejects_non_string_or_oversized_user_id(client, method, bad):
+    _create_conversation(
+        session_id="sess_history_a", title="Mine", user_content="synthetic message"
+    )
+    response = getattr(client, method)(
+        "/api/history/conversations/sess_history_a",
+        {"userId": bad, "title": "New"},
+        format="json",
+    )
+    assert response.status_code == 403
+    assert response.data["error"] == "invalid_userId"
+    assert ChatSession.objects.get(session_id="sess_history_a").title == "Mine"

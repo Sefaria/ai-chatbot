@@ -34,6 +34,9 @@ logger = logging.getLogger("chat")
 DEFAULT_HISTORY_LIMIT = 20
 MAX_HISTORY_LIMIT = 100
 MAX_TITLE_LENGTH = 64
+MAX_USER_ID_LENGTH = 2048
+# Placeholder value used only for local development; never accepted when DEBUG is off.
+DEFAULT_TOKEN_SECRET = "secret"
 
 
 class HistoryAuthError(Exception):
@@ -58,8 +61,11 @@ def _resolve_history_user_ids(user_id: str) -> list[str]:
     writes persist only the anonymized id.
     """
     secret = settings.CHATBOT_USER_TOKEN_SECRET
-    if not secret:
+    if not secret or (secret == DEFAULT_TOKEN_SECRET and not settings.DEBUG):
         raise HistoryAuthError("history_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    if not isinstance(user_id, str) or not user_id or len(user_id) > MAX_USER_ID_LENGTH:
+        raise HistoryAuthError("invalid_userId", status.HTTP_403_FORBIDDEN)
 
     try:
         identity = decrypt_chatbot_user_identity(user_id, secret)
@@ -118,6 +124,20 @@ def _read_limit_offset(request) -> tuple[int, int]:
     except (TypeError, ValueError):
         offset = 0
     return max(1, min(limit, MAX_HISTORY_LIMIT)), max(0, offset)
+
+
+def _read_strict_limit(request) -> int | None:
+    """Parse ``limit`` with bounds; return None when it is not a valid integer."""
+    raw = request.query_params.get("limit")
+    if raw is None:
+        return DEFAULT_HISTORY_LIMIT
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 1:
+        return None
+    return min(value, MAX_HISTORY_LIMIT)
 
 
 def _default_conversation_title(content: str) -> str:
@@ -241,7 +261,6 @@ def history(request):
     user_id = request.query_params.get("userId")
     session_id = request.query_params.get("sessionId")
     before = request.query_params.get("before")
-    limit = min(int(request.query_params.get("limit", 20)), 100)
 
     if not user_id or not session_id:
         return Response(
@@ -252,6 +271,10 @@ def history(request):
         user_id_candidates = _resolve_history_user_ids(user_id)
     except HistoryAuthError as exc:
         return _history_auth_response(exc)
+
+    limit = _read_strict_limit(request)
+    if limit is None:
+        return Response({"error": "invalid_limit"}, status=status.HTTP_400_BAD_REQUEST)
 
     queryset = ChatMessage.objects.filter(
         user_id__in=user_id_candidates,
@@ -342,8 +365,10 @@ def conversation_list(request):
 
 @api_view(["GET", "PATCH", "DELETE"])
 def conversation_detail(request, session_id: str):
-    user_id = request.query_params.get("userId") or request.data.get("userId")
-    if not user_id:
+    user_id = request.query_params.get("userId")
+    if user_id is None and isinstance(request.data, dict):
+        user_id = request.data.get("userId")
+    if user_id is None or user_id == "":
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
