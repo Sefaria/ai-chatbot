@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
+from django.core.exceptions import ImproperlyConfigured
 
 try:
     import whitenoise  # noqa: F401
@@ -28,13 +29,25 @@ try:
 except ImportError:
     pass
 
+# Development-only fallbacks. Outside DEBUG the checks after CHATBOT_USER_TOKEN_SECRET refuse them.
+_DEV_SECRET_KEY = "django-insecure-dev-key-change-in-production"
+_DEV_TOKEN_SECRET = "secret"
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
+# Off unless DJANGO_DEBUG=true, so a deployment that omits the variable fails closed.
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+
+def _read_env_list(name: str, default: str) -> list[str]:
+    """Read a comma-separated environment variable into a list of non-empty items."""
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
+# Hosts this server answers for. Comma-separated; the "*" default keeps the previous any-host behavior.
+ALLOWED_HOSTS = _read_env_list("DJANGO_ALLOWED_HOSTS", "*")
 
 # Application definition
 INSTALLED_APPS = [
@@ -107,11 +120,10 @@ if _WHITENOISE_AVAILABLE:
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS settings - allow all origins in development
-# Set to True to allow any origin (for local development)
-CORS_ALLOW_ALL_ORIGINS = True
-
-# Fallback list if CORS_ALLOW_ALL_ORIGINS is False
+# CORS settings. Comma-separated CHATBOT_CORS_ALLOWED_ORIGINS restricts browser access to the listed
+# origins. Unset keeps the allow-all behavior for development and existing embeds.
+CORS_ALLOWED_ORIGINS = _read_env_list("CHATBOT_CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
 # Allow all methods
 CORS_ALLOW_METHODS = [
@@ -131,8 +143,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 ]
 
 
-# Allow credentials for CORS
-CORS_ALLOW_CREDENTIALS = True
+# Credentials are not sent cross-origin; requests authenticate in the request body, not with cookies.
+CORS_ALLOW_CREDENTIALS = False
 
 # Expose headers needed for SSE
 CORS_EXPOSE_HEADERS = [
@@ -220,7 +232,24 @@ RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "res
 # Chat User Token Configuration
 # ============================================================================
 # Token secret used to decrypt incoming userId values for chat requests.
-CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret")
+CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", _DEV_TOKEN_SECRET)
+
+# Refuse to start with missing or placeholder secrets outside DEBUG. An empty token secret would
+# otherwise silently skip decryption, so it is rejected too. Values wrapped in <...> are the
+# template text from .env.example.
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set to a real secret when DJANGO_DEBUG is off."
+        )
+    if (
+        not CHATBOT_USER_TOKEN_SECRET
+        or CHATBOT_USER_TOKEN_SECRET == _DEV_TOKEN_SECRET
+        or CHATBOT_USER_TOKEN_SECRET.startswith("<")
+    ):
+        raise ImproperlyConfigured(
+            "CHATBOT_USER_TOKEN_SECRET must be set to a real secret when DJANGO_DEBUG is off."
+        )
 
 # MCP sign-in (mcp_auth, mcp_server /mcp/user and /mcp/admin). See
 # docs/plans/2026-10-18-mcp-consolidation.md.

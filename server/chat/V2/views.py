@@ -1263,7 +1263,13 @@ def prompt_defaults(request):
 
 @api_view(["POST"])
 def chat_feedback_v2(request):
-    """Capture user feedback for the latest chat trace in Braintrust."""
+    """Capture user feedback for the latest chat trace in Braintrust.
+
+    POST /api/v2/chat/feedback
+
+    Feedback is accepted only for a session owned by the authenticated actor, and
+    the logged user is the authenticated actor rather than the request payload.
+    """
     serializer = FeedbackRequestSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -1272,6 +1278,25 @@ def chat_feedback_v2(request):
         )
 
     data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
+
+    session_owned = ChatSession.objects.filter(
+        session_id=data["sessionId"],
+        user_id__in=actor.user_id_candidates,
+    ).exists()
+    if not session_owned:
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    # The feedback must refer to a message that exists in that owned session.
+    message_in_session = ChatMessage.objects.filter(
+        message_id=data["messageId"],
+        session_id=data["sessionId"],
+    ).exists()
+    if not message_in_session:
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     bt_logger = _get_bt_logger()
 
     feedback_reason = (data.get("feedbackReason") or "").strip()
@@ -1289,7 +1314,7 @@ def chat_feedback_v2(request):
                 "feedback_reason": feedback_reason,
                 "feedback_comment": comment,
                 "session_id": data["sessionId"],
-                "user_id": data.get("userId") or anonymous_user_id(data["anonId"]),
+                "user_id": actor.user_id,
                 "message_id": data["messageId"],
             }
             try:
