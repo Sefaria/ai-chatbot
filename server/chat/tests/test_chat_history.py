@@ -245,3 +245,158 @@ def test_rename_and_delete_conversation(client, token):
 
     list_response = client.get("/api/history/conversations", {"userId": token})
     assert list_response.data["conversations"] == []
+
+
+# --- Token required on every history endpoint -------------------------------------------------
+
+HISTORY_URLS = [
+    ("get", "/api/history", {"sessionId": "sess_history_a"}),
+    ("get", "/api/history/conversations", {}),
+    ("get", "/api/history/conversations/sess_history_a", {}),
+    ("patch", "/api/history/conversations/sess_history_a", {"title": "x"}),
+    ("delete", "/api/history/conversations/sess_history_a", {}),
+]
+
+
+def _call(client, method, url, params, user_id):
+    params = {**params, "userId": user_id}
+    if method == "get":
+        return client.get(url, params)
+    return getattr(client, method)(url, params, format="json")
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+@pytest.mark.parametrize("method,url,params", HISTORY_URLS)
+def test_history_rejects_raw_id_instead_of_token(client, method, url, params):
+    _create_conversation(session_id="sess_history_a", title="Mine", user_content="private question")
+
+    response = _call(client, method, url, params, "user_history")
+
+    assert response.status_code == 403
+    assert "private question" not in str(response.data)
+    assert ChatSession.objects.get(session_id="sess_history_a").is_deleted is False
+    assert ChatSession.objects.get(session_id="sess_history_a").title == "Mine"
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_history_rejects_raw_hashed_id_instead_of_token(client):
+    import hashlib
+
+    hashed = hashlib.sha256(b"186013").hexdigest()
+    ChatSession.objects.create(
+        session_id="sess_hashed", user_id=hashed, turn_count=1, message_count=1
+    )
+
+    for url in ("/api/history/conversations", "/api/history/conversations/sess_hashed"):
+        assert client.get(url, {"userId": hashed, "sessionId": "sess_hashed"}).status_code == 403
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_history_rejects_token_signed_with_other_secret(client):
+    forged = create_test_token("user_history", "some-other-secret")
+
+    assert client.get("/api/history/conversations", {"userId": forged}).status_code == 403
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_history_rejects_expired_token(client):
+    from datetime import timedelta
+
+    expired = create_test_token(
+        "user_history", SECRET, expires_at=timezone.now() - timedelta(hours=1)
+    )
+
+    assert client.get("/api/history/conversations", {"userId": expired}).status_code == 403
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET="")
+@pytest.mark.parametrize("method,url,params", HISTORY_URLS)
+def test_history_unset_secret_returns_503(client, method, url, params):
+    _create_conversation(session_id="sess_history_a", title="Mine", user_content="private question")
+
+    response = _call(client, method, url, params, "user_history")
+
+    assert response.status_code == 503
+    assert "private question" not in str(response.data)
+
+
+@pytest.mark.django_db
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_history_endpoint_accepts_token_minted_like_sefaria_project(client):
+    """Mint the token the way Sefaria-Project's build_chatbot_user_token does."""
+    import base64
+    import hashlib
+    import json
+    import os
+    from datetime import timedelta
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    sefaria_user_id = 186013
+    hashed = hashlib.sha256(str(sefaria_user_id).encode("utf-8")).hexdigest()
+    payload = {
+        "id": hashed,
+        "user_id": sefaria_user_id,
+        "expiration": (timezone.now() + timedelta(hours=72)).replace(microsecond=0).isoformat(),
+    }
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    nonce = os.urandom(12)
+    key = hashlib.sha256(SECRET.encode("utf-8")).digest()
+    token = base64.urlsafe_b64encode(
+        nonce + AESGCM(key).encrypt(nonce, payload_bytes, None)
+    ).decode("ascii")
+
+    session = ChatSession.objects.create(
+        session_id="sess_cross_repo", user_id=hashed, turn_count=1, message_count=1
+    )
+    ChatMessage.objects.create(
+        message_id="msg_cross_repo",
+        session_id=session.session_id,
+        user_id=hashed,
+        role="user",
+        content="hello from sefaria",
+        status=ChatMessage.Status.SUCCESS,
+        server_timestamp=timezone.now(),
+    )
+
+    response = client.get("/api/history", {"userId": token, "sessionId": "sess_cross_repo"})
+
+    assert response.status_code == 200
+    assert [m["content"] for m in response.data["messages"]] == ["hello from sefaria"]
+
+
+# --- Admin prompt reload ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("header", [None, "", "wrong"])
+def test_reload_prompts_rejects_missing_or_wrong_admin_token(client, monkeypatch, header):
+    monkeypatch.setenv("ADMIN_API_TOKEN", "admin-secret")
+    headers = {} if header is None else {"HTTP_X_ADMIN_TOKEN": header}
+
+    assert client.post("/api/admin/reload-prompts", **headers).status_code == 403
+
+
+@pytest.mark.parametrize("header", [None, "", "anything"])
+def test_reload_prompts_unset_admin_token_is_closed(client, monkeypatch, header):
+    monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
+    headers = {} if header is None else {"HTTP_X_ADMIN_TOKEN": header}
+
+    assert client.post("/api/admin/reload-prompts", **headers).status_code == 403
+
+
+def test_reload_prompts_accepts_correct_admin_token(client, monkeypatch):
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setenv("ADMIN_API_TOKEN", "admin-secret")
+    service = MagicMock()
+
+    with patch("chat.views.get_prompt_service", return_value=service):
+        response = client.post("/api/admin/reload-prompts", HTTP_X_ADMIN_TOKEN="admin-secret")
+
+    assert response.status_code == 200
+    service.invalidate_cache.assert_called_once()

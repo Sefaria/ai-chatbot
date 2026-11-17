@@ -57,7 +57,8 @@ server/
 | `/api/v2/chat/anthropic` | POST | Anthropic Messages API format (for Braintrust) |
 | `/api/v2/chat/feedback` | POST | Feedback for trace |
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
-| `/api/history` | GET | Conversation history |
+| `/api/history` | GET | Conversation history (`userId` = encrypted token; 403 invalid, 503 secret unset) |
+| `/api/admin/reload-prompts` | POST | Reload prompts (header `X-Admin-Token` = `ADMIN_API_TOKEN`; 403 otherwise) |
 | `/api/health` | GET | Health check |
 
 ## Commands

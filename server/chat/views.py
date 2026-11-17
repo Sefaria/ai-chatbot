@@ -1,7 +1,9 @@
 """Shared chat API views."""
 
+import hmac
 import logging
 import operator
+import os
 import re
 from datetime import datetime
 from functools import reduce
@@ -19,7 +21,11 @@ from rest_framework.response import Response
 
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
-from .user_token_service import UserTokenError, decrypt_chatbot_user_identity
+from .user_token_service import (
+    UserTokenError,
+    UserTokenExpiredError,
+    decrypt_chatbot_user_identity,
+)
 from .V2 import views as v2_views
 from .V2.prompts import get_prompt_service
 
@@ -30,30 +36,46 @@ MAX_HISTORY_LIMIT = 100
 MAX_TITLE_LENGTH = 64
 
 
+class HistoryAuthError(Exception):
+    """Raised when a history request carries no verifiable user token."""
+
+    def __init__(self, error: str, status_code: int):
+        super().__init__(error)
+        self.error = error
+        self.status_code = status_code
+
+
 def _resolve_history_user_ids(user_id: str) -> list[str]:
     """
-    Return possible persisted chatbot DB user ids for history reads.
+    Return the persisted chatbot DB user ids for a history request.
 
-    Current clients pass the encrypted Sefaria chatbot token. Older callers and
-    tests may still pass the already-persisted id directly, so invalid token
-    input falls back to the original value. During the raw-id anonymization
-    rollout, a user may temporarily have rows under both the anonymized id and
-    the raw Sefaria id; reads accept both while writes persist only the
-    anonymized id.
+    Clients pass the encrypted Sefaria chatbot token. The token is always
+    required: a token that cannot be verified raises ``HistoryAuthError`` (403),
+    and a server without ``CHATBOT_USER_TOKEN_SECRET`` raises it with 503, so the
+    history endpoints never fall back to treating the value as a stored id.
+    During the raw-id anonymization rollout, a user may temporarily have rows
+    under both the anonymized id and the raw Sefaria id; reads accept both while
+    writes persist only the anonymized id.
     """
     secret = settings.CHATBOT_USER_TOKEN_SECRET
     if not secret:
-        return [user_id]
+        raise HistoryAuthError("history_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE)
 
     try:
         identity = decrypt_chatbot_user_identity(user_id, secret)
+    except UserTokenExpiredError:
+        raise HistoryAuthError("userId_expired", status.HTTP_403_FORBIDDEN) from None
     except UserTokenError:
-        return [user_id]
+        raise HistoryAuthError("invalid_userId", status.HTTP_403_FORBIDDEN) from None
 
     user_ids = [identity.user_id]
     if identity.sefaria_user_id and identity.sefaria_user_id not in user_ids:
         user_ids.append(identity.sefaria_user_id)
     return user_ids
+
+
+def _history_auth_response(exc: "HistoryAuthError") -> Response:
+    return Response({"error": exc.error}, status=exc.status_code)
 
 
 def extract_page_type(url: str | None) -> str:
@@ -226,7 +248,10 @@ def history(request):
             {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
 
     queryset = ChatMessage.objects.filter(
         user_id__in=user_id_candidates,
@@ -285,7 +310,10 @@ def conversation_list(request):
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     limit, offset = _read_limit_offset(request)
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
     search_text = (request.query_params.get("search") or "").strip()
 
     queryset = ChatSession.objects.filter(
@@ -318,7 +346,10 @@ def conversation_detail(request, session_id: str):
     if not user_id:
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
     session = _get_owned_session(session_id, user_id_candidates)
     if session is None:
         return Response({"error": "conversation_not_found"}, status=status.HTTP_404_NOT_FOUND)
@@ -358,13 +389,26 @@ def conversation_detail(request, session_id: str):
     )
 
 
+def _admin_token_valid(request) -> bool:
+    """Constant-time check of X-Admin-Token against ADMIN_API_TOKEN; unset means closed."""
+    expected = os.environ.get("ADMIN_API_TOKEN") or ""
+    provided = request.headers.get("X-Admin-Token") or ""
+    if not expected:
+        return False
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
 @api_view(["POST"])
 def reload_prompts(request):
     """
     Reload prompts from Braintrust without restarting the server.
 
     POST /api/admin/reload-prompts
+    Requires header X-Admin-Token equal to the ADMIN_API_TOKEN env var.
     """
+    if not _admin_token_valid(request):
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     try:
         prompt_service = get_prompt_service()
         prompt_service.invalidate_cache()
