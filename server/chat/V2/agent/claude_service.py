@@ -40,7 +40,6 @@ from .sefaria_client import SefariaClient
 from .tool_executor import SefariaToolExecutor
 from .tool_runtime import ToolRuntime
 from .trace_logger import BraintrustTraceLogger
-from .tracing_guard import install_tracing_guard
 from .turn_orchestrator import TurnOrchestrator
 
 logger = logging.getLogger("chat.agent")
@@ -60,7 +59,6 @@ class ClaudeAgentService:
         max_tokens: int = AGENT_MAX_TOKENS,
         temperature: float = AGENT_TEMPERATURE,
         prompt_service: PromptService | None = None,
-        is_load_test: bool = False,
     ):
         if (
             ClaudeAgentOptions is None
@@ -80,17 +78,13 @@ class ClaudeAgentService:
 
         from django.conf import settings as django_settings
 
-        self.braintrust_logging_enabled = (
-            django_settings.BRAINTRUST_LOGGING_ENABLED and not is_load_test
-        )
+        self.braintrust_logging_enabled = django_settings.BRAINTRUST_LOGGING_ENABLED
 
         api_key_str = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if not os.environ.get("ANTHROPIC_API_KEY"):
             os.environ["ANTHROPIC_API_KEY"] = api_key_str
 
-        self.model = model or (
-            django_settings.LOAD_TEST_MODEL if is_load_test else django_settings.AGENT_MODEL
-        )
+        self.model = model or django_settings.AGENT_MODEL
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -137,15 +131,13 @@ class ClaudeAgentService:
     def _setup_braintrust_tracing(self) -> None:
         """Ensure Braintrust tracing is initialized for this process.
 
-        Calls setup_claude_agent_sdk once to enable automatic SDK span tracing,
-        and installs the tracing guard so load-test threads can suppress spans.
+        Calls setup_claude_agent_sdk once to enable automatic SDK span tracing.
         """
         if not self.braintrust_logging_enabled:
             return
         global _BRAINTRUST_SETUP_DONE
         if not _BRAINTRUST_SETUP_DONE:
             setup_claude_agent_sdk(project=self.braintrust_project, api_key=self.braintrust_api_key)
-            install_tracing_guard()
             _BRAINTRUST_SETUP_DONE = True
 
     async def send_message(
@@ -182,6 +174,6 @@ class ClaudeAgentService:
         await self.sefaria_client.close()
 
 
-def get_agent_service(is_load_test: bool = False) -> ClaudeAgentService:
+def get_agent_service() -> ClaudeAgentService:
     """Create a fresh service instance (one per request)."""
-    return ClaudeAgentService(is_load_test=is_load_test)
+    return ClaudeAgentService()

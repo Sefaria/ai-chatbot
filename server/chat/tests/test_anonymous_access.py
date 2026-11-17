@@ -904,51 +904,6 @@ def test_a_logged_in_question_is_answered_from_anywhere(origin):
     assert "An answer" in content
 
 
-# ── Load tests ────────────────────────────────────────────────────────────
-
-
-@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_a_logged_out_visitor_cannot_run_a_load_test(client, agent):
-    # A load test uses another model and turns tracing off; a logged-out
-    # visitor's questions must stay traced.
-    with patch("chat.V2.views.get_agent_service", return_value=agent) as get_agent:
-        response = client.post(
-            "/api/v2/chat/stream",
-            data={
-                "anonId": ANON_ID,
-                "sessionId": SESSION_ID,
-                "messageId": MESSAGE_ID,
-                "timestamp": timezone.now().isoformat(),
-                "text": "A question",
-                "isLoadTest": True,
-            },
-            format="json",
-        )
-        answered(response)
-
-    get_agent.assert_called_once_with(is_load_test=False)
-
-
-@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-def test_a_logged_in_user_can_still_run_a_load_test(client, agent):
-    with patch("chat.V2.views.get_agent_service", return_value=agent) as get_agent:
-        response = client.post(
-            "/api/v2/chat/stream",
-            data={
-                "userId": create_test_token("user_load_test", SECRET),
-                "sessionId": SESSION_ID,
-                "messageId": MESSAGE_ID,
-                "timestamp": timezone.now().isoformat(),
-                "text": "A question",
-                "isLoadTest": True,
-            },
-            format="json",
-        )
-        answered(response)
-
-    get_agent.assert_called_once_with(is_load_test=True)
-
-
 # ── Feedback ──────────────────────────────────────────────────────────────
 
 

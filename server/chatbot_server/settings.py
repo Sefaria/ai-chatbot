@@ -276,7 +276,6 @@ GUARDRAIL_OUTPUT_CONFIG = {
 }
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", _ROUTER_MODEL_DEFAULT)
 SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "claude-haiku-4-5-20251001")
-LOAD_TEST_MODEL = os.environ.get("LOAD_TEST_MODEL", "claude-haiku-4-5-20251001")
 
 # ============================================================================
 # Sefaria API Configuration (optional)

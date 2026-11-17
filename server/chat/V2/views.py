@@ -64,7 +64,6 @@ from .agent import (
     TurnCancelled,
     get_agent_service,
 )
-from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
@@ -321,7 +320,7 @@ _bt_logger = None
 
 
 def _get_bt_logger():
-    """Lazy-init Braintrust logger so load-test-only processes never touch BT."""
+    """Lazy-init Braintrust logger so processes that never log never touch BT."""
     if not settings.BRAINTRUST_LOGGING_ENABLED:
         return None
     global _bt_logger
@@ -465,9 +464,6 @@ def chat_stream_v2(request):
             appetizer_metrics["error"] = True
             appetizer_metrics["thread_total_ms"] = int((time.time() - t_start) * 1000)
 
-    # A load test uses another model and turns tracing off: not for logged-out
-    # visitors, whose questions must stay traced.
-    is_load_test = data.get("isLoadTest", False) and not actor.is_anonymous
     context = data.get("context", {})
     page_url = context.get("pageUrl", "")
     prompt_slugs = data.get("promptSlugs") or {}
@@ -590,13 +586,12 @@ def chat_stream_v2(request):
             """Background thread: runs the async agent and captures the result."""
             # Bind the outer accumulator into this thread's context so
             # guardrail/router (invoked via asyncio.to_thread inside the agent)
-            # can record costs. Normal path's ctx.run() already copies the
-            # ContextVar; the load-test path intentionally skips copy_context
-            # to isolate Braintrust state, so an explicit bind is required.
+            # can record costs. ctx.run() already copies the ContextVar; the
+            # explicit bind keeps the accumulator set inside this thread.
             bind_cost_accumulator(cost_accumulator)
             try:
                 conversation = [ConversationMessage(role="user", content=data["text"])]
-                agent = get_agent_service(is_load_test=is_load_test)
+                agent = get_agent_service()
 
                 async def _send():
                     return await agent.send_message(
@@ -607,11 +602,7 @@ def chat_stream_v2(request):
                         should_cancel=cancel_event.is_set,
                     )
 
-                if is_load_test:
-                    with suppress_tracing():
-                        result_holder["response"] = asyncio.run(_send())
-                else:
-                    result_holder["response"] = asyncio.run(_send())
+                result_holder["response"] = asyncio.run(_send())
             except TurnCancelled:
                 result_holder["cancelled"] = True
                 if stream_closed:
@@ -630,8 +621,7 @@ def chat_stream_v2(request):
                 )
                 result_holder["error"] = str(e)
             finally:
-                if not is_load_test:
-                    _flush_braintrust()
+                _flush_braintrust()
                 # Sentinel: signals the main thread that the agent is done
                 while not stream_closed:
                     try:
@@ -640,19 +630,12 @@ def chat_stream_v2(request):
                     except queue.Full:
                         continue
 
-        # For load tests, run in a clean context to prevent Braintrust span
-        # leaking from the main thread.  Normal requests preserve contextvars
-        # so Braintrust traces propagate correctly.
+        # Preserve contextvars so Braintrust traces propagate correctly.
         relay_cancel_if_flagged()
-        if is_load_test:
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            _mark_turn_running(user_message.id)
-            future = executor.submit(run_agent)
-        else:
-            ctx = contextvars.copy_context()
-            executor = _create_traced_executor()
-            _mark_turn_running(user_message.id)
-            future = executor.submit(ctx.run, run_agent)
+        ctx = contextvars.copy_context()
+        executor = _create_traced_executor()
+        _mark_turn_running(user_message.id)
+        future = executor.submit(ctx.run, run_agent)
 
         first_event_yielded = False
 

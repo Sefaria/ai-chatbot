@@ -138,8 +138,8 @@ class TestCostAccumulator:
         assert get_cost_accumulator() is None
 
     def test_bind_restores_accumulator_in_fresh_context(self):
-        """Load-test path submits run_agent without contextvars.copy_context().
-        Without explicit rebinding, the thread's context has no accumulator
+        """A thread submitted without contextvars.copy_context() starts with a
+        fresh context. Without explicit rebinding, the thread has no accumulator
         and guardrail/router's get_cost_accumulator() would return None.
         bind_cost_accumulator() restores it inside the thread.
         """
