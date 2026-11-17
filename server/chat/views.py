@@ -1,13 +1,14 @@
 """Shared chat API views."""
 
+import hmac
 import logging
 import operator
+import os
 import re
 from datetime import datetime
 from functools import reduce
 from urllib.parse import urlparse
 
-from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db import connection
 from django.db.models import Q, TextField
@@ -17,9 +18,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .auth.auth_service import usable_token_secret
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
-from .user_token_service import UserTokenError, decrypt_chatbot_user_identity
+from .user_token_service import (
+    UserTokenError,
+    UserTokenExpiredError,
+    decrypt_chatbot_user_identity,
+)
 from .V2 import views as v2_views
 from .V2.prompts import get_prompt_service
 
@@ -28,32 +34,52 @@ logger = logging.getLogger("chat")
 DEFAULT_HISTORY_LIMIT = 20
 MAX_HISTORY_LIMIT = 100
 MAX_TITLE_LENGTH = 64
+MAX_USER_ID_LENGTH = 2048
+
+
+class HistoryAuthError(Exception):
+    """Raised when a history request carries no verifiable user token."""
+
+    def __init__(self, error: str, status_code: int):
+        super().__init__(error)
+        self.error = error
+        self.status_code = status_code
 
 
 def _resolve_history_user_ids(user_id: str) -> list[str]:
     """
-    Return possible persisted chatbot DB user ids for history reads.
+    Return the persisted chatbot DB user ids for a history request.
 
-    Current clients pass the encrypted Sefaria chatbot token. Older callers and
-    tests may still pass the already-persisted id directly, so invalid token
-    input falls back to the original value. During the raw-id anonymization
-    rollout, a user may temporarily have rows under both the anonymized id and
-    the raw Sefaria id; reads accept both while writes persist only the
-    anonymized id.
+    Clients pass the encrypted Sefaria chatbot token. The token is always
+    required: a token that cannot be verified raises ``HistoryAuthError`` (403),
+    and a server without ``CHATBOT_USER_TOKEN_SECRET`` raises it with 503, so the
+    history endpoints never fall back to treating the value as a stored id.
+    During the raw-id anonymization rollout, a user may temporarily have rows
+    under both the anonymized id and the raw Sefaria id; reads accept both while
+    writes persist only the anonymized id.
     """
-    secret = settings.CHATBOT_USER_TOKEN_SECRET
+    secret = usable_token_secret()
     if not secret:
-        return [user_id]
+        raise HistoryAuthError("history_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    if not isinstance(user_id, str) or not user_id or len(user_id) > MAX_USER_ID_LENGTH:
+        raise HistoryAuthError("invalid_userId", status.HTTP_403_FORBIDDEN)
 
     try:
         identity = decrypt_chatbot_user_identity(user_id, secret)
+    except UserTokenExpiredError:
+        raise HistoryAuthError("userId_expired", status.HTTP_403_FORBIDDEN) from None
     except UserTokenError:
-        return [user_id]
+        raise HistoryAuthError("invalid_userId", status.HTTP_403_FORBIDDEN) from None
 
     user_ids = [identity.user_id]
     if identity.sefaria_user_id and identity.sefaria_user_id not in user_ids:
         user_ids.append(identity.sefaria_user_id)
     return user_ids
+
+
+def _history_auth_response(exc: "HistoryAuthError") -> Response:
+    return Response({"error": exc.error}, status=exc.status_code)
 
 
 def extract_page_type(url: str | None) -> str:
@@ -96,6 +122,20 @@ def _read_limit_offset(request) -> tuple[int, int]:
     except (TypeError, ValueError):
         offset = 0
     return max(1, min(limit, MAX_HISTORY_LIMIT)), max(0, offset)
+
+
+def _read_strict_limit(request) -> int | None:
+    """Parse ``limit`` with bounds; return None when it is not a valid integer."""
+    raw = request.query_params.get("limit")
+    if raw is None:
+        return DEFAULT_HISTORY_LIMIT
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 1:
+        return None
+    return min(value, MAX_HISTORY_LIMIT)
 
 
 def _default_conversation_title(content: str) -> str:
@@ -219,14 +259,20 @@ def history(request):
     user_id = request.query_params.get("userId")
     session_id = request.query_params.get("sessionId")
     before = request.query_params.get("before")
-    limit = min(int(request.query_params.get("limit", 20)), 100)
 
     if not user_id or not session_id:
         return Response(
             {"error": "userId and sessionId are required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
+
+    limit = _read_strict_limit(request)
+    if limit is None:
+        return Response({"error": "invalid_limit"}, status=status.HTTP_400_BAD_REQUEST)
 
     queryset = ChatMessage.objects.filter(
         user_id__in=user_id_candidates,
@@ -285,7 +331,10 @@ def conversation_list(request):
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     limit, offset = _read_limit_offset(request)
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
     search_text = (request.query_params.get("search") or "").strip()
 
     queryset = ChatSession.objects.filter(
@@ -314,17 +363,24 @@ def conversation_list(request):
 
 @api_view(["GET", "PATCH", "DELETE"])
 def conversation_detail(request, session_id: str):
-    user_id = request.query_params.get("userId") or request.data.get("userId")
-    if not user_id:
+    user_id = request.query_params.get("userId")
+    if user_id is None and isinstance(request.data, dict):
+        user_id = request.data.get("userId")
+    if user_id is None or user_id == "":
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    user_id_candidates = _resolve_history_user_ids(user_id)
+    try:
+        user_id_candidates = _resolve_history_user_ids(user_id)
+    except HistoryAuthError as exc:
+        return _history_auth_response(exc)
     session = _get_owned_session(session_id, user_id_candidates)
     if session is None:
         return Response({"error": "conversation_not_found"}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "PATCH":
-        title = " ".join((request.data.get("title") or "").split())[:MAX_TITLE_LENGTH]
+        if not isinstance(request.data, dict) or not isinstance(request.data.get("title"), str):
+            return Response({"error": "invalid_title"}, status=status.HTTP_400_BAD_REQUEST)
+        title = " ".join(request.data["title"].split())[:MAX_TITLE_LENGTH]
         if not title:
             return Response({"error": "title_required"}, status=status.HTTP_400_BAD_REQUEST)
         session.title = title
@@ -358,13 +414,26 @@ def conversation_detail(request, session_id: str):
     )
 
 
+def _admin_token_valid(request) -> bool:
+    """Constant-time check of X-Admin-Token against ADMIN_API_TOKEN; unset means closed."""
+    expected = os.environ.get("ADMIN_API_TOKEN") or ""
+    provided = request.headers.get("X-Admin-Token") or ""
+    if not expected:
+        return False
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
 @api_view(["POST"])
 def reload_prompts(request):
     """
     Reload prompts from Braintrust without restarting the server.
 
     POST /api/admin/reload-prompts
+    Requires header X-Admin-Token equal to the ADMIN_API_TOKEN env var.
     """
+    if not _admin_token_valid(request):
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     try:
         prompt_service = get_prompt_service()
         prompt_service.invalidate_cache()
