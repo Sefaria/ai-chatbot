@@ -9,7 +9,6 @@ from datetime import datetime
 from functools import reduce
 from urllib.parse import urlparse
 
-from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db import connection
 from django.db.models import Q, TextField
@@ -19,6 +18,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .auth.auth_service import usable_token_secret
 from .models import ChatMessage, ChatSession
 from .serializers import HistoryMessageSerializer
 from .user_token_service import (
@@ -35,8 +35,6 @@ DEFAULT_HISTORY_LIMIT = 20
 MAX_HISTORY_LIMIT = 100
 MAX_TITLE_LENGTH = 64
 MAX_USER_ID_LENGTH = 2048
-# Placeholder value used only for local development; never accepted when DEBUG is off.
-DEFAULT_TOKEN_SECRET = "secret"
 
 
 class HistoryAuthError(Exception):
@@ -60,8 +58,8 @@ def _resolve_history_user_ids(user_id: str) -> list[str]:
     under both the anonymized id and the raw Sefaria id; reads accept both while
     writes persist only the anonymized id.
     """
-    secret = settings.CHATBOT_USER_TOKEN_SECRET
-    if not secret or (secret == DEFAULT_TOKEN_SECRET and not settings.DEBUG):
+    secret = usable_token_secret()
+    if not secret:
         raise HistoryAuthError("history_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE)
 
     if not isinstance(user_id, str) or not user_id or len(user_id) > MAX_USER_ID_LENGTH:
@@ -380,7 +378,9 @@ def conversation_detail(request, session_id: str):
         return Response({"error": "conversation_not_found"}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "PATCH":
-        title = " ".join((request.data.get("title") or "").split())[:MAX_TITLE_LENGTH]
+        if not isinstance(request.data, dict) or not isinstance(request.data.get("title"), str):
+            return Response({"error": "invalid_title"}, status=status.HTTP_400_BAD_REQUEST)
+        title = " ".join(request.data["title"].split())[:MAX_TITLE_LENGTH]
         if not title:
             return Response({"error": "title_required"}, status=status.HTTP_400_BAD_REQUEST)
         session.title = title

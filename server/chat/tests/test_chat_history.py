@@ -449,3 +449,13 @@ def test_history_rejects_non_string_or_oversized_user_id(client, method, bad):
     assert response.status_code == 403
     assert response.data["error"] == "invalid_userId"
     assert ChatSession.objects.get(session_id="sess_history_a").title == "Mine"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("body", [["x"], "x", {"title": 5}, {"title": None}, {"title": ["a"]}, {}])
+@override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
+def test_rename_rejects_malformed_body(client, token, body):
+    _create_conversation(session_id="sess_malformed", title="Keep", user_content="hello")
+    url = f"/api/history/conversations/sess_malformed?userId={token}"
+    response = client.patch(url, body, format="json")
+    assert response.status_code == 400
