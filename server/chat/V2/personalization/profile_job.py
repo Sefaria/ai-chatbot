@@ -26,7 +26,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from chat.models import PersonalizationSettings, ProfileWriterRun
-from chat.V2.prompts.chapters import chapter_sha, load_chapter
+from chat.V2.prompts.chapters import chapter_source, load_chapter
 
 from . import jev_questions as q
 from . import quota
@@ -753,7 +753,7 @@ def _finish(
         # only an applied run stores it: it then equals the stored Profile. A rejected or failed
         # candidate is never persisted.
         profile_after=extra.get("profile_after", "") if status == "applied" else "",
-        chapter_hashes={name: chapter_sha(name) for name in _chapters(ctx.window)},
+        chapter_hashes={name: chapter_source(name) for name in _chapters(ctx.window)},
         model=ctx.usage.model,
         input_tokens=ctx.usage.input_tokens or None,
         output_tokens=ctx.usage.output_tokens or None,

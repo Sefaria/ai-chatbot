@@ -16,7 +16,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 
-from chat.V2.prompts.chapters import chapter_sha, load_chapter
+from chat.V2.prompts.chapters import chapter_source, load_chapter
 
 from .checks import check_profile, never_store_text, normalize_heading
 from .core_slots import CORE_HEADINGS, CORE_KEYS
@@ -101,7 +101,9 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
             if key:
                 # A core heading is the core slot: drop dynamic rows that repeat it.
                 rows = [
-                    r for r in rows if not (r.kind != "core" and normalize_heading(r.heading) == norm)
+                    r
+                    for r in rows
+                    if not (r.kind != "core" and normalize_heading(r.heading) == norm)
                 ]
             else:
                 match = next((r for r in rows if normalize_heading(r.heading) == norm), None)
@@ -284,7 +286,7 @@ def _record(user_id: str, started: datetime, rec: dict, status: str, reason: str
             extraction="",  # the request is user text: a run row never holds it
             profile_before=rec.get("profile_before", ""),
             profile_after=rec.get("profile_after", ""),
-            chapter_hashes={CHAPTER: chapter_sha(CHAPTER)},
+            chapter_hashes={CHAPTER: chapter_source(CHAPTER)},
             model=rec.get("model", ""),
             input_tokens=rec.get("input_tokens"),
             output_tokens=rec.get("output_tokens"),
