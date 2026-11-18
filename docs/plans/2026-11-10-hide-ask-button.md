@@ -52,9 +52,11 @@ both off their default branch. Preview on the `la-hide-ask-button` Cauldron with
   `assistant.floating_button_modal.*` keys, English and Hebrew, came in through Weblate
   ([Sefaria/ai-chatbot#313](https://github.com/Sefaria/ai-chatbot/pull/313)). This branch's locale
   files now match `main` exactly, so the PR carries keys only.
-- [ ] **Behavioral tests**: add more e2e coverage beyond `e2e/floating-button-setting.spec.js`
-  (which covers hide persists, host reopen, log in / sign up / account settings links, the
-  `chatbot:launcher_visibility` event, account wins over browser).
+- [x] **Behavioral tests**: the approved stories are a playwright-bdd spec in Sefaria-Project,
+  branch `feature/sc-48380/give-anonymous-users-a-way-to-remove-the-la`, off Sarah's BDD pipeline
+  ([Sefaria/Sefaria-Project#4064](https://github.com/Sefaria/Sefaria-Project/pull/4064)). Logged-out
+  and phone scenarios pass on the Cauldron (`CHATBOT_VERSION=302`); the logged-in ones make a fresh
+  account each and only run where that's allowed (local, integration CI). Hebrew needs `SANDBOX_URL_IL`.
 - [ ] **Real device**: check the menu, modal and hidden button on a real phone (so far only the
   iOS Simulator and phone-width browser).
 - [x] **ARIA label strings**: `assistant.menu.floating_button_aria`,
