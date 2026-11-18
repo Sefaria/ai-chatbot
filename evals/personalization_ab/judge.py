@@ -39,8 +39,8 @@ Reply with one JSON object and nothing else:
 
 RANKING_SYSTEM = """You are comparing three answers to the same question from a Jewish-texts study assistant.
 The labels 1, 2 and 3 carry no meaning. You see the user's earlier questions for context.
-Rank the answers from best to worst for this user: correct, useful, fitted to what the earlier
-questions show about them, and not padded.
+Rank the answers from best to worst for this user: correct, cites its sources, useful, fitted to
+what the earlier questions show about them, and not padded.
 
 Reply with one JSON object and nothing else:
 {"ranking": ["best label", "middle label", "worst label"], "why": "one or two sentences"}"""
