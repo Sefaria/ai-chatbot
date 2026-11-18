@@ -41,6 +41,19 @@ class BraintrustTraceLogger:
             span_metadata.update(context.personalization_meta)
         elif context.profile_text or context.instructions_text:
             span_metadata["personalized"] = True
+        else:
+            # Plain turn: explicit defaults so every trace has the same columns.
+            span_metadata.update(
+                {
+                    "personalized": False,
+                    "profile_on": None,
+                    "instructions_on": None,
+                    "profile_revision": None,
+                    "notice_shown": False,
+                    "profile_injected": None,
+                    "prompt_versions": {},
+                }
+            )
 
         # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
         # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.

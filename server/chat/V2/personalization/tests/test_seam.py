@@ -80,9 +80,11 @@ def test_trace_metadata_marks_personalized_turns():
     assert _logged_metadata(MessageContext(instructions_text="Be brief."))["personalized"] is True
 
 
-def test_trace_metadata_unchanged_without_profile():
+def test_trace_metadata_plain_turn_carries_false_defaults():
     metadata = _logged_metadata(MessageContext())
-    assert "personalized" not in metadata
+    assert metadata["personalized"] is False
+    assert metadata["profile_on"] is None
+    assert metadata["prompt_versions"] == {}
 
 
 def test_the_gate_is_off_by_default():
