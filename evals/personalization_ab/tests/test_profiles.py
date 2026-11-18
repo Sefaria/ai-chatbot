@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -75,3 +76,42 @@ def test_profile_b_starts_empty_even_if_the_user_had_a_profile():
     assert (
         build.dropped[0]["screened_out"] == 10 and build.dropped[0]["kept_count"] == 0
     )
+
+
+def test_profile_a_success_path_with_a_fake_model():
+    from chat.V2.prompts.chapters import load_chapter
+
+    extraction = load_chapter("profile_extraction")
+
+    def respond(system, user):
+        if system == extraction:
+            return json.dumps(
+                {
+                    "sections": [
+                        {
+                            "key": "answer_style",
+                            "heading": "Kind of answers you want",
+                            "action": "add",
+                            "origin": "inferred",
+                            "notes": ["likes short answers"],
+                            "sessions": 2,
+                        }
+                    ]
+                }
+            )
+        if "yes or no" in system:
+            return "no"
+        wanted = [l[3:].strip() for l in user.splitlines() if l.startswith("## ")]
+        return json.dumps(
+            {"sections": [{"heading": h, "body": f"Body of {h}."} for h in wanted]}
+        )
+
+    ok_jev = FakeJevClient(lambda state, qs: {})
+    build = build_profile_a(
+        USER,
+        turns(lambda i: f"give me a short answer on topic {i}"),
+        FakeLLMClient(respond),
+        ok_jev,
+    )
+    assert build.text.strip() != ""
+    assert build.revisions >= 1
