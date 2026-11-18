@@ -1,6 +1,7 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
+  import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
   import { resyncPlayback } from '../lib/playbackSync.js';
@@ -70,8 +71,26 @@
     'interface-lang': interfaceLang = 'en',
     // The host page needs its own space (Sefaria's Settings page): start closed, whatever the saved
     // state says, without changing it. The pill still opens the assistant.
-    'start-closed': startClosedAttr = false
+    'start-closed': startClosedAttr = false,
+    // A Sefaria/design-system branch or commit to preview on top of the bundled tokens. Only
+    // non-production hosts pass it (see src/lib/designSystem.js).
+    'design-system-preview': designSystemPreview = ''
   } = $props();
+
+  let designSystemPreviewCss = $state('');
+  $effect(() => {
+    const ref = designSystemPreview;
+    let current = true;
+    designSystemPreviewCss = '';
+    if (ref) {
+      fetchPreviewCss(ref).then((css) => {
+        if (current) designSystemPreviewCss = css;
+      });
+    }
+    return () => {
+      current = false;
+    };
+  });
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -2492,6 +2511,13 @@
 
 </script>
 
+<!-- Design system tokens (see src/lib/designSystem.js), as text, never as HTML. A preview, when the
+     host asks for one, comes after the bundled tokens and overrides them. -->
+<svelte:element this={'style'} data-design-system>{designSystemCss}</svelte:element>
+{#if designSystemPreviewCss}
+  <svelte:element this={'style'} data-design-system-preview>{designSystemPreviewCss}</svelte:element>
+{/if}
+
 <div
   class="lc-chatbot-container"
   class:mode-floating={layout === 'floating'}
@@ -3176,42 +3202,21 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    /* Figma design tokens (canonical) */
-    --global-dimension-0: 0px;
-    --global-dimension-100: 8px;
-    --global-dimension-150: 12px;
-    --global-dimension-200: 16px;
-    --global-dimension-250: 20px;
-    --global-dimension-300: 24px;
-    --space-1: 4px;
-    --spacing-spacing-large: 16px;
-    --spacing-spacing-medium: 12px;
-    --semantic-action-primary: #18345D;
-    --semantic-text-link: #18345D;
-    --semantic-text-primary: #121212;
-    --semantic-text-secondary: #575757;
-    --semantic-text-muted: #707070;
-    --core-blue-tbr-100: #F0F7FF;
-    --core-blue-tbr-200: #DDEEFF;
-    --core-base-white: #FFFFFF;
-    --core-neutral-gray-100: #EEEEEE;
-    --core-neutral-gray-300: #CCCCCC;
-    --functional-icon-icon-primary: #666666;
-    --semantic-icon-muted: #6F6F6F;
+    /* Core and semantic tokens come from @sefaria/design-system (injected at the top of the markup).
+       Don't redefine them here; to change one, change it in the design system. */
 
-    /* Component tokens — aliased to Figma tokens where applicable */
-    --lc-primary: var(--semantic-action-primary);
-    --brand-sefaria-blue: #18345D;
+    /* Component tokens: the Library Assistant's own layer. Point them at semantic tokens. */
+    --lc-primary: var(--action-primary);
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
-    --lc-text-secondary: var(--semantic-text-secondary);
+    --lc-text-secondary: var(--text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: var(--brand-sefaria-blue);
+    --lc-user-bg: var(--module-primary);
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
@@ -3234,9 +3239,9 @@
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
-    --lc-icon-primary: var(--functional-icon-icon-primary);
-    --lc-icon-muted: var(--semantic-icon-muted);
-    --lc-topics-bg: var(--core-blue-tbr-100);
+    --lc-icon-primary: var(--icon-muted);
+    --lc-icon-muted: var(--icon-muted);
+    --lc-topics-bg: var(--module-accent);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
     --lc-danger: #C03522;
@@ -3573,7 +3578,7 @@
     height: 48px;
     margin: 0 var(--global-dimension-150) var(--global-dimension-150);
     padding: 0 1px 0 var(--global-dimension-200);
-    gap: var(--space-1);
+    gap: var(--spacing-xsmall);
   }
 
   .mode-fullscreen .history-search input {
@@ -3929,7 +3934,7 @@
 
   .history-search input:focus,
   .history-rename-form input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .history-search-submit {
@@ -4011,17 +4016,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: var(--core-blue-tbr-100);
+    background: var(--surface-hover-accent);
   }
 
   .history-row.active {
-    background: var(--core-blue-tbr-200);
+    background: var(--surface-selected-accent);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: var(--core-blue-tbr-200);
+    background: var(--surface-selected-accent);
   }
 
   .history-row:disabled {
@@ -4290,7 +4295,7 @@
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
@@ -4312,7 +4317,7 @@
   /* Foundations icon-small (12px) */
   .header-sparkle {
     flex-shrink: 0;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
   }
 
   .header-actions {
@@ -4396,10 +4401,10 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large, 16px);
     scroll-behavior: smooth;
   }
 
@@ -4598,7 +4603,7 @@
   }
 
   .message-status.sending {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
   }
 
   .retry-btn {
@@ -4678,7 +4683,7 @@
     line-height: var(--global-dimension-250, 20px);
   }
   .lc-thinking-glyph {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--text-secondary, #575757);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
@@ -4702,7 +4707,7 @@
     min-width: 0;
   }
   .lc-thinking-label-base {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--text-secondary, #575757);
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -4749,7 +4754,7 @@
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
-    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-large, 16px));
   }
   .lc-thinking-block.is-writing:not(.is-paused) .lc-thinking-label-base {
     animation: none;
@@ -4775,7 +4780,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large, 16px);
   }
 
   /* Loading Indicator */
@@ -4815,7 +4820,7 @@
 
   .login-prompt-text {
     margin: 0;
-    color: var(--semantic-text-primary);
+    color: var(--text-primary);
     /* Font family is inherited: the widget's font in English, Heebo in Hebrew. */
     font-size: var(--lc-font-size);
     line-height: var(--global-dimension-250);
@@ -4883,7 +4888,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -4903,7 +4908,7 @@
     justify-content: center;
     width: var(--lc-send-size);
     height: var(--lc-send-size);
-    background: var(--brand-sefaria-blue);
+    background: var(--action-primary);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -4954,7 +4959,7 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--brand-sefaria-blue);
+    color: var(--action-primary);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -5038,7 +5043,7 @@
   }
 
   .settings-save {
-    background: var(--brand-sefaria-blue);
+    background: var(--action-primary);
     color: white;
     border-color: transparent;
   }
@@ -5197,7 +5202,7 @@
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
-    background: var(--semantic-surface-hover, #eee);
+    background: var(--surface-hover, #eee);
   }
 
   .delete-modal .feedback-modal-btn {
@@ -5279,7 +5284,7 @@
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -5287,7 +5292,7 @@
   }
 
   .feedback-modal-input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .feedback-modal-input::placeholder {
@@ -5358,7 +5363,7 @@
   .message-content :global(.response-title) {
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-style: normal;
     line-height: normal;
   }
@@ -5367,7 +5372,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -5375,7 +5380,7 @@
   }
 
   .message-content :global(.response-section) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -5389,7 +5394,7 @@
   }
 
   .mode-fullscreen .message-content :global(.response-section) {
-    margin-block: 14px var(--space-1);
+    margin-block: 14px var(--spacing-xsmall);
   }
 
   .mode-fullscreen .message-content :global(.response-title + .response-section) {
@@ -5403,7 +5408,7 @@
   }
 
   .message-content :global(.response-list) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -5418,7 +5423,7 @@
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
-    color: var(--brand-sefaria-blue);
+    color: var(--text-link);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -5500,7 +5505,7 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     font-weight: 600;
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
@@ -5514,7 +5519,7 @@
     display: inline-block;
     vertical-align: middle;
     margin-inline-end: 2px;
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     opacity: 0.6;
   }
 

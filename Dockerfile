@@ -5,7 +5,7 @@ ENV VITE_APP_VERSION=$APP_VERSION
 
 WORKDIR /build
 COPY . .
-RUN npm install
+RUN npm ci
 RUN npm run build
 
 

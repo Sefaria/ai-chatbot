@@ -7,6 +7,36 @@ on:
   pull_request:
 
 jobs:
+  design-system-pin:
+    name: Design system is pinned to a release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the base branch, to compare versions
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin "$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+      - run: node scripts/check-design-system-pin.mjs
+        env:
+          DESIGN_SYSTEM_BASE: ${{ github.event_name == 'pull_request' && 'FETCH_HEAD' || '' }}
+
+  # The widget: install exactly the lockfile (as the Dockerfile does), build it, and run the
+  # behaviour tests in Chrome. Design-system update PRs merge only once this passes.
+  widget:
+    name: Widget build and e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --project=chrome
+
   test:
     name: Tests
     runs-on: ubuntu-latest

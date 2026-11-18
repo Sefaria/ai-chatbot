@@ -198,10 +198,11 @@
        ?user-id=<encrypted user token> shows it logged in as that user, and
        ?anon-free-answers=<n> passes the host's free-answer limit, and
        ?start-closed (or =true) starts it closed whatever its saved state.
+       ?design-system-preview=<branch or commit> previews that Sefaria/design-system version.
        Runs before the widget module below, which loads deferred. -->
   <script>
     const params = new URLSearchParams(window.location.search);
-    for (const attribute of ['user-id', 'anon-free-answers']) {
+    for (const attribute of ['user-id', 'anon-free-answers', 'design-system-preview']) {
       if (params.get(attribute)) {
         document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
       }

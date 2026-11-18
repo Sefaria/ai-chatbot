@@ -163,5 +163,15 @@
     "assistant.floating_button_modal.sign_up": "הירשמו",
     "assistant.floating_button_modal.main_menu_logged_in": "אפשר להסיר את עוזר הספרייה מהתפריט הראשי ב{account_settings}.",
     "assistant.floating_button_modal.account_settings": "הגדרות",
-    "assistant.floating_button_modal.done": "סיימתי"
+    "assistant.floating_button_modal.done": "סיימתי",
+    "assistant.loading.hanukkah.initial": "מסתובב בין מדפי הספרייה",
+    "assistant.thinking.array.hanukkah.01": "מחפש עוד קצת שמן",
+    "assistant.thinking.array.hanukkah.02": "בודק לאן נוטים הפרשנים",
+    "assistant.thinking.array.hanukkah.03": "אוסף מקורות כמו דמי חנוכה",
+    "assistant.thinking.array.hanukkah.04": "מדליק את המקור הראשון",
+    "assistant.thinking.array.hanukkah.05": "מטגן עוד כמה לביבות",
+    "assistant.thinking.hanukkah.final": "מוסיף את הנר האחרון",
+    "assistant.menu.floating_button_aria": "הסתרה או הצגה של כפתור ״שאלו אותי״",
+    "assistant.floating_button_modal.toggle_hide_aria": "הסתרת כפתור \"שאלו אותי\"",
+    "assistant.floating_button_modal.toggle_show_aria": "הצגת כפתור \"שאלו אותי\""
 }
