@@ -340,6 +340,7 @@ def send(session, message, *, user=USER, context=None):
 
 
 def test_the_first_message_of_a_new_session_queues_one_job_and_later_ones_none(queued):
+    store.set_testing(USER, update_every_message=False)
     send("sess-1", "m1")
     assert queued == [(USER, "new_chat")]
     send("sess-1", "m2")

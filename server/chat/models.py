@@ -361,8 +361,8 @@ class PersonalizationSettings(models.Model):
     # The user message whose turn showed the notice, so a recovered reply can repeat it.
     notice_message_id = models.CharField(max_length=100, blank=True, default="")
     # Lab-only testing switches.
-    show_plain_response = models.BooleanField(default=False)
-    update_every_message = models.BooleanField(default=False)
+    show_plain_response = models.BooleanField(default=True)
+    update_every_message = models.BooleanField(default=True)
 
 
 class ProfileSection(models.Model):

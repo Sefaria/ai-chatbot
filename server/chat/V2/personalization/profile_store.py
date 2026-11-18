@@ -52,8 +52,8 @@ class SettingsData:
     processed_through: datetime | None = None
     cleared_at: datetime | None = None
     notice_pending: bool = False
-    show_plain_response: bool = False
-    update_every_message: bool = False
+    show_plain_response: bool = True
+    update_every_message: bool = True
     # Not stored: whether the write that returned this object changed anything.
     changed: bool = False
 

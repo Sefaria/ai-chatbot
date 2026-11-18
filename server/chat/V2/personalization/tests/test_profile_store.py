@@ -91,7 +91,7 @@ def test_set_enabled_and_testing():
     with pytest.raises(ValueError):
         store.set_enabled("u1", "other", True)
     t = store.set_testing("u1", show_plain_response=True)
-    assert t.show_plain_response is True and t.update_every_message is False
+    assert t.show_plain_response is True and t.update_every_message is True
 
 
 def test_replace_sections_revision_guard():

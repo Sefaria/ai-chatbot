@@ -83,7 +83,7 @@ def test_get_default_state(client):
             "revision": 0,
         },
         "labEnabled": False,
-        "testing": {"showPlainResponse": False, "updateEveryMessage": False},
+        "testing": {"showPlainResponse": True, "updateEveryMessage": True},
     }
 
 
@@ -303,7 +303,8 @@ def test_production_env_404(client, monkeypatch, environment):
 )
 def test_lab_only_actions_404_off_lab(client, action, fields):
     assert call(client, action, **fields).status_code == 404
-    assert store.get_settings(USER_A).show_plain_response is False
+    # Untouched: still the default for a user with no saved choice.
+    assert store.get_settings(USER_A).show_plain_response is True
 
 
 def test_set_testing_on_lab(client, lab):
@@ -312,9 +313,9 @@ def test_set_testing_on_lab(client, lab):
     flags = lambda r: {  # noqa: E731
         k: v for k, v in r.json()["testing"].items() if k not in ("recentRuns", "jobState")
     }
-    assert flags(r) == {"showPlainResponse": True, "updateEveryMessage": False}
-    r = call(client, "set_testing", updateEveryMessage=True)
     assert flags(r) == {"showPlainResponse": True, "updateEveryMessage": True}
+    r = call(client, "set_testing", updateEveryMessage=False)
+    assert flags(r) == {"showPlainResponse": True, "updateEveryMessage": False}
     assert call(client, "set_testing", showPlainResponse="yes").status_code == 400
 
 
@@ -610,17 +611,17 @@ def test_a_busy_edit_returns_200_with_the_fixed_reason_and_the_current_state(cli
 
 def _run_row(n, **kw):
     now = timezone.now()
-    fields = dict(
-        user_id=USER_A,
-        trigger="session_end",
-        window="session",
-        started_at=now - timedelta(minutes=60 - n),
-        status="applied",
-        reason="",
-        extraction="PRIVATE EXTRACTION",
-        profile_before="PRIVATE BEFORE",
-        profile_after="PRIVATE AFTER",
-    )
+    fields = {
+        "user_id": USER_A,
+        "trigger": "session_end",
+        "window": "session",
+        "started_at": now - timedelta(minutes=60 - n),
+        "status": "applied",
+        "reason": "",
+        "extraction": "PRIVATE EXTRACTION",
+        "profile_before": "PRIVATE BEFORE",
+        "profile_after": "PRIVATE AFTER",
+    }
     fields.update(kw)
     return ProfileWriterRun.objects.create(**fields)
 
