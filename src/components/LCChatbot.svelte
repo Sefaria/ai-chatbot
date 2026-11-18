@@ -2584,7 +2584,7 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria', { default: 'Hide or show Ask button' })} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
                   {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
@@ -3076,8 +3076,8 @@
                 type="checkbox"
                 role="switch"
                 aria-label={launcherHidden
-                  ? $_('assistant.floating_button_modal.toggle_show_aria', { default: 'Show Ask button' })
-                  : $_('assistant.floating_button_modal.toggle_hide_aria', { default: 'Hide Ask button' })}
+                  ? $_('assistant.floating_button_modal.toggle_show_aria')
+                  : $_('assistant.floating_button_modal.toggle_hide_aria')}
                 checked={!launcherHidden}
                 onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
               />

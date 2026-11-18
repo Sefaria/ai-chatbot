@@ -57,9 +57,9 @@ both off their default branch. Preview on the `la-hide-ask-button` Cauldron with
   `chatbot:launcher_visibility` event, account wins over browser).
 - [ ] **Real device**: check the menu, modal and hidden button on a real phone (so far only the
   iOS Simulator and phone-width browser).
-- [ ] **ARIA label strings**: `assistant.menu.floating_button_aria`,
-  `assistant.floating_button_modal.toggle_hide_aria` / `toggle_show_aria` through Weblate
-  (upload files in `weblate-upload/la-hide-aria/`). Until then the code falls back to English.
+- [x] **ARIA label strings**: `assistant.menu.floating_button_aria`,
+  `assistant.floating_button_modal.toggle_hide_aria` / `toggle_show_aria` came in through Weblate
+  ([Sefaria/ai-chatbot#328](https://github.com/Sefaria/ai-chatbot/pull/328)).
 
 ## Open question
 
