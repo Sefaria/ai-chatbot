@@ -406,7 +406,7 @@ step(5, 'Next answer shows the notice with two links; the one after does not', a
   const first = await ask(s, 'Can you point me to sources about gratitude?', { fresh: true });
   const notice = lastAnswerNotice(first.la);
   await expect(notice).toHaveCount(1);
-  await expect(notice).toContainText("I'm personalizing your responses from now on.");
+  await expect(notice).toContainText('From now on, answers are tailored to you.');
   const links = await notice.getByRole('link').evaluateAll((as) => as.map((a) => `${a.textContent.trim()} -> ${a.getAttribute('href')}`));
   quote('notice', await notice.innerText());
   quote('links', links.join(' ; '));
@@ -854,7 +854,7 @@ step('R4', 'Notice on the first personalised answer of a new chat, not on the se
   const first = await ask(s, 'Can you point me to sources about gratitude?', { fresh: true });
   const notice = lastAnswerNotice(first.la);
   await expect(notice).toHaveCount(1);
-  await expect(notice).toContainText("I'm personalizing your responses from now on.");
+  await expect(notice).toContainText('From now on, answers are tailored to you.');
   const links = await notice.getByRole('link').evaluateAll((as) => as.map((a) => `${a.textContent.trim()} -> ${a.getAttribute('href')}`));
   quote('notice', await notice.innerText());
   quote('links', links.join(' ; '));

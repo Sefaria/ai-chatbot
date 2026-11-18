@@ -4,6 +4,7 @@
   import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
+  import { settingsHref } from '../lib/settingsLink.js';
   import { resyncPlayback } from '../lib/playbackSync.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
@@ -2658,11 +2659,11 @@
                   {$_('assistant.menu.help')}
                 </a>
                 {#if isLoggedIn}
-                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/library-assistant" role="menuitem" onclick={closeMenu}>
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
                     {$_('assistant.menu.optout')}
                   </a>
-                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href="/settings/library-assistant#personalization" role="menuitem" onclick={closeMenu}>
+                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                     {$_('assistant.menu.personalization')}
                   </a>
@@ -2921,13 +2922,14 @@
             </div>
             {#if isProfileUsedLine(feedbackProps?.profileUsed)}
               <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
+            <a class="profile-used-edit" href={settingsHref('profile')}>{$_('assistant.personalization.edit')}</a>
             {/if}
             {#if feedbackProps?.personalizationNotice}
               <div class="la-personalization-notice">
                 <p class="personalization-notice" data-testid="personalization-notice">
                   {$_('assistant.personalization.notice')}
-                  <a href="/settings/library-assistant#personalization">{$_('assistant.personalization.configure')}</a>
-                  <a href="/settings/library-assistant#about-personalization">{$_('assistant.personalization.learn_more')}</a>
+                  <a href={settingsHref('personalization')}>{$_('assistant.personalization.configure')}</a>
+                  <a href={settingsHref('about-personalization')}>{$_('assistant.personalization.learn_more')}</a>
                 </p>
               </div>
             {/if}
@@ -5073,6 +5075,12 @@
     margin: 8px 0 0;
     font-size: var(--lc-font-size-sm);
     color: #1a7f37;
+  }
+
+  .profile-used-edit {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: var(--lc-font-size-sm);
   }
 
   /* The notice's container, as the product owner set it */

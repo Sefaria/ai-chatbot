@@ -44,8 +44,8 @@ test.describe('menu', () => {
     await assistant.openMoreOptions();
     const optOut = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.optOut.aria') });
     const personalization = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.personalization.aria') });
-    await expect(optOut).toHaveAttribute('href', '/settings/library-assistant');
-    await expect(personalization).toHaveAttribute('href', '/settings/library-assistant#personalization');
+    await expect(optOut).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+$/);
+    await expect(personalization).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
     await expect(personalization).toContainText(t('assistant.menu.personalization'));
   });
 
@@ -67,9 +67,9 @@ test.describe('notice', () => {
     await expect(notice(assistant)).toHaveCount(1);
     await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
     await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.configure') }))
-      .toHaveAttribute('href', '/settings/library-assistant#personalization');
+      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
     await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.learn_more') }))
-      .toHaveAttribute('href', '/settings/library-assistant#about-personalization');
+      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#about-personalization$/);
 
     await assistant.ask('And a minhag?');
     await expect(assistant.answers).toHaveCount(2);
@@ -86,7 +86,7 @@ test.describe('notice', () => {
       const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
       await assistant.ask('What is a mitzvah?');
       await notice(assistant).getByRole('link', { name: t(`assistant.personalization.${linkKey}`) }).click();
-      await expect(page).toHaveURL(new RegExp(`/settings/library-assistant${hash}$`));
+      await expect(page).toHaveURL(new RegExp(`/settings/library-assistant\\?from=[^#]+${hash}$`));
     });
   }
 
