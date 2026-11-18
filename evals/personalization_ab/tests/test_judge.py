@@ -111,3 +111,52 @@ def test_default_call_flags_isolate_the_model(monkeypatch):
     ):
         assert flag in argv
     assert captured["kw"]["env"]["MAX_THINKING_TOKENS"] == "0"
+
+
+def test_malformed_replies_become_unusable_not_exceptions():
+    calls = []
+
+    def bad(model, system, user):
+        calls.append(1)
+        if system == judge.PROFILE_SYSTEM:
+            return '{"profiles": {"1": {"score": 9}}, "winner": "x"}'
+        return "nope"
+
+    js = judge.run_judges(PACKET, models=("opus",), seed=1, call=bad)
+    assert len(js) == 3
+    assert all(j.data["unusable"] for j in js)
+    assert len(calls) == 9  # three attempts each
+
+
+def test_a_good_retry_after_a_bad_reply_is_used():
+    seen = {"n": 0}
+
+    def flaky(model, system, user):
+        if system == judge.RANKING_SYSTEM:
+            seen["n"] += 1
+            if seen["n"] == 1:
+                return "garbage"
+        return fake_call(model, system, user)
+
+    js = judge.run_judges(PACKET, models=("opus",), seed=1, call=flaky)
+    assert all("unusable" not in j.data for j in js)
+
+
+def test_int_rankings_and_fenced_prose_replies_are_accepted():
+    def fenced(model, system, user):
+        if system == judge.PROFILE_SYSTEM:
+            return "Here:\n```json\n" + fake_call(model, system, user) + "\n```\nDone."
+        return 'Sure. {"ranking": [1, 2, 3], "why": "x"} hope that helps'
+
+    js = judge.run_judges(PACKET, models=("opus",), seed=1, call=fenced)
+    assert all("unusable" not in j.data for j in js)
+    assert ranking(js, "opus", 11).data["ranking"] == judge.label_order(1, 11)
+
+
+def test_checks_raise_value_error_not_assertion():
+    import pytest
+
+    with pytest.raises(ValueError):
+        judge._check_rank({"ranking": ["1", "1", "2"]})
+    with pytest.raises(ValueError):
+        judge._check_profile({"profiles": {}, "winner": "1"})

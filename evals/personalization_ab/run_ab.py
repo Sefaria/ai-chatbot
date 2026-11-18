@@ -37,6 +37,11 @@ def parse_args(argv=None):
     p.add_argument("--data-dir", required=True)
     p.add_argument("--prompts", choices=("bundled", "braintrust"), default="bundled")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--judge-only",
+        action="store_true",
+        help="load the saved packets under DIR/<pilot|full>/ and only judge and report",
+    )
     return p.parse_args(argv)
 
 
@@ -52,6 +57,30 @@ def inside_git_repo(path) -> bool:
         capture_output=True, text=True, check=False,
     )  # fmt: skip
     return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def configure_run_env(environ=None) -> None:
+    """Before Django starts: engine traces stay out of the production Braintrust logs (report.py
+    uses the braintrust SDK directly, so experiment logging is unaffected), and the Claude CLI's
+    debug-to-stderr stream (on by default; any non-empty CLAUDE_SDK_DEBUG enables it) is off."""
+    environ = os.environ if environ is None else environ
+    environ["BRAINTRUST_LOGGING_ENABLED"] = "false"
+    environ["CLAUDE_SDK_DEBUG"] = ""
+
+
+def write_private(path: Path, data: dict) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(data, ensure_ascii=False, indent=2))
+    os.chmod(path, 0o600)
+
+
+def load_packets(data_dir: Path) -> tuple[str, list[dict]]:
+    for mode in ("full", "pilot"):
+        files = sorted((data_dir / mode).glob("user-*.json"))
+        if files:
+            return mode, [json.loads(f.read_text(encoding="utf-8")) for f in files]
+    return "", []
 
 
 def load_export(data_dir: Path):
@@ -153,76 +182,113 @@ def run(
             f"dry run ok: {args.users} users, seed {args.seed}, prompts {args.prompts}, data {data_dir}"
         )
         return 0
-    if not (data_dir / "export.json").is_file():
-        print(f"missing {data_dir / 'export.json'}", file=sys.stderr)
-        return 2
+    if not args.judge_only:
+        if not os.environ.get("SEMANTIC_SEARCH_API_TOKEN", "").strip():
+            print(
+                "refusing: SEMANTIC_SEARCH_API_TOKEN is not set; without it every "
+                "semantic_search call 401s and the answers come from a crippled engine",
+                file=sys.stderr,
+            )
+            return 2
+        if not (data_dir / "export.json").is_file():
+            print(f"missing {data_dir / 'export.json'}", file=sys.stderr)
+            return 2
 
+    configure_run_env()
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "chatbot_server.settings")
     import django
 
     django.setup()
-    from chat.V2.personalization.llm import ClaudeCodeLLMClient
-    from chat.V2.personalization.tests.support import real_scrub
+    from personalization_ab import answer, judge, report
 
-    from personalization_ab import answer, judge, profiles, report, select
-
-    try:
-        apply_prompt_source(args.prompts)
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    llm = llm or ClaudeCodeLLMClient()
-    answerer = answerer or answer.answer_turn
-    summary_builder = summary_builder or answer.session_summary
-    by_user = {u: select.dedupe(ts) for u, ts in load_export(data_dir).items()}
-    chosen = select.pick_users(by_user, args.users, args.seed)
-    mode = "pilot" if len(chosen) <= PILOT_MAX_USERS else "full"
-    out_dir = data_dir / mode
-    out_dir.mkdir(exist_ok=True)
-    pseudo = real_scrub.Pseudonymizer()
     packets, judgments = [], []
-    for raw in chosen:
+    if args.judge_only:
+        mode, saved = load_packets(data_dir)
+        if not saved:
+            print(f"no saved packets under {data_dir}/<pilot|full>", file=sys.stderr)
+            return 2
+        out_dir = data_dir / mode
+        for packet in saved:
+            _judge_and_save(packet, out_dir, args.seed, judge_call, judge)
+            packets.append(packet)
+    else:
+        from chat.V2.personalization.llm import ClaudeCodeLLMClient
+        from chat.V2.personalization.tests.support import real_scrub
+
+        from personalization_ab import profiles, select
+
         try:
-            user, turns = _scrub_turns(
-                by_user[raw][: N_PROFILE + N_PROMPTS], llm, pseudo, raw
-            )
+            apply_prompt_source(args.prompts)
         except RuntimeError as exc:
-            print(f"skipping one user: {exc}", file=sys.stderr)
-            continue
-        a = profiles.build_profile_a(user, turns, llm, jev)
-        b = profiles.build_profile_b(user, turns, llm, jev)
-        items = []
-        for k, t in enumerate(turns[N_PROFILE : N_PROFILE + N_PROMPTS]):
-            ans_a, ans_b = answer_pair(
-                user, turns, N_PROFILE + k, a.text, b.text, answerer, summary_builder
-            )
-            items.append({
-                "index": N_PROFILE + k + 1, "prompt": t.prompt, "original": t.original_answer,
-                "A": ans_a.text, "B": ans_b.text,
-                "trace_ids": {"A": ans_a.trace_id, "B": ans_b.trace_id},
-            })  # fmt: skip
-        packet = {
-            "user": user, "mode": mode, "seed": args.seed, "profile_a": a.text, "profile_b": b.text,
-            "revisions": {"A": a.revisions, "B": b.revisions},
-            "turns": [{"prompt": t.prompt, "answer": t.original_answer} for t in turns[:N_PROFILE]],
-            "prompts": items,
-        }  # fmt: skip
-        js = judge.run_judges(packet, seed=args.seed, call=judge_call)
-        packet["judgments"] = [asdict(j) for j in js]
-        (out_dir / f"user-{user}.json").write_text(
-            json.dumps(packet, ensure_ascii=False, indent=2)
-        )
-        packets.append(packet)
-        judgments.extend(js)
+            print(str(exc), file=sys.stderr)
+            return 2
+        llm = llm or ClaudeCodeLLMClient()
+        answerer = answerer or answer.answer_turn
+        summary_builder = summary_builder or answer.session_summary
+        by_user = {u: select.dedupe(ts) for u, ts in load_export(data_dir).items()}
+        chosen = select.pick_users(by_user, args.users, args.seed)
+        mode = "pilot" if len(chosen) <= PILOT_MAX_USERS else "full"
+        out_dir = data_dir / mode
+        out_dir.mkdir(exist_ok=True)
+        os.chmod(out_dir, 0o700)
+        pseudo = real_scrub.Pseudonymizer()
+        versions = report.prompt_versions()
+        for raw in chosen:
+            try:
+                user, turns = _scrub_turns(
+                    by_user[raw][: N_PROFILE + N_PROMPTS], llm, pseudo, raw
+                )
+            except RuntimeError as exc:
+                print(f"skipping one user: {exc}", file=sys.stderr)
+                continue
+            a = profiles.build_profile_a(user, turns, llm, jev)
+            b = profiles.build_profile_b(user, turns, llm, jev)
+            items = []
+            for k, t in enumerate(turns[N_PROFILE : N_PROFILE + N_PROMPTS]):
+                ans_a, ans_b = answer_pair(
+                    user,
+                    turns,
+                    N_PROFILE + k,
+                    a.text,
+                    b.text,
+                    answerer,
+                    summary_builder,
+                )
+                items.append({
+                    "index": N_PROFILE + k + 1, "prompt": t.prompt, "original": t.original_answer,
+                    "A": ans_a.text, "B": ans_b.text,
+                    "trace_ids": {"A": ans_a.trace_id, "B": ans_b.trace_id},
+                })  # fmt: skip
+            packet = {
+                "user": user, "mode": mode, "seed": args.seed,
+                "profile_a": a.text, "profile_b": b.text,
+                "revisions": {"A": a.revisions, "B": b.revisions},
+                "dropped": {"A": a.dropped, "B": b.dropped},
+                "prompt_versions": versions,
+                "turns": [{"prompt": t.prompt, "answer": t.original_answer} for t in turns[:N_PROFILE]],
+                "prompts": items,
+            }  # fmt: skip
+            write_private(out_dir / f"user-{user}.json", packet)  # before judging
+            _judge_and_save(packet, out_dir, args.seed, judge_call, judge)
+            packets.append(packet)
     if not packets:
         print("no users were run", file=sys.stderr)
         return 1
+    judgments = [judge.Judgment(**j) for p in packets for j in p["judgments"]]
+    usable = [j for j in judgments if "unusable" not in j.data]
+    print(f"judgments: {len(usable)} usable, {len(judgments) - len(usable)} unusable")
     print(
         report.log_experiment(
-            packets, judgments, args.prompts, client=client, seed=args.seed
+            packets, usable, args.prompts, client=client, seed=args.seed
         )
     )
     return 0
+
+
+def _judge_and_save(packet, out_dir, seed, judge_call, judge) -> None:
+    js = judge.run_judges(packet, seed=packet.get("seed", seed), call=judge_call)
+    packet["judgments"] = [asdict(j) for j in js]
+    write_private(out_dir / f"user-{packet['user']}.json", packet)
 
 
 if __name__ == "__main__":

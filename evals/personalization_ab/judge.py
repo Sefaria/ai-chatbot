@@ -103,25 +103,57 @@ def claude_call(model: str, system: str, user: str, timeout: int = 300) -> str:
 
 
 def _json_object(text: str) -> dict:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("no JSON object in reply")
-    obj = json.loads(match.group(0))
-    if not isinstance(obj, dict):
-        raise TypeError("reply is not an object")
-    return obj
+    """The first JSON object in a reply, tolerating prose and code fences around it."""
+    text = re.sub(r"```(?:json)?", "", text or "")
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text, i)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    raise ValueError("no JSON object in reply")
 
 
-def _ask(call, model, system, user, check):
-    last: Exception | None = None
-    for _ in range(2):
+def _ask(call, model, system, user, check, attempts: int = 3):
+    """Ask, validate, retry. Returns (object, None) or (None, reason): a bad reply never raises."""
+    last = "no reply"
+    for _ in range(attempts):
         try:
             obj = _json_object(call(model, system, user))
             check(obj)
-            return obj
-        except (ValueError, KeyError, TypeError) as exc:
-            last = exc
-    raise RuntimeError(f"{model} gave an unusable reply: {last}")
+            return obj, None
+        except Exception as exc:  # noqa: BLE001 - any failure of one judge call is a judgment
+            last = f"{type(exc).__name__}: {exc}"
+    return None, last
+
+
+def _label(v) -> str:
+    return str(v).strip()
+
+
+def _check_profile(o: dict) -> None:
+    profiles = o.get("profiles")
+    if not isinstance(profiles, dict) or {_label(k) for k in profiles} != {"1", "2"}:
+        raise ValueError("profiles must be labelled 1 and 2")
+    if _label(o.get("winner")) not in ("1", "2", "tie"):
+        raise ValueError("winner must be 1, 2 or tie")
+    for v in profiles.values():
+        if not 1 <= int(v["score"]) <= 5:
+            raise ValueError("score out of range")
+
+
+def _check_rank(o: dict) -> None:
+    ranking = o.get("ranking")
+    if not isinstance(ranking, list) or sorted(_label(x) for x in ranking) != [
+        "1",
+        "2",
+        "3",
+    ]:
+        raise ValueError("ranking must be a permutation of 1, 2, 3")
 
 
 def _profile_user(packet: dict, order: list[str]) -> str:
@@ -147,40 +179,43 @@ def run_judges(
 ) -> list[Judgment]:
     call = call or claude_call
     out: list[Judgment] = []
+    user = packet.get("user", "")
     p_order = profile_order(seed)
     for model in models:
-
-        def check_profile(o):
-            assert set(o["profiles"]) == {"1", "2"} and o["winner"] in ("1", "2", "tie")
-            for v in o["profiles"].values():
-                assert 1 <= int(v["score"]) <= 5
-
-        o = _ask(
-            call, model, PROFILE_SYSTEM, _profile_user(packet, p_order), check_profile
+        o, why_bad = _ask(
+            call, model, PROFILE_SYSTEM, _profile_user(packet, p_order), _check_profile
         )
-        back = {str(i + 1): k for i, k in enumerate(p_order)}
-        out.append(Judgment(model, "profile", None, {
-            "scores": {back[n]: int(v["score"]) for n, v in o["profiles"].items()},
-            "reasons": {back[n]: {k: v.get(k, []) for k in ("supported", "missed", "invented")}
-                        for n, v in o["profiles"].items()},
-            "winner": o["winner"] if o["winner"] == "tie" else back[o["winner"]],
-            "why": o.get("why", ""),
-        }, packet.get("user", "")))  # fmt: skip
+        if o is None:
+            out.append(Judgment(model, "profile", None, {"unusable": why_bad}, user))
+        else:
+            back = {str(i + 1): k for i, k in enumerate(p_order)}
+            profs = {_label(n): v for n, v in o["profiles"].items()}
+            winner = _label(o["winner"])
+            out.append(Judgment(model, "profile", None, {
+                "scores": {back[n]: int(v["score"]) for n, v in profs.items()},
+                "reasons": {back[n]: {k: v.get(k, []) for k in ("supported", "missed", "invented")}
+                            for n, v in profs.items()},
+                "winner": winner if winner == "tie" else back[winner],
+                "why": o.get("why", ""),
+            }, user))  # fmt: skip
         for item in packet["prompts"]:
             order = label_order(seed, item["index"])
-
-            def check_rank(o):
-                assert sorted(map(str, o["ranking"])) == ["1", "2", "3"]
-
-            o = _ask(
+            o, why_bad = _ask(
                 call,
                 model,
                 RANKING_SYSTEM,
                 _ranking_user(packet, item, order),
-                check_rank,
+                _check_rank,
             )
+            if o is None:
+                out.append(
+                    Judgment(
+                        model, "ranking", item["index"], {"unusable": why_bad}, user
+                    )
+                )
+                continue
             out.append(Judgment(model, "ranking", item["index"], {
-                "ranking": [order[int(n) - 1] for n in o["ranking"]],  # best first
+                "ranking": [order[int(_label(n)) - 1] for n in o["ranking"]],  # best first
                 "why": o.get("why", ""),
-            }, packet.get("user", "")))  # fmt: skip
+            }, user))  # fmt: skip
     return out

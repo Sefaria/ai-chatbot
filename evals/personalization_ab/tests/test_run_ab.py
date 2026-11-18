@@ -107,3 +107,85 @@ def test_report_prompt_versions_has_all_six_chapters_from_chapter_source(setting
     versions = report.prompt_versions()
     assert set(versions) == set(report.CHAPTERS) and len(versions) == 6
     assert all(v.startswith("bundled@") for v in versions.values())
+
+
+def test_run_env_turns_engine_traces_and_cli_debug_off():
+    from personalization_ab.run_ab import configure_run_env
+
+    env = {"BRAINTRUST_LOGGING_ENABLED": "true"}
+    configure_run_env(env)
+    assert env["BRAINTRUST_LOGGING_ENABLED"] == "false"
+    assert env["CLAUDE_SDK_DEBUG"] == ""
+
+
+def _run_real(data_dir, *extra, env_drop=("SEMANTIC_SEARCH_API_TOKEN",)):
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k not in env_drop}
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--users", "1", "--seed", "1",
+         "--data-dir", str(data_dir), *extra],
+        capture_output=True, check=False, text=True, env=env,
+    )  # fmt: skip
+
+
+def test_real_run_without_semantic_search_token_refuses():
+    with tempfile.TemporaryDirectory() as d:
+        proc = _run_real(d)
+    assert proc.returncode == 2
+    assert "SEMANTIC_SEARCH_API_TOKEN" in proc.stderr
+
+
+def test_write_private_is_mode_600():
+    import stat
+
+    from personalization_ab.run_ab import write_private
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "x.json"
+        write_private(p, {"a": 1})
+        assert stat.S_IMODE(p.stat().st_mode) == 0o600
+
+
+def test_judge_only_reuses_saved_packets_and_survives_bad_judge_replies(monkeypatch):
+    import json
+    import os
+    import stat
+    from argparse import Namespace
+
+    from personalization_ab import run_ab
+    from personalization_ab.tests.test_judge import PACKET, fake_call
+
+    class Exp:
+        def log(self, **kw):
+            pass
+
+        def summarize(self):
+            return type("S", (), {"experiment_url": "https://bt.example/exp"})()
+
+    client = type("C", (), {"init": staticmethod(lambda **kw: Exp())})
+    monkeypatch.delenv("SEMANTIC_SEARCH_API_TOKEN", raising=False)
+    with tempfile.TemporaryDirectory() as d:
+        pilot = Path(d) / "pilot"
+        pilot.mkdir()
+        packet = {**PACKET, "seed": 1, "mode": "pilot"}
+        (pilot / "user-u-1.json").write_text(json.dumps(packet))
+
+        def half_bad(model, system, user):
+            return "not json" if model == "haiku" else fake_call(model, system, user)
+
+        args = Namespace(
+            users=1,
+            seed=1,
+            data_dir=d,
+            prompts="bundled",
+            dry_run=False,
+            judge_only=True,
+        )
+        rc = run_ab.run(args, judge_call=half_bad, client=client)
+        saved = json.loads((pilot / "user-u-1.json").read_text())
+        mode = stat.S_IMODE(os.stat(pilot / "user-u-1.json").st_mode)
+    assert rc == 0
+    assert mode == 0o600
+    assert len(saved["judgments"]) == 9
+    assert sum("unusable" in j["data"] for j in saved["judgments"]) == 3
