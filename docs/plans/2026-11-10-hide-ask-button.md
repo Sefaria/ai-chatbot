@@ -61,12 +61,15 @@ both off their default branch. Preview on the `la-hide-ask-button` Cauldron with
   `assistant.floating_button_modal.toggle_hide_aria` / `toggle_show_aria` came in through Weblate
   ([Sefaria/ai-chatbot#328](https://github.com/Sefaria/ai-chatbot/pull/328)).
 
-## Open question
+## Decided (Nov 18)
 
-- **Hide, then sign up**: a logged-out visitor who hides the button and then signs up from the
-  modal gets an account with no saved value, so Sefaria passes `hide-launcher="false"` and the
-  button comes back. The ticket doesn't cover it; one option is to adopt the browser's choice
-  when the account has none.
+- **Hide, then sign up or log in**: a logged-out visitor who hides the button and then logs in
+  to an account that never chose sees the button. The account's "shown" wins over the browser.
+- **Turning the assistant back on** in Sefaria's settings shows the button again: Sefaria clears
+  the account's hidden choice whenever the assistant goes from off to on
+  ([Sefaria/Sefaria-Project#4004](https://github.com/Sefaria/Sefaria-Project/pull/4004)).
+- **Behavior stories**: all approved
+  ([doc](https://claude.ai/artifact/F4hNdWSteoa1dnJ5zJyn18)).
 
 ## Follow-ups
 
