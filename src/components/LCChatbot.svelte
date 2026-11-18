@@ -5131,7 +5131,7 @@
   }
 
   .floating-button-toggle input:checked {
-    background: var(--semantic-action-primary);
+    background: var(--action-primary);
   }
 
   .floating-button-toggle input:checked::after {
@@ -5143,7 +5143,7 @@
   }
 
   .floating-button-toggle input:focus-visible {
-    outline: 2px solid var(--semantic-action-primary);
+    outline: 2px solid var(--action-primary);
     outline-offset: 2px;
   }
 
@@ -5155,7 +5155,7 @@
   }
 
   .floating-button-modal-text a {
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     text-decoration: underline;
   }
 
