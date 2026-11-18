@@ -8,12 +8,21 @@ from collections import defaultdict
 PROJECT = "On Site Agent"
 
 
-def prompt_versions() -> str | dict:
-    try:
-        from chat.V2.prompts.chapters import chapter_source  # not on every branch
-    except ImportError:
-        return "bundled"
-    return chapter_source()
+CHAPTERS = (
+    "personalization_answering",
+    "personalization_profile_used",
+    "profile_writer",
+    "profile_extraction",
+    "profile_dream",
+    "profile_edit",
+)
+
+
+def prompt_versions() -> dict:
+    """Where each of the six chapters resolves from right now (`braintrust:<slug>@<v>` or `bundled@<sha>`)."""
+    from chat.V2.prompts.chapters import chapter_source
+
+    return {name: chapter_source(name) for name in CHAPTERS}
 
 
 def _rank_of(judgment, key) -> int:

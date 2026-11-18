@@ -28,14 +28,15 @@ out-of-repo location; only invented text belongs in tests and fixtures.
 
 ## Second half: answers, judges, report, CLI
 
-- `answer.py` `answer_turn(user_id, history, prompt, profile_text, runner=None)` runs the real
-  `ClaudeAgentService.send_message` in process. **How history reaches the pipeline:** `history`
-  (a list of `Turn`) becomes alternating `ConversationMessage` user/assistant pairs (the turn's prompt
-  and its original, scrubbed answer) ahead of the new prompt, and `format_conversation` serialises all
-  of them. Production sends only the latest message plus a session summary; the harness sends a short
-  explicit history instead, and sends the identical list for the A and B runs of a prompt. The Profile
-  goes in `MessageContext.profile_text`, the field the production view fills; `instructions_text` is
-  empty. The harness uses the last 4 turns before the prompt as history.
+- `answer.py` `answer_turn(user_id, prompt, profile_text, summary_text, turn_number=1, runner=None)` runs the
+  real `ClaudeAgentService.send_message` in process. **How history reaches the pipeline:** exactly as in
+  production (`chat/V2/views.py`): the conversation is a single user message (the new prompt) and the earlier
+  turns arrive as `MessageContext.summary_text`. For each prompt k, `run_ab.py` takes that user's earlier turns
+  of the same session only (a fresh summary per session, as in production), replays them with their original
+  scrubbed answers through the real `SummaryService.update_summary` on a throwaway `ChatSession`
+  (`answer.session_summary`), and passes that one summary string to both the A and the B answer. The summary
+  builder (`summary_builder`) and the runner are injectable. The Profile goes in `MessageContext.profile_text`;
+  `instructions_text` is empty.
 - `judge.py` `run_judges(packet, models, seed, call=None)`: opus, sonnet and haiku each judge alone via
   `claude -p --model <m> --system-prompt ... --tools "" --strict-mcp-config --disable-slash-commands
   --setting-sources "" --settings '{}' --output-format json --no-session-persistence`, with
@@ -46,13 +47,15 @@ out-of-repo location; only invented text belongs in tests and fixtures.
   `RANKING_SYSTEM` constants.
 - `report.py` `log_experiment(packets, judgments, prompts_mode, client=None)` logs a Braintrust experiment
   in "On Site Agent": one row per (user, prompt 11-20) and one row per user for the Profile judgments.
-  Metadata holds `prompt_versions` (`chapter_source()` when it exists, else "bundled"), `prompts_mode` and
-  the seed.
+  Metadata holds `prompt_versions` (`chapter_source(name)` for each of the six personalization chapters),
+  `prompts_mode` and the seed.
 - `run_ab.py --users N --seed S --data-dir DIR --prompts bundled|braintrust [--dry-run]`. A data dir
   inside a git repository exits 2. `--dry-run` only checks the arguments and the dir. A real run needs
   Django settings and a database (use a throwaway `DB_NAME`), plus API keys, and writes packets to
   `DIR/pilot/` (3 users or fewer) or `DIR/full/` as `user-<pseudonym>.json`.
-  `--prompts` is recorded in the report; the core prompt itself still comes from the prompt service.
+  `--prompts bundled` clears the six `PERSONALIZATION_PROMPT_SLUG_*` settings for the run (bundled files);
+  `--prompts braintrust` requires all six in the environment and exits 2 naming any that is missing. The core
+  prompt itself still comes from the prompt service.
 
 `DIR/export.json` is a JSON list of objects: `user_id`, `session_id`, `timestamp` (ISO 8601),
 `prompt`, `answer`. Users with fewer than 20 turns after dedupe are not picked. Prompts and answers go
