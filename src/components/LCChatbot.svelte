@@ -2557,7 +2557,7 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria', { default: 'Hide or show Ask button' })} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
                   {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
@@ -3040,15 +3040,17 @@
       {#if showFloatingButtonModal}
         <!-- Ask button settings: reuses the feedback modal's card -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="feedback-modal-overlay" onclick={() => { showFloatingButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showFloatingButtonModal = false)}>
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="feedback-modal floating-button-modal" role="dialog" aria-labelledby="lc-floating-button-modal-title" onclick={(e) => e.stopPropagation()}>
+        <div class="feedback-modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) showFloatingButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showFloatingButtonModal = false)}>
+          <div class="feedback-modal floating-button-modal" role="dialog" aria-labelledby="lc-floating-button-modal-title">
             <h3 class="feedback-modal-title" id="lc-floating-button-modal-title">{$_('assistant.floating_button_modal.title')}</h3>
             <label class="floating-button-toggle">
               <span>{$_('assistant.floating_button_modal.toggle')}</span>
               <input
                 type="checkbox"
                 role="switch"
+                aria-label={launcherHidden
+                  ? $_('assistant.floating_button_modal.toggle_show_aria', { default: 'Show Ask button' })
+                  : $_('assistant.floating_button_modal.toggle_hide_aria', { default: 'Hide Ask button' })}
                 checked={!launcherHidden}
                 onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
               />

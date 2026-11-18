@@ -87,3 +87,20 @@ test("a logged-in user's saved choice wins over this browser's", async ({ page, 
   if (await assistant.panel.isVisible()) await assistant.close();
   await expect(assistant.trigger).toBeVisible();
 });
+
+test('the menu item and the switch reach analytics under their labels', async ({ page, context }) => {
+  const assistant = await setUp(page, context);
+  await assistant.listenForClicks();
+  await assistant.openFloatingButtonSetting();
+  const switchLabels = [await assistant.floatingButtonSwitch.getAttribute('aria-label')];
+  await assistant.floatingButtonSwitch.click();
+  switchLabels.push(await assistant.floatingButtonSwitch.getAttribute('aria-label'));
+  await assistant.floatingButtonSwitch.click();
+
+  expect(switchLabels[0]).not.toBe(switchLabels[1]);
+  const clicks = await assistant.trackedClicks();
+  expect(clicks).toEqual(expect.arrayContaining(switchLabels));
+  await assistant.closeFloatingButtonSetting();
+  await assistant.openMenu();
+  expect(clicks).toContain(await assistant.floatingButtonMenuItem('hide').getAttribute('aria-label'));
+});

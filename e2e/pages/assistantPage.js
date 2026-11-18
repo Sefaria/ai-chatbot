@@ -106,7 +106,8 @@ export class AssistantPage {
   }
 
   get floatingButtonSwitch() {
-    return this.floatingButtonModal.getByRole('switch', { name: t('assistant.floating_button_modal.toggle') });
+    // Its accessible name is an analytics label that changes with its state, so find it by role.
+    return this.floatingButtonModal.getByRole('switch');
   }
 
   get floatingButtonSignUpLink() {
@@ -121,13 +122,17 @@ export class AssistantPage {
     return this.floatingButtonModal.getByRole('link', { name: t('assistant.floating_button_modal.account_settings'), exact: true });
   }
 
-  /** The kebab menu item: "Hide Ask button" while it shows, "Show Ask button" while hidden. */
+  /** The kebab menu item, by its visible text: "Hide Ask button" while it shows, "Show Ask button" while hidden. */
   floatingButtonMenuItem(action) {
-    return this.host.getByRole('menuitem', { name: t(`assistant.menu.${action}_floating_button`) });
+    return this.host.getByRole('menuitem').filter({ hasText: t(`assistant.menu.${action}_floating_button`) });
+  }
+
+  async openMenu() {
+    await this.host.getByRole('button', { name: t('assistant.header.moreOptions') }).click();
   }
 
   async openFloatingButtonSetting(action = 'hide') {
-    await this.host.getByRole('button', { name: t('assistant.header.moreOptions') }).click();
+    await this.openMenu();
     await this.floatingButtonMenuItem(action).click();
     await expect(this.floatingButtonModal).toBeVisible();
   }
@@ -138,6 +143,20 @@ export class AssistantPage {
       window.launcherVisibility = [];
       document.addEventListener('chatbot:launcher_visibility', (e) => window.launcherVisibility.push(e.detail.hidden));
     });
+  }
+
+  /** Record the names of the clicks the assistant sends to analytics. */
+  async listenForClicks() {
+    await this.page.evaluate(() => {
+      window.trackedClicks = [];
+      window.gtag = (command, event, params) => {
+        if (event === 'assistant_click') window.trackedClicks.push(params.feature_name);
+      };
+    });
+  }
+
+  async trackedClicks() {
+    return this.page.evaluate(() => window.trackedClicks);
   }
 
   async launcherVisibilityEvents() {

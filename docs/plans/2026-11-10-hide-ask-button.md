@@ -33,7 +33,10 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
   `hide-launcher`.
 - **Names**: keys, code and the account setting say `floating_button`, not `ask_button`, since the
   button's word ("Ask") may change. The English copy still says "Ask button".
-- **No analytics yet.**
+- **Analytics**: clicks are named by ARIA label for now (our analytics reads them), at an
+  accessibility cost: the menu item is "Hide or show Ask button"; the switch is "Hide Ask button"
+  while on and "Show Ask button" while off, so a click's name says what it did. No other events.
+  Clicks inside the dialog now bubble (the backdrop checks its own target) so the tracker sees them.
 - **Accepted**: with the pill hidden there's no reply badge, and the relabelled no-results
   pill doesn't show (the link in Sefaria's no-results text still asks the search; opening from
   the header just opens the assistant).
@@ -50,7 +53,14 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
 - [ ] **Real device**: check the menu, modal and hidden button on a real phone (so far only the
   iOS Simulator and phone-width browser).
 
+- [ ] **ARIA label strings**: `assistant.menu.floating_button_aria`,
+  `assistant.floating_button_modal.toggle_hide_aria` / `toggle_show_aria` through Weblate
+  (upload files in `weblate-upload/la-hide-aria/`). Until then the code falls back to English.
+
 ## Follow-ups
+
+- **Analytics labels**: move these clicks to `data-feature-name` (and drop the ARIA labels)
+  once analytics no longer relies on ARIA labels.
 
 - **"Disable in settings"** (logged-in kebab item) still links to the top of
   `/settings/account`; point it at `#libraryAssistantSetting` too.
