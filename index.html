@@ -197,11 +197,12 @@
   <!-- Logged out by default (no user-id), as a logged-out visitor sees it.
        ?user-id=<encrypted user token> shows it logged in as that user, and
        ?anon-free-answers=<n> passes the host's free-answer limit, and
-       ?hide-launcher=true|false the logged-in user's saved "Hide Ask button" choice.
+       ?hide-launcher=true|false the logged-in user's saved "Hide Ask button" choice, and
+       ?design-system-preview=<branch or commit> previews that Sefaria/design-system version.
        Runs before the widget module below, which loads deferred. -->
   <script>
     const params = new URLSearchParams(window.location.search);
-    for (const attribute of ['user-id', 'anon-free-answers', 'hide-launcher']) {
+    for (const attribute of ['user-id', 'anon-free-answers', 'hide-launcher', 'design-system-preview']) {
       if (params.get(attribute)) {
         document.querySelector('lc-chatbot').setAttribute(attribute, params.get(attribute));
       }

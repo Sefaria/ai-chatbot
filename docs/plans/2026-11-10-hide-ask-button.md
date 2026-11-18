@@ -4,9 +4,10 @@ Since the Library Assistant opened to logged-out and mobile visitors, people hav
 that the floating "✦ Ask" button covers page content. Visitors can now turn it off from the
 assistant's kebab menu.
 
-Branches: ai-chatbot `feat/la-hide-ask-button` (draft PR), Sefaria-Project `la-hide-ask-button`
-(`~/code/Sefaria-Project-la-hide-ask-button`, no PR yet), both off their default branch.
-Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot PR number>`.
+Ticket: [sc-48380](https://app.shortcut.com/sefaria/story/48380). Branches: ai-chatbot
+`feat/la-hide-ask-button` ([Sefaria/ai-chatbot#302](https://github.com/Sefaria/ai-chatbot/pull/302)),
+Sefaria-Project `la-hide-ask-button` ([Sefaria/Sefaria-Project#4004](https://github.com/Sefaria/Sefaria-Project/pull/4004)),
+both off their default branch. Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=302`.
 
 ## Decisions
 
@@ -30,7 +31,11 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
   (`settings.library_assistant_floating_button_hidden`), so it follows the user across devices;
   the account's value wins over the browser's. The widget tells the host with
   `chatbot:launcher_visibility`; Sefaria saves it via `/api/profile` and passes it back as
-  `hide-launcher`.
+  `hide-launcher` (and keeps the new value in `ReaderApp` state, so a remounted widget doesn't
+  get the page-load value).
+- **Logging out** clears the browser's copy (with the logged-in chat, in
+  `clearLoggedInChatWhenLoggedOut`), so the button shows again; logging back in restores the
+  account's choice.
 - **Names**: keys, code and the account setting say `floating_button`, not `ask_button`, since the
   button's word ("Ask") may change. The English copy still says "Ask button".
 - **Analytics**: clicks are named by ARIA label for now (our analytics reads them), at an
@@ -52,16 +57,21 @@ Preview on the `la-hide-ask-button` Cauldron with `?chatbot_version=<ai-chatbot 
   `chatbot:launcher_visibility` event, account wins over browser).
 - [ ] **Real device**: check the menu, modal and hidden button on a real phone (so far only the
   iOS Simulator and phone-width browser).
-
 - [ ] **ARIA label strings**: `assistant.menu.floating_button_aria`,
   `assistant.floating_button_modal.toggle_hide_aria` / `toggle_show_aria` through Weblate
   (upload files in `weblate-upload/la-hide-aria/`). Until then the code falls back to English.
+
+## Open question
+
+- **Hide, then sign up**: a logged-out visitor who hides the button and then signs up from the
+  modal gets an account with no saved value, so Sefaria passes `hide-launcher="false"` and the
+  button comes back. The ticket doesn't cover it; one option is to adopt the browser's choice
+  when the account has none.
 
 ## Follow-ups
 
 - **Analytics labels**: move these clicks to `data-feature-name` (and drop the ARIA labels)
   once analytics no longer relies on ARIA labels.
-
 - **"Disable in settings"** (logged-in kebab item) still links to the top of
   `/settings/account`; point it at `#libraryAssistantSetting` too.
 - **Done button border**: the thin gray border (shared with the feedback modal) is cleaned up
