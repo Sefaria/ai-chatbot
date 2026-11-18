@@ -32,6 +32,7 @@ META_KEYS = {
     "instructions_on",
     "profile_revision",
     "chapter_sha",
+    "prompt_versions",
     "notice_shown",
 }
 
