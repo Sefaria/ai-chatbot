@@ -72,6 +72,9 @@ def context_for_request(
             "chapter_sha": chapters.chapter_sha(CHAPTER),
             "notice_shown": notice,
         }
+        ask_profile_used = bool(profile) and gate.lab_enabled()
+        names = [CHAPTER] + (["personalization_profile_used"] if ask_profile_used else [])
+        meta["prompt_versions"] = {name: chapters.chapter_source(name) for name in names}
         if gate.lab_enabled():
             meta["profile_injected"] = profile
             meta["instructions_injected"] = instructions
@@ -80,7 +83,7 @@ def context_for_request(
             profile_text=profile or None,
             meta=meta,
             notice=notice,
-            ask_profile_used=bool(profile) and gate.lab_enabled(),
+            ask_profile_used=ask_profile_used,
         )
     except Exception:
         logger.warning("Personalization failed; answering without it", exc_info=True)
