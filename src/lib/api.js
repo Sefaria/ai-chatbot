@@ -3,6 +3,7 @@
  */
 
 import { generateMessageId, getOrCreateAnonId } from './session.js';
+import { personalizationContext } from './personalization.js';
 
 /**
  * The identity fields for a request body: the user token when there is a
@@ -22,6 +23,8 @@ export function identityFields(userId) {
  * @property {string} [origin] - Origin identifier for Braintrust trace tagging
  * @property {boolean} [isStaff] - Whether the user is a Sefaria staff member
  * @property {boolean} [labs] - Whether Labs tools are enabled for this request
+ * @property {string} [personalizationMode] - Test-only, from ?la_personalization=; the server honours it only for allowlisted users on a non-production deployment
+ * @property {string} [personalizationInjection] - Test-only, from ?la_injection=
  * @property {boolean} [forceStreamBreakBeforeFinal] - Testing-only forced stream break hook
  */
 
@@ -90,6 +93,13 @@ function buildMessageContext(origin = '', isStaff = false, labs = false, interfa
   if (labs) {
     context.labs = true;
   }
+  let storage = null;
+  try {
+    storage = window.sessionStorage;
+  } catch {
+    storage = null;
+  }
+  Object.assign(context, personalizationContext(window.location.search, storage));
   return context;
 }
 
