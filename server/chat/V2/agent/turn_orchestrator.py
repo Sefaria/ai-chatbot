@@ -9,6 +9,7 @@ from typing import Any
 from braintrust import current_span
 from django.conf import settings
 
+from ..personalization.profile_used import only_tags, split_profile_used
 from ..prompts.prompt_fragments import (
     ERROR_FALLBACK_MESSAGE,
     SECTION_SEPARATOR,
@@ -236,7 +237,26 @@ class TurnOrchestrator:
         raise_if_cancelled()
 
         validator = ResponseLinkValidator(self.tool_runtime.tool_executor.client)
-        output = sdk_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
+        # The model's `<profile_used>` line comes from the draft; a link repair whose text ends in a
+        # valid tag replaces it, and one without keeps the draft's line (repair rewrites links, not
+        # the line). Only a tag that ends a text is taken off (before link repair, the trace, the
+        # saved message and the payload); anything else stays as written. Only a turn that asked
+        # for the line is split. No line goes with the fallback message.
+        ask_profile_used = bool(context.ask_profile_used)
+
+        def split_draft(text: str) -> tuple[str, str | None]:
+            text = text.strip()
+            if not ask_profile_used:
+                return text, None
+            body, line = split_profile_used(text)
+            if not body:
+                # The model wrapped the whole answer in the tag: keep it as written (never the
+                # fallback), unless there is nothing but empty tags.
+                return ("" if only_tags(text) else text), None
+            return body, line
+
+        output, profile_used = split_draft(sdk_result.final_text)
+        output = output or ERROR_FALLBACK_MESSAGE
         validation_result = await validator.validate_response(output)
         repair_attempts = 0
 
@@ -265,7 +285,11 @@ class TurnOrchestrator:
                 on_first_final_text_delta=emit_synthesis_status_once,
                 should_cancel=should_cancel,
             )
-            output = repair_result.final_text.strip() or ERROR_FALLBACK_MESSAGE
+            # The repaired text replaces the draft; its own valid trailing tag wins, otherwise the
+            # line already validated from the draft stays.
+            output, repaired_line = split_draft(repair_result.final_text)
+            profile_used = repaired_line or profile_used
+            output = output or ERROR_FALLBACK_MESSAGE
             validation_result = await validator.validate_response(output)
             sdk_result.llm_call_count += repair_result.llm_call_count
             if repair_result.total_cost_usd is not None:
@@ -277,6 +301,9 @@ class TurnOrchestrator:
 
         if not validation_result.is_valid:
             output = ERROR_FALLBACK_MESSAGE
+        if output == ERROR_FALLBACK_MESSAGE:
+            # No line under the error message.
+            profile_used = None
 
         latency_ms = int((time.time() - start_time) * 1000)
         trace_id = sdk_result.trace_id or bt_span.id
@@ -299,9 +326,10 @@ class TurnOrchestrator:
             content=output,
             tool_calls=tool_calls_list,
             metrics=metrics,
+            profile_used=profile_used,
         )
 
-        return build_agent_response(
+        response = build_agent_response(
             content=output,
             tool_calls=tool_calls_list,
             latency_ms=latency_ms,
@@ -311,4 +339,10 @@ class TurnOrchestrator:
             usage=usage,
             total_cost_usd=sdk_result.total_cost_usd,
             narration_segments=sdk_result.narration_segments,
+            profile_used=profile_used,
         )
+        try:
+            response.span_export = bt_span.export()
+        except Exception:
+            response.span_export = None
+        return response

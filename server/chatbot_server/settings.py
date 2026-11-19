@@ -214,6 +214,24 @@ GUARDRAIL_PROMPT_SLUG = os.environ.get("GUARDRAIL_PROMPT_SLUG", "guardrail-check
 ROUTER_PROMPT_SLUG = os.environ.get("ROUTER_PROMPT_SLUG", "router-classifier")
 REWRITER_PROMPT_SLUG = os.environ.get("REWRITER_PROMPT_SLUG", "question-rewriter")
 TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation")
+
+# Personalization prompt chapters: Braintrust slug per chapter; empty = the bundled .md file
+PERSONALIZATION_PROMPT_SLUG_ANSWERING = os.environ.get("PERSONALIZATION_PROMPT_SLUG_ANSWERING", "")
+PERSONALIZATION_PROMPT_SLUG_PROFILE_USED = os.environ.get(
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_USED", ""
+)
+PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER = os.environ.get(
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER", ""
+)
+PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION = os.environ.get(
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION", ""
+)
+PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM = os.environ.get(
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM", ""
+)
+PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT = os.environ.get(
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT", ""
+)
 RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "response-format")
 
 # ============================================================================
@@ -250,6 +268,16 @@ from .model_defaults import AGENT_MODEL as _AGENT_MODEL_DEFAULT
 from .model_defaults import APPETIZER_MODEL as _APPETIZER_MODEL_DEFAULT
 from .model_defaults import GUARDRAIL_MODEL as _GUARDRAIL_MODEL_DEFAULT
 from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
+
+# Profile and Instructions personalization (lab deployments only, see chat/V2/personalization/gate.py).
+PERSONALIZATION_MODEL = os.environ.get("PERSONALIZATION_MODEL", _GUARDRAIL_MODEL_DEFAULT)
+# A request-level override works only on a non-production ENVIRONMENT.
+PERSONALIZATION_OVERRIDE_ENABLED = os.environ.get("PERSONALIZATION_OVERRIDE_ENABLED") == "true"
+# The Jev relevance gate in front of the writer: off | shadow | on.
+PERSONALIZATION_JEV_GATE = os.environ.get("PERSONALIZATION_JEV_GATE", "off")
+# Explicit timeouts in seconds for the writer's model calls and for Jev.
+PERSONALIZATION_MODEL_TIMEOUT = 20
+PERSONALIZATION_JEV_TIMEOUT = 5
 
 AGENT_MODEL = os.environ.get("AGENT_MODEL", _AGENT_MODEL_DEFAULT)
 APPETIZER_MODEL = os.environ.get("APPETIZER_MODEL", _APPETIZER_MODEL_DEFAULT)
@@ -357,3 +385,6 @@ LOGGING = {
         },
     },
 }
+
+# The widget bundle is a .cjs file that the lab page loads with a script tag.
+WHITENOISE_MIMETYPES = {".cjs": "application/javascript"}

@@ -66,6 +66,7 @@ to the element; host-level listeners pick it up across the shadow-DOM boundary.
 | `origin` | string | No | Origin identifier for Braintrust trace tagging |
 | `is-moderator` | boolean | No | Staff flag (host sets it from `request.user.is_staff`) — shows settings gear, tags Braintrust, and emits `is_staff` on every GA4 event |
 | `interface-lang` | `"en"` \| `"he"` | No | Interface language |
+| `start-closed` | boolean | No | Start closed whatever the saved open state, without changing it (Sefaria's Settings page, where the panel would cover the controls); the pill still opens it |
 
 Bot version and prompt slugs configured via settings panel (gear icon).
 

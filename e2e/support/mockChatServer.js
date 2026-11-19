@@ -20,7 +20,27 @@
  *   anonymous chats (POST /v2/anon/claim), which moves them to the user, so
  *   they're in the user's chat history. (Done.)
  *
+ * - Personalization (option `personalization`): POST /v2/personalization/settings answers the
+ *   `get` action with a State (see the plan's Shared contracts) built from the option, or the
+ *   given error status. A chat request with context.personalizationMode "off" gets the answer
+ *   `Plain answer.` and is not kept. Answers whose number is in `noticeOnAnswers` carry
+ *   `personalizationNotice: true` in the final payload, for signed-in visitors only, like the server.
+ * - Like the server, the session keeps `personalizationNotice` and `profileUsed` on the answer, so
+ *   the history (`/history`, `/history/conversations/:id`) returns them for a past chat.
+ * - `profileUsed` (a line of text): signed-in answers stream like the model writes them, the answer
+ *   then `<profile_` / `used>LINE</profile_used>` in two partial events (a tag split across two
+ *   deltas), and the final payload carries `profileUsed: LINE` with the tag stripped from `markdown`.
+ *   `profileUsedForgotten: true` streams the answer alone and sends no `profileUsed`.
+ *   `profileUsedDeltas` (strings) replaces those two pieces: the first is sent with the answer, the
+ *   rest as partial events of their own.
+ * - `recoverAnswers` (answer numbers): those answers' streams end without the final message, and
+ *   POST /v2/chat/recover returns it, notice and line included, like the server's recover path.
+ *
  * Options:
+ * - personalization: { labEnabled?: boolean, showPlainResponse?: boolean, updateEveryMessage?: boolean,
+ *   status?: number (answer the settings call with this error status), noticeOnAnswers?: number[],
+ *   profileUsed?: string, profileUsedForgotten?: boolean, profileUsedDeltas?: string[],
+ *   recoverAnswers?: number[], plainDelayMs?: number (the plain answer arrives this late) }
  * - longAnswers: answers taller than the message list, for scrolling checks.
  *   The last paragraph of answer n is `End of answer n.`
  */
@@ -33,13 +53,15 @@ const LONG_ANSWER_PARAGRAPHS = 30;
  * @param {import('@playwright/test').BrowserContext} context
  * @param {{ longAnswers?: boolean }} [options]
  */
-export async function mockChatServer(context, { longAnswers = false, failedClaims = 0 } = {}) {
+export async function mockChatServer(context, { longAnswers = false, failedClaims = 0, personalization = null } = {}) {
   // failedClaims: how many claims fail (500) before claims work again.
   let claimsToFail = failedClaims;
   const limit = getFreeAnswerLimit();
   let answersGiven = 0;
   /** sessionId → { owner, messages } — owner is the anonId or the user token. */
   const sessions = new Map();
+  /** user messageId → the final message the recover path returns (option `recoverAnswers`). */
+  const recoverable = new Map();
 
   function answerText(n) {
     if (!longAnswers) {
@@ -74,6 +96,24 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
   }
 
   function answer(route, body) {
+    if (body.context?.personalizationMode === 'off') {
+      const message = {
+        messageId: `msg_plain_${body.messageId}`,
+        sessionId: body.sessionId,
+        timestamp: new Date().toISOString(),
+        markdown: 'Plain answer.',
+        toolCalls: [],
+        stats: {},
+      };
+      const send = () => route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sseEvent('message', message),
+      });
+      // The real plain arm does not stream and ends well after the personalized answer.
+      const delay = personalization?.plainDelayMs ?? 0;
+      return delay ? new Promise((wait) => setTimeout(wait, delay)).then(send) : send();
+    }
     const owner = body.userId || body.anonId;
     let remaining;
     if (!body.userId) {
@@ -104,9 +144,13 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       toolCalls: [],
       stats: {},
     };
+    if (body.userId && personalization?.noticeOnAnswers?.includes(n)) {
+      message.personalizationNotice = true;
+    }
+    const saved = { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' };
     session.messages.push(
       { messageId: body.messageId, sessionId: body.sessionId, role: 'user', content: body.text, timestamp, status: 'success' },
-      { messageId: message.messageId, sessionId: body.sessionId, role: 'assistant', content: message.markdown, timestamp, status: 'success' },
+      saved,
     );
     if (remaining !== undefined) {
       message.anonResponsesRemaining = remaining;
@@ -116,10 +160,35 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
       }
     }
 
+    let streamed = '';
+    // Like the server: the plain arm (mode 'off') is never asked for the line (it returns above).
+    if (body.userId && body.context?.personalizationMode !== 'off' && personalization?.profileUsed) {
+      const line = personalization.profileUsed;
+      const forgotten = personalization.profileUsedForgotten === true;
+      const tail = personalization.profileUsedDeltas ?? ['\n\n<profile_', `used>${line}</profile_used>`];
+      const deltas = forgotten ? [message.markdown] : [message.markdown + tail[0], ...tail.slice(1)];
+      streamed =
+        sseEvent('progress', { type: 'status', text: 'Synthesizing response...' }) +
+        deltas.map((text) => sseEvent('partial', { text })).join('') +
+        sseEvent('progress', { type: 'content_done', text: null });
+      if (!forgotten) message.profileUsed = line;
+    }
+    if (message.personalizationNotice) saved.personalizationNotice = true;
+    if (message.profileUsed) saved.profileUsed = message.profileUsed;
+
+    if (personalization?.recoverAnswers?.includes(n)) {
+      recoverable.set(body.messageId, { ...message, recovered: true, narrationMessages: [] });
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + streamed,
+      });
+    }
+
     return route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
-      body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + sseEvent('message', message),
+      body: sseEvent('progress', { type: 'status', text: 'Thinking...' }) + streamed + sseEvent('message', message),
     });
   }
 
@@ -187,10 +256,19 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
     if (path.endsWith('/chat/stream')) {
       return answer(route, request.postDataJSON());
     }
+    if (path.endsWith('/v2/personalization/settings')) {
+      const body = request.postDataJSON();
+      if (!personalization || body.anonId || personalization.status) {
+        return route.fulfill({ status: personalization?.status ?? 404, json: { error: 'not_found' } });
+      }
+      return route.fulfill({ json: personalizationState(personalization) });
+    }
     if (path.endsWith('/v2/anon/claim')) {
       return claim(route, request.postDataJSON());
     }
     if (path.endsWith('/v2/chat/recover')) {
+      const message = recoverable.get(request.postDataJSON()?.messageId);
+      if (message) return route.fulfill({ json: { status: 'complete', requestFound: true, message } });
       return route.fulfill({ json: { status: 'failed' } });
     }
     if (path.endsWith('/v2/prompts/defaults')) {
@@ -213,4 +291,14 @@ export async function mockChatServer(context, { longAnswers = false, failedClaim
 
 function sseEvent(event, data) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+/** The settings State for the mock's `personalization` option. Synthetic data only. */
+function personalizationState({ labEnabled = false, showPlainResponse = false, updateEveryMessage = false } = {}) {
+  return {
+    instructions: { text: '', enabled: true, updatedAt: null },
+    profile: { text: '', sections: [], enabled: true, updatedAt: null, updatedBy: null, revision: 0 },
+    labEnabled,
+    testing: { showPlainResponse, updateEveryMessage },
+  };
 }

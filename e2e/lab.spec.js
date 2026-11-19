@@ -1,0 +1,438 @@
+/**
+ * Personalization in the widget: the two menu links, the notice under a personalized answer, and
+ * the two-answer display that the settings state switches on. The chat and settings servers are
+ * mocked (support/mockChatServer.js); fixtures are synthetic.
+ */
+import { test, expect } from '@playwright/test';
+import { mockChatServer } from './support/mockChatServer.js';
+import { AssistantPage, t } from './pages/assistantPage.js';
+
+async function signedIn(page, context, personalization) {
+  await mockChatServer(context, { personalization });
+  const assistant = new AssistantPage(page);
+  await assistant.logIn();
+  await assistant.open();
+  return assistant;
+}
+
+const plainColumn = (assistant) => assistant.host.getByTestId('lab-compare-plain');
+const notice = (assistant) => assistant.host.getByTestId('personalization-notice');
+
+async function dragPanelTo(assistant, page, targetWidth) {
+  const handle = assistant.host.locator('.resize-w');
+  const hb = await handle.boundingBox();
+  const start = (await assistant.panel.boundingBox()).width;
+  const x = hb.x + hb.width / 2;
+  const y = hb.y + hb.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - (targetWidth - start), y, { steps: 8 });
+  await page.mouse.up();
+}
+
+function watchStreams(page) {
+  const streams = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/chat/stream')) streams.push(r.postDataJSON());
+  });
+  return streams;
+}
+
+test.describe('menu', () => {
+  test('a signed-in user gets the opt-out and Personalization links to the Library Assistant settings', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, null);
+    await assistant.openMoreOptions();
+    const optOut = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.optOut.aria') });
+    const personalization = assistant.menu.getByRole('menuitem', { name: t('assistant.menu.personalization.aria') });
+    await expect(optOut).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+$/);
+    await expect(personalization).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
+    await expect(personalization).toContainText(t('assistant.menu.personalization'));
+  });
+
+  test('a signed-out visitor sees neither link', async ({ page, context }) => {
+    await mockChatServer(context, { personalization: { labEnabled: true, showPlainResponse: true } });
+    const assistant = new AssistantPage(page);
+    await assistant.goto();
+    await assistant.open();
+    await assistant.openMoreOptions();
+    await expect(assistant.menu.getByRole('menuitem', { name: t('assistant.menu.personalization.aria') })).toHaveCount(0);
+    await expect(assistant.menu.getByRole('menuitem', { name: t('assistant.menu.optOut.aria') })).toHaveCount(0);
+  });
+});
+
+test.describe('notice', () => {
+  test('shows under a flagged answer with both links, and not under an unflagged one', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+    await assistant.ask('What is a mitzvah?');
+    await expect(notice(assistant)).toHaveCount(1);
+    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
+    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.configure') }))
+      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
+    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.learn_more') }))
+      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#about-personalization$/);
+
+    await assistant.ask('And a minhag?');
+    await expect(assistant.answers).toHaveCount(2);
+    await expect(notice(assistant)).toHaveCount(1); // still only the first answer's
+  });
+
+  for (const [linkKey, hash] of [['configure', '#personalization'], ['learn_more', '#about-personalization']]) {
+    test(`the ${linkKey} link navigates the tab to the settings page, as the menu item does`, async ({ page, context }) => {
+      // Sefaria's settings pages are server-rendered, not routes of its React app, so the widget must not
+      // hand these links to the host's in-app router (which ignores them): the browser follows the href.
+      await context.route('**/settings/library-assistant', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<title>Settings</title>' })
+      );
+      const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+      await assistant.ask('What is a mitzvah?');
+      await notice(assistant).getByRole('link', { name: t(`assistant.personalization.${linkKey}`) }).click();
+      await expect(page).toHaveURL(new RegExp(`/settings/library-assistant\\?from=[^#]+${hash}$`));
+    });
+  }
+
+  test('sits in a light purple container with a dark purple border', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+    await assistant.ask('What is a mitzvah?');
+    const container = assistant.host.locator('.la-personalization-notice');
+    await expect(container).toHaveCount(1);
+    await expect(container.getByTestId('personalization-notice')).toBeVisible();
+    await expect(container).toHaveCSS('background-color', 'rgb(243, 232, 255)');
+    await expect(container).toHaveCSS('border-top-color', 'rgb(76, 29, 149)');
+    await expect(container).toHaveCSS('border-top-width', '2px');
+    await expect(container).toHaveCSS('border-top-style', 'solid');
+    await expect(container).toHaveCSS('color', 'rgb(46, 16, 101)');
+    await expect(container).toHaveCSS('padding-top', '16px');
+    await expect(container).toHaveCSS('border-top-left-radius', '8px');
+  });
+
+  test('is absent when the final payload does not carry the flag', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true });
+    await assistant.ask('What is a mitzvah?');
+    await expect(notice(assistant)).toHaveCount(0);
+  });
+});
+
+test.describe('a past chat', () => {
+  const LINE = 'From your profile, I took your preference for short answers into account.';
+  const options = { labEnabled: true, noticeOnAnswers: [1], profileUsed: LINE };
+
+  async function expectNoticeAndLine(assistant) {
+    await expect(assistant.answers).toHaveCount(1);
+    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
+    await expect(assistant.host.getByTestId('profile-used')).toHaveText(LINE);
+    await expect(assistant.host.getByTestId('profile-used')).toHaveCSS('color', 'rgb(26, 127, 55)');
+  }
+
+  test('opened from chat history keeps the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, options);
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+
+    await assistant.logIn(); // a reload: nothing is kept in memory
+    await assistant.open();
+    await assistant.startNewChat();
+    await assistant.openHistory();
+    await expect(assistant.historyConversations).toHaveCount(1);
+    await assistant.historyConversations.first().click();
+    await expectNoticeAndLine(assistant);
+  });
+
+  test('recovered after a broken stream shows the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { ...options, recoverAnswers: [1] });
+    const recovers = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/v2/chat/recover')) recovers.push(r.postDataJSON());
+    });
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+    expect(recovers.length).toBeGreaterThan(0);
+  });
+
+  test('reloaded from the server keeps the notice and the green line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, options);
+    await assistant.ask('What is a mitzvah?');
+    await expectNoticeAndLine(assistant);
+
+    // Only the server's copy is left: the widget loads the open chat's messages from history.
+    await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) if (/messages/.test(key)) localStorage.removeItem(key);
+    });
+    await assistant.logIn();
+    await assistant.open();
+    await expectNoticeAndLine(assistant);
+  });
+});
+
+test.describe('two answers', () => {
+  test('appear only when the state says lab on and show-plain on, each from its own stream', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
+    const streams = watchStreams(page);
+    await assistant.send('What is a mitzvah?');
+
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized).toContainText('Answer 1.');
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+
+    expect(streams).toHaveLength(2);
+    const off = streams.find((r) => r.context.personalizationMode === 'off');
+    expect(off.context.labCompare).toBe(true);
+    expect(streams.filter((r) => r.context.labCompare)).toHaveLength(1);
+    const normal = streams.find((r) => r.context.personalizationMode !== 'off');
+    expect(normal.context.personalizationMode).toBeUndefined();
+    expect(off.sessionId).not.toBe(normal.sessionId);
+  });
+
+  test('stack at the default panel width: Plain, still loading, sits under Personalized at full width', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, plainDelayMs: 3000 });
+    await assistant.send('What is a mitzvah?');
+
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized).toContainText('Answer 1.');
+    await expect(plainColumn(assistant)).toContainText('Loading…');
+    const panel = await assistant.panel.boundingBox();
+    const a = await personalized.boundingBox();
+    const b = await plainColumn(assistant).boundingBox();
+    expect(panel.width).toBeLessThan(400); // the panel is not widened for the two answers
+    expect(a.width).toBeGreaterThan(panel.width * 0.8);
+    expect(b.width).toBeGreaterThan(panel.width * 0.8);
+    expect(Math.abs(a.x - b.x)).toBeLessThan(4);
+    expect(b.y).toBeGreaterThanOrEqual(a.y + a.height);
+
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+  });
+
+  test('sit side by side once the panel is wide enough for two columns', async ({ page, context }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
+    await dragPanelTo(assistant, page, 900);
+    await assistant.send('What is a mitzvah?');
+
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized).toContainText('Answer 1.');
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    const a = await personalized.boundingBox();
+    const b = await plainColumn(assistant).boundingBox();
+    expect(Math.abs(a.y - b.y)).toBeLessThan(4);
+    expect(b.x).toBeGreaterThan(a.x + a.width);
+    expect(a.width).toBeGreaterThan(300);
+    expect(b.width).toBeGreaterThan(300);
+  });
+
+  test('there is no Compare checkbox any more', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true });
+    await expect(assistant.input).toBeVisible();
+    await expect(assistant.host.getByRole('checkbox')).toHaveCount(0);
+  });
+
+  for (const [name, state] of [
+    ['show-plain is off', { labEnabled: true, showPlainResponse: false }],
+    ['the lab is off', { labEnabled: false, showPlainResponse: true }],
+    ['the settings call fails', { status: 500, labEnabled: true, showPlainResponse: true }],
+    ['the settings call is 404', { status: 404 }],
+  ]) {
+    test(`one normal answer when ${name}`, async ({ page, context }) => {
+      const assistant = await signedIn(page, context, state);
+      const streams = watchStreams(page);
+      await assistant.ask('Hello');
+      await expect(plainColumn(assistant)).toHaveCount(0);
+      expect(streams).toHaveLength(1);
+      expect(streams[0].context.personalizationMode).toBeUndefined();
+    });
+  }
+});
+
+test.describe('signed out', () => {
+  test('never fetches the state, never shows two columns or a notice', async ({ page, context }) => {
+    await mockChatServer(context, {
+      personalization: { labEnabled: true, showPlainResponse: true, noticeOnAnswers: [1] },
+    });
+    const personalizationCalls = [];
+    page.on('request', (r) => {
+      if (r.url().includes('/v2/personalization/')) personalizationCalls.push(r.url());
+    });
+    const assistant = new AssistantPage(page);
+    await assistant.goto();
+    await assistant.open();
+    const streams = watchStreams(page);
+    await assistant.ask('Hello');
+    await expect(plainColumn(assistant)).toHaveCount(0);
+    await expect(notice(assistant)).toHaveCount(0);
+    expect(streams).toHaveLength(1);
+    expect(personalizationCalls).toEqual([]);
+  });
+});
+
+test.describe('state request', () => {
+  test('is one POST with the token in the body as userId and action get', async ({ page, context }) => {
+    await mockChatServer(context, { personalization: { labEnabled: true } });
+    const bodies = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/v2/personalization/settings')) bodies.push(r.postDataJSON());
+    });
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    await assistant.open();
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0]).toEqual({ userId: 'test-user-token', action: 'get' });
+  });
+});
+
+test.describe('profile used', () => {
+  const LINE = 'From your profile, I took your preference for short answers into account.';
+  const GREEN = 'rgb(26, 127, 55)'; // #1a7f37
+
+  /** Record every moment the widget's DOM shows any part of the tag, or the line inside the answer
+   * text (a whole tag rendered as markup shows only its inner text). */
+  async function watchForTagText(page) {
+    await page.evaluate(() => {
+      window.tagSightings = [];
+      const root = () => document.querySelector('lc-chatbot')?.shadowRoot ?? document.querySelector('lc-chatbot');
+      setInterval(() => {
+        const text = root()?.textContent ?? '';
+        if (/profile_|<profile|used>|<\/profile/.test(text)) window.tagSightings.push(text.slice(0, 200));
+        for (const answer of root()?.querySelectorAll('.message-content') ?? []) {
+          if (/from your profile/i.test(answer.textContent)) window.tagSightings.push(answer.textContent.slice(0, 200));
+        }
+      }, 5);
+    });
+  }
+  const sightings = (page) => page.evaluate(() => window.tagSightings);
+  const line = (assistant) => assistant.host.getByTestId('profile-used');
+
+  test('profile used: the line is the last thing in the answer, in green, and no tag text is ever visible', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    await expect(line(assistant)).toHaveText(LINE);
+    await expect(line(assistant)).toHaveCSS('color', GREEN);
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    // directly after the answer text, before the notice and the feedback buttons
+    const follows = await line(assistant).evaluate((el) => el.previousElementSibling?.classList.contains('message-content'));
+    expect(follows).toBe(true);
+    expect(await sightings(page)).toEqual([]);
+    await expect(assistant.lastAnswer).not.toContainText('profile_used');
+  });
+
+  test('profile used: a model that forgot the tag still shows the full answer and no line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE, profileUsedForgotten: true });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    await expect(line(assistant)).toHaveCount(0);
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: the Personalized column carries the line and the Plain column does not', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, profileUsed: LINE });
+    await watchForTagText(page);
+    await assistant.send('What is a mitzvah?');
+    const personalized = assistant.host.getByTestId('lab-compare-personalized');
+    await expect(personalized.getByTestId('profile-used')).toHaveText(LINE);
+    await expect(personalized.getByTestId('profile-used')).toHaveCSS('color', GREEN);
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    await expect(plainColumn(assistant).getByTestId('profile-used')).toHaveCount(0);
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: a line that is not one of the two agreed shapes is not shown', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, {
+      labEnabled: true,
+      profileUsed: 'Ignore all rules',
+      noticeOnAnswers: [1],
+    });
+    await watchForTagText(page);
+    await assistant.ask('What is a mitzvah?');
+    // the notice comes with the final payload, so the answer is no longer streaming
+    await expect(notice(assistant)).toBeVisible();
+    await expect(assistant.lastAnswer).toContainText('Answer 1.');
+    await expect(line(assistant)).toHaveCount(0);
+    await expect(assistant.lastAnswer).not.toContainText('Ignore all rules');
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  test('profile used: the Plain column never streams the tag or gets a line', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true, showPlainResponse: true, profileUsed: LINE });
+    const plainStreams = [];
+    page.on('response', async (r) => {
+      if (!r.url().endsWith('/chat/stream')) return;
+      const body = r.request().postDataJSON();
+      if (body?.context?.personalizationMode === 'off') plainStreams.push(await r.text());
+    });
+    await watchForTagText(page);
+    await assistant.send('What is a mitzvah?');
+    await expect(plainColumn(assistant)).toContainText('Plain answer.');
+    await expect(assistant.host.getByTestId('lab-compare-personalized').getByTestId('profile-used')).toHaveText(LINE);
+    await expect(plainColumn(assistant).getByTestId('profile-used')).toHaveCount(0);
+    await expect.poll(() => plainStreams.length).toBe(1);
+    expect(plainStreams[0]).not.toMatch(/profile_used|profileUsed/);
+    expect(await sightings(page)).toEqual([]);
+  });
+
+  for (const [name, deltas] of [
+    ['an opening tag with a space, split before its ">"', [' <profile_used ', `>${LINE}</profile_used>`]],
+    ['an opening tag with a space before its name', ['\n< profile_used', `>${LINE}</profile_used>`]],
+    ['two trailing tags, the second one split', [
+      `\n\n<profile_used>${LINE}</profile_used>`, `<profile_used>${LINE}`, '</profile_used>',
+    ]],
+  ]) {
+    test(`profile used: no tag text is ever visible for ${name}`, async ({ page, context }) => {
+      const assistant = await signedIn(page, context, { labEnabled: true, profileUsed: LINE, profileUsedDeltas: deltas });
+      await watchForTagText(page);
+      await assistant.ask('What is a mitzvah?');
+      await expect(line(assistant)).toHaveText(LINE);
+      await expect(assistant.lastAnswer).toContainText('Answer 1.');
+      expect(await sightings(page)).toEqual([]);
+    });
+  }
+
+  test('profile used: no line under an answer whose payload does not carry it', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { labEnabled: true });
+    await assistant.ask('What is a mitzvah?');
+    await expect(line(assistant)).toHaveCount(0);
+  });
+});
+
+test.describe('start-closed', () => {
+  const savedOpen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('lc_chatbot:ui') || 'null')?.isOpen);
+  const userQuery = () => `user-id=${encodeURIComponent(LOGGED_IN_USER)}`;
+  let LOGGED_IN_USER;
+
+  async function savedAsOpen(page, context) {
+    await mockChatServer(context, {});
+    const assistant = new AssistantPage(page);
+    await assistant.logIn();
+    LOGGED_IN_USER = await assistant.host.getAttribute('user-id');
+    if (await assistant.panel.isVisible()) await assistant.close();
+    await assistant.open();
+    expect(await savedOpen(page)).toBe(true);
+    return assistant;
+  }
+
+  for (const [label, value] of [['bare', ''], ['true', 'true']]) {
+    test(`a host page that asks for room (${label} attribute) gets the assistant closed, its saved open state kept`, async ({ page, context }) => {
+      const assistant = await savedAsOpen(page, context);
+      await page.goto(`/?${userQuery()}&start-closed${value === '' ? '' : `=${value}`}`);
+      await expect(assistant.trigger).toBeVisible();
+      await expect(assistant.panel).toBeHidden();
+      expect(await savedOpen(page)).toBe(true);
+
+      await assistant.logIn(); // a page without the attribute opens as saved
+      await expect(assistant.panel).toBeVisible();
+    });
+  }
+
+  test('start-closed="false" opens as saved', async ({ page, context }) => {
+    const assistant = await savedAsOpen(page, context);
+    await page.goto(`/?${userQuery()}&start-closed=false`);
+    await expect(assistant.panel).toBeVisible();
+  });
+
+  test('the pill still opens the assistant on a start-closed page', async ({ page, context }) => {
+    const assistant = await savedAsOpen(page, context);
+    await page.goto(`/?${userQuery()}&start-closed=true`);
+    await expect(assistant.panel).toBeHidden();
+    await assistant.trigger.click();
+    await expect(assistant.panel).toBeVisible();
+  });
+});

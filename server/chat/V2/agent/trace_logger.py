@@ -37,6 +37,24 @@ class BraintrustTraceLogger:
         if context.turn_number is not None:
             span_metadata["turn_number"] = context.turn_number
 
+        if context.personalization_meta is not None:
+            span_metadata.update(context.personalization_meta)
+        elif context.profile_text or context.instructions_text:
+            span_metadata["personalized"] = True
+        else:
+            # Plain turn: explicit defaults so every trace has the same columns.
+            span_metadata.update(
+                {
+                    "personalized": False,
+                    "profile_on": None,
+                    "instructions_on": None,
+                    "profile_revision": None,
+                    "notice_shown": False,
+                    "profile_injected": None,
+                    "prompt_versions": {},
+                }
+            )
+
         # Tag non-prod traces with "dev" so they can be filtered in Braintrust.
         # The tag should only ever be "dev" (DEFAULT_ORIGIN) — not the caller's origin value.
         is_prod = context.origin in PROD_ORIGINS if context.origin else False
@@ -81,6 +99,7 @@ class BraintrustTraceLogger:
         content: str,
         tool_calls: list[dict[str, Any]],
         metrics: dict[str, Any],
+        profile_used: str | None = None,
     ) -> None:
         refs = extract_refs(tool_calls)
         span_output: dict[str, Any] = {
@@ -92,4 +111,6 @@ class BraintrustTraceLogger:
             "refs": refs,
             "tool_calls": tool_calls,
         }
+        if profile_used:
+            span_metadata["profile_used"] = profile_used
         bt_span.log(output=span_output, metrics=metrics, metadata=span_metadata)
