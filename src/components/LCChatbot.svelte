@@ -35,8 +35,9 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
+  import { setLocale, _, getThinkingMessageKeys, getThinkingLabelKey } from '../i18n/index.js';
   import { get } from 'svelte/store';
+  import { isHanukkah } from '../lib/hanukkah.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -46,7 +47,6 @@
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
-  const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -239,6 +239,9 @@
 
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
+  // Hanukkah dreidel and lines; re-checked each time the thinking state starts.
+  let hanukkah = $state(isHanukkah());
+  let thinkingMessageKeys = []; // filled by startThinkingMessages()
   let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
   let thinkingMessageFadeTimeout = null;
@@ -755,9 +758,9 @@
   function scheduleNextThinkingMessage() {
     clearThinkingMessageTimer();
     thinkingMessageTimeout = setTimeout(() => {
-      if (thinkingMessageIndex < THINKING_MESSAGE_KEYS.length - 1) {
+      if (thinkingMessageIndex < thinkingMessageKeys.length - 1) {
         const nextIndex = thinkingMessageIndex + 1;
-        fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
+        fadeToThinkingMessage(thinkingMessageKeys[nextIndex], nextIndex, true);
       } else {
         fadeToThinkingMessage('assistant.thinking.final');
       }
@@ -766,6 +769,8 @@
 
   function startThinkingMessages() {
     clearThinkingMessageTimers();
+    hanukkah = isHanukkah();
+    thinkingMessageKeys = getThinkingMessageKeys({ hanukkah, lang: interfaceLang });
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
     isThinkingMessageFading = false;
@@ -2943,9 +2948,20 @@
               {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
                 <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown} class:is-paused={toolWaitActive}>
                   <div class="lc-thinking-step">
-                    <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    {#if hanukkah}
+                      <span class="lc-thinking-glyph lc-dreidel" aria-hidden="true">
+                        <svg viewBox="0 0 40 56" width="11.43" height="16" focusable="false">
+                          <g class="lc-dreidel-tilt">
+                            <rect x="17" y="1" width="6" height="12" rx="2.5" />
+                            <path class="lc-dreidel-body" d="M5,12 H35 V33 L20,53 L5,33 Z" />
+                          </g>
+                        </svg>
+                      </span>
+                    {:else}
+                      <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    {/if}
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(getThinkingLabelKey(thinkingMessageKey, { hanukkah, lang: interfaceLang }))}</span>
                     </span>
                   </div>
                 </div>
@@ -4607,6 +4623,38 @@
   .lc-thinking-glyph {
     flex-shrink: 0;
   }
+  /* Hanukkah: a dreidel in the star's gray spins in place of the ✦. The body squashes
+     to |cos θ| (min .12) at ~5.5 rad/s around its top centre, with a slow tilt wobble. */
+  .lc-dreidel {
+    display: inline-flex;
+    align-items: center;
+  }
+  .lc-dreidel svg {
+    display: block;
+    overflow: visible;
+    fill: currentColor;
+  }
+  .lc-dreidel-tilt {
+    transform-origin: 20px 54px;
+    animation: lc-dreidel-wobble 1.14s ease-in-out infinite alternate;
+  }
+  .lc-dreidel-body {
+    transform-origin: 20px 0;
+    animation: lc-dreidel-spin 0.57s linear infinite;
+  }
+  @keyframes lc-dreidel-spin {
+    0%, 100% { transform: scaleX(1); }
+    10%, 90% { transform: scaleX(0.951); }
+    20%, 80% { transform: scaleX(0.809); }
+    30%, 70% { transform: scaleX(0.588); }
+    40%, 60% { transform: scaleX(0.309); }
+    45%, 55% { transform: scaleX(0.156); }
+    50% { transform: scaleX(0.12); }
+  }
+  @keyframes lc-dreidel-wobble {
+    from { transform: rotate(-7deg); }
+    to { transform: rotate(7deg); }
+  }
   .lc-thinking-label-wrap {
     position: relative;
     display: inline-flex;
@@ -4658,6 +4706,10 @@
   @media (prefers-reduced-motion: reduce) {
     .lc-thinking-label-wrap {
       transition: none;
+    }
+    .lc-dreidel-tilt,
+    .lc-dreidel-body {
+      animation: none;
     }
     .lc-thinking-label-base {
       animation: none;
