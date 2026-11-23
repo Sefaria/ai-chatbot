@@ -878,7 +878,7 @@ def chat_stream_v2(request):
                     response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
                     response_message.save(update_fields=["total_cost_usd"])
                     logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
-            except Exception as exc:
+            except Exception:
                 logger.exception("Summary update failed after agent success")
 
             try:
@@ -889,7 +889,7 @@ def chat_stream_v2(request):
                     summary_text=summary_text,
                 )
                 session.refresh_from_db()
-            except Exception as exc:
+            except Exception:
                 logger.exception("Session update failed after assistant persist")
 
             final_data = _build_response_payload(
