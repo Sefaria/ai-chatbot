@@ -337,11 +337,11 @@ class TestChatAnthropicEndpoint:
             format="json",
             HTTP_X_API_KEY=user_token,
         )
-        with patch("chat.V2.anthropic_views.capture_exception") as mock_capture:
+        with patch("chat.V2.anthropic_views.logger") as mock_logger:
             response = chat_anthropic_v2(request)
 
         assert response.status_code == 500
-        mock_capture.assert_called_once()
+        mock_logger.exception.assert_called_once()
         assert response.data["error"]["type"] == "api_error"
         assert response.data["error"]["message"] == "An internal error occurred."
         # Error response should also have metadata

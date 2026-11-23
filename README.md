@@ -104,9 +104,6 @@ pytest           # Run tests
 | `CHATBOT_ALLOWED_SEFARIA_HOSTS` | For logged-out visitors | Comma-separated Sefaria hosts this deployment serves (`*.` matches subdomains), checked against the request's `Origin`. A request from one uses that Sefaria, and logged-out visitors (`anonId`) are accepted only from these. Production: `www.sefaria.org,www.sefaria.org.il`; unset means no logged-out visitors |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
-| `SENTRY_DSN` | No | Enable Sentry error monitoring for Django + agent errors |
-| `SENTRY_TRACES_SAMPLE_RATE` | No | Sentry performance trace sampling rate (default `0.0`) |
-| `SENTRY_PROFILES_SAMPLE_RATE` | No | Sentry profiling sampling rate (default `0.0`) |
 | `DJANGO_SECRET_KEY` | No | Django secret |
 | `DJANGO_DEBUG` | No | Debug mode |
 | `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection. Empty by default; `.env.example` sets localhost |

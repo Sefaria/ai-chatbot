@@ -69,7 +69,6 @@ from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
-from .sentry import capture_exception, capture_message
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -622,12 +621,6 @@ def chat_stream_v2(request):
                 )
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
-                capture_exception(
-                    e,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                )
                 result_holder["error"] = str(e)
             finally:
                 if not is_load_test:
@@ -887,14 +880,6 @@ def chat_stream_v2(request):
                     logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
             except Exception as exc:
                 logger.exception("Summary update failed after agent success")
-                capture_exception(
-                    exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="summary_after_success",
-                    response_message_id=response_message.message_id,
-                )
 
             try:
                 logging_service.update_session_success(
@@ -906,14 +891,6 @@ def chat_stream_v2(request):
                 session.refresh_from_db()
             except Exception as exc:
                 logger.exception("Session update failed after assistant persist")
-                capture_exception(
-                    exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="session_update_after_success",
-                    response_message_id=response_message.message_id,
-                )
 
             final_data = _build_response_payload(
                 response_message=response_message,
@@ -937,14 +914,6 @@ def chat_stream_v2(request):
                         "turn_id": turn_id,
                         "response_message_id": response_message.message_id,
                     },
-                )
-                capture_exception(
-                    test_exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="forced_break_before_final_sse",
-                    response_message_id=response_message.message_id,
                 )
                 raise test_exc
 
@@ -1213,7 +1182,7 @@ def anon_claim_v2(request):
 
 @api_view(["POST"])
 def chat_client_event_v2(request):
-    """Ingest browser-side stream telemetry into server logs and Sentry."""
+    """Ingest browser-side stream telemetry into server logs."""
     serializer = ClientStreamEventSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -1241,12 +1210,6 @@ def chat_client_event_v2(request):
         "locale": context.get("locale", ""),
     }
     logger.warning("Client stream telemetry", extra=log_payload)
-    capture_message(
-        f"client_stream:{data['event']}",
-        level="warning",
-        endpoint="chat_stream_v2_client",
-        **log_payload,
-    )
     return Response({"success": True})
 
 
