@@ -87,8 +87,8 @@
     align-items: flex-start;
     padding: var(--global-dimension-100) var(--global-dimension-150);
     border-radius: var(--global-dimension-0);
-    border-inline-start: 2px solid var(--semantic-action-primary);
-    background: var(--core-blue-tbr-100);
+    border-inline-start: 2px solid var(--action-primary);
+    background: var(--module-accent);
     width: 100%;
     box-sizing: border-box;
     overflow: hidden;
@@ -109,11 +109,11 @@
     font-family: Roboto, sans-serif;
     font-size: 12px;
     line-height: var(--global-dimension-250);
-    color: var(--semantic-text-secondary);
+    color: var(--text-secondary);
   }
 
   :global(.lc-topic-link) {
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     font-family: Roboto;
     font-size: 12px;
     font-weight: 600;
