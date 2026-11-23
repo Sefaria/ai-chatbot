@@ -1,6 +1,7 @@
 <svelte:options customElement="lc-chatbot" />
 
 <script>
+  import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
@@ -64,8 +65,29 @@
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
-    'interface-lang': interfaceLang = 'en'
+    // The logged-in user's saved "Hide Ask button" choice ("true"/"false"), from their
+    // account. Absent (logged out, or a host that doesn't save it): this browser's choice.
+    'hide-launcher': hideLauncherAttr = null,
+    'interface-lang': interfaceLang = 'en',
+    // A Sefaria/design-system branch or commit to preview on top of the bundled tokens. Only
+    // non-production hosts pass it (see src/lib/designSystem.js).
+    'design-system-preview': designSystemPreview = ''
   } = $props();
+
+  let designSystemPreviewCss = $state('');
+  $effect(() => {
+    const ref = designSystemPreview;
+    let current = true;
+    designSystemPreviewCss = '';
+    if (ref) {
+      fetchPreviewCss(ref).then((css) => {
+        if (current) designSystemPreviewCss = css;
+      });
+    }
+    return () => {
+      current = false;
+    };
+  });
 
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
@@ -314,6 +336,14 @@
   // Menu state
   let showMenu = $state(false);
   let menuContainer = $state(null);
+  // The visitor can turn off the floating Ask button (kebab menu → Ask button); the host's
+  // own entry points (Sefaria's header and mobile menu) still open the assistant.
+  let launcherHidden = $state(
+    hideLauncherAttr == null
+      ? getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false)
+      : !!hideLauncherAttr && hideLauncherAttr !== 'false'
+  );
+  let showFloatingButtonModal = $state(false);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -416,6 +446,8 @@
   $effect(() => {
     // Initialize session
     clearLoggedInChatWhenLoggedOut(!!userId);
+    // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
+    if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
@@ -2141,6 +2173,39 @@
     showMenu = false;
   }
 
+  // Kept in this browser, and the host is told so it can save it to a logged-in user's
+  // account (and pass it back as `hide-launcher` on their next page load, on any device).
+  function setLauncherHidden(hidden) {
+    launcherHidden = hidden;
+    setStorage(STORAGE_KEYS.HIDE_LAUNCHER, hidden);
+    dispatchEvent('launcher_visibility', { hidden });
+  }
+
+  // Log-in and sign-up links that return the visitor to the page they were on
+  function accountUrl(path) {
+    return `${sefariaBase()}/${path}?next=${encodeURIComponent(location.pathname + location.search)}`;
+  }
+
+  // The note under the switch is one sentence with link placeholders ({log_in}, {sign_up},
+  // {account_settings}), so translators can order it freely; it's split into text and link
+  // parts so each link is its own <a>.
+  const ACCOUNT_LINKS = {
+    log_in: { href: () => accountUrl('login'), key: 'assistant.floating_button_modal.log_in' },
+    sign_up: { href: () => accountUrl('register'), key: 'assistant.floating_button_modal.sign_up' },
+    // Straight to the Library Assistant on/off setting on Sefaria's account settings page
+    account_settings: { href: () => `${sefariaBase()}/settings/account#libraryAssistantSetting`, key: 'assistant.floating_button_modal.account_settings' }
+  };
+  let floatingButtonNoteParts = $derived.by(() => {
+    const [key, names] = isLoggedIn
+      ? ['assistant.floating_button_modal.main_menu_logged_in', ['account_settings']]
+      : ['assistant.floating_button_modal.main_menu_logged_out', ['log_in', 'sign_up']];
+    const values = Object.fromEntries(names.map(name => [name, `\u0000${name}\u0000`]));
+    return $_(key, { values })
+      .split('\u0000')
+      .filter(Boolean)
+      .map(part => ({ text: part, link: names.includes(part) ? ACCOUNT_LINKS[part] : null }));
+  });
+
   $effect(() => {
     if (!showMenu) return;
 
@@ -2376,6 +2441,13 @@
 
 </script>
 
+<!-- Design system tokens (see src/lib/designSystem.js), as text, never as HTML. A preview, when the
+     host asks for one, comes after the bundled tokens and overrides them. -->
+<svelte:element this={'style'} data-design-system>{designSystemCss}</svelte:element>
+{#if designSystemPreviewCss}
+  <svelte:element this={'style'} data-design-system-preview>{designSystemPreviewCss}</svelte:element>
+{/if}
+
 <div
   class="lc-chatbot-container"
   class:mode-floating={layout === 'floating'}
@@ -2387,7 +2459,9 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {#if !launcherHidden}
+      <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {/if}
   {:else}
     <!-- Chat Panel -->
     <div
@@ -2515,6 +2589,10 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
+                </button>
                 {#if isLoggedIn}
                   <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
@@ -3002,6 +3080,36 @@
           </div>
         </div>
       {/if}
+      {#if showFloatingButtonModal}
+        <!-- Ask button settings: reuses the feedback modal's card -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) showFloatingButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showFloatingButtonModal = false)}>
+          <div class="feedback-modal floating-button-modal" role="dialog" aria-labelledby="lc-floating-button-modal-title">
+            <h3 class="feedback-modal-title" id="lc-floating-button-modal-title">{$_('assistant.floating_button_modal.title')}</h3>
+            <label class="floating-button-toggle">
+              <span>{$_('assistant.floating_button_modal.toggle')}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={launcherHidden
+                  ? $_('assistant.floating_button_modal.toggle_show_aria')
+                  : $_('assistant.floating_button_modal.toggle_hide_aria')}
+                checked={!launcherHidden}
+                onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
+              />
+            </label>
+            <p class="floating-button-modal-text">{$_('assistant.floating_button_modal.description')}</p>
+            <p class="floating-button-modal-text">
+              {#each floatingButtonNoteParts as part}{#if part.link}<a href={part.link.href()}>{$_(part.link.key)}</a>{:else}{part.text}{/if}{/each}
+            </p>
+            <div class="feedback-modal-actions">
+              <button class="feedback-modal-btn submit" onclick={() => { showFloatingButtonModal = false; }}>
+                {$_('assistant.floating_button_modal.done')}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
       {#if deletingConversation}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="feedback-modal-overlay delete-modal-overlay" onclick={() => { deletingConversation = null; }}>
@@ -3027,42 +3135,21 @@
 <style>
   /* CSS Custom Properties for theming */
   :host {
-    /* Figma design tokens (canonical) */
-    --global-dimension-0: 0px;
-    --global-dimension-100: 8px;
-    --global-dimension-150: 12px;
-    --global-dimension-200: 16px;
-    --global-dimension-250: 20px;
-    --global-dimension-300: 24px;
-    --space-1: 4px;
-    --spacing-spacing-large: 16px;
-    --spacing-spacing-medium: 12px;
-    --semantic-action-primary: #18345D;
-    --semantic-text-link: #18345D;
-    --semantic-text-primary: #121212;
-    --semantic-text-secondary: #575757;
-    --semantic-text-muted: #707070;
-    --core-blue-tbr-100: #F0F7FF;
-    --core-blue-tbr-200: #DDEEFF;
-    --core-base-white: #FFFFFF;
-    --core-neutral-gray-100: #EEEEEE;
-    --core-neutral-gray-300: #CCCCCC;
-    --functional-icon-icon-primary: #666666;
-    --semantic-icon-muted: #6F6F6F;
+    /* Core and semantic tokens come from @sefaria/design-system (injected at the top of the markup).
+       Don't redefine them here; to change one, change it in the design system. */
 
-    /* Component tokens — aliased to Figma tokens where applicable */
-    --lc-primary: var(--semantic-action-primary);
-    --brand-sefaria-blue: #18345D;
+    /* Component tokens: the Library Assistant's own layer. Point them at semantic tokens. */
+    --lc-primary: var(--action-primary);
     --lc-primary-hover: #465D7D;
     --lc-bg: #ffffff;
     --lc-body-bg: #F9FAFB;
     --lc-bg-secondary: #FAFAFA;
     --lc-bg-tertiary: #f1f5f9;
     --lc-text: #1e293b;
-    --lc-text-secondary: var(--semantic-text-secondary);
+    --lc-text-secondary: var(--text-secondary);
     --lc-text-muted: #999999;
     --lc-border: #e2e8f0;
-    --lc-user-bg: var(--brand-sefaria-blue);
+    --lc-user-bg: var(--module-primary);
     --lc-user-text: #ffffff;
     --lc-assistant-bg: #f1f5f9;
     --lc-assistant-text: #1e293b;
@@ -3085,9 +3172,9 @@
     --lc-border-strong: var(--core-neutral-gray-300);
     --lc-bg-hover: var(--core-neutral-gray-100);
     --lc-on-primary: var(--core-base-white);
-    --lc-icon-primary: var(--functional-icon-icon-primary);
-    --lc-icon-muted: var(--semantic-icon-muted);
-    --lc-topics-bg: var(--core-blue-tbr-100);
+    --lc-icon-primary: var(--icon-muted);
+    --lc-icon-muted: var(--icon-muted);
+    --lc-topics-bg: var(--module-accent);
     --lc-tooltip-bg: #3a3a3a;
     --lc-tooltip-text: var(--core-base-white);
     --lc-danger: #C03522;
@@ -3424,7 +3511,7 @@
     height: 48px;
     margin: 0 var(--global-dimension-150) var(--global-dimension-150);
     padding: 0 1px 0 var(--global-dimension-200);
-    gap: var(--space-1);
+    gap: var(--spacing-xsmall);
   }
 
   .mode-fullscreen .history-search input {
@@ -3780,7 +3867,7 @@
 
   .history-search input:focus,
   .history-rename-form input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .history-search-submit {
@@ -3862,17 +3949,17 @@
   }
 
   .history-row:hover:not(:disabled) {
-    background: var(--core-blue-tbr-100);
+    background: var(--surface-hover-accent);
   }
 
   .history-row.active {
-    background: var(--core-blue-tbr-200);
+    background: var(--surface-selected-accent);
   }
 
   /* Active + hover keeps the active background — only the kebab menu's own
      hover-visibility (handled elsewhere) changes on hover while active. */
   .history-row.active:hover:not(:disabled) {
-    background: var(--core-blue-tbr-200);
+    background: var(--surface-selected-accent);
   }
 
   .history-row:disabled {
@@ -4141,7 +4228,7 @@
     white-space: nowrap;
     margin: 0;
     line-height: 1.1;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-family: Roboto, Arial, sans-serif;
     font-style: normal;
     font-weight: 600;
@@ -4163,7 +4250,7 @@
   /* Foundations icon-small (12px) */
   .header-sparkle {
     flex-shrink: 0;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
   }
 
   .header-actions {
@@ -4247,10 +4334,10 @@
        makes overflow-x compute to `auto` too (CSS spec), so any 1px-too-wide
        child shows a horizontal scrollbar. Clip horizontally so it can never. */
     overflow-x: hidden;
-    padding: var(--spacing-spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
+    padding: var(--spacing-medium, 12px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px) var(--global-dimension-300, 24px);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large, 16px);
     scroll-behavior: smooth;
   }
 
@@ -4451,7 +4538,7 @@
   }
 
   .message-status.sending {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
   }
 
   .retry-btn {
@@ -4531,7 +4618,7 @@
     line-height: var(--global-dimension-250, 20px);
   }
   .lc-thinking-glyph {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--text-secondary, #575757);
   }
   .lc-thinking-glyph {
     flex-shrink: 0;
@@ -4587,7 +4674,7 @@
     min-width: 0;
   }
   .lc-thinking-label-base {
-    color: var(--semantic-text-secondary, #575757);
+    color: var(--text-secondary, #575757);
     background-image: linear-gradient(
       100deg,
       currentColor 38%,
@@ -4638,7 +4725,7 @@
     margin-bottom: 0;
   }
   .lc-thinking-block.is-writing {
-    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-spacing-large, 16px));
+    margin-top: calc(var(--global-dimension-100, 8px) - var(--spacing-large, 16px));
   }
   .lc-thinking-block.is-writing:not(.is-paused) .lc-thinking-label-base {
     animation: none;
@@ -4664,7 +4751,7 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--spacing-spacing-large, 16px);
+    gap: var(--spacing-large, 16px);
   }
 
   /* Loading Indicator */
@@ -4704,7 +4791,7 @@
 
   .login-prompt-text {
     margin: 0;
-    color: var(--semantic-text-primary);
+    color: var(--text-primary);
     /* Font family is inherited: the widget's font in English, Heebo in Hebrew. */
     font-size: var(--lc-font-size);
     line-height: var(--global-dimension-250);
@@ -4772,7 +4859,7 @@
   }
 
   .lc-chatbot-input textarea:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .lc-chatbot-input textarea::placeholder {
@@ -4792,7 +4879,7 @@
     justify-content: center;
     width: var(--lc-send-size);
     height: var(--lc-send-size);
-    background: var(--brand-sefaria-blue);
+    background: var(--action-primary);
     color: white;
     border: none;
     border-radius: var(--lc-radius-sm);
@@ -4843,7 +4930,7 @@
   .settings-back {
     border: none;
     background: transparent;
-    color: var(--brand-sefaria-blue);
+    color: var(--action-primary);
     font-weight: 600;
     cursor: pointer;
     padding: 6px 0;
@@ -4927,7 +5014,7 @@
   }
 
   .settings-save {
-    background: var(--brand-sefaria-blue);
+    background: var(--action-primary);
     color: white;
     border-color: transparent;
   }
@@ -5029,7 +5116,7 @@
   }
 
   .delete-modal .feedback-modal-btn.skip:hover {
-    background: var(--semantic-surface-hover, #eee);
+    background: var(--surface-hover, #eee);
   }
 
   .delete-modal .feedback-modal-btn {
@@ -5050,6 +5137,82 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  .floating-button-modal .feedback-modal-title {
+    font-size: var(--lc-font-size-lg);
+    margin-bottom: var(--global-dimension-200);
+  }
+
+  .floating-button-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--global-dimension-200);
+    min-height: 44px;
+    margin-bottom: var(--global-dimension-200);
+    font-size: var(--lc-font-size);
+    color: var(--lc-text);
+    cursor: pointer;
+  }
+
+  /* A switch: a 44×24 track with a 20px knob */
+  .floating-button-toggle input {
+    appearance: none;
+    flex: 0 0 auto;
+    position: relative;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border-radius: 12px;
+    background: var(--core-neutral-gray-300, #ccc);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .floating-button-toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--core-base-white, #fff);
+    transition: transform 0.15s ease;
+  }
+
+  .floating-button-toggle input:checked {
+    background: var(--action-primary);
+  }
+
+  .floating-button-toggle input:checked::after {
+    transform: translateX(20px);
+  }
+
+  .interface-hebrew .floating-button-toggle input:checked::after {
+    transform: translateX(-20px);
+  }
+
+  .floating-button-toggle input:focus-visible {
+    outline: 2px solid var(--action-primary);
+    outline-offset: 2px;
+  }
+
+  .floating-button-modal-text {
+    font-size: var(--lc-font-size);
+    line-height: 1.45;
+    color: var(--lc-text-secondary);
+    margin: 0 0 var(--global-dimension-150);
+  }
+
+  .floating-button-modal-text a {
+    color: var(--text-link);
+    text-decoration: underline;
+  }
+
+  .floating-button-modal .feedback-modal-actions {
+    margin-top: var(--global-dimension-300);
   }
 
   .feedback-modal-title {
@@ -5111,7 +5274,7 @@
   }
 
   .feedback-modal-select:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .feedback-modal-select.is-placeholder {
@@ -5119,7 +5282,7 @@
   }
 
   .feedback-modal-input:focus {
-    border-color: var(--brand-sefaria-blue);
+    border-color: var(--border-strong);
   }
 
   .feedback-modal-input::placeholder {
@@ -5190,7 +5353,7 @@
   .message-content :global(.response-title) {
     font-size: var(--lc-font-size-lg);
     font-weight: 600;
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-style: normal;
     line-height: normal;
   }
@@ -5199,7 +5362,7 @@
   }
 
   .message-content :global(.response-generic) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -5207,7 +5370,7 @@
   }
 
   .message-content :global(.response-section) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -5221,7 +5384,7 @@
   }
 
   .mode-fullscreen .message-content :global(.response-section) {
-    margin-block: 14px var(--space-1);
+    margin-block: 14px var(--spacing-xsmall);
   }
 
   .mode-fullscreen .message-content :global(.response-title + .response-section) {
@@ -5235,7 +5398,7 @@
   }
 
   .message-content :global(.response-list) {
-    color: var(--brand-sefaria-blue);
+    color: var(--module-primary);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 400;
@@ -5250,7 +5413,7 @@
     text-decoration-thickness: auto;
     text-underline-offset: auto;
     text-underline-position: from-font;
-    color: var(--brand-sefaria-blue);
+    color: var(--text-link);
     font-size: var(--lc-font-size);
     font-style: normal;
     font-weight: 700;
@@ -5332,7 +5495,7 @@
     text-overflow: ellipsis;
   }
   :global(.trail-ref-link) {
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     font-weight: 600;
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
@@ -5346,7 +5509,7 @@
     display: inline-block;
     vertical-align: middle;
     margin-inline-end: 2px;
-    color: var(--semantic-text-link);
+    color: var(--text-link);
     opacity: 0.6;
   }
 
