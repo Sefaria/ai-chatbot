@@ -12,12 +12,10 @@ function withPage(search, stored, fn) {
   }
 }
 
-test('window opens 17:00 local on 4 Dec 2026 and closes at the end of 12 Dec', () => {
+test('always on, whatever the date (until this commit is reverted)', () => {
   withPage('', null, () => {
-    assert.equal(isHanukkah(new Date(2026, 11, 4, 16, 59)), false);
-    assert.equal(isHanukkah(new Date(2026, 11, 4, 17, 0)), true);
-    assert.equal(isHanukkah(new Date(2026, 11, 12, 23, 59)), true);
-    assert.equal(isHanukkah(new Date(2026, 11, 13, 0, 0)), false);
+    assert.equal(isHanukkah(new Date(2026, 10, 16)), true);
+    assert.equal(isHanukkah(new Date(2027, 0, 15)), true);
   });
 });
 

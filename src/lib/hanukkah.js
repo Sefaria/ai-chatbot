@@ -19,5 +19,7 @@ function forcedHanukkah() {
 }
 
 export function isHanukkah(now = new Date()) {
-  return forcedHanukkah() ?? (now >= HANUKKAH_START && now < HANUKKAH_END);
+  // ALWAYS ON for Hanukkah 2026: shipped on by hand, switched off by reverting this commit.
+  // Reverting brings back the date window below, which is already closed after 12 Dec 2026.
+  return forcedHanukkah() ?? true;
 }
