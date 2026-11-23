@@ -585,14 +585,14 @@ class TestStreamingEndpointErrorHandling:
             "text": "This will fail",
         }
 
-        with patch("chat.V2.views.capture_exception") as mock_capture:
+        with patch("chat.V2.views.logger") as mock_logger:
             response = client.post("/api/v2/chat/stream", data=request_data, format="json")
 
             # Still returns 200 for SSE (error is in the stream)
             assert response.status_code == 200
 
             content = b"".join(response.streaming_content).decode("utf-8")
-            mock_capture.assert_called_once()
+            mock_logger.exception.assert_called_once()
         assert "event: error" in content
 
     def test_missing_required_fields_returns_400(self, client):
@@ -922,7 +922,7 @@ class TestStreamingEndpointRecovery:
 
         with patch("chat.V2.views.get_agent_service", return_value=mock_agent):
             with patch("chat.V2.views.get_summary_service") as mock_summary_service:
-                with patch("chat.V2.views.capture_exception") as mock_capture:
+                with patch("chat.V2.views.logger") as mock_logger:
                     mock_summary_service.return_value.update_summary.side_effect = Exception(
                         "summary db error"
                     )
@@ -933,7 +933,7 @@ class TestStreamingEndpointRecovery:
         assert response.status_code == 200
         assert "event: message" in content
         assert "Recovered despite summary failure" in content
-        mock_capture.assert_called_once()
+        mock_logger.exception.assert_called_once()
 
         session = ChatSession.objects.get(session_id="sess_summary_fail")
         user_msg = ChatMessage.objects.get(message_id="msg_summary_fail")
@@ -1110,8 +1110,8 @@ class TestChatClientEventV2:
         return "test-secret-key-for-tokens"
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
-    @patch("chat.V2.views.capture_message")
-    def test_valid_event_emits_telemetry(self, mock_capture_message, client, secret):
+    @patch("chat.V2.views.logger")
+    def test_valid_event_emits_telemetry(self, mock_logger, client, secret):
         response = client.post(
             "/api/v2/chat/client-event",
             data={
@@ -1131,8 +1131,8 @@ class TestChatClientEventV2:
 
         assert response.status_code == 200
         assert response.data == {"success": True}
-        mock_capture_message.assert_called_once()
-        assert mock_capture_message.call_args.kwargs["page_url"] == "/topics/shabbat"
+        mock_logger.warning.assert_called_once()
+        assert mock_logger.warning.call_args.kwargs["extra"]["page_url"] == "/topics/shabbat"
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_invalid_token_is_rejected(self, client):
