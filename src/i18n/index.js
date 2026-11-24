@@ -14,15 +14,38 @@ export function setLocale(value) {
   locale.set(value || 'en');
 }
 
-export function getThinkingMessageKeys() {
+function numberedKeys(set) {
   // Build the rotation from locale keys so Weblate can add new numbered messages without a code change.
+  const pattern = new RegExp(`^assistant\\.thinking\\.${set.replaceAll('.', '\\.')}\\.\\d+$`);
   return Object.keys(en)
-    .filter((key) => /^assistant\.thinking\.array\.\d+$/.test(key))
+    .filter((key) => pattern.test(key))
     .sort((a, b) => {
       const aIndex = Number(a.split('.').at(-1));
       const bIndex = Number(b.split('.').at(-1));
       return aIndex - bIndex || a.localeCompare(b);
     });
+}
+
+export function getThinkingMessageKeys({ hanukkah = false, lang = 'en' } = {}) {
+  if (hanukkah) {
+    const keys = numberedKeys('array.hanukkah');
+    // Hebrew gets the Hanukkah lines only once Weblate has translated all of them;
+    // until then it keeps the everyday lines rather than falling back to English.
+    if (keys.length && (lang !== 'he' || keys.every((key) => he[key]))) return keys;
+  }
+  return numberedKeys('array');
+}
+
+// Hanukkah versions of the first ("Thinking") and last ("Synthesizing response")
+// thinking lines, same Hanukkah and Hebrew rules as above.
+const HANUKKAH_LABELS = {
+  'assistant.loading.initial': 'assistant.loading.hanukkah.initial',
+  'assistant.thinking.final': 'assistant.thinking.hanukkah.final',
+};
+
+export function getThinkingLabelKey(key, { hanukkah = false, lang = 'en' } = {}) {
+  const hanukkahKey = HANUKKAH_LABELS[key];
+  return hanukkah && hanukkahKey && (lang !== 'he' || he[hanukkahKey]) ? hanukkahKey : key;
 }
 
 export { _, locale, getLocaleFromNavigator };
