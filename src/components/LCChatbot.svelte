@@ -37,7 +37,6 @@
   import Accordion from './Accordion.svelte';
   import { setLocale, _, getThinkingMessageKeys, getThinkingLabelKey } from '../i18n/index.js';
   import { get } from 'svelte/store';
-  import { isHanukkah } from '../lib/hanukkah.js';
 
   const DEFAULT_MAX_PROMPTS = 100;
   const DEFAULT_MAX_INPUT_CHARS = 10000;
@@ -47,6 +46,9 @@
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
+  // Hanukkah: the dreidel replaces the ✦ and the thinking lines switch to the Hanukkah set.
+  // Set to false after Hanukkah 2026.
+  const HANUKKAH_ON = true;
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -239,8 +241,6 @@
 
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
-  // Hanukkah dreidel and lines; re-checked each time the thinking state starts.
-  let hanukkah = $state(isHanukkah());
   let thinkingMessageKeys = []; // filled by startThinkingMessages()
   let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
@@ -769,8 +769,7 @@
 
   function startThinkingMessages() {
     clearThinkingMessageTimers();
-    hanukkah = isHanukkah();
-    thinkingMessageKeys = getThinkingMessageKeys({ hanukkah, lang: interfaceLang });
+    thinkingMessageKeys = getThinkingMessageKeys({ hanukkah: HANUKKAH_ON, lang: interfaceLang });
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
     isThinkingMessageFading = false;
@@ -2948,7 +2947,7 @@
               {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
                 <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown} class:is-paused={toolWaitActive}>
                   <div class="lc-thinking-step">
-                    {#if hanukkah}
+                    {#if HANUKKAH_ON}
                       <span class="lc-thinking-glyph lc-dreidel" aria-hidden="true">
                         <svg viewBox="0 0 40 56" width="11.43" height="16" focusable="false">
                           <g class="lc-dreidel-tilt">
@@ -2961,7 +2960,7 @@
                       <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
                     {/if}
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                      <span class="lc-thinking-label lc-thinking-label-base">{$_(getThinkingLabelKey(thinkingMessageKey, { hanukkah, lang: interfaceLang }))}</span>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(getThinkingLabelKey(thinkingMessageKey, { hanukkah: HANUKKAH_ON, lang: interfaceLang }))}</span>
                     </span>
                   </div>
                 </div>
