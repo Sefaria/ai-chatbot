@@ -25,7 +25,7 @@
     fetchPersonalizationState
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
-  import { fade } from 'svelte/transition';
+  import { fade, fly } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry, forgetSheetEntry, isOnSheetEntry, adoptSheetEntry } from '../lib/sheetHistory.js';
   import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
@@ -380,6 +380,22 @@
       : !!hideLauncherAttr && hideLauncherAttr !== 'false'
   );
   let showFloatingButtonModal = $state(false);
+  // Personalization toast (above the text box). It appears with a chat's first personalized answer. Dismiss (✕) or
+  // Manage closes it for good. Left alone, it stays up and comes back with the first personalized answer of the
+  // next chat. Kept in this browser for now (an account setting later).
+  let personalizationToastDismissed = $state(!!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false));
+  let chatIsPersonalized = $derived(messages.some((m) => m.role === 'assistant'
+    && (m.personalizationNotice === true || (typeof m.profileUsed === 'string' && m.profileUsed.startsWith('From your profile')))));
+  let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
+  // Design draft: two toast layouts. The one-liner (the default), or ?p13n_toast=multi for the multi-line one with an
+  // icon, kept in case the message ever needs to be longer.
+  const toastVariant = new URLSearchParams(window.location.search).get('p13n_toast') === 'multi' ? 'multi' : 'single';
+  const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function dismissPersonalizationToast({ focusInput = true } = {}) {
+    personalizationToastDismissed = true;
+    setStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, true);
+    if (focusInput) inputRef?.focus();
+  }
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -2692,12 +2708,21 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
-                {#if !isFullscreen}
-                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
-                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
-                </button>
+                {#if isLoggedIn}
+                  <!-- One item for the Library Assistant tab (on/off and personalization); replaces
+                       "Disable in settings" and "Personalization". Same Lucide gear as the staff Settings item. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.la_settings.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                      </svg>
+                    {$_('assistant.menu.la_settings')}
+                  </a>
                 {/if}
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
+                </button>
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}
@@ -2706,20 +2731,6 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
-                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
-                </button>
-                {#if isLoggedIn}
-                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
-                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                    {$_('assistant.menu.optout')}
-                  </a>
-                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
-                    <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                    {$_('assistant.menu.personalization')}
-                  </a>
-                {/if}
               </div>
             {/if}
           </div>
@@ -2976,15 +2987,6 @@
               <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
             <a class="profile-used-edit" href={settingsHref('profile')}>{$_('assistant.personalization.edit')}</a>
             {/if}
-            {#if feedbackProps?.personalizationNotice}
-              <div class="la-personalization-notice">
-                <p class="personalization-notice" data-testid="personalization-notice">
-                  {$_('assistant.personalization.notice')}
-                  <a href={settingsHref('personalization')}>{$_('assistant.personalization.configure')}</a>
-                  <a href={settingsHref('about-personalization')}>{$_('assistant.personalization.learn_more')}</a>
-                </p>
-              </div>
-            {/if}
             {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
               <div class="message-meta">
                 {#if feedbackProps?.status === STATUS_FAILED}
@@ -3137,6 +3139,38 @@
 
       {#if stopErrors[sessionId]}
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
+      {/if}
+      {#if showPersonalizationToast && !loginRequired}
+        <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
+        {#if toastVariant === 'multi'}
+          <!-- The design system's AnnouncementBanner layout (as in Sefaria's developer settings): icon, title and
+               text, then the action; Dismiss at the top end -->
+          <div class="p13n-toast p13n-toast-multi" role="status" data-testid="personalization-toast"
+            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+            <svg class="p13n-toast-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
+            </svg>
+            <div class="p13n-toast-body">
+              <p class="p13n-toast-title">{$_('assistant.personalization.toast.title')}</p>
+              <p class="p13n-toast-desc">{$_('assistant.personalization.toast.body')}</p>
+              <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+            </div>
+            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+              onclick={() => dismissPersonalizationToast()}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        {:else}
+          <div class="p13n-toast" role="status" data-testid="personalization-toast"
+            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+            <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
+            <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+              onclick={() => dismissPersonalizationToast()}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        {/if}
       {/if}
       <!-- Input Footer -->
       {#if loginRequired}
@@ -5165,25 +5199,133 @@
     font-size: var(--lc-font-size-sm);
   }
 
-  /* The notice's container, as the product owner set it */
-  .la-personalization-notice {
-    margin: 6px 0 0;
-    background-color: #f3e8ff;
-    border: 2px solid #4c1d95;
-    color: #2e1065;
-    padding: 16px;
-    border-radius: 8px;
-  }
-
-  .personalization-notice {
-    margin: 0;
+  /* Personalization toast: a white card resting on the text box. Tokens from @sefaria/design-system;
+     the shadow and corner radius have no semantic token yet. */
+  .p13n-toast {
+    /* One line: text, action, Dismiss. In a too-narrow panel the text wraps, the buttons stay put. */
+    display: flex;
+    align-items: center;
+    column-gap: var(--spacing-xsmall);
+    margin: 0 var(--spacing-medium) var(--spacing-small);
+    padding-block: var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
+    background: var(--surface-page);
+    border: var(--border-width-thin, 1px) solid var(--border-default);
+    border-radius: var(--global-dimension-150);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+    color: var(--text-primary);
     font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
   }
 
-  .personalization-notice a {
-    margin-inline-start: 8px;
-    color: inherit;
+  .p13n-toast-text {
+    /* Takes the spare width, so Manage and Dismiss sit at the end of the line */
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* Manage: Developer Settings' inline link (devE-inlineLink): underlined, no fill */
+  .p13n-toast-action {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--spacing-xsmall);
+    color: var(--text-link);
+    font-weight: 600;
     text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+
+  .p13n-toast-action:hover {
+    /* As Developer Settings' inline link: navy-1000 */
+    color: var(--action-primary-pressed);
+  }
+
+  /* Dismiss: Developer Settings' icon button, color only and never a background */
+  .p13n-toast-close {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--global-dimension-50);
+    background: transparent;
+    color: var(--icon-muted);
+    cursor: pointer;
+  }
+
+  .p13n-toast-close:hover {
+    color: var(--action-primary);
+  }
+
+  .p13n-toast-action:focus-visible,
+  .p13n-toast-close:focus-visible {
+    /* --border-focus (gray-300) is under 3:1 on white, so the primary action color, as the stop button */
+    outline: 2px solid var(--action-primary);
+    outline-offset: 1px;
+  }
+
+  /* Multi-line variant: icon | title, text, action | Dismiss */
+  .p13n-toast-multi {
+    align-items: flex-start;
+    gap: var(--spacing-small);
+    padding-block: var(--spacing-medium) var(--spacing-small);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
+  }
+
+  .p13n-toast-icon {
+    flex-shrink: 0;
+    /* Lines up with the title's first line */
+    margin-block-start: 2px;
+    color: var(--module-primary);
+  }
+
+  .p13n-toast-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2xsmall, 2px);
+  }
+
+  .p13n-toast-title,
+  .p13n-toast-desc {
+    margin: 0;
+  }
+
+  .p13n-toast-title {
+    font-size: var(--lc-font-size);
+    font-weight: 600;
+  }
+
+  .p13n-toast-desc {
+    color: var(--text-secondary);
+  }
+
+  .p13n-toast-multi .p13n-toast-action {
+    /* The link's text lines up with the text above; its hover fill reaches into the padding */
+    margin-inline-start: calc(-1 * var(--spacing-xsmall));
+  }
+
+  .p13n-toast-multi .p13n-toast-close {
+    margin-block-start: calc(-1 * var(--spacing-small));
+  }
+
+  /* Phones: 44px touch targets */
+  .mode-fullscreen .p13n-toast-action {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .p13n-toast-close {
+    width: 44px;
+    height: 44px;
   }
 
   /* The two answers stack (Personalized, then Plain) and sit side by side only when the panel,
