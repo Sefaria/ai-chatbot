@@ -84,3 +84,23 @@ def test_personalized_turn_meta_has_prompt_versions(lab_on):  # noqa: F811
         "personalization_answering"
     )
     assert meta["chapter_sha"] == chapters.chapter_sha("personalization_answering")
+
+
+def test_settings_default_to_live_braintrust_slugs():
+    from django.conf import settings
+
+    assert {
+        "ANSWERING": settings.PERSONALIZATION_PROMPT_SLUG_ANSWERING,
+        "PROFILE_USED": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_USED,
+        "PROFILE_WRITER": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER,
+        "PROFILE_EXTRACTION": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION,
+        "PROFILE_DREAM": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM,
+        "PROFILE_EDIT": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT,
+    } == {
+        "ANSWERING": "la-p13n-personalization-answering",
+        "PROFILE_USED": "la-p13n-personalization-profile-used",
+        "PROFILE_WRITER": "la-p13n-profile-writer",
+        "PROFILE_EXTRACTION": "la-p13n-profile-extraction",
+        "PROFILE_DREAM": "la-p13n-profile-dream",
+        "PROFILE_EDIT": "la-p13n-profile-edit",
+    }
