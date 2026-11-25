@@ -35,10 +35,17 @@ def test_text_search(client, make):
     assert "Findings matching “water”" in page
 
 
-def test_a_ref_search_goes_to_the_passage(client):
+def test_a_ref_search_goes_to_the_passage(client, make):
+    make()
     response = client.get("/findings/?q=Genesis 1:1")
     assert response.status_code == 302
     assert response["Location"] == "/findings/ref/Genesis.1.1/"
+
+
+def test_words_that_end_in_a_number_stay_a_word_search(client, make):
+    make(title="Rule 3 of the morning")
+    page = html(client.get("/findings/?q=Rule 3"))
+    assert "Findings matching “Rule 3”" in page and "Rule 3 of the morning" in page
 
 
 def test_method_page_with_books_filter(client, make):

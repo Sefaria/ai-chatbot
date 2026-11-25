@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import transaction
-from django.db.models import Count, Q, QuerySet
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Prefetch, Q, QuerySet
 from django.utils import timezone
 
 import skills_catalog
@@ -119,7 +119,8 @@ def _clean_roles(raw) -> list[dict]:
 
 
 def _text(value, name: str, limit: int) -> str:
-    text = str(value or "").strip()
+    # Postgres text cannot hold NUL, and nothing legitimate contains it.
+    text = str(value or "").replace("\x00", "").strip()
     if not text:
         raise FindingError(f"`{name}` is required")
     if len(text) > limit:
@@ -127,8 +128,25 @@ def _text(value, name: str, limit: int) -> str:
     return text
 
 
-def _write_rows(finding: Finding, sheet: SheetRefs) -> None:
-    rows = refs.rows_for(finding.roles, sheet.expanded, sheet.included)[:SEGMENTS_MAX]
+# Reasons sync hides a finding on its own; saving the finding again clears them. A reason
+# staff give with hide_finding is never cleared this way.
+AUTO_HIDDEN = ("Source sheet deleted", "Source sheet changed owner")
+
+
+def _rows(roles: list[dict], sheet: SheetRefs) -> tuple[list[tuple], list[dict]]:
+    """The segment rows for a sheet, and the cited sources the sheet actually holds.
+
+    Rows are capped at SEGMENTS_MAX, anchors and positions first, so a huge sheet loses
+    support rows rather than the passages it is shown beside.
+    """
+    rows = refs.rows_for(roles, sheet.expanded, sheet.included)
+    rows.sort(key=lambda row: refs.ROLE_RANK[row[3]])
+    rows = rows[:SEGMENTS_MAX]
+    held = {row[0] for row in rows}
+    return rows, [r for r in roles if r["ref"] in held]
+
+
+def _write_rows(finding: Finding, rows: list[tuple]) -> None:
     finding.refs.all().delete()
     FindingRef.objects.bulk_create(
         FindingRef(
@@ -143,8 +161,21 @@ def _write_rows(finding: Finding, sheet: SheetRefs) -> None:
     )
 
 
-def record(user_id: int, payload: dict, sheet_reader=fetch_sheet) -> tuple[Finding, bool]:
-    """Save a finding for ``user_id`` from the MCP process's request. Returns ``(finding, created)``."""
+@dataclass(frozen=True)
+class Checked:
+    skill: skills_catalog.CatalogSkill
+    title: str
+    conclusion: str
+    roles: list[dict]
+    sheet_id: int | None
+
+
+def check(user_id: int, payload: dict, *, need_sheet: bool = True) -> Checked:
+    """Everything about a save that can be refused without reading the sheet.
+
+    The MCP tool asks for this (``dry_run``) before it creates a sheet, so a refused save
+    does not leave an orphan sheet in the user's account.
+    """
     if not isinstance(payload, dict):
         raise FindingError("Expected a JSON object")
     skill = catalog().skill(str(payload.get("skill") or ""))
@@ -153,80 +184,115 @@ def record(user_id: int, payload: dict, sheet_reader=fetch_sheet) -> tuple[Findi
     title = _text(payload.get("title"), "title", TITLE_MAX)
     conclusion = _text(payload.get("conclusion"), "conclusion", CONCLUSION_MAX)
     roles = _clean_roles(payload.get("roles"))
-    try:
-        sheet_id = int(payload.get("sheet_id"))
-    except (TypeError, ValueError):
-        raise FindingError("`sheet_id` must be the number of the finding's source sheet") from None
-
-    existing = Finding.objects.filter(sheet_id=sheet_id).first()
+    sheet_id = None
+    if need_sheet or payload.get("sheet_id") is not None:
+        try:
+            sheet_id = int(payload.get("sheet_id"))
+        except (TypeError, ValueError):
+            raise FindingError(
+                "`sheet_id` must be the number of the finding's source sheet"
+            ) from None
+    existing = Finding.objects.filter(sheet_id=sheet_id).first() if sheet_id else None
     if existing and existing.sefaria_user_id != user_id:
         raise FindingError("That sheet already holds another user's finding", status=409)
     if not existing:
-        since = timezone.now() - timedelta(days=1)
-        recent = Finding.objects.filter(sefaria_user_id=user_id, created__gte=since).count()
-        if recent >= settings.FINDINGS_DAILY_LIMIT:
-            raise FindingError("Daily limit of saved findings reached; try again tomorrow", 429)
+        _check_daily_limit(user_id)
+    return Checked(skill, title, conclusion, roles, sheet_id)
 
+
+def _check_daily_limit(user_id: int) -> None:
+    since = timezone.now() - timedelta(days=1)
+    recent = Finding.objects.filter(sefaria_user_id=user_id, created__gte=since).count()
+    if recent >= settings.FINDINGS_DAILY_LIMIT:
+        raise FindingError("Daily limit of saved findings reached; try again tomorrow", 429)
+
+
+def record(user_id: int, payload: dict, sheet_reader=fetch_sheet) -> tuple[Finding, bool]:
+    """Save a finding for ``user_id`` from the MCP process's request. Returns ``(finding, created)``."""
+    checked = check(user_id, payload)
     try:
-        sheet = sheet_reader(sheet_id, user_id)
+        sheet = sheet_reader(checked.sheet_id, user_id)
     except Exception as exc:
-        logger.warning("Could not read sheet %s for a finding: %s", sheet_id, exc)
-        raise FindingError(f"Could not read source sheet {sheet_id} from Sefaria", 502) from exc
+        logger.warning("Could not read sheet %s for a finding: %s", checked.sheet_id, exc)
+        raise FindingError(
+            f"Could not read source sheet {checked.sheet_id} from Sefaria", 502
+        ) from exc
     if sheet.owner != user_id:
         raise FindingError("A finding's sheet must be one of your own sheets", status=403)
+    rows, roles = _rows(checked.roles, sheet)
+    if not any(r["role"] == "anchor" for r in roles):
+        raise FindingError("None of the anchor sources is on the sheet")
 
     with transaction.atomic():
-        finding = existing or Finding(sheet_id=sheet_id, sefaria_user_id=user_id)
-        finding.skill = skill.name
-        finding.skill_version = skill.version
-        finding.method = skill.method
-        finding.title = title
-        finding.conclusion = conclusion
+        # Locked, so two saves for one sheet at once update one finding in turn.
+        finding = Finding.objects.select_for_update().filter(sheet_id=checked.sheet_id).first()
+        created = finding is None
+        if finding and finding.sefaria_user_id != user_id:
+            raise FindingError("That sheet already holds another user's finding", status=409)
+        if created:
+            _check_daily_limit(user_id)
+            finding = Finding(sheet_id=checked.sheet_id, sefaria_user_id=user_id)
+        elif finding.hidden and finding.hidden_reason in AUTO_HIDDEN:
+            finding.hidden, finding.hidden_reason = False, ""
+        finding.skill = checked.skill.name
+        finding.skill_version = checked.skill.version
+        finding.method = checked.skill.method
+        finding.title = checked.title
+        finding.conclusion = checked.conclusion
         finding.roles = roles
         finding.sheet_title = sheet.title[:255]
         finding.sheet_modified = sheet.modified
         finding.synced = timezone.now()
-        finding.save()
-        _write_rows(finding, sheet)
-    return finding, existing is None
+        try:
+            with transaction.atomic():
+                finding.save()
+        except IntegrityError:
+            # Another request created the finding for this sheet between our read and save.
+            raise FindingError("This sheet's finding is being saved; try again", 409) from None
+        _write_rows(finding, rows)
+    return finding, created
 
 
 def sync(finding: Finding, sheet_reader=fetch_sheet) -> str:
     """Bring a finding's refs in line with its sheet. Returns what happened.
 
-    A sheet edited since the last read has its refs re-read; a deleted sheet hides the
-    finding. Other failures leave it as it is, to be tried again next time.
+    A sheet edited since the last read has its refs re-read. A sheet Sefaria says does not
+    exist (or a 404) hides the finding. Any other failure leaves it as it is, to be tried
+    again next time: a bad night at Sefaria must not hide every finding.
     """
     import httpx
 
+    from chat.V2.agent.sefaria_client import SheetNotFound
+
     try:
         sheet = sheet_reader(finding.sheet_id, finding.sefaria_user_id)
-    except (ValueError, httpx.HTTPStatusError) as exc:
-        gone = isinstance(exc, ValueError) or exc.response.status_code == 404
-        if not gone:
+    except (SheetNotFound, httpx.HTTPStatusError) as exc:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code != 404:
             return "error"
-        finding.hidden = True
-        finding.hidden_reason = "Source sheet deleted"
-        finding.save(update_fields=["hidden", "hidden_reason", "updated"])
-        return "hidden"
+        return _hide(finding, "Source sheet deleted")
     except Exception as exc:
         logger.warning("Sync of finding %s failed: %s", finding.id, exc)
         return "error"
     if sheet.owner != finding.sefaria_user_id:
-        finding.hidden = True
-        finding.hidden_reason = "Source sheet changed owner"
-        finding.save(update_fields=["hidden", "hidden_reason", "updated"])
-        return "hidden"
+        return _hide(finding, "Source sheet changed owner")
     if sheet.modified == finding.sheet_modified:
         Finding.objects.filter(pk=finding.pk).update(synced=timezone.now())
         return "unchanged"
+    rows, roles = _rows(finding.roles, sheet)
     with transaction.atomic():
+        finding.roles = roles
         finding.sheet_title = sheet.title[:255]
         finding.sheet_modified = sheet.modified
         finding.synced = timezone.now()
         finding.save()
-        _write_rows(finding, sheet)
+        _write_rows(finding, rows)
     return "updated"
+
+
+def _hide(finding: Finding, reason: str) -> str:
+    finding.hidden, finding.hidden_reason = True, reason
+    finding.save(update_fields=["hidden", "hidden_reason", "updated"])
+    return "hidden"
 
 
 # ---------------------------------------------------------------------------
@@ -234,9 +300,22 @@ def sync(finding: Finding, sheet_reader=fetch_sheet) -> str:
 # ---------------------------------------------------------------------------
 
 
+def sidebar_refs() -> Prefetch:
+    """Prefetch only the rows a response shows: a finding can have thousands of support rows."""
+    return Prefetch("refs", queryset=FindingRef.objects.filter(role__in=refs.SIDEBAR_ROLES))
+
+
+def _ref_filter(ref: str) -> Q:
+    """Rows in ``ref``: a section, a segment, or a range of segments within one section."""
+    segments = refs.segments_in(ref)
+    if segments:
+        return Q(segment_ref__in=segments)
+    return Q(section_ref=ref) | Q(segment_ref=ref)
+
+
 def matching_ref(qs: QuerySet[Finding], ref: str, all_roles: bool = False) -> QuerySet[Finding]:
-    """Findings touching ``ref``, a section or a segment, by default as anchor or position."""
-    rows = FindingRef.objects.filter(Q(section_ref=ref) | Q(segment_ref=ref))
+    """Findings touching ``ref``, by default as anchor or position."""
+    rows = FindingRef.objects.filter(_ref_filter(ref))
     if not all_roles:
         rows = rows.filter(role__in=refs.SIDEBAR_ROLES)
     return qs.filter(id__in=rows.values("finding_id"))
@@ -245,10 +324,12 @@ def matching_ref(qs: QuerySet[Finding], ref: str, all_roles: bool = False) -> Qu
 def anchor_refs(finding: Finding, ref: str | None = None) -> list[str]:
     """The anchor and position segments of a finding, within ``ref`` if given."""
     # Filtered in Python so a list of findings prefetched with their refs costs no queries.
+    within = set(refs.segments_in(ref)) if ref else set()
     segments = {
         r.segment_ref
         for r in finding.refs.all()
-        if r.role in refs.SIDEBAR_ROLES and (not ref or ref in (r.section_ref, r.segment_ref))
+        if r.role in refs.SIDEBAR_ROLES
+        and (not ref or ref in (r.section_ref, r.segment_ref) or r.segment_ref in within)
     }
     return sorted(segments, key=refs.sort_key)
 

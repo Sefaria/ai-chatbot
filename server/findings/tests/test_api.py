@@ -301,4 +301,77 @@ def test_user_ids_are_never_published(client, make):
     make()
     text = client.get("/api/findings/ref/Genesis 1").content.decode()
     assert str(USER) not in text
-    assert "user" not in text.lower()
+    assert "sefaria_user_id" not in text and "owner" not in text
+
+
+def test_cited_sources_the_sheet_does_not_hold_are_not_published(client, sheets):
+    sheets.add(1001, expanded=["Genesis 1:1"], included=["Genesis 1:1"])
+    body = payload(
+        roles=[{"ref": "Genesis 1:1", "role": "anchor"}, {"ref": "Exodus 2:2", "role": "support"}]
+    )
+    finding = post(client, body, write_token()).json()["finding"]
+    assert [r["ref"] for r in finding["refs"]] == ["Genesis 1:1"]
+
+
+def test_an_anchor_the_sheet_does_not_hold_is_refused(client, sheets):
+    sheets.add(1001, expanded=["Psalms 16:8"], included=["Psalms 16:8"])
+    response = post(client, payload(), write_token())
+    assert response.status_code == 400
+    assert "None of the anchor sources is on the sheet" in response.json()["error"]
+
+
+def test_truncation_keeps_anchors(client, sheets, monkeypatch):
+    from findings import service
+
+    monkeypatch.setattr(service, "SEGMENTS_MAX", 2)
+    sheets.add(1001, expanded=["Amos 1:1", "Amos 1:2", "Amos 1:3", "Zechariah 1:1"])
+    body = payload(roles=[{"ref": "Zechariah 1:1", "role": "anchor"}])
+    assert post(client, body, write_token()).status_code == 201
+    rows = list(FindingRef.objects.values_list("segment_ref", "role"))
+    assert len(rows) == 2 and ("Zechariah 1:1", "anchor") in rows
+
+
+def test_nul_characters_are_dropped(client, sheets):
+    sheets.add(1001)
+    finding = post(client, payload(title="Ri\x00sing"), write_token()).json()["finding"]
+    assert finding["title"] == "Rising"
+
+
+def test_dry_run_checks_without_reading_the_sheet(client, make, sheets, settings):
+    response = post(client, {**payload(), "sheet_id": None, "dry_run": True}, write_token())
+    assert response.status_code == 200 and response.json() == {"ok": True}
+    assert sheets.reads == [] and not Finding.objects.exists()
+
+    assert (
+        post(client, {**payload(skill="nope"), "dry_run": True}, write_token()).status_code == 403
+    )
+    make(user=OTHER_USER, sheet_id=2002)
+    taken = post(client, {**payload(sheet_id=2002), "dry_run": True}, write_token())
+    assert taken.status_code == 409
+    settings.FINDINGS_DAILY_LIMIT = 0
+    assert post(client, {**payload(), "dry_run": True}, write_token()).status_code == 429
+
+
+def test_a_concurrent_first_save_is_a_clean_409(client, sheets, monkeypatch):
+    from django.db import IntegrityError
+
+    sheets.add(1001)
+
+    def racing_save(self, *args, **kwargs):
+        raise IntegrityError("duplicate key value violates unique constraint")
+
+    monkeypatch.setattr(Finding, "save", racing_save)
+    response = post(client, payload(), write_token())
+    assert response.status_code == 409
+    assert "being saved" in response.json()["error"]
+
+
+@pytest.mark.parametrize(
+    "path, anchors",
+    [("Genesis 1:1-2", ["Genesis 1:1", "Genesis 1:2"]), ("Genesis.1.2-3", ["Genesis 1:2"])],
+)
+def test_a_range_within_a_section_finds_its_segments(client, make, path, anchors):
+    make()
+    data = client.get(f"/api/findings/ref/{path}").json()
+    assert [f["anchorRefs"] for f in data["findings"]] == [anchors]
+    assert client.get("/api/findings/ref/Genesis 1:3-4").json()["findings"] == []

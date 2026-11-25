@@ -156,3 +156,20 @@ def test_a_source_dropped_from_the_sheet_loses_its_row():
         "position",
     ) in kept
     assert dropped == [("Genesis 1:1", "Genesis 1:1", "Genesis 1", "anchor")]
+
+
+@pytest.mark.parametrize(
+    "ref, segments",
+    [
+        ("Genesis 1:3-5", ["Genesis 1:3", "Genesis 1:4", "Genesis 1:5"]),
+        ("Genesis 1:3-1:4", ["Genesis 1:3", "Genesis 1:4"]),
+        ("Berakhot 2a:3-4", ["Berakhot 2a:3", "Berakhot 2a:4"]),
+        ("Genesis 1:30-2:2", []),
+        ("Genesis 1:3", []),
+        ("Genesis 1", []),
+        ("Genesis 1:5-3", []),
+        ("Genesis 1:1-9999", []),
+    ],
+)
+def test_segments_in(ref, segments):
+    assert refs.segments_in(ref) == segments

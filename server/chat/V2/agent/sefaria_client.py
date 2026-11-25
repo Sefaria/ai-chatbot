@@ -161,6 +161,10 @@ def _fallback_ref(tref: str) -> dict | None:
     }
 
 
+class SheetNotFound(ValueError):
+    """Sefaria reports that a sheet does not exist."""
+
+
 class SefariaClient:
     """Async HTTP client for the Sefaria REST API.
 
@@ -664,15 +668,19 @@ class SefariaClient:
         """A sheet's owner, status and the refs Sefaria computed on its last save.
 
         ``includedRefs`` are its sources' refs; ``expandedRefs`` are the segments they cover,
-        in normal form. Raises ValueError when Sefaria reports no such sheet.
+        in normal form. Raises SheetNotFound when Sefaria says the sheet does not exist, and
+        ValueError for any other error it reports.
         """
         headers = {"Accept": "application/json"}
         if self._session_token:
             headers["X-Session-ID"] = self._session_token
         data = await self._get_json(f"api/sheets/{quote(str(sheet_id), safe='')}", headers=headers)
         if not isinstance(data, dict) or "error" in data or "id" not in data:
-            message = data.get("error") if isinstance(data, dict) else None
-            raise ValueError(message or f"Source sheet {sheet_id} was not found")
+            message = str(data.get("error") or "") if isinstance(data, dict) else ""
+            # Sefaria's get_sheet: {"error": "Couldn't find sheet with id: <id>"}, with HTTP 200.
+            if message.startswith("Couldn't find sheet"):
+                raise SheetNotFound(message)
+            raise ValueError(message or f"Unexpected response for source sheet {sheet_id}")
         return {
             "id": data.get("id"),
             "owner": data.get("owner"),

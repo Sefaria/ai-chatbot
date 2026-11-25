@@ -6,6 +6,7 @@ import uuid
 from pathlib import PurePosixPath
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpRequest, HttpResponse
@@ -19,7 +20,7 @@ PAGE_SIZE = 12
 
 
 def _page(request: HttpRequest, qs):
-    qs = qs.prefetch_related("refs").order_by("-created")
+    qs = qs.prefetch_related(service.sidebar_refs()).order_by("-created")
     return Paginator(qs, PAGE_SIZE).get_page(request.GET.get("page"))
 
 
@@ -57,10 +58,31 @@ def _methods(catalog) -> list[dict]:
     return sorted(out, key=lambda m: (-m["count"], m["method"].title_en))
 
 
+def _stats() -> dict:
+    """Totals for the home page, cached for a minute: they scan the whole table."""
+
+    def compute():
+        return {
+            "total": service.visible().count(),
+            "passages": FindingRef.objects.filter(
+                finding__in=service.visible(), role__in=refs.SIDEBAR_ROLES
+            )
+            .values("section_ref")
+            .distinct()
+            .count(),
+        }
+
+    return cache.get_or_set("findings:home-stats", compute, 60)
+
+
 def home(request: HttpRequest) -> HttpResponse:
     query = (request.GET.get("q") or "").strip()
-    if query and refs.split(refs.from_url(query))[1] is not None:
-        return redirect("findings:passage", ref=refs.to_url(refs.from_url(query)))
+    as_ref = refs.from_url(query) if query else ""
+    # "Genesis 1:1" goes to its passage; "tefillin 2" stays a word search unless it names a
+    # passage that has findings.
+    if as_ref and refs.split(as_ref)[1] is not None:
+        if service.matching_ref(service.visible(), as_ref, all_roles=True).exists():
+            return redirect("findings:passage", ref=refs.to_url(as_ref))
     findings = service.search(text=query or None)
     catalog = service.catalog()
     return render(
@@ -70,13 +92,7 @@ def home(request: HttpRequest) -> HttpResponse:
             query=query,
             methods=_methods(catalog),
             page=_page(request, findings),
-            total=service.visible().count(),
-            passages=FindingRef.objects.filter(
-                finding__in=service.visible(), role__in=refs.SIDEBAR_ROLES
-            )
-            .values("section_ref")
-            .distinct()
-            .count(),
+            **_stats(),
         ),
     )
 
@@ -141,7 +157,7 @@ def passage(request: HttpRequest, ref: str) -> HttpResponse:
     cited = (
         service.matching_ref(service.visible(), ref, all_roles=True)
         .exclude(id__in=anchored.values("id"))
-        .prefetch_related("refs")
+        .prefetch_related(service.sidebar_refs())
         .order_by("-created")[:PAGE_SIZE]
     )
     return render(
@@ -152,7 +168,9 @@ def passage(request: HttpRequest, ref: str) -> HttpResponse:
 
 
 def detail(request: HttpRequest, finding_id: uuid.UUID) -> HttpResponse:
-    finding = service.visible().prefetch_related("refs").filter(pk=finding_id).first()
+    finding = (
+        service.visible().prefetch_related(service.sidebar_refs()).filter(pk=finding_id).first()
+    )
     if finding is None:
         raise Http404("No such finding")
     catalog = service.catalog()
@@ -165,7 +183,7 @@ def detail(request: HttpRequest, finding_id: uuid.UUID) -> HttpResponse:
                 Q(section_ref__in=sections), role__in=refs.SIDEBAR_ROLES
             ).values("finding_id")
         )
-        .prefetch_related("refs")
+        .prefetch_related(service.sidebar_refs())
         .order_by("-created")[:6]
     )
     return render(

@@ -227,6 +227,7 @@ def world(monkeypatch, sheets):
     """Sefaria and the findings API behind one transport; records every request."""
     seen: list[httpx.Request] = []
     created = {}
+    state: dict = {"AsyncClient": httpx.AsyncClient}
 
     async def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
@@ -257,7 +258,13 @@ def world(monkeypatch, sheets):
         if path == "/api/sheets/" and request.method == "POST":
             sheet = json.loads(dict(httpx.QueryParams(request.content.decode()))["json"])
             created["sheet"] = sheet
-            sheets.add(555, owner=USER, expanded=["Genesis 1:1", "Genesis 1:2", "Psalms 16:8"])
+            expanded = state.get("expanded") or ["Genesis 1:1", "Genesis 1:2", "Psalms 16:8"]
+            sheets.add(
+                555,
+                owner=USER,
+                expanded=expanded,
+                included=state.get("included") or ["Genesis 1:1-2", "Psalms 16:8"],
+            )
             return httpx.Response(200, json={"id": 555, **sheet})
         return httpx.Response(404, json={"error": "unexpected"})
 
@@ -267,7 +274,8 @@ def world(monkeypatch, sheets):
         functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(handler)),
     )
     monkeypatch.setenv("FINDINGS_API_URL", "https://chat.test/api")
-    return {"seen": seen, "created": created}
+    state.update(seen=seen, created=created, handler=handler)
+    return state
 
 
 ARGS = {
@@ -412,9 +420,7 @@ async def test_save_finding_is_not_on_the_public_endpoint():
 
 
 @pytest.mark.django_db(transaction=True)
-async def test_save_finding_reports_a_sheet_saved_without_its_finding(world, sheets, monkeypatch):
-    """If recording fails after the sheet exists, the user is told where the sheet is."""
-    monkeypatch.setenv("FINDINGS_DAILY_LIMIT", "0")
+async def test_a_refused_save_creates_no_sheet(world, monkeypatch):
     from django.conf import settings as django_settings
 
     monkeypatch.setattr(django_settings, "FINDINGS_DAILY_LIMIT", 0)
@@ -429,7 +435,58 @@ async def test_save_finding_reports_a_sheet_saved_without_its_finding(world, she
         )
     text = result["result"]["content"][0]["text"]
     assert result["result"]["isError"]
-    assert "source sheet was saved (sheet 555)" in text and "Daily limit" in text
+    assert "The finding was not saved" in text and "Daily limit" in text
+    assert not any(r.url.path == "/api/sheets/" for r in world["seen"])
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_a_failure_after_the_sheet_exists_names_the_sheet(world):
+    # Sefaria's sheet turns out not to hold the anchor.
+    world["expanded"] = world["included"] = ["Psalms 16:8"]
+    async with http() as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_finding", "arguments": ARGS},
+            version=LEGACY,
+            path="/mcp/user",
+            token=user_token(),
+        )
+    text = result["result"]["content"][0]["text"]
+    assert result["result"]["isError"]
+    assert "source sheet was saved (sheet 555)" in text
+    assert "call save_finding again with sheet_id 555" in text
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_an_unreachable_findings_service_after_the_sheet_exists(world, monkeypatch):
+    calls = {"n": 0}
+    original = world["handler"]
+
+    async def flaky(request):
+        if request.url.host == "chat.test" and request.method == "POST":
+            calls["n"] += 1
+            if calls["n"] == 2:  # the dry run passes; the real save cannot connect
+                raise httpx.ConnectError("refused", request=request)
+        return await original(request)
+
+    monkeypatch.setattr(
+        sefaria_client_module.httpx,
+        "AsyncClient",
+        functools.partial(world["AsyncClient"], transport=httpx.MockTransport(flaky)),
+    )
+    async with http() as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_finding", "arguments": ARGS},
+            version=LEGACY,
+            path="/mcp/user",
+            token=user_token(),
+        )
+    text = result["result"]["content"][0]["text"]
+    assert "source sheet was saved (sheet 555)" in text
+    assert "could not be reached (ConnectError)" in text
 
 
 @pytest.mark.django_db(transaction=True)

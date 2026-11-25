@@ -416,6 +416,12 @@ instead of through the public host; a CODEOWNERS rule so only staff change
 | Withdrawing authorization (author or skill) hides that skill's findings at once; staff hide single findings with `hide_finding`. | The chat app has no Django admin; a management command is the smallest takedown. |
 | 20 new findings per user per 24 hours (`FINDINGS_DAILY_LIMIT`). | Findings are public at once, with no per-finding review. |
 | `fastmcp>=4.2.6,<4.3`. | Its skills API replaced 4.1's and is marked experimental. |
+| `save_finding` asks the API to check the save (`dry_run`) before it creates a sheet. | A refused save (daily limit, another user's sheet) leaves no orphan sheet; a failure after the sheet exists names it and says to retry with `sheet_id`. |
+| Sync hides a finding only when Sefaria answers "Couldn't find sheet" (HTTP 200) or 404. | Any other error, such as a maintenance page, must not hide findings overnight. |
+| Cited sources the sheet does not hold are dropped from the finding; a save whose anchors are all missing is refused. | The public page shows only what the sheet shows. |
+| Rows are capped at 2,000, anchors and positions first; public lists prefetch only anchor and position rows. | A sheet citing a whole book can't push its anchors out, or make a sidebar call load every support row. |
+| A ref search on `/findings/` goes to the passage page only if that passage has findings. | "Rule 3" stays a word search. |
+| Re-saving a finding brings it back if sync hid it (sheet deleted or changed owner), never if staff hid it. | |
 
 ## Open questions
 

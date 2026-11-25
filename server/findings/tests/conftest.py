@@ -1,6 +1,7 @@
 import pytest
 
 import skills_catalog
+from chat.V2.agent.sefaria_client import SheetNotFound
 from findings import service, write_tokens
 from findings.service import SheetRefs
 
@@ -58,7 +59,7 @@ class Sheets:
         self.reads.append((sheet_id, as_user))
         sheet = self.sheets.get(sheet_id)
         if sheet is None:
-            raise ValueError("Sheet not found.")
+            raise SheetNotFound(f"Couldn't find sheet with id: {sheet_id}")
         if isinstance(sheet, Exception):
             raise sheet
         return sheet

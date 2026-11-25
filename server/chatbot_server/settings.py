@@ -198,7 +198,7 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # disables sign-in.
 MCP_TOKEN_SECRET = os.environ.get("MCP_TOKEN_SECRET") or None
 MCP_OAUTH_SIGNING_KEY = os.environ.get("MCP_OAUTH_SIGNING_KEY") or None
-MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org")
+MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org").rstrip("/")
 MCP_USER_RESOURCE_URL = os.environ.get("MCP_USER_RESOURCE_URL", f"{MCP_OAUTH_ISSUER}/mcp/user")
 # Beside /mcp/user by default: the MCP process may be on another host than the issuer.
 MCP_ADMIN_RESOURCE_URL = os.environ.get(

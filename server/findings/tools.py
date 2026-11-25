@@ -85,6 +85,20 @@ async def search_findings(
     return result
 
 
+async def _post(http: httpx.AsyncClient, token: str, payload: dict) -> httpx.Response:
+    try:
+        return await http.post(
+            f"{api_base()}/findings", json=payload, headers={"Authorization": f"Bearer {token}"}
+        )
+    except httpx.HTTPError as exc:
+        if payload.get("dry_run"):
+            raise ValueError(
+                f"The finding was not saved: the findings service could not be reached "
+                f"({type(exc).__name__})"
+            ) from exc
+        raise
+
+
 def _check(arguments: dict[str, Any]) -> tuple[skills_catalog.CatalogSkill, list[dict]]:
     skill = skills_catalog.load().skill(str(arguments.get("skill") or ""))
     if skill is None:
@@ -119,47 +133,55 @@ async def save_finding(
         {"ref": c["normalized"], "role": s["role"]} for s, c in zip(sources, checked, strict=True)
     ]
 
-    sheet_id = arguments.get("sheet_id")
-    created_sheet = not sheet_id
-    if created_sheet:
-        sheet_sources: list[dict] = []
-        for s, c in zip(sources, checked, strict=True):
-            sheet_sources.append(
-                {"ref": c["normalized"], "heRef": c.get("hebrew") or c["normalized"]}
-            )
-            if (s.get("note") or "").strip():
-                sheet_sources.append({"outsideText": s["note"].strip()})
-        sheet = await sefaria_client.create_source_sheet(
-            arguments["title"], arguments["conclusion"], sheet_sources
-        )
-        sheet_id = sheet.get("id") if isinstance(sheet, dict) else None
-        if not sheet_id:
-            raise ValueError("Sefaria did not create the source sheet")
-
     token = write_tokens.mint(int(user_id), signing_key, issuer)
     payload = {
         "skill": skill.name,
         "title": arguments["title"],
         "conclusion": arguments["conclusion"],
-        "sheet_id": int(sheet_id),
         "roles": roles,
     }
+    sheet_id = arguments.get("sheet_id")
+    created_sheet = not sheet_id
     own = http is None
     http = http or httpx.AsyncClient(timeout=TIMEOUT_SECONDS)
     try:
-        response = await http.post(
-            f"{api_base()}/findings", json=payload, headers={"Authorization": f"Bearer {token}"}
-        )
+        # Ask the API whether it would accept this finding before making a sheet, so a refused
+        # save (daily limit, another user's sheet, bad fields) leaves nothing behind.
+        dry = {**payload, "dry_run": True, **({"sheet_id": int(sheet_id)} if sheet_id else {})}
+        response = await _post(http, token, dry)
+        if response.status_code != 200:
+            raise ValueError(f"The finding was not saved: {_error_of(response)}")
+
+        if created_sheet:
+            sheet_sources: list[dict] = []
+            for s, c in zip(sources, checked, strict=True):
+                sheet_sources.append(
+                    {"ref": c["normalized"], "heRef": c.get("hebrew") or c["normalized"]}
+                )
+                if (s.get("note") or "").strip():
+                    sheet_sources.append({"outsideText": s["note"].strip()})
+            sheet = await sefaria_client.create_source_sheet(
+                arguments["title"], arguments["conclusion"], sheet_sources
+            )
+            sheet_id = sheet.get("id") if isinstance(sheet, dict) else None
+            if not sheet_id:
+                raise ValueError("Sefaria did not create the source sheet")
+
+        try:
+            response = await _post(http, token, {**payload, "sheet_id": int(sheet_id)})
+            error = None if response.status_code in (200, 201) else _error_of(response)
+        except httpx.HTTPError as exc:
+            error = f"the findings service could not be reached ({type(exc).__name__})"
     finally:
         if own:
             await http.aclose()
-    if response.status_code not in (200, 201):
+    if error:
         if created_sheet:
             raise ValueError(
-                f"The source sheet was saved (sheet {sheet_id}) but the finding was not: "
-                f"{_error_of(response)}"
+                f"The source sheet was saved (sheet {sheet_id}) but the finding was not: {error}. "
+                f"To retry, call save_finding again with sheet_id {sheet_id}."
             )
-        raise ValueError(f"The finding was not saved: {_error_of(response)}")
+        raise ValueError(f"The finding was not saved: {error}")
     finding = response.json()["finding"]
     return {
         "saved": True,

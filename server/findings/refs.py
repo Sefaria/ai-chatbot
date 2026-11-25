@@ -87,6 +87,30 @@ def section_of(ref: str) -> str:
     return f"{title} {address.rsplit(':', 1)[0]}"
 
 
+RANGE_SEGMENTS_MAX = 500
+
+
+def segments_in(ref: str) -> list[str]:
+    """The segments of a range within one section (``Genesis 1:3-5`` → 1:3, 1:4, 1:5).
+
+    Empty for anything else (a single segment, a section, a range across sections), which
+    the caller matches by section or segment instead.
+    """
+    title, address = split(ref)
+    if address is None or "-" not in address:
+        return []
+    start, _, end = address.partition("-")
+    head, _, first = start.rpartition(":")
+    if not head or not first.isdigit():
+        return []
+    last = end.rpartition(":")[2] if ":" in end else end
+    if ":" in end and end.rpartition(":")[0] != head:
+        return []
+    if not last.isdigit() or not int(first) <= int(last) <= int(first) + RANGE_SEGMENTS_MAX:
+        return []
+    return [f"{title} {head}:{n}" for n in range(int(first), int(last) + 1)]
+
+
 def book_of(ref: str) -> str:
     return split(ref)[0]
 

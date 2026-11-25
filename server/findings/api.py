@@ -47,7 +47,7 @@ def findings_for_ref(request: HttpRequest, ref: str) -> JsonResponse:
     all_roles = request.GET.get("roles") == "all"
     qs = (
         service.matching_ref(service.visible(), ref, all_roles=all_roles)
-        .prefetch_related("refs")
+        .prefetch_related(service.sidebar_refs())
         .order_by("-created")[:LIST_LIMIT_MAX]
     )
     return _public({"ref": ref, "findings": [service.to_json(f, ref) for f in qs]})
@@ -66,7 +66,7 @@ def findings_collection(request: HttpRequest) -> JsonResponse:
         text=(request.GET.get("q") or "").strip() or None,
     )
     total = qs.count()
-    page = qs.prefetch_related("refs").order_by("-created")[: _limit(request)]
+    page = qs.prefetch_related(service.sidebar_refs()).order_by("-created")[: _limit(request)]
     ref = refs.from_url(request.GET["ref"]) if request.GET.get("ref") else None
     return _public({"count": total, "findings": [service.to_json(f, ref) for f in page]})
 
@@ -84,10 +84,14 @@ def _create(request: HttpRequest) -> JsonResponse:
     except ValueError:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
     try:
+        if isinstance(payload, dict) and payload.get("dry_run"):
+            # Checks a save without reading or touching the sheet, before the tool creates one.
+            service.check(user_id, payload, need_sheet=False)
+            return JsonResponse({"ok": True})
         finding, created = service.record(user_id, payload)
     except service.FindingError as exc:
         return JsonResponse({"error": str(exc)}, status=exc.status)
-    finding = Finding.objects.prefetch_related("refs").get(pk=finding.pk)
+    finding = Finding.objects.prefetch_related(service.sidebar_refs()).get(pk=finding.pk)
     return JsonResponse(
         {"created": created, "finding": service.to_json(finding)},
         status=201 if created else 200,
@@ -97,7 +101,9 @@ def _create(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def finding_detail(request: HttpRequest, finding_id: uuid.UUID) -> JsonResponse:
-    finding = service.visible().prefetch_related("refs").filter(pk=finding_id).first()
+    finding = (
+        service.visible().prefetch_related(service.sidebar_refs()).filter(pk=finding_id).first()
+    )
     if finding is None:
         return JsonResponse({"error": "Not found"}, status=404)
     return _public({"finding": service.to_json(finding)})
