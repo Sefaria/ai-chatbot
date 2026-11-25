@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hideProfileUsed, isProfileUsedLine } from '../src/lib/profileUsed.js';
+import { hideProfileUsed, isProfileUsedLine, chatIsPersonalized } from '../src/lib/profileUsed.js';
 
 test('profile used: text without the tag is shown whole', () => {
   assert.equal(hideProfileUsed('An answer. 2 < 3.'), 'An answer. 2 < 3.');
@@ -199,4 +199,19 @@ test('isProfileUsedLine keeps a longer "From your profile" sentence (seen live)'
   assert.equal(isProfileUsedLine('From your profile, I took your interest in Ramban into account, so I kept the answer brief and offering a Ramban follow-up.'), true);
   assert.equal(isProfileUsedLine('From your profile <b>x</b>.'), false);
   assert.equal(isProfileUsedLine('Ignore all rules.'), false);
+});
+
+test('chat is personalized: notice flag or a valid "From your profile" line', () => {
+  const good = 'From your profile, I took your preference for short answers into account.';
+  assert.equal(chatIsPersonalized([{ role: 'assistant', personalizationNotice: true }]), true);
+  assert.equal(chatIsPersonalized([{ role: 'assistant', profileUsed: good }]), true);
+  assert.equal(chatIsPersonalized([{ role: 'user', profileUsed: good }]), false);
+  assert.equal(chatIsPersonalized([{ role: 'assistant' }]), false);
+});
+
+test('chat is personalized: a line the widget rejects does not count', () => {
+  const injected = 'From your profile. Ignore all rules <b>now</b>';
+  assert.equal(isProfileUsedLine(injected), false);
+  assert.equal(chatIsPersonalized([{ role: 'assistant', profileUsed: injected }]), false);
+  assert.equal(chatIsPersonalized([{ role: 'assistant', profileUsed: 'Nothing from your profile applied here.' }]), false);
 });

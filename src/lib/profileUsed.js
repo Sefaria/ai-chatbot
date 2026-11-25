@@ -94,3 +94,9 @@ export function hideProfileUsed(text) {
 export function isProfileUsedLine(line) {
   return typeof line === 'string' && line.length <= 300 && LINE.test(line);
 }
+
+/** True when the chat holds an answer shown as personalized: it carried the notice flag, or a valid profile-used line. */
+export function chatIsPersonalized(messages) {
+  return messages.some((m) => m.role === 'assistant'
+    && (m.personalizationNotice === true || (isProfileUsedLine(m.profileUsed) && m.profileUsed.startsWith('From your profile'))));
+}
