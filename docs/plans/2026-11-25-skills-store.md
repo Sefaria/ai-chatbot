@@ -1,7 +1,7 @@
 # Sefaria Skills Store and Shared Findings
 
 **Date:** 2026-11-25
-**Status:** Steps 0–2 built on `claude/jolly-heisenberg-sd54an`, plus the findings browse pages; sidebar on Sefaria-Project `reader-next` (step 3) in progress. See "Build status".
+**Status:** Steps 0–3 built: this repo on `claude/jolly-heisenberg-sd54an` (with the findings browse pages), the sidebar on Sefaria-Project `claude/reader-next-findings` (off `reader-next`). Not deployed. See "Build status".
 **Builds on:** `docs/plans/2026-10-18-mcp-consolidation.md` (the MCP at `chat.sefaria.org/mcp`, `/mcp/user`, `/mcp/admin`)
 
 ## Summary
@@ -394,7 +394,15 @@ passages with at least one finding; sidebar opens of findings.
    `search_findings`, read API, `hide_finding`, `sync_findings`, `seed_demo_findings`.
    [x] Browse pages at `/findings/` (added on request: methods, skills, passages, the
    cluster of refs behind each finding).
-3. **Sidebar.** [ ] Sefaria-Project `reader-next` (see Part 5).
+3. **Sidebar.** [x] Sefaria-Project branch `claude/reader-next-findings` off `reader-next`:
+   a "Findings (n)" row in Resources and a `with=Findings` view, findings grouped by method
+   with their label, conclusion, cited passages, sheet and finding links. Behind a new
+   `findings` lab (off by default; `PUBLIC_LABS` or remote config
+   `feature.reader.labs.findings`). It calls `CHATBOT_API_BASE_URL` + `/findings/ref/<section>`
+   with a 4-second timeout; any failure shows nothing. Unit, story and e2e tests (chat
+   service mocked), and its parser checked against live output of this API. Open for
+   product: Hebrew wording, Hebrew labels for cited refs (the API has no `heRef`), and
+   whether preview builds (`?chatbot_version`) should change the findings host.
 4. **Store.** [ ] Public repo, contribution guide, eval gate. The browse page is done.
 
 Not done, for deployment (AppliedAI-Infrastructure and settings): a nightly CronJob for
