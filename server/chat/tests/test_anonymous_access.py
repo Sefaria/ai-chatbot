@@ -155,8 +155,8 @@ def test_cancel_finds_only_the_visitors_own_turn(client):
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
-@patch("chat.V2.views.capture_message")
-def test_client_event_accepts_an_anon_id(mock_capture_message, client):
+@patch("chat.V2.views.logger")
+def test_client_event_accepts_an_anon_id(mock_logger, client):
     response = client.post(
         "/api/v2/chat/client-event",
         data={
@@ -170,7 +170,7 @@ def test_client_event_accepts_an_anon_id(mock_capture_message, client):
     )
 
     assert response.status_code == 200
-    assert mock_capture_message.call_args.kwargs["user_id"] == anonymous_user_id(ANON_ID)
+    assert mock_logger.warning.call_args.kwargs["extra"]["user_id"] == anonymous_user_id(ANON_ID)
 
 
 @override_settings(CHATBOT_USER_TOKEN_SECRET=SECRET)
@@ -387,8 +387,7 @@ def test_a_failed_turn_does_not_use_up_a_free_answer(client, agent, no_limit_by_
         AgentResponse(content="An answer", tool_calls=[], latency_ms=10, trace_id="t1"),
     ]
     visitor = Visitor(client)
-    with patch("chat.V2.views.capture_exception"):
-        answered(visitor.ask())
+    answered(visitor.ask())
 
     assert final_message(visitor.ask())["anonResponsesRemaining"] == limit - 1
 

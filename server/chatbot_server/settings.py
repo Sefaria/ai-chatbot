@@ -135,10 +135,8 @@ CORS_ALLOW_METHODS = [
     "PUT",
 ]
 
-# CORS headers for SSE streaming (include Sentry tracing headers)
+# CORS headers for SSE streaming
 CORS_ALLOW_HEADERS = list(default_headers) + [
-    "sentry-trace",
-    "baggage",
     "x-origin",
 ]
 
@@ -188,36 +186,6 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 # Braintrust logging toggle — set to "false" to disable all tracing
 BRAINTRUST_LOGGING_ENABLED = os.environ.get("BRAINTRUST_LOGGING_ENABLED", "true").lower() == "true"
 
-
-def _read_env_float(name: str, default: float) -> float:
-    """Read an environment variable as float; fall back to default on invalid values."""
-    value = os.environ.get(name)
-    if value is None:
-        return default
-
-    try:
-        return float(value)
-    except ValueError:
-        return default
-
-
-# Optional Sentry error monitoring.
-# Enable by setting SENTRY_DSN in the server environment.
-SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
-if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
-
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration()],
-        environment=ENVIRONMENT,
-        release=os.environ.get("SENTRY_RELEASE"),
-        sample_rate=_read_env_float("SENTRY_SAMPLE_RATE", 0.0),
-        send_default_pii=os.environ.get("SENTRY_SEND_DEFAULT_PII", "false").lower() == "true",
-        traces_sample_rate=_read_env_float("SENTRY_TRACES_SAMPLE_RATE", 0.0),
-        profiles_sample_rate=_read_env_float("SENTRY_PROFILES_SAMPLE_RATE", 0.0),
-    )
 
 # Prompt slug defaults (Braintrust)
 # These slugs identify which Braintrust prompt to fetch for each service.

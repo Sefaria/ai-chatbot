@@ -165,5 +165,8 @@
     "assistant.thinking.array.hanukkah.03": "אוסף מקורות כמו דמי חנוכה",
     "assistant.thinking.array.hanukkah.04": "מדליק את המקור הראשון",
     "assistant.thinking.array.hanukkah.05": "מטגן עוד כמה לביבות",
-    "assistant.thinking.hanukkah.final": "מוסיף את הנר האחרון"
+    "assistant.thinking.hanukkah.final": "מוסיף את הנר האחרון",
+    "assistant.menu.floating_button_aria": "הסתרה או הצגה של כפתור ״שאלו אותי״",
+    "assistant.floating_button_modal.toggle_hide_aria": "הסתרת כפתור \"שאלו אותי\"",
+    "assistant.floating_button_modal.toggle_show_aria": "הצגת כפתור \"שאלו אותי\""
 }

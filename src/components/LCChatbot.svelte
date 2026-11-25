@@ -35,7 +35,7 @@
   import TopicAppetizer from './TopicAppetizer.svelte';
   import LocationTag from './LocationTag.svelte';
   import Accordion from './Accordion.svelte';
-  import { setLocale, _, getThinkingMessageKeys } from '../i18n/index.js';
+  import { setLocale, _, getThinkingMessageKeys, getThinkingLabelKey } from '../i18n/index.js';
   import { get } from 'svelte/store';
 
   const DEFAULT_MAX_PROMPTS = 100;
@@ -46,7 +46,9 @@
   const THINKING_MESSAGE_MIN_MS = 4500;
   const THINKING_MESSAGE_MAX_MS = 6500;
   const THINKING_MESSAGE_FADE_MS = 600;
-  const THINKING_MESSAGE_KEYS = getThinkingMessageKeys();
+  // Hanukkah: the dreidel replaces the ✦ and the thinking lines switch to the Hanukkah set.
+  // Set to false after Hanukkah 2026.
+  const HANUKKAH_ON = true;
   // The release version of the deployed chatbot, used to tag analytics events with the build that produced them.
   // CI passes the version into the Docker build, and Vite bakes it in at build time.
   // In local dev there is no version, so fall back to null and gtag omits the field instead of sending an empty value.
@@ -65,6 +67,9 @@
     // The host's free-answer limit for logged-out visitors, for analytics only:
     // the chat server enforces the limit.
     'anon-free-answers': anonFreeAnswersAttr = null,
+    // The logged-in user's saved "Hide Ask button" choice ("true"/"false"), from their
+    // account. Absent (logged out, or a host that doesn't save it): this browser's choice.
+    'hide-launcher': hideLauncherAttr = null,
     'interface-lang': interfaceLang = 'en',
     // A Sefaria/design-system branch or commit to preview on top of the bundled tokens. Only
     // non-production hosts pass it (see src/lib/designSystem.js).
@@ -236,6 +241,7 @@
 
   let thinkingMessageKey = $state('assistant.loading.initial');
   let thinkingMessageIndex = $state(-1);
+  let thinkingMessageKeys = []; // filled by startThinkingMessages()
   let isThinkingMessageFading = $state(false);
   let thinkingMessageTimeout = null;
   let thinkingMessageFadeTimeout = null;
@@ -330,6 +336,14 @@
   // Menu state
   let showMenu = $state(false);
   let menuContainer = $state(null);
+  // The visitor can turn off the floating Ask button (kebab menu → Ask button); the host's
+  // own entry points (Sefaria's header and mobile menu) still open the assistant.
+  let launcherHidden = $state(
+    hideLauncherAttr == null
+      ? getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false)
+      : !!hideLauncherAttr && hideLauncherAttr !== 'false'
+  );
+  let showFloatingButtonModal = $state(false);
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -432,6 +446,8 @@
   $effect(() => {
     // Initialize session
     clearLoggedInChatWhenLoggedOut(!!userId);
+    // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
+    if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
@@ -742,9 +758,9 @@
   function scheduleNextThinkingMessage() {
     clearThinkingMessageTimer();
     thinkingMessageTimeout = setTimeout(() => {
-      if (thinkingMessageIndex < THINKING_MESSAGE_KEYS.length - 1) {
+      if (thinkingMessageIndex < thinkingMessageKeys.length - 1) {
         const nextIndex = thinkingMessageIndex + 1;
-        fadeToThinkingMessage(THINKING_MESSAGE_KEYS[nextIndex], nextIndex, true);
+        fadeToThinkingMessage(thinkingMessageKeys[nextIndex], nextIndex, true);
       } else {
         fadeToThinkingMessage('assistant.thinking.final');
       }
@@ -753,6 +769,7 @@
 
   function startThinkingMessages() {
     clearThinkingMessageTimers();
+    thinkingMessageKeys = getThinkingMessageKeys({ hanukkah: HANUKKAH_ON, lang: interfaceLang });
     thinkingMessageKey = 'assistant.loading.initial';
     thinkingMessageIndex = -1;
     isThinkingMessageFading = false;
@@ -2155,6 +2172,39 @@
     showMenu = false;
   }
 
+  // Kept in this browser, and the host is told so it can save it to a logged-in user's
+  // account (and pass it back as `hide-launcher` on their next page load, on any device).
+  function setLauncherHidden(hidden) {
+    launcherHidden = hidden;
+    setStorage(STORAGE_KEYS.HIDE_LAUNCHER, hidden);
+    dispatchEvent('launcher_visibility', { hidden });
+  }
+
+  // Log-in and sign-up links that return the visitor to the page they were on
+  function accountUrl(path) {
+    return `${sefariaBase()}/${path}?next=${encodeURIComponent(location.pathname + location.search)}`;
+  }
+
+  // The note under the switch is one sentence with link placeholders ({log_in}, {sign_up},
+  // {account_settings}), so translators can order it freely; it's split into text and link
+  // parts so each link is its own <a>.
+  const ACCOUNT_LINKS = {
+    log_in: { href: () => accountUrl('login'), key: 'assistant.floating_button_modal.log_in' },
+    sign_up: { href: () => accountUrl('register'), key: 'assistant.floating_button_modal.sign_up' },
+    // Straight to the Library Assistant on/off setting on Sefaria's account settings page
+    account_settings: { href: () => `${sefariaBase()}/settings/account#libraryAssistantSetting`, key: 'assistant.floating_button_modal.account_settings' }
+  };
+  let floatingButtonNoteParts = $derived.by(() => {
+    const [key, names] = isLoggedIn
+      ? ['assistant.floating_button_modal.main_menu_logged_in', ['account_settings']]
+      : ['assistant.floating_button_modal.main_menu_logged_out', ['log_in', 'sign_up']];
+    const values = Object.fromEntries(names.map(name => [name, `\u0000${name}\u0000`]));
+    return $_(key, { values })
+      .split('\u0000')
+      .filter(Boolean)
+      .map(part => ({ text: part, link: names.includes(part) ? ACCOUNT_LINKS[part] : null }));
+  });
+
   $effect(() => {
     if (!showMenu) return;
 
@@ -2408,7 +2458,9 @@
 >
   <span class="sr-only" aria-live="polite">{responseReady ? $_('assistant.header.response_ready_announcement') : ''}</span>
   {#if !isOpen}
-    <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {#if !launcherHidden}
+      <AskLauncher label={launcherLabel} ready={responseReady} onclick={() => askFromLauncher()} />
+    {/if}
   {:else}
     <!-- Chat Panel -->
     <div
@@ -2536,6 +2588,10 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
+                </button>
                 {#if isLoggedIn}
                   <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
                     <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
@@ -2891,9 +2947,20 @@
               {#if !isCurrentSessionStopping && !(streamingMarkdown && streamTextDone)}
                 <div class="lc-thinking-block" class:is-writing={!!streamingMarkdown} class:is-paused={toolWaitActive}>
                   <div class="lc-thinking-step">
-                    <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    {#if HANUKKAH_ON}
+                      <span class="lc-thinking-glyph lc-dreidel" aria-hidden="true">
+                        <svg viewBox="0 0 40 56" width="11.43" height="16" focusable="false">
+                          <g class="lc-dreidel-tilt">
+                            <rect x="17" y="1" width="6" height="12" rx="2.5" />
+                            <path class="lc-dreidel-body" d="M5,12 H35 V33 L20,53 L5,33 Z" />
+                          </g>
+                        </svg>
+                      </span>
+                    {:else}
+                      <span class="lc-thinking-glyph" aria-hidden="true">✦</span>
+                    {/if}
                     <span class="lc-thinking-label-wrap" class:is-fading={isThinkingMessageFading}>
-                      <span class="lc-thinking-label lc-thinking-label-base">{$_(thinkingMessageKey)}</span>
+                      <span class="lc-thinking-label lc-thinking-label-base">{$_(getThinkingLabelKey(thinkingMessageKey, { hanukkah: HANUKKAH_ON, lang: interfaceLang }))}</span>
                     </span>
                   </div>
                 </div>
@@ -3007,6 +3074,36 @@
               </button>
               <button class="feedback-modal-btn skip" onclick={() => submitFeedback(false)}>
                 {$_('assistant.feedback.modal.skip')}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      {#if showFloatingButtonModal}
+        <!-- Ask button settings: reuses the feedback modal's card -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="feedback-modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) showFloatingButtonModal = false; }} onkeydown={(e) => e.key === 'Escape' && (showFloatingButtonModal = false)}>
+          <div class="feedback-modal floating-button-modal" role="dialog" aria-labelledby="lc-floating-button-modal-title">
+            <h3 class="feedback-modal-title" id="lc-floating-button-modal-title">{$_('assistant.floating_button_modal.title')}</h3>
+            <label class="floating-button-toggle">
+              <span>{$_('assistant.floating_button_modal.toggle')}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={launcherHidden
+                  ? $_('assistant.floating_button_modal.toggle_show_aria')
+                  : $_('assistant.floating_button_modal.toggle_hide_aria')}
+                checked={!launcherHidden}
+                onchange={(e) => setLauncherHidden(!e.currentTarget.checked)}
+              />
+            </label>
+            <p class="floating-button-modal-text">{$_('assistant.floating_button_modal.description')}</p>
+            <p class="floating-button-modal-text">
+              {#each floatingButtonNoteParts as part}{#if part.link}<a href={part.link.href()}>{$_(part.link.key)}</a>{:else}{part.text}{/if}{/each}
+            </p>
+            <div class="feedback-modal-actions">
+              <button class="feedback-modal-btn submit" onclick={() => { showFloatingButtonModal = false; }}>
+                {$_('assistant.floating_button_modal.done')}
               </button>
             </div>
           </div>
@@ -4525,6 +4622,38 @@
   .lc-thinking-glyph {
     flex-shrink: 0;
   }
+  /* Hanukkah: a dreidel in the star's gray spins in place of the ✦. The body squashes
+     to |cos θ| (min .12) at ~5.5 rad/s around its top centre, with a slow tilt wobble. */
+  .lc-dreidel {
+    display: inline-flex;
+    align-items: center;
+  }
+  .lc-dreidel svg {
+    display: block;
+    overflow: visible;
+    fill: currentColor;
+  }
+  .lc-dreidel-tilt {
+    transform-origin: 20px 54px;
+    animation: lc-dreidel-wobble 1.14s ease-in-out infinite alternate;
+  }
+  .lc-dreidel-body {
+    transform-origin: 20px 0;
+    animation: lc-dreidel-spin 0.57s linear infinite;
+  }
+  @keyframes lc-dreidel-spin {
+    0%, 100% { transform: scaleX(1); }
+    10%, 90% { transform: scaleX(0.951); }
+    20%, 80% { transform: scaleX(0.809); }
+    30%, 70% { transform: scaleX(0.588); }
+    40%, 60% { transform: scaleX(0.309); }
+    45%, 55% { transform: scaleX(0.156); }
+    50% { transform: scaleX(0.12); }
+  }
+  @keyframes lc-dreidel-wobble {
+    from { transform: rotate(-7deg); }
+    to { transform: rotate(7deg); }
+  }
   .lc-thinking-label-wrap {
     position: relative;
     display: inline-flex;
@@ -4576,6 +4705,10 @@
   @media (prefers-reduced-motion: reduce) {
     .lc-thinking-label-wrap {
       transition: none;
+    }
+    .lc-dreidel-tilt,
+    .lc-dreidel-body {
+      animation: none;
     }
     .lc-thinking-label-base {
       animation: none;
@@ -5003,6 +5136,82 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  .floating-button-modal .feedback-modal-title {
+    font-size: var(--lc-font-size-lg);
+    margin-bottom: var(--global-dimension-200);
+  }
+
+  .floating-button-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--global-dimension-200);
+    min-height: 44px;
+    margin-bottom: var(--global-dimension-200);
+    font-size: var(--lc-font-size);
+    color: var(--lc-text);
+    cursor: pointer;
+  }
+
+  /* A switch: a 44×24 track with a 20px knob */
+  .floating-button-toggle input {
+    appearance: none;
+    flex: 0 0 auto;
+    position: relative;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border-radius: 12px;
+    background: var(--core-neutral-gray-300, #ccc);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .floating-button-toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--core-base-white, #fff);
+    transition: transform 0.15s ease;
+  }
+
+  .floating-button-toggle input:checked {
+    background: var(--action-primary);
+  }
+
+  .floating-button-toggle input:checked::after {
+    transform: translateX(20px);
+  }
+
+  .interface-hebrew .floating-button-toggle input:checked::after {
+    transform: translateX(-20px);
+  }
+
+  .floating-button-toggle input:focus-visible {
+    outline: 2px solid var(--action-primary);
+    outline-offset: 2px;
+  }
+
+  .floating-button-modal-text {
+    font-size: var(--lc-font-size);
+    line-height: 1.45;
+    color: var(--lc-text-secondary);
+    margin: 0 0 var(--global-dimension-150);
+  }
+
+  .floating-button-modal-text a {
+    color: var(--text-link);
+    text-decoration: underline;
+  }
+
+  .floating-button-modal .feedback-modal-actions {
+    margin-top: var(--global-dimension-300);
   }
 
   .feedback-modal-title {

@@ -42,7 +42,6 @@ from .agent import AgentResponse, ConversationMessage, MessageContext, get_agent
 from .logging import get_turn_logging_service
 from .origin import DEFAULT_ORIGIN, resolve_origin
 from .prompts.prompt_fragments import INTERNAL_ERROR_MESSAGE
-from .sentry import capture_exception
 from .services import create_or_get_session, load_session_summary, save_user_message
 from .utils import flush_braintrust as _flush_braintrust
 
@@ -271,15 +270,9 @@ def chat_anthropic_v2(request):
                 context=msg_context,
             )
         )
-    except Exception as exc:
+    except Exception:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.exception("Agent error in Anthropic endpoint")
-        capture_exception(
-            exc,
-            endpoint="chat_anthropic_v2",
-            session_id=session_id,
-            turn_id=turn_id,
-        )
 
         _flush_braintrust()
 

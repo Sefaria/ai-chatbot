@@ -50,7 +50,7 @@ def _sanitize(value: str) -> str:
 
 
 def _user_agent() -> str:
-    """Append ``settings.ENVIRONMENT`` (the value Sentry is tagged with) when it is set.
+    """Append ``settings.ENVIRONMENT`` when it is set.
 
     ``SEFARIA_USER_AGENT_SERVICE`` replaces the service name, so the public MCP server
     can identify itself as ``Sefaria/mcp``. The MCP process runs without Django
