@@ -1,0 +1,7 @@
+{% extends "findings/base.html" %}
+{% load findings_tags %}
+{% block title %}{{ path }} · {{ s.name }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'findings:home' %}">Findings</a> <span aria-hidden="true">›</span> <a href="{% url 'findings:method' m.slug %}">{{ m.title_en }}</a> <span aria-hidden="true">›</span> <a href="{% url 'findings:skill' s.name %}">{{ s.name }}</a></nav>
+<article class="prose">{{ text|markdown }}</article>
+{% endblock %}

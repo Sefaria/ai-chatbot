@@ -7,6 +7,12 @@ pytest                                              # Local (SQLite, fast)
 pytest --ds=chatbot_server.test_settings_postgres   # Local (PostgreSQL)
 ```
 
+Database-backed tests need PostgreSQL for now: an existing migration
+(`chat/0009_saved_conversation_metadata`) uses Postgres-only SQL, so on SQLite they error
+in setup. Run them with `--ds=chatbot_server.test_settings_postgres`, as CI does.
+
+The skill catalog has its own check, also run in CI: `python -m skills_catalog.validate`.
+
 ## Strategy
 
 - **Local development**: SQLite in-memory (fast, no setup)

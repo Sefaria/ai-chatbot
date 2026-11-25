@@ -81,7 +81,11 @@ PUBLIC_TOOLS = {
     "get_manuscript_image",
     "validate_refs",
     "validate_response_links",
+    "search_findings",
 }
+
+# Added by FastMCP's ResourcesAsTools transform, so clients that only call tools can read skills.
+RESOURCE_TOOLS = {"list_resources", "read_resource"}
 
 
 def test_public_surface_is_exactly_the_reviewed_set():
@@ -110,7 +114,7 @@ def executor():
 
 async def test_list_tools_matches_marked_set(executor):
     async with Client(build_server(executor)) as client:
-        assert {t.name for t in await client.list_tools()} == _mcp_names()
+        assert {t.name for t in await client.list_tools()} == _mcp_names() | RESOURCE_TOOLS
 
 
 async def test_schemas_are_passed_through_verbatim(executor):

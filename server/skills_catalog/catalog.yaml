@@ -1,0 +1,41 @@
+# Who and what may publish findings. Only staff change this file.
+#
+# A skill in skills/ is served only if it is authorized, in one of two independent ways:
+#   - its author is listed here with `authorized: true` (every skill of theirs goes in), or
+#   - the skill's name is listed under `authorized_skills` (that skill alone).
+# The validator (python -m skills_catalog.validate) fails on a skill that is neither.
+#
+# Everything below is dummy data for development and tests.
+
+methods:
+  example-method:
+    title:
+      en: Rabbi Ploni's Method
+      he: שיטת רבי פלוני
+    description: >-
+      Reads a precise halachic demand for the values it cultivates and the relationship
+      with God and other people that keeping it creates. Dummy method for development.
+    label: AI-assisted reading in the approach of Rabbi Ploni
+
+  example-parallels:
+    title:
+      en: Parallel Passages
+      he: מקבילות
+    description: >-
+      Sets two parallel passages side by side and asks what each one's differences teach.
+      Dummy method for development.
+    label: AI-assisted comparison of parallel passages
+
+authors:
+  ploni-almoni:
+    name: Ploni Almoni
+    github: ploni-almoni-example
+    authorized: true
+
+  reader-one:
+    name: Reader One
+    github: reader-one-example
+    authorized: false
+
+authorized_skills:
+  - example-parallel-passages

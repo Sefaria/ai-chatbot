@@ -122,6 +122,7 @@ SHEET_TOOLS = {
     "get_source_sheet",
     "create_source_sheet",
     "update_source_sheet",
+    "save_finding",
 }
 
 

@@ -28,9 +28,13 @@ pytest-asyncio>=1.0
 ruff>=0.4.0
 cryptography
 
-# Public MCP server (mcp_server). fastmcp is held to one major version on purpose:
-# the old standalone server left it unpinned and prod and dev drifted apart.
-fastmcp>=4.0.3,<5
+# Public MCP server (mcp_server). fastmcp is held to one minor version on purpose: the
+# old standalone server left it unpinned and prod and dev drifted apart, and its skills API
+# (4.2, which mcp_server builds on) replaced the 4.1 one and may change again.
+fastmcp>=4.2.6,<4.3
 uvicorn>=0.30
 prometheus-client>=0.20
 jsonschema>=4.20
+
+# Findings pages render skill instructions (Markdown, raw HTML disabled).
+markdown-it-py>=3.0

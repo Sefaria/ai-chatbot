@@ -225,6 +225,16 @@ class SefariaToolExecutor:
                 sources=input_data.get("sources"),
             )
 
+        elif tool_name == "save_finding":
+            from findings import tools as finding_tools
+
+            return await finding_tools.save_finding(self.client, self.client.user_id, input_data)
+
+        elif tool_name == "search_findings":
+            from findings import tools as finding_tools
+
+            return await finding_tools.search_findings(input_data)
+
         elif tool_name == "list_topic_prompts":
             filters = {k: v for k, v in input_data.items() if k != "limit"}
             return await self.client.list_topic_prompts(
@@ -348,6 +358,8 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "get_source_sheet": lambda: f"Loading source sheet {q(tool_input.get('sheet_id'))}",
         "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
         "update_source_sheet": lambda: f"Updating source sheet {q(tool_input.get('sheet_id'))}",
+        "save_finding": lambda: f"Saving finding {q(tool_input.get('title'))}",
+        "search_findings": lambda: "Searching findings",
         "list_topic_prompts": lambda: "Listing topic prompts",
         "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",
     }

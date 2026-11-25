@@ -1,0 +1,43 @@
+{% extends "findings/base.html" %}
+{% load findings_tags %}
+{% block title %}{{ f.title }}{% endblock %}
+{% block description %}{{ f.conclusion|truncatechars:200 }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'findings:home' %}">Findings</a> <span aria-hidden="true">›</span> {% if m %}<a href="{% url 'findings:method' m.slug %}">{{ m.title_en }}</a>{% else %}{{ f.method }}{% endif %}</nav>
+<article class="finding">
+  <p class="label-banner">{% if m %}{{ m.label }}{% else %}AI-assisted reading{% endif %}</p>
+  <h1 dir="auto">{{ f.title }}</h1>
+  <p class="muted">Saved {{ f.created|date:"j F Y" }} with <a href="{% url 'findings:skill' f.skill %}"><code>{{ f.skill }}</code></a>{% if f.skill_version %} v{{ f.skill_version }}{% endif %}</p>
+  <div class="conclusion" dir="auto">{{ f.conclusion|linebreaks }}</div>
+  <p class="actions">
+    <a class="button" href="{{ sheet_url }}">Open the source sheet</a>
+    <a class="button button-quiet" href="{{ api_url }}">JSON</a>
+  </p>
+
+  <section class="cluster" aria-labelledby="cluster-h">
+    <h2 id="cluster-h">The passages</h2>
+    {% for role in role_order %}
+      {% with group=f.roles|by_role:role %}
+      {% if group %}
+      <div class="role-group role-{{ role }}">
+        <h3>{{ role|role_label }}{{ group|length|pluralize }}</h3>
+        <ul class="chips">
+          {% for r in group %}
+          <li><a class="chip chip-{{ role }}" href="{{ r.ref|reader_url }}">{{ r.ref }}</a> <a class="chip-aside" href="{% url 'findings:passage' r.ref|passage_path %}" title="Other findings on {{ r.ref }}">other findings</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% endwith %}
+    {% endfor %}
+    {% if anchors %}<p class="muted small">Shown beside {{ anchors|length }} segment{{ anchors|length|pluralize }} in the Sefaria reader: {{ anchors|join:", " }}.</p>{% endif %}
+  </section>
+</article>
+
+{% if related %}
+<section aria-labelledby="related-h">
+  <h2 id="related-h">Other findings on these passages</h2>
+  <div class="cards">{% for f in related %}{% include "findings/_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

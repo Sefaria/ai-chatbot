@@ -1,0 +1,43 @@
+{% extends "findings/base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Findings</h1>
+  <p class="lede">What learners found when they studied with Sefaria's skills. Each finding is a short reading of a cluster of passages, written with AI in the way of a particular method, saved by the learner who made it, with a source sheet to open.</p>
+  <form class="search" action="{% url 'findings:home' %}" method="get" role="search">
+    <label class="visually-hidden" for="q">Search findings</label>
+    <input id="q" name="q" type="search" value="{{ query }}" placeholder="Genesis 1:1, or words from a finding" autocomplete="off">
+    <button type="submit">Search</button>
+  </form>
+  {% if not query %}
+  <p class="stats"><strong>{{ total }}</strong> finding{{ total|pluralize }} on <strong>{{ passages }}</strong> passage{{ passages|pluralize }}, from <strong>{{ methods|length }}</strong> method{{ methods|length|pluralize }}.</p>
+  {% endif %}
+</section>
+
+{% if not query %}
+<section id="methods" aria-labelledby="methods-h">
+  <h2 id="methods-h">Methods</h2>
+  <div class="grid">
+    {% for item in methods %}
+    <article class="method-card">
+      <h3><a href="{% url 'findings:method' item.method.slug %}">{{ item.method.title_en }}</a></h3>
+      {% if item.method.title_he %}<p class="he" lang="he" dir="rtl">{{ item.method.title_he }}</p>{% endif %}
+      <p>{{ item.method.description }}</p>
+      <ul class="skill-list">
+        {% for x in item.skills %}
+        <li><a href="{% url 'findings:skill' x.skill.name %}"><code>{{ x.skill.name }}</code></a> <span class="muted">by {{ x.author.name }}</span></li>
+        {% endfor %}
+      </ul>
+      <p class="count">{{ item.count }} finding{{ item.count|pluralize }}</p>
+    </article>
+    {% empty %}
+    <p class="empty">No skills are published yet.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section aria-labelledby="recent-h">
+  <h2 id="recent-h">{% if query %}Findings matching “{{ query }}”{% else %}Recent findings{% endif %}</h2>
+  {% include "findings/_list.html" %}
+</section>
+{% endblock %}

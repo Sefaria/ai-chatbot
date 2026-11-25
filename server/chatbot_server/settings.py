@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "chat",
     "mcp_auth",
+    "findings",
 ]
 
 MIDDLEWARE = [
@@ -197,12 +198,17 @@ CHATBOT_USER_TOKEN_SECRET = os.environ.get("CHATBOT_USER_TOKEN_SECRET", "secret"
 # disables sign-in.
 MCP_TOKEN_SECRET = os.environ.get("MCP_TOKEN_SECRET") or None
 MCP_OAUTH_SIGNING_KEY = os.environ.get("MCP_OAUTH_SIGNING_KEY") or None
-MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org")
+MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "https://chat.sefaria.org").rstrip("/")
 MCP_USER_RESOURCE_URL = os.environ.get("MCP_USER_RESOURCE_URL", f"{MCP_OAUTH_ISSUER}/mcp/user")
 # Beside /mcp/user by default: the MCP process may be on another host than the issuer.
 MCP_ADMIN_RESOURCE_URL = os.environ.get(
     "MCP_ADMIN_RESOURCE_URL", f"{MCP_USER_RESOURCE_URL.rstrip('/').rsplit('/', 1)[0]}/admin"
 )
+# Findings (findings app): public links point at these hosts.
+CHAT_PUBLIC_URL = os.environ.get("CHAT_PUBLIC_URL", MCP_OAUTH_ISSUER).rstrip("/")
+SEFARIA_WEB_URL = os.environ.get("SEFARIA_WEB_URL", "https://www.sefaria.org").rstrip("/")
+# New findings one user may save in 24 hours; they are public at once.
+FINDINGS_DAILY_LIMIT = int(os.environ.get("FINDINGS_DAILY_LIMIT", "20"))
 SEFARIA_MCP_AUTHORIZE_URL = os.environ.get(
     "SEFARIA_MCP_AUTHORIZE_URL", "https://www.sefaria.org/api/mcp/authorize"
 )

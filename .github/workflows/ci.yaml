@@ -76,5 +76,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check the skill catalog
+        run: python -m skills_catalog.validate
+
       - name: Run tests
         run: pytest --ds=chatbot_server.test_settings_postgres -v -m "not xfail"

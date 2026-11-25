@@ -1,0 +1,16 @@
+{% load findings_tags %}{% with m=catalog.methods|get_item:f.method %}
+<article class="card">
+  <p class="card-meta">
+    <a class="method-tag" href="{% url 'findings:method' f.method %}">{% if m %}{{ m.title_en }}{% else %}{{ f.method }}{% endif %}</a>
+    <time datetime="{{ f.created|date:'c' }}">{{ f.created|date:"j M Y" }}</time>
+  </p>
+  <h3 class="card-title" dir="auto"><a href="{% url 'findings:detail' f.pk %}">{{ f.title }}</a></h3>
+  <p class="card-text clamp" dir="auto">{{ f.conclusion }}</p>
+  <ul class="chips" aria-label="Passages">
+    {% for r in f.roles|ordered_roles %}{% if forloop.counter <= 6 %}
+    <li><a class="chip chip-{{ r.role }}" href="{% url 'findings:passage' r.ref|passage_path %}" title="{{ r.role|role_label }}">{{ r.ref }}</a></li>
+    {% endif %}{% endfor %}
+    {% if f.roles|length > 6 %}<li class="chip-more">+{{ f.roles|length|add:"-6" }} more</li>{% endif %}
+  </ul>
+</article>
+{% endwith %}
