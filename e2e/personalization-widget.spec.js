@@ -1,5 +1,5 @@
 /**
- * Personalization notice wording and the Settings return address: every link from the widget to
+ * Personalization toast wording and the Settings return address: every link from the widget to
  * the Library Assistant settings carries `from=` (where to come back to), and the profile-used
  * line has an Edit link to the profile section. Chat server mocked; fixtures synthetic.
  */
@@ -15,15 +15,13 @@ async function signedIn(page, context, personalization) {
   return assistant;
 }
 
-test('the notice reads in the friendlier wording and both its links carry from=', async ({ page, context }) => {
+test('the toast reads "Responses are personalized." and its Manage link carries from=', async ({ page, context }) => {
   const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
   await assistant.ask('What is a mitzvah?');
-  const notice = assistant.host.getByTestId('personalization-notice');
-  await expect(notice).toContainText('From now on, answers are tailored to you.');
-  const change = notice.getByRole('link', { name: 'Change this' });
-  const more = notice.getByRole('link', { name: 'Learn more' });
-  await expect(change).toHaveAttribute('href', /^\/settings\/library-assistant\?from=.+#personalization$/);
-  await expect(more).toHaveAttribute('href', /^\/settings\/library-assistant\?from=.+#about-personalization$/);
+  const toast = assistant.host.getByTestId('personalization-toast');
+  await expect(toast).toContainText('Responses are personalized.');
+  const manage = toast.getByRole('link', { name: 'Manage' });
+  await expect(manage).toHaveAttribute('href', /^\/settings\/library-assistant\?from=.+#personalization$/);
 });
 
 test('an answer with a profile-used line has an Edit link to the profile section with from=', async ({ page, context }) => {

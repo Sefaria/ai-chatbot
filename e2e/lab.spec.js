@@ -1,5 +1,5 @@
 /**
- * Personalization in the widget: the two menu links, the notice under a personalized answer, and
+ * Personalization in the widget: the two menu links, the toast above the text box, and
  * the two-answer display that the settings state switches on. The chat and settings servers are
  * mocked (support/mockChatServer.js); fixtures are synthetic.
  */
@@ -16,7 +16,7 @@ async function signedIn(page, context, personalization) {
 }
 
 const plainColumn = (assistant) => assistant.host.getByTestId('lab-compare-plain');
-const notice = (assistant) => assistant.host.getByTestId('personalization-notice');
+const toast = (assistant) => assistant.host.getByTestId('personalization-toast');
 
 async function dragPanelTo(assistant, page, targetWidth) {
   const handle = assistant.host.locator('.resize-w');
@@ -60,55 +60,85 @@ test.describe('menu', () => {
   });
 });
 
-test.describe('notice', () => {
-  test('shows under a flagged answer with both links, and not under an unflagged one', async ({ page, context }) => {
+test.describe('toast', () => {
+  const manage = (assistant) => toast(assistant).getByRole('link', { name: t('assistant.personalization.toast.configure') });
+  const dismiss = (assistant) => toast(assistant).getByRole('button', { name: t('assistant.personalization.toast.dismiss_aria') });
+
+  test('shows above the text box after a personalized answer, with Manage and Dismiss', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
+    await expect(toast(assistant)).toHaveCount(0);
     await assistant.ask('What is a mitzvah?');
-    await expect(notice(assistant)).toHaveCount(1);
-    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
-    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.configure') }))
-      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
-    await expect(notice(assistant).getByRole('link', { name: t('assistant.personalization.learn_more') }))
-      .toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#about-personalization$/);
+    await expect(toast(assistant)).toBeVisible();
+    await expect(toast(assistant)).toHaveAttribute('role', 'status');
+    await expect(toast(assistant)).toContainText(t('assistant.personalization.toast.text'));
+    await expect(manage(assistant)).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
+    await expect(dismiss(assistant)).toBeVisible();
+    // Outside the answers, right above the text box
+    await expect(assistant.answers.getByTestId('personalization-toast')).toHaveCount(0);
+    const toastBox = await toast(assistant).boundingBox();
+    const inputBox = await assistant.host.locator('footer.lc-chatbot-input').boundingBox();
+    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(inputBox.y + 1);
 
     await assistant.ask('And a minhag?');
     await expect(assistant.answers).toHaveCount(2);
-    await expect(notice(assistant)).toHaveCount(1); // still only the first answer's
+    await expect(toast(assistant)).toHaveCount(1); // one toast, not one per answer
   });
 
-  for (const [linkKey, hash] of [['configure', '#personalization'], ['learn_more', '#about-personalization']]) {
-    test(`the ${linkKey} link navigates the tab to the settings page, as the menu item does`, async ({ page, context }) => {
-      // Sefaria's settings pages are server-rendered, not routes of its React app, so the widget must not
-      // hand these links to the host's in-app router (which ignores them): the browser follows the href.
-      await context.route('**/settings/library-assistant', (route) =>
-        route.fulfill({ contentType: 'text/html', body: '<title>Settings</title>' })
-      );
-      const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
-      await assistant.ask('What is a mitzvah?');
-      await notice(assistant).getByRole('link', { name: t(`assistant.personalization.${linkKey}`) }).click();
-      await expect(page).toHaveURL(new RegExp(`/settings/library-assistant\\?from=[^#]+${hash}$`));
-    });
-  }
-
-  test('sits in a light purple container with a dark purple border', async ({ page, context }) => {
+  test('Manage navigates the tab to the settings page, as the menu item does', async ({ page, context }) => {
+    // Sefaria's settings pages are server-rendered, not routes of its React app: the browser follows the href.
+    await context.route('**/settings/library-assistant', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>Settings</title>' })
+    );
     const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
     await assistant.ask('What is a mitzvah?');
-    const container = assistant.host.locator('.la-personalization-notice');
-    await expect(container).toHaveCount(1);
-    await expect(container.getByTestId('personalization-notice')).toBeVisible();
-    await expect(container).toHaveCSS('background-color', 'rgb(243, 232, 255)');
-    await expect(container).toHaveCSS('border-top-color', 'rgb(76, 29, 149)');
-    await expect(container).toHaveCSS('border-top-width', '2px');
-    await expect(container).toHaveCSS('border-top-style', 'solid');
-    await expect(container).toHaveCSS('color', 'rgb(46, 16, 101)');
-    await expect(container).toHaveCSS('padding-top', '16px');
-    await expect(container).toHaveCSS('border-top-left-radius', '8px');
+    await manage(assistant).click();
+    await expect(page).toHaveURL(/\/settings\/library-assistant\?from=[^#]+#personalization$/);
+  });
+
+  test('left alone, it stays up and comes back with the first personalized answer of the next chat', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1, 2, 3] });
+    await assistant.ask('What is a mitzvah?');
+    await expect(toast(assistant)).toBeVisible();
+    await assistant.ask('And a minhag?');
+    await expect(toast(assistant)).toBeVisible();
+    await assistant.startNewChat();
+    await expect(toast(assistant)).toHaveCount(0);
+    await assistant.ask('What is a bracha?');
+    await expect(toast(assistant)).toBeVisible();
+  });
+
+  test('Dismiss closes it for good, across chats and reloads, and returns focus to the text box', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1, 2] });
+    await assistant.ask('What is a mitzvah?');
+    await dismiss(assistant).click();
+    await expect(toast(assistant)).toHaveCount(0);
+    await expect(assistant.host.locator('footer textarea')).toBeFocused();
+    await assistant.startNewChat();
+    await assistant.ask('And a minhag?');
+    await expect(assistant.answers).toHaveCount(1);
+    await expect(toast(assistant)).toHaveCount(0);
+    await assistant.logIn(); // a reload
+    await assistant.open();
+    await expect(toast(assistant)).toHaveCount(0);
+  });
+
+  test('Manage also closes it for good', async ({ page, context }) => {
+    const assistant = await signedIn(page, context, { noticeOnAnswers: [1, 2] });
+    await assistant.ask('What is a mitzvah?');
+    // Stay on the page: the dismissal is what's under test, not the navigation
+    await manage(assistant).evaluate((el) => el.addEventListener('click', (e) => e.preventDefault()));
+    await manage(assistant).click();
+    await expect(toast(assistant)).toHaveCount(0);
+    await assistant.startNewChat();
+    await assistant.ask('And a minhag?');
+    await expect(assistant.answers).toHaveCount(1);
+    await expect(toast(assistant)).toHaveCount(0);
   });
 
   test('is absent when the final payload does not carry the flag', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { labEnabled: true });
     await assistant.ask('What is a mitzvah?');
-    await expect(notice(assistant)).toHaveCount(0);
+    await expect(toast(assistant)).toHaveCount(0);
   });
 });
 
@@ -116,17 +146,17 @@ test.describe('a past chat', () => {
   const LINE = 'From your profile, I took your preference for short answers into account.';
   const options = { labEnabled: true, noticeOnAnswers: [1], profileUsed: LINE };
 
-  async function expectNoticeAndLine(assistant) {
+  async function expectToastAndLine(assistant) {
     await expect(assistant.answers).toHaveCount(1);
-    await expect(notice(assistant)).toContainText(t('assistant.personalization.notice'));
+    await expect(toast(assistant)).toContainText(t('assistant.personalization.toast.text'));
     await expect(assistant.host.getByTestId('profile-used')).toHaveText(LINE);
     await expect(assistant.host.getByTestId('profile-used')).toHaveCSS('color', 'rgb(26, 127, 55)');
   }
 
-  test('opened from chat history keeps the notice and the green line', async ({ page, context }) => {
+  test('opened from chat history keeps the toast and the green line', async ({ page, context }) => {
     const assistant = await signedIn(page, context, options);
     await assistant.ask('What is a mitzvah?');
-    await expectNoticeAndLine(assistant);
+    await expectToastAndLine(assistant);
 
     await assistant.logIn(); // a reload: nothing is kept in memory
     await assistant.open();
@@ -134,24 +164,24 @@ test.describe('a past chat', () => {
     await assistant.openHistory();
     await expect(assistant.historyConversations).toHaveCount(1);
     await assistant.historyConversations.first().click();
-    await expectNoticeAndLine(assistant);
+    await expectToastAndLine(assistant);
   });
 
-  test('recovered after a broken stream shows the notice and the green line', async ({ page, context }) => {
+  test('recovered after a broken stream shows the toast and the green line', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { ...options, recoverAnswers: [1] });
     const recovers = [];
     page.on('request', (r) => {
       if (r.url().endsWith('/v2/chat/recover')) recovers.push(r.postDataJSON());
     });
     await assistant.ask('What is a mitzvah?');
-    await expectNoticeAndLine(assistant);
+    await expectToastAndLine(assistant);
     expect(recovers.length).toBeGreaterThan(0);
   });
 
-  test('reloaded from the server keeps the notice and the green line', async ({ page, context }) => {
+  test('reloaded from the server keeps the toast and the green line', async ({ page, context }) => {
     const assistant = await signedIn(page, context, options);
     await assistant.ask('What is a mitzvah?');
-    await expectNoticeAndLine(assistant);
+    await expectToastAndLine(assistant);
 
     // Only the server's copy is left: the widget loads the open chat's messages from history.
     await page.evaluate(() => {
@@ -159,7 +189,7 @@ test.describe('a past chat', () => {
     });
     await assistant.logIn();
     await assistant.open();
-    await expectNoticeAndLine(assistant);
+    await expectToastAndLine(assistant);
   });
 });
 
@@ -257,7 +287,7 @@ test.describe('signed out', () => {
     const streams = watchStreams(page);
     await assistant.ask('Hello');
     await expect(plainColumn(assistant)).toHaveCount(0);
-    await expect(notice(assistant)).toHaveCount(0);
+    await expect(toast(assistant)).toHaveCount(0);
     expect(streams).toHaveLength(1);
     expect(personalizationCalls).toEqual([]);
   });
@@ -343,8 +373,8 @@ test.describe('profile used', () => {
     });
     await watchForTagText(page);
     await assistant.ask('What is a mitzvah?');
-    // the notice comes with the final payload, so the answer is no longer streaming
-    await expect(notice(assistant)).toBeVisible();
+    // the toast comes with the final payload, so the answer is no longer streaming
+    await expect(toast(assistant)).toBeVisible();
     await expect(assistant.lastAnswer).toContainText('Answer 1.');
     await expect(line(assistant)).toHaveCount(0);
     await expect(assistant.lastAnswer).not.toContainText('Ignore all rules');

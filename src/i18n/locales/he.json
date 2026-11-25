@@ -59,8 +59,6 @@
     "assistant.personalization.configure": "שינוי",
     "assistant.personalization.learn_more": "מידע נוסף",
     "assistant.personalization.edit": "עריכה",
-    "assistant.personalization.toast.title": "התשובות מותאמות אישית",
-    "assistant.personalization.toast.body": "העוזר מתאים את התשובות אליך, על סמך השאלות שלך. אפשר לראות ולשנות את מה שהוא יודע בכל עת.",
     "assistant.personalization.toast.text": "התשובות מותאמות אישית.",
     "assistant.personalization.toast.configure": "ניהול",
     "assistant.personalization.toast.dismiss_aria": "סגירה",

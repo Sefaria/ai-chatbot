@@ -29,8 +29,6 @@
     "assistant.personalization.configure": "Change this",
     "assistant.personalization.learn_more": "Learn more",
     "assistant.personalization.edit": "Edit",
-    "assistant.personalization.toast.title": "Responses are personalized",
-    "assistant.personalization.toast.body": "The assistant tailors its answers to you, based on your questions. You can see and change what it knows at any time.",
     "assistant.personalization.toast.text": "Responses are personalized.",
     "assistant.personalization.toast.configure": "Manage",
     "assistant.personalization.toast.dismiss_aria": "Dismiss",

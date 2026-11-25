@@ -387,9 +387,6 @@
   let chatIsPersonalized = $derived(messages.some((m) => m.role === 'assistant'
     && (m.personalizationNotice === true || (typeof m.profileUsed === 'string' && m.profileUsed.startsWith('From your profile')))));
   let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
-  // Design draft: two toast layouts. The one-liner (the default), or ?p13n_toast=multi for the multi-line one with an
-  // icon, kept in case the message ever needs to be longer.
-  const toastVariant = new URLSearchParams(window.location.search).get('p13n_toast') === 'multi' ? 'multi' : 'single';
   const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   function dismissPersonalizationToast({ focusInput = true } = {}) {
     personalizationToastDismissed = true;
@@ -3149,35 +3146,15 @@
       {/if}
       {#if showPersonalizationToast && !loginRequired}
         <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
-        {#if toastVariant === 'multi'}
-          <!-- The design system's AnnouncementBanner layout (as in Sefaria's developer settings): icon, title and
-               text, then the action; Dismiss at the top end -->
-          <div class="p13n-toast p13n-toast-multi" role="status" data-testid="personalization-toast"
-            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
-            <svg class="p13n-toast-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="currentColor" d="M12 0C12.6 6.6 17.4 11.4 24 12C17.4 12.6 12.6 17.4 12 24C11.4 17.4 6.6 12.6 0 12C6.6 11.4 11.4 6.6 12 0Z"/>
-            </svg>
-            <div class="p13n-toast-body">
-              <p class="p13n-toast-title">{$_('assistant.personalization.toast.title')}</p>
-              <p class="p13n-toast-desc">{$_('assistant.personalization.toast.body')}</p>
-              <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
-            </div>
-            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
-              onclick={() => dismissPersonalizationToast()}>
-              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            </button>
-          </div>
-        {:else}
-          <div class="p13n-toast" role="status" data-testid="personalization-toast"
-            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
-            <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
-            <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
-            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
-              onclick={() => dismissPersonalizationToast()}>
-              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            </button>
-          </div>
-        {/if}
+        <div class="p13n-toast" role="status" data-testid="personalization-toast"
+          transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+          <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
+          <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+          <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+            onclick={() => dismissPersonalizationToast()}>
+            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
       {/if}
       <!-- Input Footer -->
       {#if loginRequired}
@@ -5276,53 +5253,6 @@
     /* --border-focus (gray-300) is under 3:1 on white, so the primary action color, as the stop button */
     outline: 2px solid var(--action-primary);
     outline-offset: 1px;
-  }
-
-  /* Multi-line variant: icon | title, text, action | Dismiss */
-  .p13n-toast-multi {
-    align-items: flex-start;
-    gap: var(--spacing-small);
-    padding-block: var(--spacing-medium) var(--spacing-small);
-    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
-  }
-
-  .p13n-toast-icon {
-    flex-shrink: 0;
-    /* Lines up with the title's first line */
-    margin-block-start: 2px;
-    color: var(--module-primary);
-  }
-
-  .p13n-toast-body {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-2xsmall, 2px);
-  }
-
-  .p13n-toast-title,
-  .p13n-toast-desc {
-    margin: 0;
-  }
-
-  .p13n-toast-title {
-    font-size: var(--lc-font-size);
-    font-weight: 600;
-  }
-
-  .p13n-toast-desc {
-    color: var(--text-secondary);
-  }
-
-  .p13n-toast-multi .p13n-toast-action {
-    /* The link's text lines up with the text above; its hover fill reaches into the padding */
-    margin-inline-start: calc(-1 * var(--spacing-xsmall));
-  }
-
-  .p13n-toast-multi .p13n-toast-close {
-    margin-block-start: calc(-1 * var(--spacing-small));
   }
 
   /* Phones: 44px touch targets */
