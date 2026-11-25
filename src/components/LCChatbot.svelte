@@ -388,14 +388,19 @@
   let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
   // The toast is a layout block below the message list: when it mounts it shrinks the list. A reader at the
   // end of the answer stays there (measured before the DOM changes, scrolled after).
+  // Only an answer already on screen (a streamed one) is kept at its end: when the toast arrives together with
+  // a new answer, the response handler's scrollToResponseStart() decides where the reader lands.
   let toastKeepsEnd = false;
   let toastWasShown = false;
+  let toastSeenCount = 0;
   $effect.pre(() => {
     const shown = showPersonalizationToast;
-    if (shown && !toastWasShown && messageListRef) {
+    const count = messages.length;
+    if (shown && !toastWasShown && messageListRef && count === toastSeenCount) {
       toastKeepsEnd = messageListRef.scrollHeight - messageListRef.scrollTop - messageListRef.clientHeight < 80;
     }
     toastWasShown = shown;
+    toastSeenCount = count;
   });
   $effect(() => {
     if (showPersonalizationToast && toastKeepsEnd) {
@@ -513,6 +518,8 @@
     clearLoggedInChatWhenLoggedOut(!!userId);
     // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
     if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
+    // Logout cleared the toast's dismissal too: the next user on this browser sees it again
+    personalizationToastDismissed = !!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
