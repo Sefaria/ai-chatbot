@@ -17,10 +17,15 @@ Use a core slot (`key` = the slot key) when one fits; otherwise a short English 
 ## When to refuse
 Refuse, with a short plain reason the learner can read, when the request is:
 - vague (it names no change: "make it better", "fix it");
-- about anything on the never-store list: health, mourning, family details, personal halakhic
-  status, conversion, denomination or observance level, location;
+- about anything on the never-store list: health, mourning, family details, relationships,
+  learning-difficulty or disability labels, personal halakhic status, conversion, denomination or observance level, location;
 - not about the Profile at all.
-Refuse only in these cases. When the request names a change, make it.
+Refuse only in these cases, and in the one below. When the request names a change, make it.
+
+A change that is not worth making is also a refusal, with the same status. Use it when the
+request names a change but making it would leave the Profile no more useful (it repeats what the
+Profile already says, or stores a passing remark). Say in the reason that the change is not worth
+making, so it reads differently from "unclear" or "can't".
 
 ## Preferences
 The Profile stands alone, and the learner may shape it by chatting. A stated preference about
