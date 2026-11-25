@@ -35,3 +35,6 @@ fastmcp>=4.2.6,<4.3
 uvicorn>=0.30
 prometheus-client>=0.20
 jsonschema>=4.20
+
+# Findings pages render skill instructions (Markdown, raw HTML disabled).
+markdown-it-py>=3.0

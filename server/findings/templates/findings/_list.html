@@ -1,0 +1,14 @@
+{% if page.object_list %}
+<div class="cards">
+  {% for f in page.object_list %}{% include "findings/_card.html" %}{% endfor %}
+</div>
+{% if page.has_other_pages %}
+<nav class="pager" aria-label="Pages">
+  {% if page.has_previous %}<a href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}{% if book %}book={{ book|urlencode }}&amp;{% endif %}page={{ page.previous_page_number }}">Newer</a>{% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}{% if book %}book={{ book|urlencode }}&amp;{% endif %}page={{ page.next_page_number }}">Older</a>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<p class="empty">No findings yet.</p>
+{% endif %}

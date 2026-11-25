@@ -1,0 +1,34 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Findings{% endblock %} · Sefaria</title>
+  <meta name="description" content="{% block description %}What learners found when they studied with Sefaria's skills: short readings of clusters of passages, each with a source sheet.{% endblock %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Heebo:wght@400;500&family=Roboto:wght@400;500&display=swap">
+  <link rel="stylesheet" href="{% static 'findings/findings.css' %}">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site">
+    <div class="wrap site-row">
+      <a class="brand" href="{% url 'findings:home' %}">Sefaria <span>Findings</span></a>
+      <nav aria-label="Site">
+        <a href="{% url 'findings:home' %}#methods">Methods</a>
+        <a href="{{ sefaria_url }}">Sefaria library</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site">
+    <div class="wrap">
+      <p>Findings are AI-assisted readings saved by learners who studied with a Sefaria skill. They are not statements by the teachers whose methods the skills follow. Each links to the learner's source sheet, where the texts can be read in full.</p>
+      <p><a href="{% url 'findings_api_methods' %}">API</a></p>
+    </div>
+  </footer>
+</body>
+</html>

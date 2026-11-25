@@ -1,0 +1,20 @@
+{% extends "findings/base.html" %}
+{% load findings_tags %}
+{% block title %}{{ ref }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'findings:home' %}">Findings</a> <span aria-hidden="true">›</span> Passage</nav>
+<header class="page-head">
+  <h1>{{ ref }}</h1>
+  <p><a class="button" href="{{ ref|reader_url }}">Read {{ ref }} on Sefaria</a></p>
+</header>
+<section aria-labelledby="list-h">
+  <h2 id="list-h">Findings studying this passage</h2>
+  {% include "findings/_list.html" %}
+</section>
+{% if cited %}
+<section aria-labelledby="cited-h">
+  <h2 id="cited-h">Findings that also cite it</h2>
+  <div class="cards">{% for f in cited %}{% include "findings/_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

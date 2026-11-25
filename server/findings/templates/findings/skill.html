@@ -1,0 +1,42 @@
+{% extends "findings/base.html" %}
+{% load findings_tags %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block description %}{{ s.description }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'findings:home' %}">Findings</a> <span aria-hidden="true">›</span> <a href="{% url 'findings:method' m.slug %}">{{ m.title_en }}</a> <span aria-hidden="true">›</span> Skill</nav>
+<header class="page-head">
+  <h1><code class="h-code">{{ s.name }}</code></h1>
+  <p class="lede">{{ s.description }}</p>
+  <p class="muted">By {{ author.name }} · version {{ s.version }} · <a href="{% url 'findings:method' m.slug %}">{{ m.title_en }}</a></p>
+</header>
+
+<div class="split">
+  <aside>
+    <section class="box" aria-labelledby="use-h">
+      <h2 id="use-h">Use this skill</h2>
+      <p>Connect Sefaria in any app that supports MCP skills, then pick <code>{{ s.name }}</code>. Signing in lets you save what you find.</p>
+      <dl class="use">
+        <dt>Connector URL</dt><dd><code>{{ chat_url }}/mcp/user</code></dd>
+        <dt>Claude Code</dt><dd><code>claude mcp add --transport http sefaria {{ chat_url }}/mcp/user</code></dd>
+        <dt>Skill URI</dt><dd><code>skill://{{ s.name }}/SKILL.md</code></dd>
+      </dl>
+    </section>
+    {% if files %}
+    <section aria-labelledby="files-h">
+      <h2 id="files-h">Reference files</h2>
+      <ul class="plain">{% for p in files %}<li><a href="{% url 'findings:skill_file' s.name p %}">{{ p }}</a></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+  </aside>
+  <div>
+    <details class="instructions">
+      <summary>Read the skill's instructions</summary>
+      <div class="prose">{{ s.instructions|markdown }}</div>
+    </details>
+    <section aria-labelledby="list-h">
+      <h2 id="list-h">Findings made with this skill</h2>
+      {% include "findings/_list.html" %}
+    </section>
+  </div>
+</div>
+{% endblock %}

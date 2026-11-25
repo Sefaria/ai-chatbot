@@ -1,0 +1,50 @@
+{% extends "findings/base.html" %}
+{% block title %}{{ m.title_en }}{% endblock %}
+{% block description %}{{ m.description }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{% url 'findings:home' %}">Findings</a> <span aria-hidden="true">›</span> Method</nav>
+<header class="page-head">
+  <h1>{{ m.title_en }}</h1>
+  {% if m.title_he %}<p class="he he-title" lang="he" dir="rtl">{{ m.title_he }}</p>{% endif %}
+  <p class="lede">{{ m.description }}</p>
+  <p class="label-note">Findings from this method are labelled <em>{{ m.label }}</em>.</p>
+</header>
+
+<div class="split">
+  <aside>
+    <section aria-labelledby="skills-h">
+      <h2 id="skills-h">Skills</h2>
+      <ul class="plain">
+        {% for x in skills %}
+        <li class="skill-row">
+          <a href="{% url 'findings:skill' x.skill.name %}"><code>{{ x.skill.name }}</code></a>
+          <p class="muted">by {{ x.author.name }} · v{{ x.skill.version }} · {{ x.count }} finding{{ x.count|pluralize }}</p>
+          <p>{{ x.skill.description }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% if books %}
+    <section aria-labelledby="books-h">
+      <h2 id="books-h">Where it has been applied</h2>
+      <ul class="bars">
+        {% for name, n in books %}
+        <li>
+          <a href="?book={{ name|urlencode }}" {% if book == name %}aria-current="true"{% endif %}>
+            <span class="bar-label">{{ name }}</span>
+            <span class="bar" style="--w: {% widthratio n books_max 100 %}%"></span>
+            <span class="bar-n">{{ n }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if book %}<p><a href="{% url 'findings:method' m.slug %}">Show all books</a></p>{% endif %}
+    </section>
+    {% endif %}
+  </aside>
+  <section aria-labelledby="list-h">
+    <h2 id="list-h">{% if book %}Findings in {{ book }}{% else %}Findings{% endif %}</h2>
+    {% include "findings/_list.html" %}
+  </section>
+</div>
+{% endblock %}
