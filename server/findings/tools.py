@@ -120,7 +120,8 @@ async def save_finding(
     ]
 
     sheet_id = arguments.get("sheet_id")
-    if not sheet_id:
+    created_sheet = not sheet_id
+    if created_sheet:
         sheet_sources: list[dict] = []
         for s, c in zip(sources, checked, strict=True):
             sheet_sources.append(
@@ -153,10 +154,12 @@ async def save_finding(
         if own:
             await http.aclose()
     if response.status_code not in (200, 201):
-        raise ValueError(
-            f"The source sheet was saved (sheet {sheet_id}) but the finding was not: "
-            f"{_error_of(response)}"
-        )
+        if created_sheet:
+            raise ValueError(
+                f"The source sheet was saved (sheet {sheet_id}) but the finding was not: "
+                f"{_error_of(response)}"
+            )
+        raise ValueError(f"The finding was not saved: {_error_of(response)}")
     finding = response.json()["finding"]
     return {
         "saved": True,

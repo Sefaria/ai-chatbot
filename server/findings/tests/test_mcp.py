@@ -430,3 +430,33 @@ async def test_save_finding_reports_a_sheet_saved_without_its_finding(world, she
     text = result["result"]["content"][0]["text"]
     assert result["result"]["isError"]
     assert "source sheet was saved (sheet 555)" in text and "Daily limit" in text
+
+
+@pytest.mark.django_db(transaction=True)
+async def test_save_finding_onto_an_existing_sheet_creates_none(world, sheets):
+    sheets.add(777, expanded=["Genesis 1:1"])
+    other = sheets.add(778, owner=USER + 1, expanded=["Genesis 1:1"])
+    assert other.owner != USER
+    async with http() as client:
+        _, ok = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_finding", "arguments": {**ARGS, "sheet_id": 777}},
+            version=LEGACY,
+            path="/mcp/user",
+            token=user_token(),
+        )
+        _, refused = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_finding", "arguments": {**ARGS, "sheet_id": 778}},
+            version=LEGACY,
+            path="/mcp/user",
+            token=user_token(),
+        )
+    assert not ok["result"].get("isError"), ok
+    assert not any(r.url.path == "/api/sheets/" for r in world["seen"])
+    text = refused["result"]["content"][0]["text"]
+    assert refused["result"]["isError"]
+    assert "The finding was not saved" in text and "your own sheets" in text
+    assert "source sheet was saved" not in text
