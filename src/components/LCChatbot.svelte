@@ -3,7 +3,7 @@
 <script>
   import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
-  import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
+  import { hideProfileUsed, isProfileUsedLine, chatIsPersonalized as hasPersonalizedAnswer } from '../lib/profileUsed.js';
   import { settingsHref } from '../lib/settingsLink.js';
   import { resyncPlayback } from '../lib/playbackSync.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
@@ -384,9 +384,25 @@
   // Manage closes it for good. Left alone, it stays up and comes back with the first personalized answer of the
   // next chat. Kept in this browser for now (an account setting later).
   let personalizationToastDismissed = $state(!!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false));
-  let chatIsPersonalized = $derived(messages.some((m) => m.role === 'assistant'
-    && (m.personalizationNotice === true || (typeof m.profileUsed === 'string' && m.profileUsed.startsWith('From your profile')))));
+  let chatIsPersonalized = $derived(hasPersonalizedAnswer(messages));
   let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
+  // The toast is a layout block below the message list: when it mounts it shrinks the list. A reader at the
+  // end of the answer stays there (measured before the DOM changes, scrolled after).
+  let toastKeepsEnd = false;
+  let toastWasShown = false;
+  $effect.pre(() => {
+    const shown = showPersonalizationToast;
+    if (shown && !toastWasShown && messageListRef) {
+      toastKeepsEnd = messageListRef.scrollHeight - messageListRef.scrollTop - messageListRef.clientHeight < 80;
+    }
+    toastWasShown = shown;
+  });
+  $effect(() => {
+    if (showPersonalizationToast && toastKeepsEnd) {
+      toastKeepsEnd = false;
+      scrollToBottom({ instant: true });
+    }
+  });
   const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   function dismissPersonalizationToast({ focusInput = true } = {}) {
     personalizationToastDismissed = true;
@@ -2257,11 +2273,6 @@
     const href = anchor.getAttribute('href');
     if (!href) return;
 
-    // The personalization notice's links go to Sefaria's settings pages, which are server-rendered,
-    // not routes of the host's React app: the host's in-app router ignores them, so the browser
-    // follows the href (same tab), like the menu item.
-    if (anchor.closest('.personalization-notice')) return;
-
     e.preventDefault();
 
     let resolvedUrl;
@@ -3144,18 +3155,21 @@
       {#if stopErrors[sessionId]}
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
       {/if}
-      {#if showPersonalizationToast && !loginRequired}
-        <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
-        <div class="p13n-toast" role="status" data-testid="personalization-toast"
-          transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
-          <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
-          <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
-          <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
-            onclick={() => dismissPersonalizationToast()}>
-            <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-          </button>
-        </div>
-      {/if}
+      <!-- Live region: always present (empty), so a screen reader announces the toast inserted into it -->
+      <div role="status" data-testid="personalization-live-region">
+        {#if showPersonalizationToast}
+          <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
+          <div class="p13n-toast" data-testid="personalization-toast"
+            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+            <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
+            <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+              onclick={() => dismissPersonalizationToast()}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        {/if}
+      </div>
       <!-- Input Footer -->
       {#if loginRequired}
         <!-- The free answers are used up: the login prompt replaces the text box.

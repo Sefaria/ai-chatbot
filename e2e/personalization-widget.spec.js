@@ -18,7 +18,7 @@ async function signedIn(page, context, personalization) {
 test('the toast reads "Responses are personalized." and its Manage link carries from=', async ({ page, context }) => {
   const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
   await assistant.ask('What is a mitzvah?');
-  const toast = assistant.host.getByTestId('personalization-toast');
+  const toast = assistant.toast;
   await expect(toast).toContainText('Responses are personalized.');
   const manage = toast.getByRole('link', { name: 'Manage' });
   await expect(manage).toHaveAttribute('href', /^\/settings\/library-assistant\?from=.+#personalization$/);

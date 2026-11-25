@@ -16,7 +16,7 @@ async function signedIn(page, context, personalization) {
 }
 
 const plainColumn = (assistant) => assistant.host.getByTestId('lab-compare-plain');
-const toast = (assistant) => assistant.host.getByTestId('personalization-toast');
+const toast = (assistant) => assistant.toast;
 
 async function dragPanelTo(assistant, page, targetWidth) {
   const handle = assistant.host.locator('.resize-w');
@@ -67,16 +67,17 @@ test.describe('toast', () => {
   test('shows above the text box after a personalized answer, with Manage and Dismiss', async ({ page, context }) => {
     const assistant = await signedIn(page, context, { noticeOnAnswers: [1] });
     await expect(toast(assistant)).toHaveCount(0);
+    await expect(assistant.toastLiveRegion).toBeEmpty(); // there before the toast, so it is announced
     await assistant.ask('What is a mitzvah?');
     await expect(toast(assistant)).toBeVisible();
-    await expect(toast(assistant)).toHaveAttribute('role', 'status');
+    await expect(assistant.toastLiveRegion).toHaveAttribute('role', 'status');
     await expect(toast(assistant)).toContainText(t('assistant.personalization.toast.text'));
     await expect(manage(assistant)).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
     await expect(dismiss(assistant)).toBeVisible();
     // Outside the answers, right above the text box
     await expect(assistant.answers.getByTestId('personalization-toast')).toHaveCount(0);
     const toastBox = await toast(assistant).boundingBox();
-    const inputBox = await assistant.host.locator('footer.lc-chatbot-input').boundingBox();
+    const inputBox = await assistant.inputFooter.boundingBox();
     expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(inputBox.y + 1);
 
     await assistant.ask('And a minhag?');
@@ -112,7 +113,7 @@ test.describe('toast', () => {
     await assistant.ask('What is a mitzvah?');
     await dismiss(assistant).click();
     await expect(toast(assistant)).toHaveCount(0);
-    await expect(assistant.host.locator('footer textarea')).toBeFocused();
+    await expect(assistant.textBox).toBeFocused();
     await assistant.startNewChat();
     await assistant.ask('And a minhag?');
     await expect(assistant.answers).toHaveCount(1);
