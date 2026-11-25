@@ -59,6 +59,9 @@ server/
 | `/api/v2/prompts/defaults` | GET | Default prompt slugs |
 | `/api/history` | GET | Conversation history |
 | `/api/health` | GET | Health check |
+| `/api/findings/ref/<ref>`, `/api/findings`, `/api/methods` | GET | Public findings reads (see `docs/ARCHITECTURE.md`) |
+| `/api/findings` | POST | Record a finding; MCP process only (write token) |
+| `/findings/` | GET | Findings browse pages |
 
 ## Commands
 
@@ -86,6 +89,14 @@ pytest                                    # Run tests
 | `MCP_USER_RESOURCE_URL` | No | Default `<issuer>/mcp/user` |
 | `MCP_ADMIN_RESOURCE_URL` | No | Staff topic-prompt tools; default beside `MCP_USER_RESOURCE_URL` (`.../mcp/admin`) |
 | `SEFARIA_MCP_AUTHORIZE_URL` | No | Sefaria sign-in handoff (default `https://www.sefaria.org/api/mcp/authorize`) |
+| `CHAT_PUBLIC_URL` | No | Public chat host for findings links (default `MCP_OAUTH_ISSUER`) |
+| `SEFARIA_WEB_URL` | No | Sefaria site for reader and sheet links (default `https://www.sefaria.org`) |
+| `FINDINGS_DAILY_LIMIT` | No | New findings one user may save per 24 hours (default 20) |
+| `FINDINGS_API_URL` | No | MCP process: findings API base (default `<MCP_OAUTH_ISSUER>/api`) |
+| `SEFARIA_SKILLS_CATALOG` | No | A catalog directory to serve instead of `skills_catalog/` |
+
+Findings commands: `python manage.py sync_findings` (nightly), `hide_finding <id> --reason`,
+`seed_demo_findings` (DEBUG only, dummy data).
 
 ## Load Testing
 

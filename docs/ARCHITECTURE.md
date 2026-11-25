@@ -167,11 +167,44 @@ unsafe or unresolvable links. The public MCP server (`chat.sefaria.org/mcp`) ser
 every agent tool except the Labs-gated ones, plus this one; `test_mcp_server.py`
 pins the exact list.
 
+Skills and findings tools (see "Skills and Findings" below): `search_findings` is on
+`mcp`, `save_finding` only on the signed-in `mcp_user`. Neither is on the agent surface.
+
 Tool runtime behavior:
 
 1. Emits `tool_start` and `tool_end` progress updates.
 2. Records structured tool call metadata (`tool_name`, `tool_input`, preview output, error flag, latency).
 3. Returns normalized content blocks back to the SDK loop.
+
+## Skills and Findings
+
+Plan and decisions: `docs/plans/2026-11-25-skills-store.md`.
+
+**Skills** are Agent Skills directories in `server/skills_catalog/skills/<name>/`
+(`SKILL.md` plus Markdown reference files). `catalog.yaml` (staff-owned) defines the
+methods skills belong to, the authors, and authorization: a skill is served if its author
+is authorized or the skill is listed under `authorized_skills`. `/mcp` and `/mcp/user`
+serve every authorized skill with FastMCP 4.2's `SkillCatalogProvider` (MCP Skills
+extension, SEP-2640: `skills/list`, `skills/get`, `skill://<name>/<file>` resources) and
+`ResourcesAsTools` (`list_resources` / `read_resource` for clients without the
+extension). `skills/list` needs the 2026-07-28 protocol; older clients read the same files
+as resources. `python -m skills_catalog.validate` checks the catalog in CI.
+
+**Findings** (`server/findings/`, Django app) are results learners chose to save:
+
+```text
+MCP client ──save_finding──► chatbot-mcp (/mcp/user, knows the user from the access token)
+   1. validate_refs, then create the learner's sheet in Sefaria as the user (mcp token)
+   2. POST /api/findings  Bearer <5-min write token, aud "findings", MCP_OAUTH_SIGNING_KEY>
+        └► Django: check skill authorized → read the sheet back from Sefaria → owner must be
+           the user → one FindingRef per segment of the sheet's expandedRefs, with the role
+           of the cited source covering it (anchor / position / support)
+Reader sidebar ──GET /api/findings/ref/<section>──► findings anchored there (anchor+position)
+```
+
+Shown publicly: findings not `hidden` whose skill is authorized now. `sync_findings`
+(nightly) follows sheet edits and deletions; `hide_finding` is the staff takedown.
+Browse pages live under `/findings/`.
 
 ## Observability
 
@@ -219,6 +252,11 @@ Defined in `server/chat/urls.py`.
 | `/api/history` | GET | Conversation history |
 | `/api/admin/reload-prompts` | POST | Prompt cache invalidation endpoint |
 | `/api/health` | GET | Health endpoint |
+| `/api/findings/ref/<ref>` | GET | Findings anchored at a section or segment (reader sidebar; `?roles=all` adds support) |
+| `/api/findings` | GET / POST | Search (`ref`, `method`, `skill`, `q`, `limit`); POST records a finding (MCP write token) |
+| `/api/findings/<id>` | GET | One finding |
+| `/api/methods` | GET | Methods, their skills and finding counts |
+| `/findings/…` | GET | Browse pages: methods, skills, passages, findings |
 
 ### Streaming final SSE message payload (shape)
 
@@ -306,6 +344,9 @@ server/
 │       ├── logging/
 │       ├── services/
 │       └── summarization/
+├── findings/                           # findings app: models, API, pages, tools, commands
+├── skills_catalog/                     # skills, catalog.yaml, validator
+├── mcp_server/                         # public and signed-in MCP endpoints
 └── chatbot_server/
     └── settings.py
 

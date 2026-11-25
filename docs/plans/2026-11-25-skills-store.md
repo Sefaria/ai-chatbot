@@ -1,7 +1,7 @@
 # Sefaria Skills Store and Shared Findings
 
 **Date:** 2026-11-25
-**Status:** Proposal, nothing built. Product and architecture plan for review.
+**Status:** Steps 0–2 built on `claude/jolly-heisenberg-sd54an`, plus the findings browse pages; sidebar on Sefaria-Project `reader-next` (step 3) in progress. See "Build status".
 **Builds on:** `docs/plans/2026-10-18-mcp-consolidation.md` (the MCP at `chat.sefaria.org/mcp`, `/mcp/user`, `/mcp/admin`)
 
 ## Summary
@@ -379,17 +379,43 @@ passages with at least one finding; sidebar opens of findings.
 | Client support is beta and uneven | Mirror tools; the Library Assistant uses the same catalog |
 | FastMCP's skills API is new (4.2) and changed once already | Step 0 spike; pin the minor version; fallback is custom `skills/list` and `skills/get` handlers, as pre-4.2 servers do |
 
-## Build order
+## Build status
 
-0. **Spike.** Bump `fastmcp` to 4.2, serve one skill on dev, load it from Claude, Claude
-   Code and MCP Inspector over the stateless endpoint. Confirm `GET /api/sheets/<id>`
-   returns `expandedRefs` to an `mcp` token (the save response does).
-1. **Serve skills.** Catalog directory, extension on `/mcp` and `/mcp/user`,
-   validator, one dummy skill as the fixture.
-2. **Findings.** `findings` app, internal write endpoint, `save_finding`,
-   `search_findings`, read API, admin takedown, nightly sync.
-3. **Sidebar.** Sefaria-Project plan and pull request against the read API.
-4. **Store.** Public repo, contribution guide, eval gate, browse page.
+0. **Spike.** [x] FastMCP 4.2.6 serves skills over the stateless endpoint. Verified with
+   FastMCP's client (`read_skill` checks every digest) and with the MCP Inspector CLI
+   (`--protocol-era modern --method skills/list --verify --require-digests`: no
+   conformance errors). [x] `GET /api/sheets/<id>` returns `includedRefs` and
+   `expandedRefs` (checked live against sefaria.org). [ ] Load from claude.ai and Claude
+   Code: needs a deployed or reachable endpoint (chat-dev).
+1. **Serve skills.** [x] `server/skills_catalog/` (two dummy skills under two dummy
+   methods, covering both authorization paths), served on `/mcp` and `/mcp/user`,
+   validator in CI.
+2. **Findings.** [x] `findings` app, `POST /api/findings`, `save_finding`,
+   `search_findings`, read API, `hide_finding`, `sync_findings`, `seed_demo_findings`.
+   [x] Browse pages at `/findings/` (added on request: methods, skills, passages, the
+   cluster of refs behind each finding).
+3. **Sidebar.** [ ] Sefaria-Project `reader-next` (see Part 5).
+4. **Store.** [ ] Public repo, contribution guide, eval gate. The browse page is done.
+
+Not done, for deployment (AppliedAI-Infrastructure and settings): a nightly CronJob for
+`sync_findings`; `FINDINGS_API_URL` if the MCP pods should reach Django in-cluster
+instead of through the public host; a CODEOWNERS rule so only staff change
+`catalog.yaml`; a live check from claude.ai and Claude Code on chat-dev.
+
+### Decisions made while building
+
+| Decision | Why |
+|---|---|
+| Skills are flat (`skill://<name>/SKILL.md`); the method is metadata, not a path segment. | One less thing to keep in sync; hosts namespace by server anyway. |
+| No custom mirror tools: FastMCP's `ResourcesAsTools` adds `list_resources` and `read_resource`. | `skills/list` needs the 2026-07-28 protocol; clients on the older one can still read skills. |
+| Not on the agent surface: the Library Assistant gets neither the skills nor the findings tools. | Adding tools changes every production conversation and needs a Braintrust eval first. A later change. |
+| The MCP process records findings with its own 5-minute write token (`aud: findings`, signed with `MCP_OAUTH_SIGNING_KEY`), not an internal unauthenticated endpoint and not the user's access token. | The MCP pods stay without database credentials; nothing is passed through. |
+| Django reads the sheet from Sefaria itself and takes the segments from its `expandedRefs`; the request only says which cited source has which role. | A caller cannot attach a finding to passages its sheet does not hold, and refs are normalized by Sefaria's own code. |
+| Each segment takes the strongest role of the sources covering it. A cited source that matches no segment keeps a row only while the sheet still includes it. | Overlapping citations stay correct, and a source removed from the sheet stops showing. |
+| One finding per sheet; saving again updates it. | The sheet is the unit; makes saving idempotent. |
+| Withdrawing authorization (author or skill) hides that skill's findings at once; staff hide single findings with `hide_finding`. | The chat app has no Django admin; a management command is the smallest takedown. |
+| 20 new findings per user per 24 hours (`FINDINGS_DAILY_LIMIT`). | Findings are public at once, with no per-finding review. |
+| `fastmcp>=4.2.6,<4.3`. | Its skills API replaced 4.1's and is marked experimental. |
 
 ## Open questions
 
@@ -397,6 +423,5 @@ passages with at least one finding; sidebar opens of findings.
    author launch first is a later decision.
 2. Decided: no per-finding review; authorization is per author or per skill.
 3. Decided: the sidebar calls `chat.sefaria.org` directly.
-4. Does `search_findings` belong on the anonymous `/mcp`? It is read-only and public
-   content, so the proposal says yes.
+4. Decided (as proposed): `search_findings` is on the anonymous `/mcp`.
 5. Public catalog repo from day one, or only when outside submissions open?
