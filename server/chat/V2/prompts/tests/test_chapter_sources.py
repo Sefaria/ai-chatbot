@@ -86,21 +86,45 @@ def test_personalized_turn_meta_has_prompt_versions(lab_on):  # noqa: F811
     assert meta["chapter_sha"] == chapters.chapter_sha("personalization_answering")
 
 
-def test_settings_default_to_live_braintrust_slugs():
-    from django.conf import settings
+SLUG_VARS = {
+    "PERSONALIZATION_PROMPT_SLUG_ANSWERING": "la-p13n-personalization-answering",
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_USED": "la-p13n-personalization-profile-used",
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER": "la-p13n-profile-writer",
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION": "la-p13n-profile-extraction",
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM": "la-p13n-profile-dream",
+    "PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT": "la-p13n-profile-edit",
+}
 
-    assert {
-        "ANSWERING": settings.PERSONALIZATION_PROMPT_SLUG_ANSWERING,
-        "PROFILE_USED": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_USED,
-        "PROFILE_WRITER": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER,
-        "PROFILE_EXTRACTION": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION,
-        "PROFILE_DREAM": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM,
-        "PROFILE_EDIT": settings.PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT,
-    } == {
-        "ANSWERING": "la-p13n-personalization-answering",
-        "PROFILE_USED": "la-p13n-personalization-profile-used",
-        "PROFILE_WRITER": "la-p13n-profile-writer",
-        "PROFILE_EXTRACTION": "la-p13n-profile-extraction",
-        "PROFILE_DREAM": "la-p13n-profile-dream",
-        "PROFILE_EDIT": "la-p13n-profile-edit",
-    }
+
+def _production_slug_defaults(monkeypatch):
+    """Evaluate the slug assignments of settings.py alone, ignoring test settings."""
+    import ast
+    from pathlib import Path
+
+    from chatbot_server import settings as production
+
+    tree = ast.parse(Path(production.__file__).read_text())
+    lines = [
+        ast.get_source_segment(Path(production.__file__).read_text(), node)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and getattr(node.targets[0], "id", "") in SLUG_VARS
+    ]
+    namespace = {"os": __import__("os")}
+    exec("\n".join(lines), namespace)  # noqa: S102 - our own settings source
+    return {name: namespace[name] for name in SLUG_VARS}
+
+
+def test_settings_default_to_live_braintrust_slugs(monkeypatch):
+    for name in SLUG_VARS:
+        monkeypatch.delenv(name, raising=False)
+    assert _production_slug_defaults(monkeypatch) == SLUG_VARS
+
+
+def test_settings_slug_env_override_wins(monkeypatch):
+    for name in SLUG_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM", "custom-slug")
+    slugs = _production_slug_defaults(monkeypatch)
+    assert slugs["PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM"] == "custom-slug"
+    assert slugs["PERSONALIZATION_PROMPT_SLUG_ANSWERING"] == SLUG_VARS["PERSONALIZATION_PROMPT_SLUG_ANSWERING"]
