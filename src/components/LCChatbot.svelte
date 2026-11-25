@@ -2709,20 +2709,27 @@
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
                 {#if isLoggedIn}
-                  <!-- One item for the Library Assistant tab (on/off and personalization); replaces
-                       "Disable in settings" and "Personalization". Same Lucide gear as the staff Settings item. -->
-                  <a class="menu-item" aria-label={$_('assistant.menu.la_settings.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <circle cx="12" cy="12" r="3"></circle>
-                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .64.38 1.22.97 1.49.22.1.46.15.7.15H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                                      </svg>
-                    {$_('assistant.menu.la_settings')}
+                  <!-- Personalization opens the Personalized answers section of the Library Assistant tab. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2 21a8 8 0 0 1 10.821-7.487"></path>
+                      <path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path>
+                      <circle cx="10" cy="8" r="5"></circle>
+                    </svg>
+                    {$_('assistant.menu.personalization')}
                   </a>
                 {/if}
                 <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
                   <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
                   {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
+                {#if isLoggedIn}
+                  <!-- Disable opens the top of the Library Assistant tab, at the on/off switch. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.optout')}
+                  </a>
+                {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
                   {$_('assistant.menu.feedback')}

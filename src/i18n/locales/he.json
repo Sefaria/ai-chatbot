@@ -53,8 +53,6 @@
     "assistant.menu.restart.aria": "התחלת שיחה מחדש",
     "assistant.menu.help.aria": "עזרה",
     "assistant.menu.optOut.aria": "כיבוי בהגדרת",
-    "assistant.menu.la_settings": "הגדרות",
-    "assistant.menu.la_settings.aria": "הגדרות עוזר הספרייה",
     "assistant.menu.personalization": "Personalization",
     "assistant.menu.personalization.aria": "Personalization settings",
     "assistant.personalization.notice": "מעכשיו, התשובות מותאמות לך.",

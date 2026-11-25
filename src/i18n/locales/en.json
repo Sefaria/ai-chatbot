@@ -23,8 +23,6 @@
     "assistant.menu.restart.aria": "Restart convo",
     "assistant.menu.help.aria": "Get help",
     "assistant.menu.optOut.aria": "Opt-out",
-    "assistant.menu.la_settings": "Settings",
-    "assistant.menu.la_settings.aria": "Library Assistant settings",
     "assistant.menu.personalization": "Personalization",
     "assistant.menu.personalization.aria": "Personalization settings",
     "assistant.personalization.notice": "From now on, answers are tailored to you.",
