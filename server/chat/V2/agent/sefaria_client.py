@@ -178,6 +178,11 @@ class SefariaClient:
         self._session_token: str | None = None
         self._ref_cache: dict[str, dict | None] = {}
 
+    @property
+    def user_id(self) -> str | None:
+        """The signed-in Sefaria user this client acts for, if any."""
+        return self._user_id
+
     def set_user_session(self, user_id: str | None, session_token: str | None) -> None:
         """Store per-request auth context for endpoints that require user session access."""
         self._user_id = user_id
@@ -654,6 +659,29 @@ class SefariaClient:
 
         data = await self._get_json(f"api/sheets/{encoded_sheet_id}", headers=headers)
         return self._optimize_source_sheet_response(data)
+
+    async def get_source_sheet_refs(self, sheet_id: int | str) -> dict[str, Any]:
+        """A sheet's owner, status and the refs Sefaria computed on its last save.
+
+        ``includedRefs`` are its sources' refs; ``expandedRefs`` are the segments they cover,
+        in normal form. Raises ValueError when Sefaria reports no such sheet.
+        """
+        headers = {"Accept": "application/json"}
+        if self._session_token:
+            headers["X-Session-ID"] = self._session_token
+        data = await self._get_json(f"api/sheets/{quote(str(sheet_id), safe='')}", headers=headers)
+        if not isinstance(data, dict) or "error" in data or "id" not in data:
+            message = data.get("error") if isinstance(data, dict) else None
+            raise ValueError(message or f"Source sheet {sheet_id} was not found")
+        return {
+            "id": data.get("id"),
+            "owner": data.get("owner"),
+            "title": data.get("title") or "",
+            "status": data.get("status"),
+            "dateModified": data.get("dateModified") or "",
+            "includedRefs": list(data.get("includedRefs") or []),
+            "expandedRefs": list(data.get("expandedRefs") or []),
+        }
 
     async def create_source_sheet(
         self, title: str, summary: str, sources: list[dict[str, Any]]

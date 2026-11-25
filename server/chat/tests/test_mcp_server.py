@@ -81,6 +81,7 @@ PUBLIC_TOOLS = {
     "get_manuscript_image",
     "validate_refs",
     "validate_response_links",
+    "search_findings",
 }
 
 # Added by FastMCP's ResourcesAsTools transform, so clients that only call tools can read skills.
