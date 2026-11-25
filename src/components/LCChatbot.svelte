@@ -3,7 +3,7 @@
 <script>
   import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
-  import { hideProfileUsed, isProfileUsedLine } from '../lib/profileUsed.js';
+  import { hideProfileUsed, isProfileUsedLine, chatIsPersonalized as hasPersonalizedAnswer } from '../lib/profileUsed.js';
   import { settingsHref } from '../lib/settingsLink.js';
   import { resyncPlayback } from '../lib/playbackSync.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
@@ -25,7 +25,7 @@
     fetchPersonalizationState
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
-  import { fade } from 'svelte/transition';
+  import { fade, fly } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry, forgetSheetEntry, isOnSheetEntry, adoptSheetEntry } from '../lib/sheetHistory.js';
   import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
@@ -380,6 +380,40 @@
       : !!hideLauncherAttr && hideLauncherAttr !== 'false'
   );
   let showFloatingButtonModal = $state(false);
+  // Personalization toast (above the text box). It appears with a chat's first personalized answer. Dismiss (✕) or
+  // Manage closes it for good. Left alone, it stays up and comes back with the first personalized answer of the
+  // next chat. Kept in this browser for now (an account setting later).
+  let personalizationToastDismissed = $state(!!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false));
+  let chatIsPersonalized = $derived(hasPersonalizedAnswer(messages));
+  let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
+  // The toast is a layout block below the message list: when it mounts it shrinks the list. A reader at the
+  // end of the answer stays there (measured before the DOM changes, scrolled after).
+  // A new non-streamed answer is the exception: the response handler sets toastLeavesScroll, and its
+  // scrollToResponseStart() decides where the reader lands.
+  let toastKeepsEnd = false;
+  let toastWasShown = false;
+  let toastLeavesScroll = false;
+  $effect.pre(() => {
+    const shown = showPersonalizationToast;
+    if (shown && !toastWasShown && messageListRef && !toastLeavesScroll) {
+      toastKeepsEnd = messageListRef.scrollHeight - messageListRef.scrollTop - messageListRef.clientHeight < 80;
+    }
+    toastWasShown = shown;
+    toastLeavesScroll = false;
+  });
+  $effect(() => {
+    if (showPersonalizationToast && toastKeepsEnd) {
+      toastKeepsEnd = false;
+      scrollToBottom({ instant: true });
+    }
+  });
+  const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function dismissPersonalizationToast({ focusInput = true } = {}) {
+    personalizationToastDismissed = true;
+    setStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, true);
+    // On phones focusing the text box would open the keyboard over the answer: the panel takes focus instead
+    if (focusInput) isFullscreen ? panelRef?.focus({ preventScroll: true }) : inputRef?.focus();
+  }
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -484,6 +518,8 @@
     clearLoggedInChatWhenLoggedOut(!!userId);
     // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
     if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
+    // Logout cleared the toast's dismissal too: the next user on this browser sees it again
+    personalizationToastDismissed = !!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
@@ -1870,7 +1906,10 @@
 
       const completedMessages = [...sentMessages, ...narrationMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
+        toastLeavesScroll = !didStream;
         messages = completedMessages;
+        // The flag is for this update only (the toast may not appear with this answer)
+        tick().then(() => (toastLeavesScroll = false));
         saveMessagesToStorage();
         // A streamed answer is already in view; jumping to its start would be jarring.
         if (!didStream) scrollToResponseStart();
@@ -2243,11 +2282,6 @@
 
     const href = anchor.getAttribute('href');
     if (!href) return;
-
-    // The personalization notice's links go to Sefaria's settings pages, which are server-rendered,
-    // not routes of the host's React app: the host's in-app router ignores them, so the browser
-    // follows the href (same tab), like the menu item.
-    if (anchor.closest('.personalization-notice')) return;
 
     e.preventDefault();
 
@@ -2692,11 +2726,27 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
-                {#if !isFullscreen}
-                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
-                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
+                {#if isLoggedIn}
+                  <!-- Personalization opens the Personalized answers section of the Library Assistant tab. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2 21a8 8 0 0 1 10.821-7.487"></path>
+                      <path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path>
+                      <circle cx="10" cy="8" r="5"></circle>
+                    </svg>
+                    {$_('assistant.menu.personalization')}
+                  </a>
+                {/if}
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
+                {#if isLoggedIn}
+                  <!-- Disable opens the top of the Library Assistant tab, at the on/off switch. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.optout')}
+                  </a>
                 {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
@@ -2706,20 +2756,6 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
-                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
-                </button>
-                {#if isLoggedIn}
-                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
-                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                    {$_('assistant.menu.optout')}
-                  </a>
-                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
-                    <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
-                    {$_('assistant.menu.personalization')}
-                  </a>
-                {/if}
               </div>
             {/if}
           </div>
@@ -2976,15 +3012,6 @@
               <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
             <a class="profile-used-edit" href={settingsHref('profile')}>{$_('assistant.personalization.edit')}</a>
             {/if}
-            {#if feedbackProps?.personalizationNotice}
-              <div class="la-personalization-notice">
-                <p class="personalization-notice" data-testid="personalization-notice">
-                  {$_('assistant.personalization.notice')}
-                  <a href={settingsHref('personalization')}>{$_('assistant.personalization.configure')}</a>
-                  <a href={settingsHref('about-personalization')}>{$_('assistant.personalization.learn_more')}</a>
-                </p>
-              </div>
-            {/if}
             {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
               <div class="message-meta">
                 {#if feedbackProps?.status === STATUS_FAILED}
@@ -3138,6 +3165,21 @@
       {#if stopErrors[sessionId]}
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
       {/if}
+      <!-- Live region: always present (empty), so a screen reader announces the toast inserted into it -->
+      <div role="status" data-testid="personalization-live-region">
+        {#if showPersonalizationToast}
+          <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
+          <div class="p13n-toast" data-testid="personalization-toast"
+            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+            <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
+            <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+              onclick={() => dismissPersonalizationToast()}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        {/if}
+      </div>
       <!-- Input Footer -->
       {#if loginRequired}
         <!-- The free answers are used up: the login prompt replaces the text box.
@@ -5165,25 +5207,86 @@
     font-size: var(--lc-font-size-sm);
   }
 
-  /* The notice's container, as the product owner set it */
-  .la-personalization-notice {
-    margin: 6px 0 0;
-    background-color: #f3e8ff;
-    border: 2px solid #4c1d95;
-    color: #2e1065;
-    padding: 16px;
-    border-radius: 8px;
-  }
-
-  .personalization-notice {
-    margin: 0;
+  /* Personalization toast: a white card resting on the text box. Tokens from @sefaria/design-system;
+     the shadow and corner radius have no semantic token yet. */
+  .p13n-toast {
+    /* One line: text, action, Dismiss. In a too-narrow panel the text wraps, the buttons stay put. */
+    display: flex;
+    align-items: center;
+    column-gap: var(--spacing-xsmall);
+    margin: 0 var(--spacing-medium) var(--spacing-small);
+    padding-block: var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
+    background: var(--surface-page);
+    border: var(--border-width-thin, 1px) solid var(--border-default);
+    border-radius: var(--global-dimension-150);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+    color: var(--text-primary);
     font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
   }
 
-  .personalization-notice a {
-    margin-inline-start: 8px;
-    color: inherit;
+  .p13n-toast-text {
+    /* Takes the spare width, so Manage and Dismiss sit at the end of the line */
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* Manage: Developer Settings' inline link (devE-inlineLink): underlined, no fill */
+  .p13n-toast-action {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--spacing-xsmall);
+    color: var(--text-link);
+    font-weight: 600;
     text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+
+  .p13n-toast-action:hover {
+    /* As Developer Settings' inline link: navy-1000 */
+    color: var(--action-primary-pressed);
+  }
+
+  /* Dismiss: Developer Settings' icon button, color only and never a background */
+  .p13n-toast-close {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--global-dimension-50);
+    background: transparent;
+    color: var(--icon-muted);
+    cursor: pointer;
+  }
+
+  .p13n-toast-close:hover {
+    color: var(--action-primary);
+  }
+
+  .p13n-toast-action:focus-visible,
+  .p13n-toast-close:focus-visible {
+    /* --border-focus (gray-300) is under 3:1 on white, so the primary action color, as the stop button */
+    outline: 2px solid var(--action-primary);
+    outline-offset: 1px;
+  }
+
+  /* Phones: 44px touch targets */
+  .mode-fullscreen .p13n-toast-action {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .p13n-toast-close {
+    width: 44px;
+    height: 44px;
   }
 
   /* The two answers stack (Personalized, then Plain) and sit side by side only when the panel,

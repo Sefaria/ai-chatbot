@@ -296,8 +296,7 @@ const askOnce = async (s, question, { fresh = false, compare = false } = {}) => 
   return { la, text: last };
 };
 const words = (t, n = 15) => t.replace(/\s+/g, ' ').trim().split(' ').slice(0, n).join(' ');
-const NOTICE = 'personalization-notice';
-const lastAnswerNotice = (la) => la.lastAnswer.getByTestId(NOTICE);
+const toastOf = (la) => la.toast;
 
 let q1;
 let idle = {};
@@ -370,7 +369,7 @@ step(2, 'Instructions: 301 characters cannot be saved, 300 saves, date shows aft
 });
 
 // ---------------------------------------------------------------------------------------------- 3
-step(3, 'Chat before any Profile: three answers (one Chassidic), no notice', async (browser) => {
+step(3, 'Chat before any Profile: three answers (one Chassidic), no toast', async (browser) => {
   const s = await signIn(browser, 1);
   const qs = [
     "Give me a two-sentence overview of this week's Torah portion.",
@@ -380,11 +379,11 @@ step(3, 'Chat before any Profile: three answers (one Chassidic), no notice', asy
   for (const [i, q] of qs.entries()) {
     const { la, text } = await ask(s, q, { fresh: i === 0 });
     expect(text.length).toBeGreaterThan(40);
-    await expect(lastAnswerNotice(la)).toHaveCount(0);
+    await expect(toastOf(la)).toHaveCount(0);
     quote(`answer ${i + 1} (first 15 words)`, words(text));
     await shot(s.page, `03-chat-before-profile-${i + 1}`);
   }
-  quote('notice', 'none shown on any of the three answers');
+  quote('toast', 'none shown on any of the three answers');
 });
 
 // ---------------------------------------------------------------------------------------------- 4
@@ -401,21 +400,21 @@ step(4, 'Run now writes a Profile (headings, "by LA")', async (browser) => {
 });
 
 // ---------------------------------------------------------------------------------------------- 5
-step(5, 'Next answer shows the notice with two links; the one after does not', async (browser) => {
+step(5, 'Next answer shows the toast with its Manage link; the one after does not', async (browser) => {
   const s = await signIn(browser, 1);
   const first = await ask(s, 'Can you point me to sources about gratitude?', { fresh: true });
-  const notice = lastAnswerNotice(first.la);
+  const notice = toastOf(first.la);
   await expect(notice).toHaveCount(1);
-  await expect(notice).toContainText('From now on, answers are tailored to you.');
+  await expect(notice).toContainText('Responses are personalized.');
   const links = await notice.getByRole('link').evaluateAll((as) => as.map((a) => `${a.textContent.trim()} -> ${a.getAttribute('href')}`));
-  quote('notice', await notice.innerText());
+  quote('toast', await notice.innerText());
   quote('links', links.join(' ; '));
-  expect(links.length).toBe(2);
-  await shot(s.page, '05-notice-first');
+  expect(links.length).toBe(1);
+  await shot(s.page, '05-toast-first');
   const second = await ask(s, 'And one short teaching from Pirkei Avot on that theme?');
-  await expect(lastAnswerNotice(second.la)).toHaveCount(0);
-  quote('second answer', `no notice; first 15 words: ${words(second.text)}`);
-  await shot(s.page, '05-notice-not-repeated');
+  await expect(toastOf(second.la)).toHaveCount(1); // still up: dismissed only by the reader
+  quote('second answer', `toast unchanged; first 15 words: ${words(second.text)}`);
+  await shot(s.page, '05-toast-second');
 });
 
 // ---------------------------------------------------------------------------------------------- 6
@@ -593,7 +592,7 @@ step(13, 'Dream now runs and reports a status; job health shows both jobs', asyn
 });
 
 // ---------------------------------------------------------------------------------------------- 15
-step(15, 'Profile off: no notice, Run now does nothing', async (browser) => {
+step(15, 'Profile off: no toast, Run now does nothing', async (browser) => {
   const s = await signIn(browser, 1);
   const p = s.page;
   await openSettings(s);
@@ -602,8 +601,8 @@ step(15, 'Profile off: no notice, Run now does nothing', async (browser) => {
   await expect.poll(async () => (await api(s, 'get')).json.profile.enabled).toBe(false);
   try {
     const a = await ask(s, 'Can you suggest a verse about patience?', { fresh: true });
-    await expect(lastAnswerNotice(a.la)).toHaveCount(0);
-    quote('answer', `no notice; first 15 words: ${words(a.text)}`);
+    await expect(toastOf(a.la)).toHaveCount(0);
+    quote('answer', `no toast; first 15 words: ${words(a.text)}`);
     const result = await runJob(s, 'Run now');
     quote('run result line', result);
     expect(result).toMatch(/profile_off|off|nothing|not run|skipped/i);
@@ -812,7 +811,7 @@ step('R1', 'First-load link: Settings with ?chatbot_version as the first page af
   sessions[1] = { context, page, token };
 });
 
-step('R2', 'Chat before any Profile: two English questions in one chat, then a new chat on the Chassidic angle; no notice', async (browser) => {
+step('R2', 'Chat before any Profile: two English questions in one chat, then a new chat on the Chassidic angle; no toast', async (browser) => {
   const s = await signIn(browser, 1);
   const qs = [
     "Give me a two-sentence overview of this week's Torah portion.",
@@ -822,10 +821,10 @@ step('R2', 'Chat before any Profile: two English questions in one chat, then a n
   for (const [i, q] of qs.entries()) {
     const { la, text } = await ask(s, q, { fresh: i === 0 || i === 2 });
     expect(text.length).toBeGreaterThan(40);
-    const notices = await la.lastAnswer.getByTestId(NOTICE).count();
-    quote(`answer ${i + 1} (complete; notices ${notices}; first 15 words)`, words(text));
+    const notices = await toastOf(la).count();
+    quote(`answer ${i + 1} (complete; toasts ${notices}; first 15 words)`, words(text));
     await shot(s.page, `R2-chat-${i + 1}`);
-    expect(notices, `notice on answer ${i + 1}`).toBe(0);
+    expect(notices, `toast on answer ${i + 1}`).toBe(0);
   }
 });
 
@@ -852,17 +851,17 @@ step('R3', 'The Profile appears: Run now, or wait up to 2 minutes for the new-ch
 step('R4', 'Notice on the first personalised answer of a new chat, not on the second', async (browser) => {
   const s = await signIn(browser, 1);
   const first = await ask(s, 'Can you point me to sources about gratitude?', { fresh: true });
-  const notice = lastAnswerNotice(first.la);
+  const notice = toastOf(first.la);
   await expect(notice).toHaveCount(1);
-  await expect(notice).toContainText('From now on, answers are tailored to you.');
+  await expect(notice).toContainText('Responses are personalized.');
   const links = await notice.getByRole('link').evaluateAll((as) => as.map((a) => `${a.textContent.trim()} -> ${a.getAttribute('href')}`));
-  quote('notice', await notice.innerText());
+  quote('toast', await notice.innerText());
   quote('links', links.join(' ; '));
-  expect(links.length).toBe(2);
+  expect(links.length).toBe(1);
   await shot(s.page, 'R4-notice-first');
   const second = await ask(s, 'And one short teaching from Pirkei Avot on that theme?');
-  await expect(lastAnswerNotice(second.la)).toHaveCount(0);
-  quote('second answer', `no notice; first 15 words: ${words(second.text)}`);
+  await expect(toastOf(second.la)).toHaveCount(1); // still up: dismissed only by the reader
+  quote('second answer', `toast unchanged; first 15 words: ${words(second.text)}`);
   await shot(s.page, 'R4-notice-not-repeated');
 });
 

@@ -88,7 +88,8 @@ export function updateSessionActivity(sessionId) {
  * left in this browser (the session, every saved message list and draft), so
  * the next visitor doesn't see it. The user still has it in their chat
  * history on the server. Their "Hide Ask button" choice goes too, so the
- * button shows again; it's saved in their account. A session saved before this
+ * button shows again; it's saved in their account. So does the dismissed
+ * personalization toast, so the next user on this browser sees it. A session saved before this
  * marker existed counts as logged in: until then only logged-in users could chat.
  * @param {boolean} loggedIn - Whether the widget has a user (a user-id)
  */
@@ -101,6 +102,7 @@ export function clearLoggedInChatWhenLoggedOut(loggedIn) {
   removeStorageByPrefix(STORAGE_KEYS.MESSAGES);
   removeStorageByPrefix(STORAGE_KEYS.DRAFT);
   removeStorage(STORAGE_KEYS.HIDE_LAUNCHER);
+  removeStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED);
 }
 
 /**
