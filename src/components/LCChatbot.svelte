@@ -3,10 +3,13 @@
 <script>
   import { designSystemCss, fetchPreviewCss } from '../lib/designSystem.js';
   import { waitForTurn } from '../lib/turnOutcome.js';
+  import { hideProfileUsed, isProfileUsedLine, chatIsPersonalized as hasPersonalizedAnswer } from '../lib/profileUsed.js';
+  import { settingsHref } from '../lib/settingsLink.js';
+  import { resyncPlayback } from '../lib/playbackSync.js';
   import { withStoppedTurns } from '../lib/stoppedTurns.js';
   import stopIcon from '../assets/stop-square.svg';
   import { getStorage, setStorage, removeStorage, STORAGE_KEYS } from '../lib/storage.js';
-  import { getOrCreateSession, updateSessionActivity, generateMessageId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
+  import { getOrCreateSession, updateSessionActivity, generateMessageId, generateSessionId, getOrCreateAnonId, clearLoggedInChatWhenLoggedOut } from '../lib/session.js';
   import {
     sendMessageStream,
     cancelStream,
@@ -18,10 +21,11 @@
     renameConversation,
     deleteConversation,
     identityFields,
-    claimAnonChats
+    claimAnonChats,
+    fetchPersonalizationState
   } from '../lib/api.js';
   import { flushSync, tick, untrack } from 'svelte';
-  import { fade } from 'svelte/transition';
+  import { fade, fly } from 'svelte/transition';
   import { renderMarkdown } from '../lib/markdown.js';
   import { pushSheetEntry, popSheetEntry, hasSheetEntry, forgetSheetEntry, isOnSheetEntry, adoptSheetEntry } from '../lib/sheetHistory.js';
   import { keyboardViewport } from '../lib/keyboardViewport.svelte.js';
@@ -71,6 +75,9 @@
     // account. Absent (logged out, or a host that doesn't save it): this browser's choice.
     'hide-launcher': hideLauncherAttr = null,
     'interface-lang': interfaceLang = 'en',
+    // The host page needs its own space (Sefaria's Settings page): start closed, whatever the saved
+    // state says, without changing it. The pill still opens the assistant.
+    'start-closed': startClosedAttr = false,
     // A Sefaria/design-system branch or commit to preview on top of the bundled tokens. Only
     // non-production hosts pass it (see src/lib/designSystem.js).
     'design-system-preview': designSystemPreview = ''
@@ -94,6 +101,8 @@
   // The attribute arrives uncoerced — it can be a boolean or a string, and "false"
   // is truthy. Normalize here; consumers read isModerator, never the raw attribute.
   let isModerator = $derived(!!isModeratorAttr && isModeratorAttr !== 'false');
+  // A bare attribute arrives as "" and counts as set; absent, false or "false" does not.
+  let startClosed = $derived(startClosedAttr != null && startClosedAttr !== false && startClosedAttr !== 'false');
 
   // GA4 custom dimensions are text.
   let isStaff = $derived(isModerator ? 'true' : 'false');
@@ -143,7 +152,9 @@
   let conversationDrafts = $state({});
   let conversationNavigation = 0;
   let stopErrors = $state({});
-  let isCurrentSessionStopping = $derived(!!activeRequests[sessionId]?.stopping);
+  // Lab compare: the plain arm can outlive the main turn, so it is tracked by chat until it settles.
+  let plainArms = $state({});
+  let isCurrentSessionStopping = $derived(!!(activeRequests[sessionId]?.stopping || plainArms[sessionId]?.stopping));
   let isLoadingHistory = $state(false);
   // A chat picked in History is loading: the open one hides meanwhile (see openConversation)
   let isOpeningConversation = $state(false);
@@ -261,6 +272,26 @@
     .filter(Boolean);
   let loadingWrapperRef = $state(null);
 
+  // Personalization settings state, read once per signed-in user. It drives the two-answer display:
+  // the plain arm is asked for only when the lab is on and the user chose to see the plain response.
+  let showPlainResponse = $state(false);
+  // question messageId -> { status: 'loading'|'done'|'error'|'stopped', markdown }
+  let comparePlain = $state({});
+  // One plain-arm session per main chat, so follow-up questions share context. Memory only.
+  const plainSessionIds = {};
+
+  $effect(() => {
+    const base = apiBaseUrl;
+    const user = userId;
+    if (!base || !user) return;
+    let current = true;
+    fetchPersonalizationState(base, user).then((state) => {
+      if (!current) return;
+      showPlainResponse = state.labEnabled === true && state.testing?.showPlainResponse === true;
+    });
+    return () => { current = false; };
+  });
+
   // Settings state
   let showSettings = $state(false);
   let promptSlugs = $state({
@@ -324,13 +355,21 @@
   let effectiveMaxInputChars = $derived(Math.min(Number(maxInputChars), DEFAULT_MAX_INPUT_CHARS));
 
   let limitReached = $derived(turnCount >= effectiveMaxPrompts);
-  let maxCanvasWidth = $derived(showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH);
-  let visiblePanelWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH + HISTORY_PANEL_WIDTH, Math.min(panelWidth, maxCanvasWidth) + HISTORY_PANEL_WIDTH) : panelWidth);
+  // The window may be as wide as the viewport less a 32px margin; the history panel is inside that bound.
+  let viewportWidth = $state(window.innerWidth);
+  let maxPanelWidth = $derived(Math.max(MIN_WIDTH, viewportWidth - VIEWPORT_MARGIN));
+  // The canvas keeps MIN_WIDTH, but the viewport bound wins when both cannot fit.
+  let maxCanvasWidth = $derived(showHistoryPanel ? Math.max(MIN_WIDTH, maxPanelWidth - HISTORY_PANEL_WIDTH) : maxPanelWidth);
+  let visiblePanelWidth = $derived(showHistoryPanel
+    ? Math.min(maxPanelWidth, Math.max(MIN_WIDTH, Math.min(panelWidth, maxCanvasWidth)) + HISTORY_PANEL_WIDTH)
+    : Math.min(panelWidth, maxPanelWidth));
   let isCurrentSessionSending = $derived(!!sendingSessionIds[sessionId]);
   // Once the answer is fully on screen, the rest of the turn (link validation,
   // persistence) runs invisibly server-side and isn't something to wait on or
   // offer to stop -- only the stretch before that locks the composer.
   let isCurrentSessionFinalizing = $derived(isCurrentSessionSending && !streamTextDone);
+  // Stop stays on while either compare arm is still running.
+  let showStop = $derived(isCurrentSessionFinalizing || !!plainArms[sessionId]);
   let historySearchReady = $derived(historySearchText.trim().length >= getHistorySearchMinChars(historySearchText));
 
   // Menu state
@@ -344,6 +383,40 @@
       : !!hideLauncherAttr && hideLauncherAttr !== 'false'
   );
   let showFloatingButtonModal = $state(false);
+  // Personalization toast (above the text box). It appears with a chat's first personalized answer. Dismiss (✕) or
+  // Manage closes it for good. Left alone, it stays up and comes back with the first personalized answer of the
+  // next chat. Kept in this browser for now (an account setting later).
+  let personalizationToastDismissed = $state(!!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false));
+  let chatIsPersonalized = $derived(hasPersonalizedAnswer(messages));
+  let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
+  // The toast is a layout block below the message list: when it mounts it shrinks the list. A reader at the
+  // end of the answer stays there (measured before the DOM changes, scrolled after).
+  // A new non-streamed answer is the exception: the response handler sets toastLeavesScroll, and its
+  // scrollToResponseStart() decides where the reader lands.
+  let toastKeepsEnd = false;
+  let toastWasShown = false;
+  let toastLeavesScroll = false;
+  $effect.pre(() => {
+    const shown = showPersonalizationToast;
+    if (shown && !toastWasShown && messageListRef && !toastLeavesScroll) {
+      toastKeepsEnd = messageListRef.scrollHeight - messageListRef.scrollTop - messageListRef.clientHeight < 80;
+    }
+    toastWasShown = shown;
+    toastLeavesScroll = false;
+  });
+  $effect(() => {
+    if (showPersonalizationToast && toastKeepsEnd) {
+      toastKeepsEnd = false;
+      scrollToBottom({ instant: true });
+    }
+  });
+  const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function dismissPersonalizationToast({ focusInput = true } = {}) {
+    personalizationToastDismissed = true;
+    setStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, true);
+    // On phones focusing the text box would open the keyboard over the answer: the panel takes focus instead
+    if (focusInput) isFullscreen ? panelRef?.focus({ preventScroll: true }) : inputRef?.focus();
+  }
   // Feedback modal state
   let showFeedbackModal = $state(false);
   let feedbackModalMessageId = $state(null);
@@ -410,7 +483,7 @@
   // Size constraints
   const MIN_WIDTH = 300;
   const MIN_HEIGHT = 456;
-  const MAX_WIDTH = 640;
+  const VIEWPORT_MARGIN = 32;
   const MAX_HEIGHT_RATIO = 0.8;
 
   // Settles once a just-logged-in user's logged-out chats are claimed (see
@@ -448,6 +521,8 @@
     clearLoggedInChatWhenLoggedOut(!!userId);
     // Logged out after a logged-in user hid the Ask button: that cleared it, so show it again
     if (untrack(() => hideLauncherAttr) == null) launcherHidden = getStorage(STORAGE_KEYS.HIDE_LAUNCHER, false);
+    // Logout cleared the toast's dismissal too: the next user on this browser sees it again
+    personalizationToastDismissed = !!getStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, false);
     const { sessionId: sid, isNew } = getOrCreateSession(false, !!userId);
     sessionId = sid;
     isNewSession = isNew;
@@ -456,7 +531,7 @@
     // Restore UI state
     const savedUI = getStorage(STORAGE_KEYS.UI, null);
     // A full-screen sheet never opens by itself: it would hide the page the user came for.
-    isOpen = !untrack(() => isFullscreen) && (savedUI?.isOpen ?? defaultOpen);
+    isOpen = !untrack(() => isFullscreen) && !untrack(() => startClosed) && (savedUI?.isOpen ?? defaultOpen);
     // Except on its own history entry: Back from a host page opened inside the sheet (e.g.
     // Sefaria's sign-up form) returns to the sheet as the visitor left it, open, and the next
     // Back closes it as usual.
@@ -474,7 +549,7 @@
     const savedSize = getStorage(STORAGE_KEYS.SIZE, null);
     if (savedSize) {
       const maxHeight = window.innerHeight * MAX_HEIGHT_RATIO;
-      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, MAX_WIDTH));
+      panelWidth = Math.max(MIN_WIDTH, Math.min(savedSize.width, maxPanelWidth));
       panelHeight = Math.max(MIN_HEIGHT, Math.min(savedSize.height, maxHeight));
     }
 
@@ -869,6 +944,13 @@
   // Removed by the host (e.g. it shows its own page): the next Back is the host's (sheetHistory.js)
   $effect(() => () => forgetSheetEntry());
 
+  // Keep the width bound in step with the window (a saved wider width is clamped by maxPanelWidth)
+  $effect(() => {
+    const sync = () => { viewportWidth = window.innerWidth; };
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  });
+
   $effect(() => {
     const query = window.matchMedia(FULLSCREEN_QUERY);
     const sync = () => {
@@ -946,6 +1028,7 @@
   function handleNewChat() {
     conversationNavigation += 1;
     conversationDrafts[sessionId] = inputText;
+    delete plainSessionIds[sessionId];
     const { sessionId: newSessionId } = getOrCreateSession(true, !!userId);
     chatJustRestarted = true; // Skip sync — session doesn't exist on server yet
     sessionId = newSessionId;
@@ -1023,7 +1106,7 @@
 
   function openHistoryPanel() {
     canvasWidthBeforeHistoryPanel = panelWidth;
-    panelWidth = Math.min(panelWidth, MAX_WIDTH - HISTORY_PANEL_WIDTH);
+    panelWidth = Math.max(MIN_WIDTH, Math.min(panelWidth, maxPanelWidth - HISTORY_PANEL_WIDTH));
     showHistoryPanel = true;
     track('assistant_click', { feature_name: 'chat_history_toggle' });
   }
@@ -1031,7 +1114,7 @@
   function closeHistoryPanel(featureName = 'chat_history_minimize') {
     showHistoryPanel = false;
     if (canvasWidthBeforeHistoryPanel != null) {
-      panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, MAX_WIDTH));
+      panelWidth = Math.max(MIN_WIDTH, Math.min(canvasWidthBeforeHistoryPanel, maxPanelWidth));
       canvasWidthBeforeHistoryPanel = null;
     }
     resetHistorySearchState();
@@ -1225,6 +1308,9 @@
       traceId: null,
       toolCalls: item.toolCalls || null,
       appetizerData: item.appetizerData || null,
+      // Shown with the answer when it was given; the server keeps both on the answer.
+      personalizationNotice: item.personalizationNotice === true,
+      profileUsed: typeof item.profileUsed === 'string' ? item.profileUsed : null,
       locationRef: item.locationRef || (item.role === 'user' ? await pageUrlToLocationRef(item.pageUrl) : null),
       noEntryAnimation: true
     }))));
@@ -1294,7 +1380,7 @@
     showSettings = true;
     settingsError = '';
 
-    if (!settingsLoaded && apiBaseUrl) {
+    if (isModerator && !settingsLoaded && apiBaseUrl) {
       isLoadingSettings = true;
       try {
         const defaults = await fetchPromptDefaults(apiBaseUrl);
@@ -1475,11 +1561,36 @@
     }
   }
 
+  // Lab compare: the same question again with personalization off, in a throwaway session that
+  // is never added to the history. Stop on the main turn stops this one too.
+  async function startPlainStream(request, text, chatId) {
+    plainArms[chatId] = request;
+    comparePlain = { ...comparePlain, [request.messageId]: { status: 'loading', markdown: '' } };
+    // Its own session and message ids, kept so Stop can cancel this turn on the server too.
+    plainSessionIds[chatId] ||= generateSessionId();
+    request.plain = { sessionId: plainSessionIds[chatId], messageId: generateMessageId() };
+    let outcome;
+    try {
+      const response = await sendMessageStream(
+        apiBaseUrl, userId, request.plain.sessionId, text, {}, promptSlugs, originProp, isModerator,
+        promptSlugs.labs === true, { messageId: request.plain.messageId },
+        interfaceLang,
+        { signal: request.controller.signal, contextOverrides: { personalizationMode: 'off', labCompare: true } }
+      );
+      outcome = { status: 'done', markdown: response.markdown || '' };
+    } catch (e) {
+      outcome = e?.name === 'AbortError' ? { status: 'stopped', markdown: '' } : { status: 'error', markdown: '' };
+    }
+    comparePlain = { ...comparePlain, [request.messageId]: outcome };
+    if (plainArms[chatId] === request) delete plainArms[chatId];
+  }
+
   // `source`: where on the host page the question was asked from (only askInNewChat passes one)
   async function handleSend({ source = '' } = {}) {
     await loggedOutChatsClaimed;
     const text = inputText.trim();
-    const isReadyToSend = text && !isCurrentSessionSending && !limitReached;
+    // A live plain arm blocks new turns: its entry must not be overwritten.
+    const isReadyToSend = text && !isCurrentSessionSending && !plainArms[sessionId] && !limitReached;
     if (!isReadyToSend) return;
     const sendingSessionId = sessionId;
     setSessionSending(sendingSessionId, true);
@@ -1490,9 +1601,12 @@
       streamingMarkdown: '', streamTextDone: false, pendingFeedback: null,
       playedStreamText: '', streamQueue: [], streamDelayMs: null, streamTimer: null,
       contentDoneReceived: false, wordRevealTimes: [], synthesizingShownAt: 0,
-      toolWaitActive: false
+      toolWaitActive: false,
+      // The raw streamed text and the part of it handed to playback (see hideProfileUsed).
+      rawStreamText: '', shownStreamText: ''
     };
     const request = activeRequests[sendingSessionId];
+    request.compare = showPlainResponse && !!userId;
     delete stopErrors[sendingSessionId];
     conversationDrafts[sendingSessionId] = '';
     // Reset auto-scroll on each new send
@@ -1617,7 +1731,8 @@
         // A backgrounded session has nothing on screen to hold, so skip the wait.
         const revealAt = isForeground ? Math.max(performance.now(), shownAt + SYNTHESIZING_MIN_MS) : performance.now();
         request.streamTimer = setTimeout(() => {
-          request.streamDelayMs = revealAt - request.streamQueue[0].at;
+          // The queue can be empty here: text handed over can be taken back (see onPartial).
+          request.streamDelayMs = revealAt - (request.streamQueue[0]?.at ?? revealAt);
           // Stop cycling through loading messages, but keep "Synthesizing
           // response" up (no fade) rather than switching to a static
           // "Writing…" label -- it shimmers again whenever playback hits a
@@ -1649,6 +1764,8 @@
       if (!request.streamQueue.length && !request.streamTimer) return Promise.resolve();
       return new Promise((resolve) => { onStreamDrained = resolve; });
     }
+
+    if (request.compare) startPlainStream(request, text, sendingSessionId);
 
     try {
       // Resolve location independently; Stop and chat switching remain responsive.
@@ -1697,7 +1814,23 @@
         },
         onPartial: (delta) => {
           if (request.stopping || !delta) return;
-          queueStreamDelta(delta);
+          // Never let the `<profile_used>` tag (or a start of it) reach the screen. The visible text
+          // can shrink or change at its end, so playback follows it: text handed over before and no
+          // longer visible is taken back from the queue, or from what was already played.
+          request.rawStreamText += delta;
+          const visible = hideProfileUsed(request.rawStreamText);
+          const sync = resyncPlayback(request.shownStreamText, request.streamQueue, visible);
+          request.streamQueue = sync.queue;
+          request.shownStreamText = visible;
+          if (sync.played !== null) {
+            request.playedStreamText = sync.played.split(TOOL_WAIT_MARKER).join('');
+            if (request.streamingMarkdown.length > request.playedStreamText.length) {
+              request.streamingMarkdown = '';
+              showCompleteWords();
+              if (sessionId === sendingSessionId) streamingMarkdown = request.streamingMarkdown;
+            }
+          }
+          if (sync.fresh) queueStreamDelta(sync.fresh);
         },
         onError: (error) => {
           console.error('[lc-chatbot] Stream error:', error);
@@ -1705,7 +1838,9 @@
       }, promptSlugs, originProp, isModerator, promptSlugs.labs === true, {
         messageId: userMessage.messageId,
         timestamp: userMessage.timestamp
-      }, interfaceLang, { signal: request.controller.signal, source }), request.controller.signal);
+      }, interfaceLang, {
+        signal: request.controller.signal, source
+      }), request.controller.signal);
 
       // Let the delayed playback and the last word's fade finish before
       // swapping in the final message.
@@ -1757,6 +1892,9 @@
         content: response.markdown,
         timestamp: response.timestamp,
         status: 'sent',
+        compareKey: request.compare ? request.messageId : undefined,
+        personalizationNotice: response.personalizationNotice === true,
+        profileUsed: typeof response.profileUsed === 'string' ? response.profileUsed : null,
         traceId: response.traceId || null,
         toolCalls: response.toolCalls,
         stats: response.stats,
@@ -1772,7 +1910,10 @@
 
       const completedMessages = [...sentMessages, ...narrationMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
+        toastLeavesScroll = !didStream;
         messages = completedMessages;
+        // The flag is for this update only (the toast may not appear with this answer)
+        tick().then(() => (toastLeavesScroll = false));
         saveMessagesToStorage();
         // A streamed answer is already in view; jumping to its start would be jarring.
         if (!didStream) scrollToResponseStart();
@@ -1957,11 +2098,27 @@
 
   async function handleStop() {
     const targetSessionId = sessionId;
-    const request = activeRequests[targetSessionId];
+    const mainRequest = activeRequests[targetSessionId];
+    const request = mainRequest || plainArms[targetSessionId];
     if (!request || request.stopping) return;
     request.stopping = true;
     stopThinkingMessages();
     delete stopErrors[targetSessionId];
+    if (!mainRequest) {
+      // The main turn already settled; only the lab's plain arm is still running.
+      try {
+        await cancelStream(apiBaseUrl, { userId, ...request.plain });
+      } catch {
+        // Fall through: aborting the stream below still ends it on this side.
+      }
+      request.controller.abort();
+      request.stopping = false;
+      return;
+    }
+    if (request.plain) {
+      // The lab's plain arm is its own server turn; best effort, the main cancel decides the UI.
+      cancelStream(apiBaseUrl, { userId, ...request.plain }).catch(() => {});
+    }
     try {
       const outcome = await cancelStream(apiBaseUrl, {
         userId, sessionId: targetSessionId, messageId: request.messageId
@@ -2102,8 +2259,7 @@
 
       if (allowHorizontal) {
         const widthDelta = resizeEdge.includes('w') ? -dx : dx;
-        const maxWidth = showHistoryPanel ? MAX_WIDTH - HISTORY_PANEL_WIDTH : MAX_WIDTH;
-        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxWidth));
+        panelWidth = Math.max(MIN_WIDTH, Math.min(startWidth + widthDelta, maxCanvasWidth));
       }
 
       if (allowVertical) {
@@ -2574,11 +2730,27 @@
                   <img src="{staticIconsBaseUrl}/circle-plus.svg" alt="" width="18" height="18" />
                   {$_('assistant.history.header.new.tooltip')}
                 </button>
-                {#if !isFullscreen}
-                <button class="menu-item" aria-label={$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')} onclick={() => { toggleMode(); closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{(mode === 'floating') ? 'expand' : 'picture-in-picture-2'}.svg" alt="" width="18" height="18" />
-                  {$_(mode === 'floating' ? 'assistant.menu.dock' : 'assistant.menu.undock')}
+                {#if isLoggedIn}
+                  <!-- Personalization opens the Personalized answers section of the Library Assistant tab. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.personalization.aria')} href={settingsHref('personalization')} role="menuitem" onclick={closeMenu}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M2 21a8 8 0 0 1 10.821-7.487"></path>
+                      <path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path>
+                      <circle cx="10" cy="8" r="5"></circle>
+                    </svg>
+                    {$_('assistant.menu.personalization')}
+                  </a>
+                {/if}
+                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
+                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
+                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
                 </button>
+                {#if isLoggedIn}
+                  <!-- Disable opens the top of the Library Assistant tab, at the on/off switch. -->
+                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href={settingsHref('')} role="menuitem" onclick={closeMenu}>
+                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
+                    {$_('assistant.menu.optout')}
+                  </a>
                 {/if}
                 <a class="menu-item" aria-label={$_('assistant.menu.feedback')} href={$_('assistant.menu.feedbackURL')} target="_blank" rel="noopener noreferrer" role="menuitem" onclick={closeMenu}>
                   <img src="{staticIconsBaseUrl}/message-square.svg" alt="" width="18" height="18" />
@@ -2588,16 +2760,6 @@
                   <img src="{staticIconsBaseUrl}/info.svg" alt="" width="16" height="16" />
                   {$_('assistant.menu.help')}
                 </a>
-                <button class="menu-item" aria-label={$_('assistant.menu.floating_button_aria')} onclick={() => { showFloatingButtonModal = true; closeMenu(); }} role="menuitem">
-                  <img src="{staticIconsBaseUrl}/{launcherHidden ? 'eye' : 'eye-off'}.svg" alt="" width="18" height="18" />
-                  {$_(launcherHidden ? 'assistant.menu.show_floating_button' : 'assistant.menu.hide_floating_button')}
-                </button>
-                {#if isLoggedIn}
-                  <a class="menu-item" aria-label={$_('assistant.menu.optOut.aria')} href="/settings/account" role="menuitem" onclick={closeMenu}>
-                    <img src="{staticIconsBaseUrl}/toggle-right.svg" alt="" width="16" height="16" />
-                    {$_('assistant.menu.optout')}
-                  </a>
-                {/if}
               </div>
             {/if}
           </div>
@@ -2850,6 +3012,10 @@
             <div class="message-content">
               {@html renderMarkdown(content)}
             </div>
+            {#if isProfileUsedLine(feedbackProps?.profileUsed)}
+              <p class="profile-used" data-testid="profile-used">{feedbackProps.profileUsed}</p>
+            <a class="profile-used-edit" href={settingsHref('profile')}>{$_('assistant.personalization.edit')}</a>
+            {/if}
             {#if feedbackProps?.status === STATUS_FAILED || (showFeedback && feedbackProps)}
               <div class="message-meta">
                 {#if feedbackProps?.status === STATUS_FAILED}
@@ -2900,7 +3066,35 @@
                   <TopicAppetizer collapsed data={normalizeAppetizerData(item.appetizerData)} onClickTopic={handleAppetizerClick} />
                 </Accordion>
               {/if}
-              {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+              {#if item.compareKey && comparePlain[item.compareKey]}
+                {@const plain = comparePlain[item.compareKey]}
+                <div class="lab-compare-wrap">
+                <div class="lab-compare" data-testid="lab-compare">
+                  <div class="lab-compare-col" data-testid="lab-compare-personalized">
+                    <div class="lab-compare-label">Personalized</div>
+                    {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+                  </div>
+                  <div class="lab-compare-col" data-testid="lab-compare-plain">
+                    <div class="lab-compare-label">Plain</div>
+                    <div class="message assistant no-entry-animation">
+                      <div class="message-content">
+                        {#if plain.status === 'loading'}
+                          <p>Loading…</p>
+                        {:else if plain.status === 'error'}
+                          <p>The plain answer failed.</p>
+                        {:else if plain.status === 'stopped'}
+                          <p>Stopped.</p>
+                        {:else}
+                          {@html renderMarkdown(plain.markdown)}
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              {:else}
+                {@render assistantBubble(item.content, item.status === 'sent' && !!item.traceId, item)}
+              {/if}
             </div>
           {:else}
             <div class="message user" class:no-entry-animation={item.noEntryAnimation}>
@@ -2986,6 +3180,21 @@
       {#if stopErrors[sessionId]}
         <p class="stop-error" role="alert">{$_('assistant.stop.error')}</p>
       {/if}
+      <!-- Live region: always present (empty), so a screen reader announces the toast inserted into it -->
+      <div role="status" data-testid="personalization-live-region">
+        {#if showPersonalizationToast}
+          <!-- Personalization toast: sits on the text box, dismissable (see showPersonalizationToast) -->
+          <div class="p13n-toast" data-testid="personalization-toast"
+            transition:fly={{ y: 8, duration: reducedMotion() ? 0 : 200 }}>
+            <p class="p13n-toast-text">{$_('assistant.personalization.toast.text')}</p>
+            <a class="p13n-toast-action" href={settingsHref('personalization')} onclick={() => dismissPersonalizationToast({ focusInput: false })}>{$_('assistant.personalization.toast.configure')}</a>
+            <button type="button" class="p13n-toast-close" aria-label={$_('assistant.personalization.toast.dismiss_aria')}
+              onclick={() => dismissPersonalizationToast()}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        {/if}
+      </div>
       <!-- Input Footer -->
       {#if loginRequired}
         <!-- The free answers are used up: the login prompt replaces the text box.
@@ -3008,7 +3217,7 @@
             rows="1"
             disabled={isCurrentSessionFinalizing || limitReached}
           ></textarea>
-          {#if isCurrentSessionFinalizing}
+          {#if showStop}
             <Tooltip text={isFullscreen ? '' : $_('assistant.stop.tooltip')}>
               <button type="button" class="stop-btn" onclick={handleStop}
                 disabled={isCurrentSessionStopping} aria-label={$_('assistant.stop.aria')}>
@@ -3019,7 +3228,7 @@
           <button
             class="send-btn"
             onclick={() => handleSend()}
-            disabled={!inputText.trim() || isCurrentSessionSending || limitReached}
+            disabled={!inputText.trim() || isCurrentSessionSending || !!plainArms[sessionId] || limitReached}
             aria-label={$_('assistant.input.send.tooltip')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4414,11 +4623,9 @@
     margin-bottom: 10px;
   }
 
-  .message-content {
-    max-width: 560px;
-  }
-
   .message.user .message-content {
+    /* Answers fill the window's width; the user's own bubble keeps the Figma 560px cap. */
+    max-width: 560px;
     padding: 12px 16px;
     font-size: var(--lc-font-size);
     word-wrap: break-word;
@@ -5036,6 +5243,130 @@
   .settings-reset:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  /* Personalization: the notice under an answer and the two-column answer */
+  .profile-used {
+    margin: 8px 0 0;
+    font-size: var(--lc-font-size-sm);
+    color: #1a7f37;
+  }
+
+  .profile-used-edit {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: var(--lc-font-size-sm);
+  }
+
+  /* Personalization toast: a white card resting on the text box. Tokens from @sefaria/design-system;
+     the shadow and corner radius have no semantic token yet. */
+  .p13n-toast {
+    /* One line: text, action, Dismiss. In a too-narrow panel the text wraps, the buttons stay put. */
+    display: flex;
+    align-items: center;
+    column-gap: var(--spacing-xsmall);
+    margin: 0 var(--spacing-medium) var(--spacing-small);
+    padding-block: var(--spacing-xsmall);
+    padding-inline: var(--spacing-medium) var(--spacing-xsmall);
+    background: var(--surface-page);
+    border: var(--border-width-thin, 1px) solid var(--border-default);
+    border-radius: var(--global-dimension-150);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+    color: var(--text-primary);
+    font-size: var(--lc-font-size-sm);
+    line-height: 1.4;
+  }
+
+  .p13n-toast-text {
+    /* Takes the spare width, so Manage and Dismiss sit at the end of the line */
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* Manage: Developer Settings' inline link (devE-inlineLink): underlined, no fill */
+  .p13n-toast-action {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 var(--spacing-xsmall);
+    color: var(--text-link);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+
+  .p13n-toast-action:hover {
+    /* As Developer Settings' inline link: navy-1000 */
+    color: var(--action-primary-pressed);
+  }
+
+  /* Dismiss: Developer Settings' icon button, color only and never a background */
+  .p13n-toast-close {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--global-dimension-50);
+    background: transparent;
+    color: var(--icon-muted);
+    cursor: pointer;
+  }
+
+  .p13n-toast-close:hover {
+    color: var(--action-primary);
+  }
+
+  .p13n-toast-action:focus-visible,
+  .p13n-toast-close:focus-visible {
+    /* --border-focus (gray-300) is under 3:1 on white, so the primary action color, as the stop button */
+    outline: 2px solid var(--action-primary);
+    outline-offset: 1px;
+  }
+
+  /* Phones: 44px touch targets */
+  .mode-fullscreen .p13n-toast-action {
+    min-height: 44px;
+  }
+
+  .mode-fullscreen .p13n-toast-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The two answers stack (Personalized, then Plain) and sit side by side only when the panel,
+     not the viewport, has room for two readable columns. */
+  .lab-compare-wrap {
+    container-type: inline-size;
+  }
+
+  .lab-compare {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  @container (min-width: 640px) {
+    .lab-compare {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .lab-compare-col {
+    min-width: 0;
+  }
+
+  .lab-compare-label {
+    font-size: var(--lc-font-size-sm);
+    font-weight: 600;
+    color: var(--lc-text-secondary);
+    padding: 0 0 4px;
   }
 
   /* Clearing animation for message list */

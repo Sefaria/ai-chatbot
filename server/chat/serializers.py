@@ -5,6 +5,7 @@ Serializers for chat API.
 from rest_framework import serializers
 
 from .models import ChatMessage
+from .V2.personalization import gate as personalization_gate
 
 
 class MessageContextSerializer(serializers.Serializer):
@@ -19,6 +20,14 @@ class MessageContextSerializer(serializers.Serializer):
     isStaff = serializers.BooleanField(required=False, default=False)
     labs = serializers.BooleanField(required=False, default=False)
     forceStreamBreakBeforeFinal = serializers.BooleanField(required=False, default=False)
+    # Personalization overrides: honoured only by the server-side gate; lenient here so a
+    # refused request is ignored rather than rejected.
+    personalizationMode = serializers.CharField(max_length=40, required=False)
+    personalizationInjection = serializers.CharField(max_length=40, required=False)
+    personalizationProfile = serializers.DictField(required=False)
+    personalizationSubject = serializers.CharField(max_length=100, required=False)
+    # Lab compare's plain arm: the server hides its session only on a lab deployment.
+    labCompare = serializers.BooleanField(required=False, default=False)
 
 
 class IdentitySerializerMixin(serializers.Serializer):
@@ -158,6 +167,19 @@ class HistoryMessageSerializer(serializers.ModelSerializer):
 
     def get_responseMessageId(self, obj):
         return obj.response_message.message_id if obj.response_message else None
+
+    def to_representation(self, instance):
+        # The personalization notice and the profile-used line an answer was shown with, under the
+        # same keys as the live answer's payload, each only when the answer had it; lab only.
+        data = super().to_representation(instance)
+        if not personalization_gate.lab_enabled():
+            return data
+        notice, line = instance.personalization_shown()
+        if notice:
+            data["personalizationNotice"] = True
+        if line:
+            data["profileUsed"] = line
+        return data
 
 
 class HistoryResponseSerializer(serializers.Serializer):

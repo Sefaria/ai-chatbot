@@ -1,0 +1,326 @@
+"""The personalization settings endpoint: `POST /api/v2/personalization/settings`.
+
+This is the access-control surface of personalization, so the rules are few and strict:
+
+- The user id comes only from the signed token in the JSON body field `userId` (through
+  `IdentitySerializerMixin` and `authenticate_request`). No header, path or other body field names a
+  user; `personalizationSubject`, `user_id`, `revision` and every other unknown field are ignored.
+- A logged-out visitor (`anonId`), a gate that is off and a production or beta deployment all get 404,
+  as do the lab-only actions anywhere else than on a lab deployment.
+- Writes go through a fixed list of fields per action, validated here, never by echoing the body.
+- Responses are never cached. The token is never logged; the three write actions that change what
+  the assistant knows each log one audit line with a hash of the user id and no text.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import re
+from datetime import timedelta
+
+from django.utils import timezone
+from rest_framework import serializers, status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from ...auth import AuthenticationError, UserTokenExpired, authenticate_request
+from ...serializers import IdentitySerializerMixin
+from . import gate, health, profile_edit, profile_job, profile_store, quota
+
+logger = logging.getLogger("chat")
+audit_logger = logging.getLogger("chat.personalization.audit")
+
+MAX_REQUEST = profile_store.MAX_INSTRUCTIONS
+NO_STORE = "no-store, private"
+
+# The fixed reason codes a run row can hold: the Profile job (profile_job.py), its checks
+# (checks.py) and chat-to-edit (profile_edit.py). `recentRuns` returns a reason only when it is one
+# of these, so nothing else a row may hold ever reaches the page. A test keeps this list in step.
+RUN_REASON_CODES = frozenset(
+    {
+        # profile_job.py
+        profile_job.REVISION_MOVED,
+        profile_job.PROFILE_OFF,
+        profile_job.BATCH_SKIPPED,
+        "no_new_prompts",
+        "sensitive_only",
+        "not_relevant",
+        "nothing_to_write",
+        "check",
+        "bad_extraction",
+        "bad_writer_output",
+        "bad_dream_output",
+        "all_screened",
+        "unsupported_section",
+        "dream_unchanged",
+        "over_limit",
+        # checks.py
+        "empty_section",
+        "duplicate_heading",
+        "never_store_terms",
+        "never_store_model",
+        "never_store_unparseable",
+        "dynamic_cap",
+        "words",
+        # profile_edit.py (its REASONS keys, including retired ones still in old rows)
+        *profile_edit.REASONS,
+        "never_store",
+        "hide_sources",
+        "profile_off",
+        "empty",
+        "bad_reply",
+        "changed",
+        "busy",
+        "applied",
+        "model_refused",
+    }
+)
+# profile_job.py records an unexpected exception as `error:<exception class name>`.
+_ERROR_REASON = re.compile(r"error:[A-Za-z_][A-Za-z0-9_]{0,99}")
+
+
+def _run_reason(reason: str | None) -> str | None:
+    if reason and (reason in RUN_REASON_CODES or _ERROR_REASON.fullmatch(reason)):
+        return reason
+    return None
+
+
+ACTIONS = (
+    "get",
+    "set_instructions",
+    "toggle",
+    "clear_profile",
+    "edit_profile",
+    "run_now",
+    "set_testing",
+    "health",
+)
+LAB_ONLY_ACTIONS = frozenset({"run_now", "set_testing", "health"})
+RUN_KINDS = {"session": "session", "dream": "dream"}
+
+
+class SettingsRequestSerializer(IdentitySerializerMixin):
+    """The envelope: who (token or anonId, exactly one) and what. Action fields are checked per
+    action below; anything else in the body is not read."""
+
+    action = serializers.ChoiceField(choices=ACTIONS)
+
+
+def _respond(data, code=status.HTTP_200_OK):
+    response = Response(data, status=code)
+    response["Cache-Control"] = NO_STORE
+    return response
+
+
+def _not_found():
+    return _respond({"error": "not_found"}, status.HTTP_404_NOT_FOUND)
+
+
+def _bad_request(error="bad_request", **extra):
+    return _respond({"error": error, **extra}, status.HTTP_400_BAD_REQUEST)
+
+
+def _iso(value):
+    return value.isoformat() if value else None
+
+
+RECENT_RUNS = 10
+
+
+def _lab_diagnostics(user_id: str, processed_through) -> dict:
+    """Why did the Profile not update: the user's latest runs (no text) and the job's limits."""
+    from ...models import LabJobLock, LabQuota, ProfileWriterRun
+
+    now = timezone.now()
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    runs = (
+        ProfileWriterRun.objects.filter(user_id=user_id)
+        .order_by("-started_at", "-id")
+        .only("started_at", "trigger", "window", "status", "reason")[:RECENT_RUNS]
+    )
+    used = (
+        LabQuota.objects.filter(scope="job", key=user_id, window_start=hour)
+        .values_list("count", flat=True)
+        .first()
+    )
+    lock = LabJobLock.objects.filter(user_id=user_id).first()
+    stale_before = now - timedelta(seconds=quota.LOCK_STALE_SECONDS)
+    return {
+        "recentRuns": [
+            {
+                "startedAt": _iso(r.started_at),
+                "trigger": r.trigger,
+                "window": r.window,
+                "status": r.status,
+                "reason": _run_reason(r.reason),
+            }
+            for r in runs
+        ],
+        "jobState": {
+            "hourUsed": used or 0,
+            "hourLimit": quota.limit("PERSONALIZATION_JOB_PER_HOUR", quota.JOB_PER_HOUR_DEFAULT),
+            "lockHeld": bool(
+                lock and lock.running and lock.started_at and lock.started_at > stale_before
+            ),
+            "parked": profile_job.is_parked(user_id, "session", processed_through),
+        },
+    }
+
+
+def _state(user_id: str) -> dict:
+    settings_ = profile_store.get_settings(user_id)
+    sections = profile_store.get_sections(user_id)
+    lab = gate.lab_enabled()
+    state = {
+        "instructions": {
+            "text": settings_.instructions_text,
+            "enabled": settings_.instructions_enabled,
+            "updatedAt": _iso(settings_.instructions_updated_at),
+        },
+        "profile": {
+            "text": profile_store.render_profile(sections),
+            "sections": [{"heading": s.heading, "body": s.body, "kind": s.kind} for s in sections],
+            "enabled": settings_.profile_enabled,
+            "updatedAt": _iso(settings_.profile_updated_at),
+            "updatedBy": settings_.profile_updated_by,
+            "revision": settings_.profile_revision,
+        },
+        "labEnabled": lab,
+        "testing": {
+            "showPlainResponse": settings_.show_plain_response,
+            "updateEveryMessage": settings_.update_every_message,
+        },
+    }
+    if lab:
+        state["testing"].update(_lab_diagnostics(user_id, settings_.processed_through))
+    return state
+
+
+def _audit(action: str, user_id: str) -> None:
+    """One line: the action and a hash of the user id. Never the text."""
+    digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
+    audit_logger.info("personalization_audit action=%s user=%s", action, digest)
+
+
+def _take_edit_quota(user_id: str) -> bool:
+    now = timezone.now()
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    day = hour.replace(hour=0)
+    per_hour = quota.limit("PERSONALIZATION_EDIT_PER_HOUR", quota.JOB_PER_HOUR_DEFAULT)
+    per_day = quota.limit("PERSONALIZATION_EDIT_PER_DAY", quota.JOB_PER_DAY_DEFAULT)
+    return quota.take_quotas(
+        "edit",
+        [(user_id, hour, per_hour), (quota.ALL_KEY, day, per_day)],
+    )
+
+
+def _is_str(value) -> bool:
+    return isinstance(value, str)
+
+
+def _is_bool(value) -> bool:
+    return isinstance(value, bool)
+
+
+def _handle(action: str, user_id: str, data: dict):
+    if action == "get":
+        return _respond(_state(user_id))
+
+    if action == "set_instructions":
+        text = data.get("text")
+        if not _is_str(text):
+            return _bad_request()
+        text = text.strip()
+        if len(text) > profile_store.MAX_INSTRUCTIONS:
+            return _bad_request("too_long", max=profile_store.MAX_INSTRUCTIONS)
+        if profile_store.set_instructions(user_id, text).changed:
+            _audit(action, user_id)
+        return _respond(_state(user_id))
+
+    if action == "toggle":
+        target, enabled = data.get("target"), data.get("enabled")
+        if target not in profile_store.TARGETS or not _is_bool(enabled):
+            return _bad_request()
+        if profile_store.set_enabled(user_id, target, enabled).changed:
+            _audit(action, user_id)
+        return _respond(_state(user_id))
+
+    if action == "clear_profile":
+        profile_store.clear_profile(user_id)
+        _audit(action, user_id)
+        return _respond(_state(user_id))
+
+    if action == "set_testing":
+        fields = {}
+        for wire, name in (
+            ("showPlainResponse", "show_plain_response"),
+            ("updateEveryMessage", "update_every_message"),
+        ):
+            if wire in data:
+                if not _is_bool(data[wire]):
+                    return _bad_request()
+                fields[name] = data[wire]
+        profile_store.set_testing(user_id, **fields)
+        return _respond(_state(user_id))
+
+    if action == "edit_profile":
+        request_text = data.get("request")
+        if not _is_str(request_text) or not request_text.strip():
+            return _bad_request()
+        request_text = request_text.strip()
+        if len(request_text) > MAX_REQUEST:
+            return _bad_request("too_long", max=MAX_REQUEST)
+        if not _take_edit_quota(user_id):
+            return _respond({"error": "quota"}, status.HTTP_429_TOO_MANY_REQUESTS)
+        edit_status, reason = profile_edit.edit_profile(user_id, request_text)
+        return _respond({**_state(user_id), "edit": {"status": edit_status, "reason": reason}})
+
+    if action == "run_now":
+        kind = data.get("kind")
+        if kind not in RUN_KINDS:
+            return _bad_request()
+        result = profile_job.run_profile_job(user_id, "run_now", window=RUN_KINDS[kind])
+        if result.status == "quota":
+            return _respond({"error": "quota"}, status.HTTP_429_TOO_MANY_REQUESTS)
+        return _respond(
+            {**_state(user_id), "run": {"status": result.status, "reason": result.reason}}
+        )
+
+    if action == "health":
+        return _respond(health.snapshot())
+
+    return _bad_request()  # unreachable: the serializer limits the action
+
+
+@api_view(["POST"])
+def personalization_settings(request):
+    # Gate first, before reading the body: a deployment that is not a lab one looks like it has no
+    # such endpoint. A placeholder id is enough here; the real id is checked again below.
+    if not gate.enabled_for("gate-probe"):
+        return _not_found()
+
+    data = request.data
+    if not isinstance(data, dict):
+        return _bad_request()
+    envelope = SettingsRequestSerializer(data=data)
+    if not envelope.is_valid():
+        return _bad_request()
+    action = envelope.validated_data["action"]
+
+    if envelope.validated_data.get("anonId"):
+        return _not_found()
+
+    try:
+        actor = authenticate_request(request, data, body_only=True)
+    except UserTokenExpired:
+        return _respond({"error": "userId_expired"}, status.HTTP_401_UNAUTHORIZED)
+    except AuthenticationError:
+        return _respond({"error": "invalid_userId"}, status.HTTP_401_UNAUTHORIZED)
+
+    if actor.is_anonymous or not gate.enabled_for(actor.user_id):
+        return _not_found()
+    if action in LAB_ONLY_ACTIONS and not gate.lab_enabled():
+        return _not_found()
+
+    return _handle(action, actor.user_id, data)

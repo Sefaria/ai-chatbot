@@ -81,5 +81,7 @@ export const STORAGE_KEYS = {
   // button starts out enabled or disabled before the list arrives
   HAS_CONVERSATIONS: 'has_conversations',
   // The visitor turned off the floating Ask button (kebab menu → Ask button)
-  HIDE_LAUNCHER: 'hide_launcher'
+  HIDE_LAUNCHER: 'hide_launcher',
+  // The visitor dismissed the "answers are personalized" toast (✕ or Manage): it doesn't come back
+  PERSONALIZATION_TOAST_DISMISSED: 'personalization_toast_dismissed'
 };

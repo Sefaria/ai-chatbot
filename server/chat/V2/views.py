@@ -67,6 +67,8 @@ from .agent import (
 from .agent.tracing_guard import suppress_tracing
 from .logging import get_turn_logging_service
 from .origin import resolve_origin
+from .personalization import gate as personalization_gate
+from .personalization import runtime as personalization_runtime
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
 from .services import (
@@ -233,8 +235,10 @@ def _build_response_payload(
     trace_id: str | None = None,
     recovered: bool = False,
     narration_messages: list | None = None,
+    personalization_notice: bool = False,
+    profile_used: str | None = None,
 ) -> dict:
-    return {
+    payload = {
         "messageId": response_message.message_id,
         "sessionId": session_id,
         "timestamp": response_message.server_timestamp.isoformat(),
@@ -247,6 +251,22 @@ def _build_response_payload(
         "status": response_message.status,
         "narrationMessages": _narration_messages_payload(narration_messages or []),
     }
+    if personalization_notice:
+        payload["personalizationNotice"] = True
+    if profile_used:
+        payload["profileUsed"] = profile_used
+    return payload
+
+
+def _personalization_record(*, notice: bool, profile_used: str | None) -> dict | None:
+    """What the assistant message keeps of the turn's personalization, so history and recover show
+    it again: the notice flag and the profile-used line, each only when the turn had it."""
+    record = {}
+    if notice:
+        record["notice"] = True
+    if profile_used:
+        record["profileUsed"] = profile_used
+    return record or None
 
 
 def _anon_payload_fields(actor) -> dict:
@@ -277,6 +297,31 @@ def _build_appetizer_payload(result) -> dict:
         ],
         "servedAt": timezone.now().isoformat(),
     }
+
+
+def _queue_personalization_job(
+    actor, user_id: str, *, plain: bool, first_in_session: bool, response_message
+) -> None:
+    """After a saved, successful reply on a personalized-eligible turn, queue at most one Profile
+    job: `new_chat` for the first message of a new session, else `every_message` when the user's
+    testing switch is on. Never raises and never waits."""
+    try:
+        if (
+            plain
+            or actor.is_anonymous
+            or response_message.status != ChatMessage.Status.SUCCESS
+            or not personalization_gate.enabled_for(user_id)
+        ):
+            return
+        if first_in_session:
+            trigger = "new_chat"
+        elif personalization_runtime.update_every_message(user_id):
+            trigger = "every_message"
+        else:
+            return
+        personalization_runtime.queue_job(user_id, trigger)
+    except Exception:
+        logger.warning("Could not queue the personalization job", exc_info=True)
 
 
 def _is_stream_break_test_enabled() -> bool:
@@ -317,6 +362,18 @@ def _authenticate_actor_or_response(request, data):
 
 _bt_config = get_braintrust_config()
 _bt_logger = None
+
+
+def _lab_compare_hidden(persistent_user_id, context) -> bool:
+    """True when the plain arm of a lab compare asked for a hidden session and may have one.
+
+    Honoured only on a lab deployment, for a signed-in user the personalization gate admits, on a
+    request that turns personalization off; anywhere else `labCompare` is ignored."""
+    if context.get("labCompare") is not True or context.get("personalizationMode") != "off":
+        return False
+    return (
+        personalization_gate.enabled_for(persistent_user_id) and personalization_gate.lab_enabled()
+    )
 
 
 def _get_bt_logger():
@@ -477,7 +534,12 @@ def chat_stream_v2(request):
     turn_id = ChatMessage.generate_turn_id()
 
     # Create or get session with ownership validation
-    session, _ = create_or_get_session(data["sessionId"], actor)
+    hidden_defaults = (
+        {"is_deleted": True, "deleted_at": timezone.now()}
+        if _lab_compare_hidden(actor.user_id, context)
+        else {}
+    )
+    session, _ = create_or_get_session(data["sessionId"], actor, **hidden_defaults)
 
     # Load summary for this session (if any)
     summary_text = load_session_summary(session)
@@ -499,10 +561,21 @@ def chat_stream_v2(request):
         locale=context.get("locale", ""),
         client_version=context.get("clientVersion", ""),
     )
+    first_in_session = not (
+        ChatMessage.objects.filter(session_id=data["sessionId"], role=ChatMessage.Role.USER)
+        .exclude(pk=user_message.pk)
+        .exists()
+    )
     if appetizer_metrics.get("appetizer_data"):
         user_message.appetizer_data = appetizer_metrics["appetizer_data"]
         user_message.save(update_fields=["appetizer_data"])
     _mark_turn_started(user_message.id)
+
+    personalization = personalization_runtime.context_for_request(
+        actor.user_id,
+        plain=context.get("personalizationMode") == "off",
+        message_id=data["messageId"],
+    )
 
     msg_context = MessageContext(
         summary_text=summary_text,
@@ -516,6 +589,10 @@ def chat_stream_v2(request):
         sefaria_user_id=actor.sefaria_user_id,
         encrypted_user_token=actor.encrypted_token,
         turn_number=_compute_turn_count(data["sessionId"]) + 1,
+        profile_text=personalization.profile_text,
+        instructions_text=personalization.instructions_text,
+        personalization_meta=personalization.meta or None,
+        ask_profile_used=personalization.ask_profile_used,
     )
 
     def generate_sse():
@@ -842,6 +919,9 @@ def chat_stream_v2(request):
                     agent_response=agent_response,
                     latency_ms=latency_ms,
                     model_name=agent_response.model or "unknown",
+                    personalization=_personalization_record(
+                        notice=personalization.notice, profile_used=agent_response.profile_used
+                    ),
                 )
                 response_message = logging_result.response_message
                 if free_answer and response_message.status == ChatMessage.Status.SUCCESS:
@@ -892,6 +972,14 @@ def chat_stream_v2(request):
             except Exception as exc:
                 logger.exception("Session update failed after assistant persist")
 
+            _queue_personalization_job(
+                actor,
+                actor.user_id,
+                plain=context.get("personalizationMode") == "off",
+                first_in_session=first_in_session,
+                response_message=response_message,
+            )
+
             final_data = _build_response_payload(
                 response_message=response_message,
                 session_id=data["sessionId"],
@@ -899,6 +987,8 @@ def chat_stream_v2(request):
                 trace_id=agent_response.trace_id,
                 stats=logging_result.stats,
                 narration_messages=logging_result.narration_messages,
+                personalization_notice=personalization.notice,
+                profile_used=agent_response.profile_used,
             )
             final_data.update(_anon_payload_fields(actor))
 
@@ -1071,6 +1161,14 @@ def chat_recover_v2(request):
         if user_message.turn_id
         else []
     )
+    # The notice and the line the answer was shown with come back on the lab only, like history.
+    stored_notice, stored_line = False, None
+    if personalization_gate.lab_enabled():
+        stored_notice, stored_line = response_message.personalization_shown()
+        # An answer saved before the message kept it: the settings row still knows the notice turn.
+        stored_notice = stored_notice or personalization_runtime.notice_for_message(
+            user_message.user_id, user_message.message_id
+        )
     payload = _build_response_payload(
         response_message=response_message,
         session_id=user_message.session_id,
@@ -1078,6 +1176,8 @@ def chat_recover_v2(request):
         stats=stats,
         recovered=True,
         narration_messages=narration_messages,
+        personalization_notice=stored_notice,
+        profile_used=stored_line,
     )
     payload.update(_anon_payload_fields(actor))
     recovery_status = (
@@ -1174,7 +1274,9 @@ def anon_claim_v2(request):
 
     anon_user_id = anonymous_user_id(data["anonId"])
     with transaction.atomic():
-        claimed = ChatSession.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
+        claimed = ChatSession.objects.filter(user_id=anon_user_id, is_deleted=False).update(
+            user_id=actor.user_id
+        )
         ChatMessage.objects.filter(user_id=anon_user_id).update(user_id=actor.user_id)
 
     return Response({"claimedSessions": claimed})

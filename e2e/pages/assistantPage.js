@@ -99,6 +99,26 @@ export class AssistantPage {
     await expect(this.panel).toBeVisible();
   }
 
+  // Personalization toast and the text box it rests on
+
+  /** The toast above the text box (inside its always-present live region). */
+  get toast() {
+    return this.host.getByTestId('personalization-toast');
+  }
+
+  /** The toast's live region: present, empty, whether or not the toast shows. */
+  get toastLiveRegion() {
+    return this.host.getByTestId('personalization-live-region');
+  }
+
+  get inputFooter() {
+    return this.host.locator('footer.lc-chatbot-input');
+  }
+
+  get textBox() {
+    return this.inputFooter.locator('textarea');
+  }
+
   // Ask button setting (kebab menu → Ask button)
 
   get floatingButtonModal() {

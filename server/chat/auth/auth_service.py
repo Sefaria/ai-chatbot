@@ -47,7 +47,9 @@ class UserTokenExpired(AuthenticationError):
         super().__init__("User token expired", "user_token_expired")
 
 
-def authenticate_request(request, body_data: dict | None = None) -> Actor:
+def authenticate_request(
+    request, body_data: dict | None = None, *, body_only: bool = False
+) -> Actor:
     """
     Authenticate a request and return an Actor.
 
@@ -59,6 +61,8 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
     Args:
         request: Django request object
         body_data: Optional dict containing userId or anonId
+        body_only: Read the token only from body_data["userId"], never from the X-Api-Key
+            header (the personalization settings endpoint)
 
     Returns:
         Actor with user_id set
@@ -69,7 +73,7 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
         UserTokenExpired: User token is expired
     """
     # Check X-Api-Key header first (for Anthropic-compatible endpoints)
-    api_key_header = request.headers.get("X-Api-Key")
+    api_key_header = None if body_only else request.headers.get("X-Api-Key")
     if api_key_header:
         return _authenticate_user_token(api_key_header)
 

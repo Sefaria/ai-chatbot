@@ -89,3 +89,83 @@ class TestTraceLoggerPromptMetadata:
     def test_route_discovery_logged(self):
         call_kwargs = self._call(route="discovery")
         assert call_kwargs["metadata"]["route"] == "discovery"
+
+
+class TestTraceLoggerPersonalizationFields:
+    """Every turn carries the personalization fields, so they can be Braintrust columns."""
+
+    def setup_method(self):
+        self.logger = BraintrustTraceLogger()
+        self.span = MagicMock()
+
+    def _metadata(self, ctx):
+        self.logger.log_input(bt_span=self.span, user_message="hi", context=ctx, model="test")
+        return self.span.log.call_args[1]["metadata"]
+
+    def test_plain_turn_carries_default_personalization_fields(self):
+        metadata = self._metadata(MessageContext(origin="sefaria-production"))
+        assert metadata["personalized"] is False
+        assert metadata["profile_on"] is None
+        assert metadata["instructions_on"] is None
+        assert metadata["profile_revision"] is None
+        assert metadata["notice_shown"] is False
+        assert metadata["profile_injected"] is None
+        assert metadata["prompt_versions"] == {}
+
+    def test_plain_turn_omits_chapter_and_lab_only_keys(self):
+        metadata = self._metadata(MessageContext(origin="sefaria-production"))
+        assert set(metadata) >= {
+            "personalized",
+            "profile_on",
+            "instructions_on",
+            "profile_revision",
+            "notice_shown",
+            "profile_injected",
+            "prompt_versions",
+        }
+        assert "chapter_sha" not in metadata
+        assert "instructions_injected" not in metadata
+
+    def test_plain_turn_does_not_add_profile_text(self):
+        metadata = self._metadata(MessageContext(origin="sefaria-production"))
+        assert "profile" not in metadata
+        assert "instructions" not in metadata
+
+    def test_plain_turn_defaults_do_not_share_prompt_versions(self):
+        first = self._metadata(MessageContext(origin="sefaria-production"))
+        first["prompt_versions"]["leaked"] = "x"
+        second = self._metadata(MessageContext(origin="sefaria-production"))
+        assert second["prompt_versions"] == {}
+
+    def test_personalized_turn_keeps_its_meta_values(self):
+        meta = {
+            "personalized": True,
+            "profile_on": True,
+            "instructions_on": False,
+            "profile_revision": 7,
+            "chapter_sha": "abc123",
+            "notice_shown": True,
+            "prompt_versions": {"personalization_answering": "v2"},
+        }
+        ctx = MessageContext(origin="sefaria-production", personalization_meta=meta)
+        metadata = self._metadata(ctx)
+        assert metadata["personalized"] is True
+        assert metadata["profile_on"] is True
+        assert metadata["instructions_on"] is False
+        assert metadata["profile_revision"] == 7
+        assert metadata["chapter_sha"] == "abc123"
+        assert metadata["notice_shown"] is True
+        assert metadata["prompt_versions"] == {"personalization_answering": "v2"}
+        assert "profile_injected" not in metadata
+
+    def test_personalized_turn_keeps_lab_injected_values(self):
+        meta = {
+            "personalized": True,
+            "profile_revision": 2,
+            "profile_injected": "Reads Talmud",
+            "instructions_injected": "Be brief",
+        }
+        ctx = MessageContext(origin="sefaria-production", personalization_meta=meta)
+        metadata = self._metadata(ctx)
+        assert metadata["profile_injected"] == "Reads Talmud"
+        assert metadata["instructions_injected"] == "Be brief"
