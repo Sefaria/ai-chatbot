@@ -388,19 +388,18 @@
   let showPersonalizationToast = $derived(isLoggedIn && chatIsPersonalized && !personalizationToastDismissed);
   // The toast is a layout block below the message list: when it mounts it shrinks the list. A reader at the
   // end of the answer stays there (measured before the DOM changes, scrolled after).
-  // Only an answer already on screen (a streamed one) is kept at its end: when the toast arrives together with
-  // a new answer, the response handler's scrollToResponseStart() decides where the reader lands.
+  // A new non-streamed answer is the exception: the response handler sets toastLeavesScroll, and its
+  // scrollToResponseStart() decides where the reader lands.
   let toastKeepsEnd = false;
   let toastWasShown = false;
-  let toastSeenCount = 0;
+  let toastLeavesScroll = false;
   $effect.pre(() => {
     const shown = showPersonalizationToast;
-    const count = messages.length;
-    if (shown && !toastWasShown && messageListRef && count === toastSeenCount) {
+    if (shown && !toastWasShown && messageListRef && !toastLeavesScroll) {
       toastKeepsEnd = messageListRef.scrollHeight - messageListRef.scrollTop - messageListRef.clientHeight < 80;
     }
     toastWasShown = shown;
-    toastSeenCount = count;
+    toastLeavesScroll = false;
   });
   $effect(() => {
     if (showPersonalizationToast && toastKeepsEnd) {
@@ -412,7 +411,8 @@
   function dismissPersonalizationToast({ focusInput = true } = {}) {
     personalizationToastDismissed = true;
     setStorage(STORAGE_KEYS.PERSONALIZATION_TOAST_DISMISSED, true);
-    if (focusInput) inputRef?.focus();
+    // On phones focusing the text box would open the keyboard over the answer: the panel takes focus instead
+    if (focusInput) isFullscreen ? panelRef?.focus({ preventScroll: true }) : inputRef?.focus();
   }
   // Feedback modal state
   let showFeedbackModal = $state(false);
@@ -1906,7 +1906,10 @@
 
       const completedMessages = [...sentMessages, ...narrationMessages, assistantMessage];
       if (sessionId === sendingSessionId) {
+        toastLeavesScroll = !didStream;
         messages = completedMessages;
+        // The flag is for this update only (the toast may not appear with this answer)
+        tick().then(() => (toastLeavesScroll = false));
         saveMessagesToStorage();
         // A streamed answer is already in view; jumping to its start would be jarring.
         if (!didStream) scrollToResponseStart();

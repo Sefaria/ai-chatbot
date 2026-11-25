@@ -75,7 +75,7 @@ test.describe('toast', () => {
     await expect(manage(assistant)).toHaveAttribute('href', /^\/settings\/library-assistant\?from=[^#]+#personalization$/);
     await expect(dismiss(assistant)).toBeVisible();
     // Outside the answers, right above the text box
-    await expect(assistant.answers.getByTestId('personalization-toast')).toHaveCount(0);
+    await expect(assistant.answers.locator(assistant.toast)).toHaveCount(0);
     const toastBox = await toast(assistant).boundingBox();
     const inputBox = await assistant.inputFooter.boundingBox();
     expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(inputBox.y + 1);
