@@ -216,8 +216,9 @@ Defined in `server/chat/urls.py`.
 | `/api/v2/chat/anthropic` | POST | Anthropic Messages API-compatible endpoint for eval/playground |
 | `/api/v2/chat/feedback` | POST | Attach feedback metadata to Braintrust trace |
 | `/api/v2/prompts/defaults` | GET | Return default prompt slug configuration |
-| `/api/history` | GET | Conversation history |
-| `/api/admin/reload-prompts` | POST | Prompt cache invalidation endpoint |
+| `/api/history` | GET | Conversation history; `userId` must be the encrypted user token (403 if invalid, 503 if `CHATBOT_USER_TOKEN_SECRET` is unset) |
+| `/api/history/conversations` (and `/<session_id>`) | GET, PATCH, DELETE | Saved conversations; same token requirement as `/api/history` |
+| `/api/admin/reload-prompts` | POST | Prompt cache invalidation; requires header `X-Admin-Token` equal to `ADMIN_API_TOKEN` (403 when missing, wrong or the env var is unset) |
 | `/api/health` | GET | Health endpoint |
 
 ### Streaming final SSE message payload (shape)

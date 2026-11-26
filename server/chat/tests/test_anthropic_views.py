@@ -751,3 +751,18 @@ class TestChatAnthropicHTTPIntegration:
         assert ctx.user_id == "test-user"
         assert ctx.sefaria_user_id == "12345"
         assert ctx.encrypted_user_token == user_token
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("debug,expected", [(False, 401), (True, 400)])
+def test_shared_authenticator_default_token_secret_only_allowed_in_debug(debug, expected):
+    default = "secret"
+    token = create_test_token("synthetic-user-1", default)
+    with override_settings(CHATBOT_USER_TOKEN_SECRET=default, DEBUG=debug):
+        response = APIClient().post(
+            "/api/v2/chat/anthropic",
+            {"messages": [{"role": "assistant", "content": "Hello"}]},
+            format="json",
+            HTTP_X_API_KEY=token,
+        )
+    assert response.status_code == expected

@@ -17,6 +17,17 @@ from .anonymous import anonymous_user_id
 
 logger = logging.getLogger("chat")
 
+# Placeholder value used only for local development; never accepted when DEBUG is off.
+DEFAULT_TOKEN_SECRET = "secret"
+
+
+def usable_token_secret() -> str | None:
+    """Return the user-token secret, or None when it is unset or the dev default outside DEBUG."""
+    secret = settings.CHATBOT_USER_TOKEN_SECRET
+    if not secret or (secret == DEFAULT_TOKEN_SECRET and not settings.DEBUG):
+        return None
+    return secret
+
 
 class AuthenticationError(Exception):
     """Base exception for authentication failures."""
@@ -91,9 +102,9 @@ def authenticate_request(request, body_data: dict | None = None) -> Actor:
 
 def _authenticate_user_token(encrypted_token: str) -> Actor:
     """Decrypt a user token and return an Actor with user_id."""
-    secret = settings.CHATBOT_USER_TOKEN_SECRET
+    secret = usable_token_secret()
     if not secret:
-        logger.error("CHATBOT_USER_TOKEN_SECRET is not configured")
+        logger.error("CHATBOT_USER_TOKEN_SECRET is not configured or is the development default")
         raise InvalidUserToken("server configuration error")
 
     try:
