@@ -14,8 +14,11 @@ import jwt
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
-SCOPE = "sheets"  # /mcp/user
+SCOPE = "sheets"  # /mcp/user: required on every /mcp/user token
+ASSETS_SCOPE = "assets"  # /mcp/user, optional: save_asset writes to Sefaria Social as the user
 ADMIN_SCOPE = "admin"  # /mcp/admin
+# Every scope each resource may carry, keyed by the scope that names the resource (always first).
+RESOURCE_SCOPES = {SCOPE: (SCOPE, ASSETS_SCOPE), ADMIN_SCOPE: (ADMIN_SCOPE,)}
 
 
 def issue(

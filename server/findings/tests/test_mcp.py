@@ -109,6 +109,13 @@ async def test_modern_clients_discover_and_list_skills():
         _, listed = await rpc(client, "skills/list")
     skills = {s["uri"]: s for s in listed["result"]["skills"]}
     assert set(skills) == {f"skill://{s.name}/SKILL.md" for s in catalog.served()}
+    # Pinned on purpose: adding or withdrawing a served skill should be a visible change here.
+    assert set(skills) == {
+        "skill://example-halachic-reading/SKILL.md",
+        "skill://example-parallel-passages/SKILL.md",
+        "skill://sefaria-linked-asset/SKILL.md",
+    }
+    assert "sefaria-linked-asset" in discover["result"]["instructions"]
 
     entry = skills["skill://example-halachic-reading/SKILL.md"]
     assert entry["frontmatter"]["metadata"]["org.sefaria/method"] == "example-method"
@@ -121,6 +128,18 @@ async def test_modern_clients_discover_and_list_skills():
         for path, data in files.items()
     }
     assert {r["uri"]: (r["digest"], r["size"]) for r in entry["resources"]} == expected
+
+
+async def test_linked_asset_skill_serves_its_shim():
+    uri = "skill://sefaria-linked-asset/references/shim.js"
+    async with http() as client:
+        _, listed = await rpc(client, "skills/list")
+        _, read = await rpc(client, "resources/read", {"uri": uri}, name=uri)
+    entry = next(
+        s for s in listed["result"]["skills"] if s["uri"] == "skill://sefaria-linked-asset/SKILL.md"
+    )
+    assert uri in {r["uri"] for r in entry["resources"]}
+    assert "SefariaLink" in read["result"]["contents"][0]["text"]
 
 
 async def test_skills_get_and_read():

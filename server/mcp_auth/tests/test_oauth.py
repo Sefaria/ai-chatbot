@@ -291,6 +291,9 @@ def test_loopback_redirect_may_change_port():
         ({"code_challenge": None}, "invalid_request"),
         ({"response_type": "token"}, "unsupported_response_type"),
         ({"scope": "sheets admin"}, "invalid_scope"),
+        ({"scope": "assets"}, "invalid_scope"),
+        ({"scope": "sheets assets admin"}, "invalid_scope"),
+        ({"scope": "admin assets", "resource": ADMIN_RESOURCE}, "invalid_scope"),
         ({"scope": "admin"}, "invalid_scope"),
         ({"resource": ADMIN_RESOURCE}, "invalid_scope"),
         ({"resource": "https://chat.test/mcp"}, "invalid_target"),
@@ -584,3 +587,49 @@ def test_binding_cookie_is_lax_over_plain_http():
     cookie = next(c for name, c in response.cookies.items() if name.startswith("mcp_oauth_"))
     assert cookie["samesite"] == "Lax"
     assert not cookie["secure"]
+
+
+# ---------------------------------------------------------------------------
+# The optional `assets` scope on /mcp/user (save_asset)
+# ---------------------------------------------------------------------------
+
+ASSETS_LINE = "Save interactive pages made with Claude"
+ASSETS_LINE_HE = "דפים אינטראקטיביים"
+
+
+def _flow_with_scope(scope):
+    api, browser = Client(), Client()
+    cid = client_id(api)
+    state = sefaria_state(authorize(browser, cid, scope=scope))
+    assert sefaria_posts_back(browser, state).status_code == 302
+    page = browser.get("/oauth/consent", {"request": state}).content.decode()
+    body = exchange(api, cid, code_from(approve(browser, state))).json()
+    return api, cid, page, body
+
+
+def test_metadata_lists_the_assets_scope():
+    body = Client().get("/.well-known/oauth-authorization-server").json()
+    assert body["scopes_supported"] == ["admin", "assets", "sheets"]
+
+
+@pytest.mark.parametrize("scope", ["sheets assets", "assets sheets", None])
+def test_assets_scope_is_granted_and_shown_on_consent(scope):
+    api, cid, page, body = _flow_with_scope(scope)
+    assert ASSETS_LINE in page and ASSETS_LINE_HE in page
+    assert body["scope"] == "sheets assets"  # normalized: the resource's own scope first
+    claims = jwt.decode(body["access_token"], SIGNING_KEY, algorithms=["HS256"], audience=RESOURCE)
+    assert claims["scope"] == "sheets assets"
+    refreshed = refresh(api, cid, body["refresh_token"]).json()
+    assert refreshed["scope"] == "sheets assets"
+    assert (
+        jwt.decode(refreshed["access_token"], SIGNING_KEY, algorithms=["HS256"], audience=RESOURCE)[
+            "scope"
+        ]
+        == "sheets assets"
+    )
+
+
+def test_sheets_only_sign_in_does_not_ask_for_assets():
+    _, _, page, body = _flow_with_scope("sheets")
+    assert ASSETS_LINE not in page and "source sheets" in page
+    assert body["scope"] == "sheets"

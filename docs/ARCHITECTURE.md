@@ -170,6 +170,9 @@ pins the exact list.
 Skills and findings tools (see "Skills and Findings" below): `search_findings` is on
 `mcp`, `save_finding` only on the signed-in `mcp_user`. Neither is on the agent surface.
 
+`save_asset` (see "Linked assets" below) is on `mcp_user` only, and only for a sign-in that
+granted the optional `assets` OAuth scope (FastMCP hides it otherwise). Not on the agent surface.
+
 Tool runtime behavior:
 
 1. Emits `tool_start` and `tool_end` progress updates.
@@ -205,6 +208,26 @@ Reader sidebar ──GET /api/findings/ref/<section>──► findings anchored 
 Shown publicly: findings not `hidden` whose skill is authorized now. `sync_findings`
 (nightly) follows sheet edits and deletions; `hide_finding` is the staff takedown.
 Browse pages live under `/findings/`.
+
+## Linked assets
+
+Plan: Sefaria-Project `LINKED_PANELS_AND_ASSETS_PLAN.md` (sections 5 to 7). An asset is an
+interactive HTML page made in Claude that opens beside a text in the Sefaria reader, linked
+both ways. The first-party skill `sefaria-linked-asset` (a *system* skill in `catalog.yaml`:
+no method, no findings, may carry `references/shim.js`) teaches the manifest and the linking
+protocol; `/mcp` and `/mcp/user` name it in their server instructions.
+
+```text
+MCP client ──save_asset──► chatbot-mcp (/mcp/user, access token with scope "sheets assets")
+   1. POST {Sefaria}/api/social/token   X-Session-ID: <5-min mcp token>
+        └► Sefaria issues a Social identity token marked via="mcp"
+   2. POST {SOCIAL_API_BASE_URL}/api/v1/claude-assets  {html, assetId?, sourceUrl?, dryRun: true}
+   3. the same without dryRun   (Bearer <Social token>; Social accepts via="mcp" only here)
+   → asset link (the version's contentUrl), reader link (/<ref>?a2=<id>@<version>&link=2-1, the reader-next form)
+```
+
+Social's refusals (422 `asset.invalid` with `problems`, 429, 503, 404, 401/403) are passed
+back as text. Code: `server/claude_assets/`; contract: sefaria-social specs 060 and 064.
 
 ## Observability
 

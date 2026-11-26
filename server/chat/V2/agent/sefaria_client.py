@@ -691,6 +691,40 @@ class SefariaClient:
             "expandedRefs": list(data.get("expandedRefs") or []),
         }
 
+    async def mint_social_token(self) -> str:
+        """A Sefaria Social identity token for the signed-in user (Sefaria marks it via="mcp").
+
+        Trades the 5-minute ``mcp`` token at ``POST /api/social/token``, which Sefaria accepts
+        from the MCP on that one route. The token is returned, never logged.
+        """
+        _, session_token = self._require_user_session("Saving to Sefaria Social")
+        client = await self._get_client()
+        try:
+            response = await client.post(
+                f"{self.base_url}/api/social/token",
+                headers={"Accept": "application/json", "X-Session-ID": session_token},
+            )
+        except httpx.HTTPError as exc:
+            raise ValueError(
+                f"Sefaria could not be reached to sign you in to Sefaria Social ({type(exc).__name__}). "
+                "Try again in a minute."
+            ) from exc
+        if response.status_code == 200:
+            token = (response.json() or {}).get("token")
+            if isinstance(token, str) and token:
+                return token
+        if response.status_code == 429:
+            raise ValueError(
+                "Sefaria is limiting sign-ins to Sefaria Social for this account. Try again in a minute."
+            )
+        if response.status_code == 503:
+            raise ValueError("Saving to Sefaria Social is not set up on this Sefaria site yet.")
+        raise ValueError(
+            f"Sefaria did not sign you in to Sefaria Social (HTTP {response.status_code}). Reconnect "
+            "the Sefaria connector and try again; if it keeps failing, download the file and upload "
+            "it on your Sefaria Social profile instead."
+        )
+
     async def create_source_sheet(
         self, title: str, summary: str, sources: list[dict[str, Any]]
     ) -> dict[str, Any]:

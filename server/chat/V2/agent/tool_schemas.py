@@ -531,6 +531,54 @@ TOOL_SAVE_FINDING = {
     },
 }
 
+ASSET_MAX_BYTES = 5 * 1024 * 1024
+
+TOOL_SAVE_ASSET = {
+    "name": "save_asset",
+    # mcp_user only, and only for a sign-in that granted the `assets` scope: it writes to the
+    # user's Sefaria Social account. Never on the Library Assistant's (agent) surface.
+    "surfaces": ("mcp_user",),
+    "required_scopes": ("assets",),
+    "annotations": {
+        "title": "Save an interactive page to Sefaria",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "description": (
+        "Saves an interactive HTML page (a linked asset made with the sefaria-linked-asset skill) "
+        "to the user's Sefaria account, after the user has said yes to saving it. The file must "
+        'carry its manifest (<script type="application/json" id="sefaria-asset">) with every ref '
+        "checked by validate_refs. Sefaria checks the file first and saves nothing if it refuses; "
+        "the reasons come back, so fix them and call it again. Returns the asset's link and a "
+        "reader link that opens it beside its first passage. Anyone with the link can open a saved "
+        "asset; showing it in the reader's sidebar needs the owner's verified profile. Never call "
+        "it without the user's agreement in this conversation."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "html": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": ASSET_MAX_BYTES,
+                "description": "The whole HTML file, manifest and linking script included.",
+            },
+            "asset_id": {
+                "type": "string",
+                "description": "Optional: save as a new version of one of the user's assets (its id).",
+            },
+            "source_url": {
+                "type": "string",
+                "description": "Optional: the https link of the Claude artifact, kept as its source.",
+            },
+        },
+        "required": ["html"],
+        "additionalProperties": False,
+    },
+}
+
 TOOL_SEARCH_FINDINGS = {
     "name": "search_findings",
     "surfaces": ("mcp",),
@@ -694,6 +742,7 @@ ALL_TOOLS: dict[str, dict[str, Any]] = {
     "create_source_sheet": TOOL_CREATE_SOURCE_SHEET,
     "update_source_sheet": TOOL_UPDATE_SOURCE_SHEET,
     "save_finding": TOOL_SAVE_FINDING,
+    "save_asset": TOOL_SAVE_ASSET,
     "search_findings": TOOL_SEARCH_FINDINGS,
     "list_topic_prompts": TOOL_LIST_TOPIC_PROMPTS,
     "update_topic_prompt": TOOL_UPDATE_TOPIC_PROMPT,

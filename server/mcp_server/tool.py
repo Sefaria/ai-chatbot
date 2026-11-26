@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import require_scopes
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools.base import Tool, ToolResult
 from jsonschema import Draft202012Validator
@@ -44,11 +45,13 @@ class SefariaTool(Tool):
 
     executor: Any = None
     validator: Any = None
+    required_scopes: tuple[str, ...] = ()
 
     @classmethod
     def from_schema(cls, schema: dict[str, Any], executor: Any) -> SefariaTool:
         parameters = schema.get("input_schema", {"type": "object", "properties": {}})
         annotations = schema.get("annotations")
+        scopes = tuple(schema.get("required_scopes") or ())
         return cls(
             name=schema["name"],
             description=schema.get("description", ""),
@@ -56,6 +59,9 @@ class SefariaTool(Tool):
             annotations=ToolAnnotations(**annotations) if annotations else None,
             executor=executor,
             validator=Draft202012Validator(parameters),
+            required_scopes=scopes,
+            # Hidden from tools/list, and refused, for a token without these OAuth scopes.
+            auth=require_scopes(*scopes) if scopes else None,
         )
 
     def _argument_errors(self, arguments: dict[str, Any]) -> str | None:
@@ -138,6 +144,14 @@ class UserSefariaTool(SefariaTool):
         user_id = (access_token.claims or {}).get("sefaria_user_id") if access_token else None
         if not user_id:
             raise ToolError("Sign in with your Sefaria account to use this tool.")
+        missing = set(self.required_scopes) - set(access_token.scopes or ())
+        if missing:
+            # FastMCP's auth check normally hides the tool first; this is the belt to its braces.
+            raise ToolError(
+                f"{self.name} needs permission you have not given this connector yet "
+                f"({', '.join(sorted(missing))}). Disconnect and reconnect the Sefaria connector, "
+                "and approve saving to your Sefaria account."
+            )
 
         client = SefariaClient()
         executor = SefariaToolExecutor(client=client)

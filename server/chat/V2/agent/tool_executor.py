@@ -230,6 +230,11 @@ class SefariaToolExecutor:
 
             return await finding_tools.save_finding(self.client, self.client.user_id, input_data)
 
+        elif tool_name == "save_asset":
+            from claude_assets import tools as asset_tools
+
+            return await asset_tools.save_asset(self.client, input_data)
+
         elif tool_name == "search_findings":
             from findings import tools as finding_tools
 
@@ -359,6 +364,7 @@ def describe_tool_call(tool_name: str, tool_input: dict[str, Any]) -> str:
         "create_source_sheet": lambda: f"Creating source sheet {q(tool_input.get('title'))}",
         "update_source_sheet": lambda: f"Updating source sheet {q(tool_input.get('sheet_id'))}",
         "save_finding": lambda: f"Saving finding {q(tool_input.get('title'))}",
+        "save_asset": lambda: "Saving an interactive page to Sefaria",
         "search_findings": lambda: "Searching findings",
         "list_topic_prompts": lambda: "Listing topic prompts",
         "update_topic_prompt": lambda: f"Updating topic prompt {q(tool_input.get('id'))}",

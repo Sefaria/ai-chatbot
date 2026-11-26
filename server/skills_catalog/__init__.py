@@ -5,7 +5,8 @@ served by the MCP process through the MCP Skills extension. A *method* is a way 
 (one teacher's systematic approach, say) that one or more skills belong to. ``catalog.yaml``,
 owned by staff, defines the methods, the authors, and which skills are authorized: every skill
 of an authorized author, plus skills authorized one by one. Only authorized skills are served,
-and only their findings are shown.
+and only their findings are shown. First-party *system* skills (``system_skills``) are served
+too, but belong to no method and record no findings.
 
 No Django imports: both the MCP process and the Django app load the catalog.
 """
@@ -62,6 +63,8 @@ class CatalogSkill:
     authorized: bool
     path: Path
     files: dict[str, bytes] = field(repr=False)
+    # A first-party skill listed under `system_skills`: served, but no method and no findings.
+    system: bool = False
 
     @property
     def title(self) -> str:
@@ -93,9 +96,12 @@ class Catalog:
         return {s.name for s in self.served()}
 
     def skill(self, name: str) -> CatalogSkill | None:
-        """A served skill by name, or None."""
+        """A served method skill by name (one whose results may be findings), or None.
+
+        System skills are served but are not method skills, so they are not returned here.
+        """
         skill = self.skills.get(name)
-        return skill if skill and skill.authorized else None
+        return skill if skill and skill.authorized and not skill.system else None
 
     def skills_of(self, method: str) -> list[CatalogSkill]:
         return [s for s in self.served() if s.method == method]
@@ -155,6 +161,7 @@ def build(root: Path) -> Catalog:
         for slug, a in (config.get("authors") or {}).items()
     }
     individually = set(config.get("authorized_skills") or [])
+    system = set(config.get("system_skills") or [])
 
     skills = {}
     for path in skill_dirs(root):
@@ -163,7 +170,10 @@ def build(root: Path) -> Catalog:
         method = str(metadata.get(METHOD_KEY, ""))
         author = str(metadata.get(AUTHOR_KEY, ""))
         known = method in methods and author in authors
-        authorized = known and (authors[author].authorized or skill.name in individually)
+        is_system = skill.name in system
+        authorized = is_system or (
+            known and (authors[author].authorized or skill.name in individually)
+        )
         skills[skill.name] = CatalogSkill(
             name=skill.name,
             description=skill.description,
@@ -173,6 +183,7 @@ def build(root: Path) -> Catalog:
             authorized=authorized,
             path=path,
             files=dict(skill.files),
+            system=is_system,
         )
     return Catalog(methods=methods, authors=authors, skills=skills, root=root)
 
