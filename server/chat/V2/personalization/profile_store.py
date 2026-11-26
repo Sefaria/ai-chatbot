@@ -112,7 +112,11 @@ def set_enabled(user_id: str, target: str, enabled: bool) -> SettingsData:
         if getattr(row, field) == bool(enabled):
             return _settings_data(row)
         setattr(row, field, bool(enabled))
-        row.save(update_fields=[field])
+        update_fields = [field]
+        if target == "instructions":
+            row.instructions_updated_at = timezone.now()
+            update_fields.append("instructions_updated_at")
+        row.save(update_fields=update_fields)
         return _settings_data(row, changed=True)
 
 

@@ -357,6 +357,8 @@ class PersonalizationSettings(models.Model):
     # Time of the newest prompt already processed (the watermark) and of the last Clear.
     processed_through = models.DateTimeField(null=True, blank=True)
     cleared_at = models.DateTimeField(null=True, blank=True)
+    # When the nightly profile update last ran for this user.
+    last_run_at = models.DateTimeField(null=True, blank=True)
     notice_pending = models.BooleanField(default=False)
     # The user message whose turn showed the notice, so a recovered reply can repeat it.
     notice_message_id = models.CharField(max_length=100, blank=True, default="")
@@ -375,6 +377,8 @@ class ProfileSection(models.Model):
     class Origin(models.TextChoices):
         STATED = "stated", "Stated"
         INFERRED = "inferred", "Inferred"
+        # Set by the learner in Settings or through "alter"; the nightly update keeps it.
+        USER = "user", "User"
 
     user_id = models.CharField(max_length=100, db_index=True)
     kind = models.CharField(max_length=10, choices=Kind.choices)

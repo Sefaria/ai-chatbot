@@ -67,7 +67,7 @@ def snapshot():
     return store.get_sections(USER), store.get_settings(USER)
 
 
-def test_applied_changes_the_section_and_marks_it_stated():
+def test_applied_changes_the_section_and_marks_it_user():
     put_interests()
     llm = edit_model(
         {
@@ -86,7 +86,7 @@ def test_applied_changes_the_section_and_marks_it_stated():
     assert status == "applied" and reason
     sections = {s.heading: s for s in store.get_sections(USER)}
     changed = sections["Current interests"]
-    assert changed.body == "You study only the weekly parsha." and changed.origin == "stated"
+    assert changed.body == "You study only the weekly parsha." and changed.origin == "user"
     assert sections["Kind of answers you want"].origin == "inferred"  # the other one is untouched
     settings_ = store.get_settings(USER)
     assert settings_.profile_updated_by == "you_la" and settings_.profile_revision == 2
@@ -218,7 +218,7 @@ def test_an_empty_body_removes_a_section_and_a_new_dynamic_one_can_be_added():
     sections = store.get_sections(USER)
     assert [(s.heading, s.kind, s.origin) for s in sections] == [
         ("Current interests", "core", "inferred"),
-        ("Teaching", "dynamic", "stated"),
+        ("Teaching", "dynamic", "user"),
     ]
 
 
@@ -280,7 +280,7 @@ def test_clear_blanks_the_text_of_edit_runs():
 
 
 def _runs():
-    return list(ProfileWriterRun.objects.filter(user_id=USER))
+    return list(ProfileWriterRun.objects.filter(user_id=USER).order_by("started_at", "id"))
 
 
 def test_a_refused_request_is_not_stored_on_the_run_row():
@@ -527,13 +527,19 @@ def test_a_commentator_preference_is_not_refused_by_code(request_text):
     assert status == "applied" and llm.calls
     by_key = {s.key: s for s in store.get_sections(USER)}
     assert by_key["commentators"].body == "You are only interested in Ramban."
-    assert by_key["commentators"].origin == "stated"
+    assert by_key["commentators"].origin == "user"
 
 
 def test_a_core_update_matches_by_key_not_heading_and_leaves_no_duplicate():
     _put_rows(
         SectionData(
-            "commentators", "core", "Old wording of the heading", "You read Rashi.", "inferred", T, 0
+            "commentators",
+            "core",
+            "Old wording of the heading",
+            "You read Rashi.",
+            "inferred",
+            T,
+            0,
         )
     )
     reply = {
@@ -544,7 +550,7 @@ def test_a_core_update_matches_by_key_not_heading_and_leaves_no_duplicate():
     assert edit_profile(USER, "Ramban please", llm=edit_model(reply))[0] == "applied"
     sections = store.get_sections(USER)
     assert [(s.key, s.body, s.origin) for s in sections] == [
-        ("commentators", "You read Ramban.", "stated")
+        ("commentators", "You read Ramban.", "user")
     ]
 
 
@@ -585,7 +591,7 @@ def test_a_heading_only_update_of_a_core_section_replaces_its_body_in_one_row(he
     assert edit_profile(USER, "Ramban please", llm=edit_model(reply))[0] == "applied"
     sections = store.get_sections(USER)
     assert [(s.key, s.kind, s.heading, s.body, s.origin) for s in sections] == [
-        ("commentators", "core", heading, "You read Ramban.", "stated")
+        ("commentators", "core", heading, "You read Ramban.", "user")
     ]
 
 
@@ -645,7 +651,9 @@ def test_an_entry_missing_its_heading_or_body_is_a_bad_reply(entry):
 def _core_and_dynamic_interests():
     # In memory: the table's unique heading index would refuse both rows.
     return [
-        SectionData("current_interests", "core", "Current interests", "Old core.", "inferred", T, 0),
+        SectionData(
+            "current_interests", "core", "Current interests", "Old core.", "inferred", T, 0
+        ),
         SectionData(None, "dynamic", "Current interests", "Old dynamic.", "stated", T, 1),
     ]
 
