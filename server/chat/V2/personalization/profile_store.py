@@ -433,3 +433,30 @@ def users_active_since(since: datetime) -> list[str]:
         .distinct()
     )
     return sorted(set(rows))
+
+
+def users_to_screen() -> list[str]:
+    """Users who might be due for the nightly update (cheap; the caller screens the prompts): any
+    user prompt after their `last_run_at` (all of them when never run), or Instructions changed or
+    toggled after it. Only users whose Profile is on, or who have no settings row yet."""
+    last_run = PersonalizationSettings.objects.filter(user_id=OuterRef("user_id")).values(
+        "last_run_at"
+    )[:1]
+    prompted = (
+        ChatMessage.objects.filter(role=ChatMessage.Role.USER)
+        .exclude(user_id="")
+        .annotate(mark=Subquery(last_run))
+        .filter(Q(mark__isnull=True) | Q(server_timestamp__gt=F("mark")))
+        .order_by()
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    edited = PersonalizationSettings.objects.filter(
+        Q(last_run_at__isnull=True, instructions_updated_at__isnull=False)
+        | Q(instructions_updated_at__gt=F("last_run_at"))
+    ).values_list("user_id", flat=True)
+    candidates = set(prompted) | set(edited)
+    off = PersonalizationSettings.objects.filter(
+        user_id__in=candidates, profile_enabled=False
+    ).values_list("user_id", flat=True)
+    return sorted(candidates - set(off))

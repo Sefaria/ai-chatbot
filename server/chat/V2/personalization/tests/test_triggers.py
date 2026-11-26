@@ -33,6 +33,7 @@ def env(monkeypatch, settings):
     monkeypatch.setenv("PERSONALIZATION_OVERRIDE_ALLOW_ALL", "true")
     settings.PERSONALIZATION_OVERRIDE_ENABLED = True
     settings.PERSONALIZATION_JEV_GATE = "off"
+    settings.PERSONALIZATION_LIVE_TRIGGERS = True  # these tests cover the live triggers
 
 
 @pytest.fixture
@@ -133,16 +134,10 @@ def test_sweep_skips_a_user_who_is_already_running(llm):
 # ---- dream command -----------------------------------------------------------------------------
 
 
-def test_dream_ignores_prompts_older_than_the_window(llm):
-    add_prompt("old", "an ancient question", session="s1", at=timezone.now() - timedelta(days=70))
-    command("personalization_dream")
-    assert runs("dream") == 0
-
-
 def test_dream_dry_run_runs_nothing(llm):
     say("u", "a question", 600)
-    assert "1 user(s) due" in command("personalization_dream", "--dry-run")
-    assert runs("dream") == 0 and llm.calls == []
+    assert "dream dry run: 1 user(s) due" in command("personalization_dream", "--dry-run")
+    assert ProfileWriterRun.objects.count() == 0 and llm.calls == []
 
 
 # ---- health ------------------------------------------------------------------------------------

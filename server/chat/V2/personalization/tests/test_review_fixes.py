@@ -26,6 +26,7 @@ NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 def env(monkeypatch, settings):
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key-not-real")
     settings.PERSONALIZATION_JEV_GATE = "off"
+    settings.PERSONALIZATION_LIVE_TRIGGERS = True
 
 
 def sec(heading, body, *, key=None, origin="inferred", at=None):

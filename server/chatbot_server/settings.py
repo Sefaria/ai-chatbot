@@ -263,6 +263,9 @@ from .model_defaults import ROUTER_MODEL as _ROUTER_MODEL_DEFAULT
 PERSONALIZATION_MODEL = os.environ.get("PERSONALIZATION_MODEL", _GUARDRAIL_MODEL_DEFAULT)
 # A request-level override works only on a non-production ENVIRONMENT.
 PERSONALIZATION_OVERRIDE_ENABLED = os.environ.get("PERSONALIZATION_OVERRIDE_ENABLED") == "true"
+# The POC's live triggers (first message of a chat, every message, idle sweep). Off: the Profile is
+# built only by the nightly `personalization_dream` and Run Now.
+PERSONALIZATION_LIVE_TRIGGERS = os.environ.get("PERSONALIZATION_LIVE_TRIGGERS") == "true"
 # The Jev relevance gate in front of the writer: off | shadow | on.
 PERSONALIZATION_JEV_GATE = os.environ.get("PERSONALIZATION_JEV_GATE", "off")
 # Explicit timeouts in seconds for the writer's model calls and for Jev.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -20,6 +21,9 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true", help="list the users, run nothing")
 
     def handle(self, *args, **options):
+        if not settings.PERSONALIZATION_LIVE_TRIGGERS:
+            self.stdout.write("sweep: live triggers off")
+            return
         now = timezone.now()
         idle_before = now - timedelta(minutes=IDLE_MINUTES)
         due = []

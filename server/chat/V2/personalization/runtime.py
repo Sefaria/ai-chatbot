@@ -9,6 +9,8 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+from django.conf import settings
+
 from ..prompts import chapters
 from . import gate, profile_store
 from .parsing import escape_block
@@ -91,9 +93,10 @@ def context_for_request(
 
 
 def update_every_message(user_id: str) -> bool:
-    """The user's lab testing switch: run the job after every reply."""
+    """The user's lab testing switch: run the job after every reply. Only matters while
+    `PERSONALIZATION_LIVE_TRIGGERS` is on."""
     try:
-        return bool(profile_store.get_settings(user_id).update_every_message)
+        return bool(settings.PERSONALIZATION_LIVE_TRIGGERS) and bool(profile_store.get_settings(user_id).update_every_message)
     except Exception:
         return False
 
@@ -185,8 +188,11 @@ def _drain(user_id: str) -> None:
 
 def queue_job(user_id: str, trigger: str) -> None:
     """Queue a Profile job on a small background pool (2 workers). One user's jobs run one at a
-    time, in the order queued. Never blocks the reply and never raises."""
+    time, in the order queued. Never blocks the reply and never raises. Does nothing while
+    `PERSONALIZATION_LIVE_TRIGGERS` is off."""
     global _pending
+    if not settings.PERSONALIZATION_LIVE_TRIGGERS:
+        return
     try:
         if not profile_store.get_settings(user_id).profile_enabled:
             return  # the job would do nothing: one cheap read saves the queue slot
