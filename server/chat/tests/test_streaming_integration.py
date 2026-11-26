@@ -585,14 +585,14 @@ class TestStreamingEndpointErrorHandling:
             "text": "This will fail",
         }
 
-        with patch("chat.V2.views.capture_exception") as mock_capture:
+        with patch("chat.V2.views.logger") as mock_logger:
             response = client.post("/api/v2/chat/stream", data=request_data, format="json")
 
             # Still returns 200 for SSE (error is in the stream)
             assert response.status_code == 200
 
             content = b"".join(response.streaming_content).decode("utf-8")
-            mock_capture.assert_called_once()
+            mock_logger.exception.assert_called_once()
         assert "event: error" in content
 
     def test_missing_required_fields_returns_400(self, client):
@@ -922,7 +922,7 @@ class TestStreamingEndpointRecovery:
 
         with patch("chat.V2.views.get_agent_service", return_value=mock_agent):
             with patch("chat.V2.views.get_summary_service") as mock_summary_service:
-                with patch("chat.V2.views.capture_exception") as mock_capture:
+                with patch("chat.V2.views.logger") as mock_logger:
                     mock_summary_service.return_value.update_summary.side_effect = Exception(
                         "summary db error"
                     )
@@ -933,7 +933,7 @@ class TestStreamingEndpointRecovery:
         assert response.status_code == 200
         assert "event: message" in content
         assert "Recovered despite summary failure" in content
-        mock_capture.assert_called_once()
+        mock_logger.exception.assert_called_once()
 
         session = ChatSession.objects.get(session_id="sess_summary_fail")
         user_msg = ChatMessage.objects.get(message_id="msg_summary_fail")
@@ -1110,8 +1110,8 @@ class TestChatClientEventV2:
         return "test-secret-key-for-tokens"
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
-    @patch("chat.V2.views.capture_message")
-    def test_valid_event_emits_telemetry(self, mock_capture_message, client, secret):
+    @patch("chat.V2.views.logger")
+    def test_valid_event_emits_telemetry(self, mock_logger, client, secret):
         response = client.post(
             "/api/v2/chat/client-event",
             data={
@@ -1131,8 +1131,8 @@ class TestChatClientEventV2:
 
         assert response.status_code == 200
         assert response.data == {"success": True}
-        mock_capture_message.assert_called_once()
-        assert mock_capture_message.call_args.kwargs["page_url"] == "/topics/shabbat"
+        mock_logger.warning.assert_called_once()
+        assert mock_logger.warning.call_args.kwargs["extra"]["page_url"] == "/topics/shabbat"
 
     @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
     def test_invalid_token_is_rejected(self, client):
@@ -1166,6 +1166,133 @@ class TestChatClientEventV2:
 
         assert response.status_code == 400
         assert response.data["error"] == "Invalid request"
+
+
+@pytest.mark.django_db
+class TestChatFeedbackV2:
+    """Feedback is authenticated and only accepted for sessions the actor owns."""
+
+    @pytest.fixture
+    def client(self):
+        return APIClient()
+
+    @pytest.fixture
+    def secret(self):
+        return "test-secret-key-for-tokens"
+
+    @pytest.fixture
+    def feedback_payload(self):
+        def build(user_token, session_id):
+            return {
+                "traceId": "trace_fb_1",
+                "score": "up",
+                "userId": user_token,
+                "sessionId": session_id,
+                "messageId": "msg_fb_1",
+                "comment": "",
+                "feedbackReason": "",
+            }
+
+        return build
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_invalid_token_returns_401_and_skips_logging(
+        self, mock_get_bt_logger, client, feedback_payload
+    ):
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload("not-a-valid-token", "sess_fb_invalid"),
+            format="json",
+        )
+
+        assert response.status_code == 401
+        assert response.data["error"] == "invalid_userId"
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_other_users_session_returns_403_and_skips_logging(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        ChatSession.objects.create(session_id="sess_fb_other", user_id="user_fb_other")
+
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_other"),
+            format="json",
+        )
+
+        assert response.status_code == 403
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_unknown_session_returns_403(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_missing"),
+            format="json",
+        )
+
+        assert response.status_code == 403
+        mock_get_bt_logger.assert_not_called()
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_own_session_is_logged_with_authenticated_user_id(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        ChatSession.objects.create(session_id="sess_fb_own", user_id="user_fb_owner")
+        ChatMessage.objects.create(
+            message_id="msg_fb_1",
+            session_id="sess_fb_own",
+            user_id="user_fb_owner",
+            role=ChatMessage.Role.ASSISTANT,
+            content="answer",
+        )
+        bt_logger = MagicMock()
+        mock_get_bt_logger.return_value = bt_logger
+
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_own"),
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data == {"success": True}
+        bt_logger.update_span.assert_called_once()
+        assert bt_logger.update_span.call_args.kwargs["id"] == "trace_fb_1"
+        metadata = bt_logger.update_span.call_args.kwargs["metadata"]
+        assert metadata["user_id"] == "user_fb_owner"
+        assert metadata["session_id"] == "sess_fb_own"
+        assert metadata["feedback"] == "up"
+
+    @override_settings(CHATBOT_USER_TOKEN_SECRET="test-secret-key-for-tokens")
+    @patch("chat.V2.views._get_bt_logger")
+    def test_unknown_message_id_in_owned_session_returns_403_and_skips_logging(
+        self, mock_get_bt_logger, client, secret, feedback_payload
+    ):
+        ChatSession.objects.create(session_id="sess_fb_nomsg", user_id="user_fb_owner")
+        ChatMessage.objects.create(
+            message_id="msg_fb_1",
+            session_id="sess_fb_elsewhere",
+            user_id="user_fb_owner",
+            role=ChatMessage.Role.ASSISTANT,
+            content="answer in another session",
+        )
+
+        response = client.post(
+            "/api/v2/chat/feedback",
+            data=feedback_payload(create_test_token("user_fb_owner", secret), "sess_fb_nomsg"),
+            format="json",
+        )
+
+        assert response.status_code == 403
+        mock_get_bt_logger.assert_not_called()
 
 
 @pytest.mark.django_db

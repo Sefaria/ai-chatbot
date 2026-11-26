@@ -69,7 +69,6 @@ from .logging import get_turn_logging_service
 from .origin import resolve_origin
 from .pricing import bind_cost_accumulator, init_cost_accumulator, reset_cost_accumulator
 from .prompts.prompt_fragments import ERROR_FALLBACK_MESSAGE, INTERNAL_ERROR_MESSAGE
-from .sentry import capture_exception, capture_message
 from .services import (
     create_or_get_session,
     load_session_summary,
@@ -622,12 +621,6 @@ def chat_stream_v2(request):
                 )
             except Exception as e:
                 logger.exception("Agent error in streaming endpoint")
-                capture_exception(
-                    e,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                )
                 result_holder["error"] = str(e)
             finally:
                 if not is_load_test:
@@ -885,16 +878,8 @@ def chat_stream_v2(request):
                     response_message.total_cost_usd = Decimal(str(agent_response.total_cost_usd))
                     response_message.save(update_fields=["total_cost_usd"])
                     logging_result.stats["totalCostUsd"] = agent_response.total_cost_usd
-            except Exception as exc:
+            except Exception:
                 logger.exception("Summary update failed after agent success")
-                capture_exception(
-                    exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="summary_after_success",
-                    response_message_id=response_message.message_id,
-                )
 
             try:
                 logging_service.update_session_success(
@@ -904,16 +889,8 @@ def chat_stream_v2(request):
                     summary_text=summary_text,
                 )
                 session.refresh_from_db()
-            except Exception as exc:
+            except Exception:
                 logger.exception("Session update failed after assistant persist")
-                capture_exception(
-                    exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="session_update_after_success",
-                    response_message_id=response_message.message_id,
-                )
 
             final_data = _build_response_payload(
                 response_message=response_message,
@@ -937,14 +914,6 @@ def chat_stream_v2(request):
                         "turn_id": turn_id,
                         "response_message_id": response_message.message_id,
                     },
-                )
-                capture_exception(
-                    test_exc,
-                    endpoint="chat_stream_v2",
-                    session_id=data["sessionId"],
-                    turn_id=turn_id,
-                    phase="forced_break_before_final_sse",
-                    response_message_id=response_message.message_id,
                 )
                 raise test_exc
 
@@ -1213,7 +1182,7 @@ def anon_claim_v2(request):
 
 @api_view(["POST"])
 def chat_client_event_v2(request):
-    """Ingest browser-side stream telemetry into server logs and Sentry."""
+    """Ingest browser-side stream telemetry into server logs."""
     serializer = ClientStreamEventSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -1241,12 +1210,6 @@ def chat_client_event_v2(request):
         "locale": context.get("locale", ""),
     }
     logger.warning("Client stream telemetry", extra=log_payload)
-    capture_message(
-        f"client_stream:{data['event']}",
-        level="warning",
-        endpoint="chat_stream_v2_client",
-        **log_payload,
-    )
     return Response({"success": True})
 
 
@@ -1263,7 +1226,13 @@ def prompt_defaults(request):
 
 @api_view(["POST"])
 def chat_feedback_v2(request):
-    """Capture user feedback for the latest chat trace in Braintrust."""
+    """Capture user feedback for the latest chat trace in Braintrust.
+
+    POST /api/v2/chat/feedback
+
+    Feedback is accepted only for a session owned by the authenticated actor, and
+    the logged user is the authenticated actor rather than the request payload.
+    """
     serializer = FeedbackRequestSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -1272,6 +1241,25 @@ def chat_feedback_v2(request):
         )
 
     data = serializer.validated_data
+    actor = _authenticate_actor_or_response(request, data)
+    if isinstance(actor, Response):
+        return actor
+
+    session_owned = ChatSession.objects.filter(
+        session_id=data["sessionId"],
+        user_id__in=actor.user_id_candidates,
+    ).exists()
+    if not session_owned:
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    # The feedback must refer to a message that exists in that owned session.
+    message_in_session = ChatMessage.objects.filter(
+        message_id=data["messageId"],
+        session_id=data["sessionId"],
+    ).exists()
+    if not message_in_session:
+        return Response({"error": "forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     bt_logger = _get_bt_logger()
 
     feedback_reason = (data.get("feedbackReason") or "").strip()
@@ -1289,7 +1277,7 @@ def chat_feedback_v2(request):
                 "feedback_reason": feedback_reason,
                 "feedback_comment": comment,
                 "session_id": data["sessionId"],
-                "user_id": data.get("userId") or anonymous_user_id(data["anonId"]),
+                "user_id": actor.user_id,
                 "message_id": data["messageId"],
             }
             try:

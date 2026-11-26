@@ -2,6 +2,8 @@
 Serializers for chat API.
 """
 
+import json
+
 from rest_framework import serializers
 
 from .models import ChatMessage
@@ -105,13 +107,73 @@ class AnonClaimRequestSerializer(serializers.Serializer):
     anonId = serializers.UUIDField()
 
 
+# Generous ceilings on the Anthropic-format endpoint: bound the work per request
+# without constraining real conversations.
+MAX_ANTHROPIC_MESSAGES = 200
+MAX_ANTHROPIC_TEXT_CHARS = 200_000
+# Content blocks allowed in a single message; empty blocks add no text, so bound the count itself.
+MAX_ANTHROPIC_BLOCKS_PER_MESSAGE = 1_000
+
+
+def _serialized_length(value) -> int:
+    return len(json.dumps(value, default=str))
+
+
+def _message_text_length(content) -> int:
+    """Size carried by one message's content: text counts by length, everything else by serialized size."""
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if isinstance(block, str):
+                total += len(block)
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if block.get("type") == "text" and isinstance(text, str):
+                    total += len(text)
+                    # Any additional fields on a text block count in full too.
+                    extras = {k: v for k, v in block.items() if k not in ("type", "text")}
+                    if extras:
+                        total += _serialized_length(extras)
+                else:
+                    # Non-text blocks (tool input/results, images) count by serialized size.
+                    total += _serialized_length(block)
+            else:
+                total += _serialized_length(block)
+        return total
+    return _serialized_length(content)
+
+
 class AnthropicRequestSerializer(serializers.Serializer):
     """Anthropic Messages API request format."""
 
     model = serializers.CharField(max_length=100, required=False)
     max_tokens = serializers.IntegerField(required=False)
-    messages = serializers.ListField(child=serializers.DictField(), min_length=1)
+    messages = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        max_length=MAX_ANTHROPIC_MESSAGES,
+    )
     metadata = serializers.DictField(required=False)
+
+    def validate_messages(self, messages):
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list) and len(content) > MAX_ANTHROPIC_BLOCKS_PER_MESSAGE:
+                raise serializers.ValidationError(
+                    f"A message may contain at most {MAX_ANTHROPIC_BLOCKS_PER_MESSAGE} content blocks."
+                )
+        try:
+            total_chars = sum(_message_text_length(msg.get("content")) for msg in messages)
+        except Exception as exc:
+            # Unmeasurable content (excess nesting, unserializable values) is a client error, not a 500.
+            raise serializers.ValidationError("Message content could not be measured.") from exc
+        if total_chars > MAX_ANTHROPIC_TEXT_CHARS:
+            raise serializers.ValidationError(
+                f"Total message text exceeds {MAX_ANTHROPIC_TEXT_CHARS} characters."
+            )
+        return messages
 
 
 class ChatResponseSerializer(serializers.Serializer):

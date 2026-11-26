@@ -1,14 +1,21 @@
 """Tests for API serializers - request validation, response formatting."""
 
+import json
+
 import pytest
 from django.utils import timezone
 
 from chat.models import ChatMessage
 from chat.serializers import (
+    MAX_ANTHROPIC_BLOCKS_PER_MESSAGE,
+    MAX_ANTHROPIC_MESSAGES,
+    MAX_ANTHROPIC_TEXT_CHARS,
+    AnthropicRequestSerializer,
     ChatRequestSerializer,
     ChatResponseSerializer,
     HistoryMessageSerializer,
     MessageContextSerializer,
+    _message_text_length,
 )
 
 
@@ -227,3 +234,148 @@ class TestHistoryMessageSerializer:
             "messageKind",
         }
         assert set(data.keys()) == expected_fields
+
+
+class TestAnthropicRequestSerializer:
+    """Test AnthropicRequestSerializer size limits on the messages list."""
+
+    @staticmethod
+    def _user_messages(count, text="hi"):
+        return [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": text} for i in range(count)
+        ]
+
+    def test_valid_request(self):
+        serializer = AnthropicRequestSerializer(
+            data={"messages": [{"role": "user", "content": "Hello"}]}
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_messages_at_max_count_is_valid(self):
+        serializer = AnthropicRequestSerializer(
+            data={"messages": self._user_messages(MAX_ANTHROPIC_MESSAGES)}
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_messages_over_max_count_is_rejected(self):
+        serializer = AnthropicRequestSerializer(
+            data={"messages": self._user_messages(MAX_ANTHROPIC_MESSAGES + 1)}
+        )
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_empty_messages_is_rejected(self):
+        serializer = AnthropicRequestSerializer(data={"messages": []})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_total_text_at_limit_is_valid(self):
+        # Split the budget across messages, string and block content alike.
+        half = MAX_ANTHROPIC_TEXT_CHARS // 2
+        messages = [
+            {"role": "user", "content": "x" * half},
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "y" * (MAX_ANTHROPIC_TEXT_CHARS - half)}],
+            },
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert serializer.is_valid(), serializer.errors
+
+    def test_total_text_over_limit_is_rejected(self):
+        messages = [
+            {"role": "user", "content": "x" * MAX_ANTHROPIC_TEXT_CHARS},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": [{"type": "text", "text": "y"}]},
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_malformed_text_values_count_by_serialized_size(self):
+        assert _message_text_length([{"type": "text", "text": 123}]) == len(
+            json.dumps({"type": "text", "text": 123})
+        )
+        assert _message_text_length(42) == 2
+        messages = [
+            {"role": "user", "content": [{"type": "text", "text": 123}]},
+            {"role": "user", "content": 42},
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert serializer.is_valid(), serializer.errors
+
+    def test_nested_arrays_count_toward_the_limit(self):
+        messages = [{"role": "user", "content": [["z" * MAX_ANTHROPIC_TEXT_CHARS]]}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_extra_fields_on_text_blocks_count_toward_the_limit(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "hi", "extra": "z" * MAX_ANTHROPIC_TEXT_CHARS}
+                ],
+            }
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_dict_content_counts_toward_the_limit(self):
+        messages = [{"role": "user", "content": {"k": "z" * MAX_ANTHROPIC_TEXT_CHARS}}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_non_text_blocks_count_toward_the_limit(self):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "t1",
+                        "content": "z" * MAX_ANTHROPIC_TEXT_CHARS,
+                    }
+                ],
+            }
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_small_non_text_blocks_are_valid(self):
+        messages = [
+            {"role": "user", "content": [{"type": "image", "source": {"type": "url", "url": "x"}}]}
+        ]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert serializer.is_valid(), serializer.errors
+
+
+class TestAnthropicMessageMeasurementHardening:
+    def test_deeply_nested_content_is_a_validation_error(self):
+        nested = current = {}
+        for _ in range(100_000):
+            current["a"] = {}
+            current = current["a"]
+        messages = [{"role": "user", "content": [{"type": "tool_result", "content": nested}]}]
+        serializer = AnthropicRequestSerializer(data={"messages": messages})
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_too_many_empty_blocks_rejected(self):
+        blocks = [{"type": "text", "text": ""}] * (MAX_ANTHROPIC_BLOCKS_PER_MESSAGE + 1)
+        serializer = AnthropicRequestSerializer(
+            data={"messages": [{"role": "user", "content": blocks}]}
+        )
+        assert not serializer.is_valid()
+        assert "messages" in serializer.errors
+
+    def test_block_count_at_limit_accepted(self):
+        blocks = [{"type": "text", "text": ""}] * MAX_ANTHROPIC_BLOCKS_PER_MESSAGE
+        serializer = AnthropicRequestSerializer(
+            data={"messages": [{"role": "user", "content": blocks}]}
+        )
+        assert serializer.is_valid(), serializer.errors
