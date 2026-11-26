@@ -7,6 +7,7 @@ model's JSON against the code rules. The job wires them together.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from . import jev_questions as q
@@ -39,25 +40,30 @@ def support_dates(section: dict, prompts: list[PromptRow]) -> datetime:
 
 
 def _update_prompts(user_id: str) -> list[PromptRow]:
-    """The last MAX_PROMPTS screened prompts of any age (after the last Clear), oldest first, rule
-    screened and cleaned. An exact duplicate text is kept once, at its latest occurrence, so its
-    date shows when the learner last asked it."""
-    rows = unprocessed_user_prompts(user_id, None, newest=MAX_PROMPTS)
+    """The last MAX_PROMPTS distinct screened prompts of any age (after the last Clear), oldest
+    first, rule screened and cleaned. An exact duplicate text is kept once, at its latest
+    occurrence (so its date shows when the learner last asked it), and duplicates go before the
+    newest MAX_PROMPTS are taken, so the model gets up to MAX_PROMPTS distinct prompts."""
     out: list[PromptRow] = []
-    for p in rows:
+    for p in unprocessed_user_prompts(user_id, None):
         if is_sensitive(p.text):
             continue
         text = clean_text(p.text)[: q.MAX_PROMPT_CHARS]
         if text:
             out.append(PromptRow(p.message_id, p.session_id, text, p.server_timestamp))
     last_at = {p.text: i for i, p in enumerate(out)}
-    return [p for i, p in enumerate(out) if last_at[p.text] == i]
+    return [p for i, p in enumerate(out) if last_at[p.text] == i][-MAX_PROMPTS:]
 
 
-def build_update_input(user_id: str, now: datetime) -> tuple[str, list[PromptRow]]:
+def build_update_input(
+    user_id: str, now: datetime, screen: Callable[[list[PromptRow]], list[PromptRow]] | None = None
+) -> tuple[str, list[PromptRow]]:
+    """`screen` (the job's Jev sensitive gate) drops prompts before they are numbered."""
     settings = get_settings(user_id)
     sections = get_sections(user_id)
     prompts = _update_prompts(user_id)
+    if screen is not None:
+        prompts = screen(prompts)
     current = (
         "\n\n".join(
             f"[{s.key or 'dynamic'}] {s.heading} ({s.origin}, last supported "

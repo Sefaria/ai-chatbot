@@ -51,6 +51,7 @@ class SettingsData:
     profile_revision: int = 0
     processed_through: datetime | None = None
     cleared_at: datetime | None = None
+    last_run_at: datetime | None = None
     notice_pending: bool = False
     show_plain_response: bool = True
     update_every_message: bool = True
@@ -252,6 +253,12 @@ def notice_shown_for(user_id: str, message_id: str | None) -> bool:
     return PersonalizationSettings.objects.filter(
         user_id=user_id, notice_message_id=message_id
     ).exists()
+
+
+def mark_run(user_id: str, at: datetime) -> None:
+    """Record that the nightly update completed a run for this user at `at`."""
+    PersonalizationSettings.objects.get_or_create(user_id=user_id)
+    PersonalizationSettings.objects.filter(user_id=user_id).update(last_run_at=at)
 
 
 def refresh_support_dates(user_id: str, base_revision: int, dates: dict[str, datetime]) -> bool:

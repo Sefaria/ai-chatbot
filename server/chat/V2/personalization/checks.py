@@ -89,6 +89,6 @@ def check_profile(sections: list[SectionData], llm: LLMClient | None) -> CheckRe
             return _fail("never_store_unparseable")
     if sum(1 for s in sections if s.kind == "dynamic") > MAX_DYNAMIC:
         return _fail("dynamic_cap")
-    if word_count(sections) > MAX_WORDS:
+    if word_count(sections) >= MAX_WORDS:  # "under 150", as the update validator
         return _fail("words")
     return CheckResult(True)
