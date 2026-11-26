@@ -86,7 +86,7 @@ async def test_dry_run_then_save_and_links():
     }
     assert "dryRun" not in json.loads(save.content)
     assert result["assetUrl"] == "https://content.test/v2"
-    assert result["readerUrl"] == "https://www.sefaria.test/Genesis.1.1-5?asset=4f1c"
+    assert result["readerUrl"] == "https://www.sefaria.test/Genesis.1.1-5?a2=4f1c@v2&link=2-1"
     assert result["asset"] == {
         "id": "4f1c",
         "title": "The Seven Days",
@@ -230,5 +230,9 @@ async def test_reader_link_without_a_first_ref():
     assert tools.reader_link(None, "a1") is None
     assert (
         tools.reader_link("Rashi on Genesis 1:1:1", "a 1")
-        == "https://www.sefaria.test/Rashi_on_Genesis.1.1.1?asset=a%201"
+        == "https://www.sefaria.test/Rashi_on_Genesis.1.1.1?a2=a%201&link=2-1"
+    )
+    assert (
+        tools.reader_link("Genesis 1:1", "a1", "v9")
+        == "https://www.sefaria.test/Genesis.1.1?a2=a1@v9&link=2-1"
     )

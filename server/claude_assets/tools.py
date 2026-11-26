@@ -32,16 +32,18 @@ def sefaria_web_url() -> str:
     return (os.environ.get("SEFARIA_WEB_URL") or "https://www.sefaria.org").rstrip("/")
 
 
-def reader_link(first_ref: str | None, asset_id: str) -> str | None:
-    """A reader link that opens the asset beside its first ref.
+def reader_link(first_ref: str | None, asset_id: str, version_id: str | None = None) -> str | None:
+    """A reader link that opens the asset beside its first ref, linked to it.
 
-    Assumption: the reader's URL form for an asset panel is not settled (plan Phase 2). This uses
-    ``/<ref>?asset=<id>``; change only this function when the reader's form is decided.
+    The reader's form (reader-next, Sefaria-Project branch feat/reader-linked-panels): the text is
+    panel 1, the asset panel 2 (``a2=<id>[@<version>]``), and ``link=2-1`` links the asset to the text.
     """
     if not first_ref:
         return None
+    asset = f"{asset_id}@{version_id}" if version_id else asset_id
     return (
-        f"{sefaria_web_url()}/{quote(refs.to_url(first_ref), safe='.,_-:')}?asset={quote(asset_id)}"
+        f"{sefaria_web_url()}/{quote(refs.to_url(first_ref), safe='.,_-:')}"
+        f"?a2={quote(asset, safe='@')}&link=2-1"
     )
 
 
@@ -142,7 +144,7 @@ async def save_asset(
     version = _version_of(asset, body.get("version") or {})
     first_ref = _first_ref(body, dry.body)
     asset_url = version.get("contentUrl") or f"{base}{social.SAVE_PATH}/{quote(new_id)}"
-    reader_url = reader_link(first_ref, new_id)
+    reader_url = reader_link(first_ref, new_id, version.get("id"))
     manifest = asset.get("manifest") or {}
     title = asset.get("title") or manifest.get("title") or ""
 

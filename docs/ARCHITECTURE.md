@@ -223,7 +223,7 @@ MCP client ──save_asset──► chatbot-mcp (/mcp/user, access token with s
         └► Sefaria issues a Social identity token marked via="mcp"
    2. POST {SOCIAL_API_BASE_URL}/api/v1/claude-assets  {html, assetId?, sourceUrl?, dryRun: true}
    3. the same without dryRun   (Bearer <Social token>; Social accepts via="mcp" only here)
-   → asset link (the version's contentUrl), reader link (/<ref>?asset=<id>, provisional)
+   → asset link (the version's contentUrl), reader link (/<ref>?a2=<id>@<version>&link=2-1, the reader-next form)
 ```
 
 Social's refusals (422 `asset.invalid` with `problems`, 429, 503, 404, 401/403) are passed

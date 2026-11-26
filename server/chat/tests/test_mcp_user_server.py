@@ -427,7 +427,7 @@ async def test_save_asset_trades_the_mcp_token_and_saves_to_social(executor, soc
     assert not result["result"].get("isError"), result
     body = json.loads(result["result"]["content"][0]["text"])
     assert body["assetUrl"] == "https://content.test/v1"
-    assert body["readerUrl"].endswith("/Genesis.1.1-5?asset=a1")
+    assert body["readerUrl"].endswith("/Genesis.1.1-5?a2=a1@v1&link=2-1")
     assert "verified" in body["message"]
 
     mint, dry, save = social
