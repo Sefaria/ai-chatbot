@@ -1,0 +1,311 @@
+{
+  "verdict": "NEEDS_CHANGES",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/render.py",
+      "line": 31,
+      "rule": "Code Review for AI Agents, Rule 12.8: Validate input before sensitive sinks (p. 13).",
+      "fix": "Free-text values pass through registry validation and are interpolated directly into the system prompt. Reproduced a value containing </learner_profile><system>...</system> escaping the intended profile boundary. Escape delimiter characters, serialize values as explicitly untrusted data, and add adversarial tests through the interview and inferred-update paths."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 220,
+      "rule": "Code Review for AI Agents, Rules 11.2 and 11.12: Atomic check-then-act; locking zero rows locks nothing (p. 12).",
+      "fix": "When the initial lookup finds no slot, a concurrent set_stated can create it before update_or_create. The latter then overwrites it without rechecking status. Reproduced this interleaving against the actual Django store. Serialize creation through a stable user lock, or perform a conditional conflict update that cannot modify stated rows."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 155,
+      "rule": "Code Review for AI Agents, Rule 11.10: Protect read-modify-write cycles with atomic operations (p. 12).",
+      "fix": "The clear loop checks the profile snapshot captured before the model call, then deletes unconditionally. Reproduced setting answer_style as stated during that call and having the batch delete it. Add an atomic delete-if-inferred operation that also checks the expected row version."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 151,
+      "rule": "Code Review for AI Agents, Rules 11.8 and 11.10: Cancellation and concurrency-safe writes (p. 12).",
+      "fix": "An in-flight extraction retains observations and evidence after clear(user_id) deletes them. Reproduced clearing during the model call and receiving a recreated slot afterward. Introduce a per-user generation checked atomically when committing results; clearing or moving an identity must invalidate older work. Apply this to realtime updates and proposals too."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 109,
+      "rule": "Code Review for AI Agents, Rule 11.2: Check-then-act must be atomic (p. 12).",
+      "fix": "store_enabled is checked only before the model call. Reproduced disabling storage during the call and still receiving a stored update. Revalidate consent atomically at commit time, using a settings revision or shared user lock, across all extraction strategies."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 297,
+      "rule": "Code Review for AI Agents, Rule 11.13: Batch processors must preserve reliable processing semantics (p. 12).",
+      "fix": "mark_consumed marks every pending observation, including turns arriving while consolidation is running. Reproduced a newly appended turn becoming consumed without being shown to the model. Acknowledge only the observation IDs captured for that batch; implement the same restriction in the in-memory store."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 333,
+      "rule": "Code Review for AI Agents, Rule 11.2: Check-then-act must be atomic (p. 12).",
+      "fix": "resolve_proposal reads pending status without locking. Concurrent acceptance and rejection can both succeed, leaving a rejected proposal with its value stored as stated. Lock the proposal before checking status and keep its transition and slot write in the same transaction."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.98,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 354,
+      "rule": "Code Review for AI Agents, Rules 11.4 and 11.10: Consistent locks for read-modify-write operations (p. 12).",
+      "fix": "move snapshots target slots without locks. A target slot can become stated after that snapshot, then be deleted using the stale inferred status. Concurrent insertions can also abort the merge on the unique constraint. Lock both identities in a consistent order and serialize slot/settings creation throughout the merge."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 395,
+      "rule": "Code Review for AI Agents, Rule 16.23: Use targeted updates instead of load-modify-save (p. 17).",
+      "fix": "set_settings reads both toggles and writes both back. Concurrent requests disabling different toggles can overwrite each other's changes and re-enable an opt-out. Update only explicitly supplied fields and handle concurrent creation atomically; coordinate this with move's stricter-settings merge."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/realtime.py",
+      "line": 41,
+      "rule": "Code Review for AI Agents, Rule 12.8: Validate input before sensitive sinks (p. 13).",
+      "fix": "The sensitivity guard checks only user_message, but realtime also sends assistant_response. Reproduced an innocuous 'Please continue' turn sending an assistant response containing a cancer diagnosis. Screen every text component being transmitted, or omit assistant text from extraction."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.84,
+      "file": "server/chat/V2/personalization/strategies/explicit.py",
+      "line": 27,
+      "rule": "Code Review for AI Agents, Rule 12.8: Validate input before sensitive sinks (p. 13).",
+      "fix": "Interview free-text answers receive only type/length validation. Reproduced storing 'My cancer treatment schedule' in learning_habits; that value can subsequently reach prompts and extractor models. If the advertised prohibition on sensitive memories includes interview input, enforce it here and at other free-text write boundaries."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/hybrid.py",
+      "line": 85,
+      "rule": "Code Review for AI Agents, Rule 12.8: Enforce data restrictions at storage sinks (p. 13).",
+      "fix": "Instructions classified as 'never stored' are nevertheless persisted verbatim through log_observation(excluded=True), including the named movements or authors. HybridJevStrategy does the same. Store only a content-free processing marker, or discard these observations entirely."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/hybrid_jev.py",
+      "line": 54,
+      "rule": "Code Review for AI Agents, Rule 8.10: Enforce failure-path postconditions (p. 9).",
+      "fix": "When instruction classification fails, execution continues and logs the instruction as ordinary, non-excluded input. Reproduced an exclusion instruction entering later inference windows after JevError. Quarantine unresolved instructions until classification succeeds; apply the same treatment to malformed mapper replies in HybridStrategy."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 131,
+      "rule": "Code Review for AI Agents, Rules 8.1 and 8.10: Preserve errors and enforce processing postconditions (p. 9).",
+      "fix": "An unparsable reply becomes an empty success, increments users_processed, and consumes pending observations with errors=0. Reproduced this with 'no JSON'. Distinguish a validated empty update from a parse/schema failure, count the latter as an error, and leave its observations pending for bounded retry."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/jev.py",
+      "line": 111,
+      "rule": "Code Review for AI Agents, Rule 13.2: Validate all input at the boundary (p. 14).",
+      "fix": "Successful HTTP responses are not structurally validated. Reproduced [] and {'answers': {'q': null}} escaping as AttributeError rather than JevError, bypassing the strategy's failure handling. Validate mappings, answer types, token counts, and finite probabilities/confidences within [0,1], then translate invalid responses into sanitized JevError."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.96,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 154,
+      "rule": "Code Review for AI Agents, Rule 12.8: Validate model-controlled data before destructive sinks (p. 13).",
+      "fix": "Model-requested clears require neither evidence nor the slot's minimum session count, although inferred writes do. A single mistaken or injected response can erase multiple established slots. Give clear operations structured, validated evidence and enforce the relevant evidence policy before performing an atomic conditional deletion."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/strategies/base.py",
+      "line": 122,
+      "rule": "Code Review for AI Agents, Rule 8.10: Enforce postconditions for accepted evidence (p. 9).",
+      "fix": "Reconfirming the same inferred value returns before refreshing evidence or expires_at. An actively reaffirmed category therefore expires on its original deadline and retains obsolete provenance. Refresh inferred evidence and shelf life on valid reconfirmation, while keeping value-change metrics separate."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.97,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 270,
+      "rule": "Code Review for AI Agents, Rule 16.8: Wrap related writes in a transaction (p. 17).",
+      "fix": "clear performs three independently committed deletions. A failure after deleting slots leaves observations or proposals behind despite a partially completed deletion request. Wrap the deletions in one transaction, alongside the generation invalidation needed to stop stale jobs."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 77,
+      "rule": "Code Review for AI Agents, Rule 11.1: Encapsulate shared mutable state (p. 12).",
+      "fix": "The returned dictionary is copied, but SlotValue objects and their nested values/evidence remain shared. Reproduced mutating a returned slot's status and then bypassing the stated lock. Return detached copies from profile, observation, and proposal reads, and copy mutable inputs on writes."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 292,
+      "rule": "Code Review for AI Agents, Chapter 18: Review cross-cutting data-fetch costs (p. 19).",
+      "fix": "The store materializes every observation in the 30-day window before nightly takes 40 or Jev takes 12. Hybrid repeats this fetch and Python processing on every turn. Add bounded query methods that select the required recent eligible observations in the database."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.96,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 297,
+      "rule": "Code Review for AI Agents, Chapter 18: Check cross-cutting storage and privacy behavior (p. 19).",
+      "fix": "Consumption only sets consumed_at; no path purges old raw prompts. The 30-day inference window therefore does not bound retention or table growth, and pending-user scans continue operating over accumulated history. Implement an explicit observation retention/purge policy."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.97,
+      "file": "server/chat/V2/personalization/strategies/nightly.py",
+      "line": 112,
+      "rule": "Code Review for AI Agents, Chapter 18: Check cross-cutting database costs (p. 19).",
+      "fix": "consolidate runs a global expiry deletion once per user, in addition to the batch's outer sweeps. Realtime and both hybrids also run global expiry on every turn. Scope hot-path expiry to the current user, sweep globally once per batch, and index the expiry predicate."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.98,
+      "file": "server/chat/V2/personalization/llm.py",
+      "line": 153,
+      "rule": "Code Review for AI Agents, Rules 8.11 and 12.6: Keep sensitive input out of errors (pp. 9, 13).",
+      "fix": "TimeoutExpired escapes with the full command, including learner text and the profile-bearing system prompt. Nonzero exits also copy raw stderr into RuntimeError. Convert subprocess failures into sanitized typed errors without argv, prompts, credentials, or raw stderr; retain only safe diagnostic codes."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/llm.py",
+      "line": 124,
+      "rule": "Code Review for AI Agents, Rule 8.10: Honor interface contracts (p. 9).",
+      "fix": "ClaudeCodeLLMClient accepts max_tokens but never forwards or enforces it. Extraction, answer, and judge evaluations consequently use different output constraints from the production client, distorting cost and latency comparisons. Enforce an equivalent supported output limit or explicitly expose and report this incompatibility."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/evals/run_impact_eval.py",
+      "line": 131,
+      "rule": "Code Review for AI Agents, Rule 8.10: Enforce output postconditions (p. 9).",
+      "fix": "answer_1 records the opposite of the answer actually shown: swapped=True places baseline first, but metadata says personalized. The winner calculation is correct, so saved order metadata contradicts it. Reverse this expression and test metadata against the actual judge input."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.99,
+      "file": "server/chat/V2/personalization/evals/run_impact_eval.py",
+      "line": 162,
+      "rule": "Code Review for AI Agents, Rule 13.2: Validate boundary input (p. 14).",
+      "fix": "Judge JSON is parsed without schema validation. Strings such as 'false' count as true, missing safety flags count as false, invalid uses_profile values can break aggregation, and boolean better values are accepted as integers. Validate both judge schemas and report invalid judgments separately from valid outcomes."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/evals/runner.py",
+      "line": 147,
+      "rule": "Code Review for AI Agents, Rule 8.10: Enforce simulated-clock preconditions (p. 9).",
+      "fix": "Every date boundary immediately runs the next day's 03:00 batch, even if the next turn occurs before 03:00. Reproduced snapshots ordered 23:00 turn, 03:00 batch, then 01:00 turn. Merge scheduled batch times with turn times chronologically so profiles cannot incorporate future processing."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.96,
+      "file": "server/chat/V2/personalization/evals/scoring.py",
+      "line": 110,
+      "rule": "Code Review for AI Agents, Rule 8.10: Enforce scorer postconditions (p. 9).",
+      "fix": "changed_fact computes earlier_old but ignores it when deciding success. A strategy that writes the final value from the beginning passes without demonstrating a change; the golden-value oracle does exactly that. Require the intended ordered old-to-new transition, or rename this check to final_value_matches and add a separate adaptation check."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/parsing.py",
+      "line": 36,
+      "rule": "Code Review for AI Agents, Rule 13.2: Validate parsed structures at the boundary (p. 14).",
+      "fix": "When an outer reply contains a repairable Hebrew quote and another valid nested update, _first_object returns the nested update before repair is attempted. Reproduced losing the entire updates envelope this way. Repair the candidate outer object before scanning its nested braces, and require the caller's expected response schema."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.98,
+      "file": "server/chat/V2/personalization/store.py",
+      "line": 194,
+      "rule": "Code Review for AI Agents, Rule 8.10: Preserve validated evidence postconditions (p. 9).",
+      "fix": "Session thresholds are checked before evidence is truncated to the final three entries. Valid evidence from sessions s1,s2,s2,s2 passes a two-session check but persists only s2, losing its substantiation. Select evidence across distinct required sessions before applying MAX_EVIDENCE, consistently in both stores."
+    },
+    {
+      "severity": "LOW",
+      "in_scope": true,
+      "confidence": 0.82,
+      "file": "server/chat/V2/personalization/service.py",
+      "line": 35,
+      "rule": "Code Review for AI Agents, Chapter 18: Verify consistency with actual callers (p. 19).",
+      "fix": "profile_context promises an empty result for anonymous users but checks only whether user_id is falsy. Actual anonymous actors have nonempty anon:<hash> IDs; reproduced rendering such a profile. Check the repository's anonymous identity representation, or correct the documented guarantee if anonymous personalization is intentional."
+    },
+    {
+      "severity": "LOW",
+      "in_scope": true,
+      "confidence": 1.0,
+      "file": "server/chat/V2/personalization/README.md",
+      "line": 24,
+      "rule": "Code Review for AI Agents, Chapter 18: Verify integration instructions against implementation (p. 19).",
+      "fix": "The startup example unconditionally calls build_strategy with the default mode off, which raises ValueError. It also omits the required Jev client for hybrid_jev. Show mode-aware construction with strategy=None for off and a Jev client for hybrid_jev; add the fifth strategy to the mode table."
+    },
+    {
+      "severity": "MEDIUM",
+      "in_scope": true,
+      "confidence": 0.98,
+      "file": "server/chat/management/commands/personalization_batch.py",
+      "line": 35,
+      "rule": "Code Review for AI Agents, Rules 8.1 and 8.19: Preserve consistent error signaling (p. 9).",
+      "fix": "The command exits successfully even when every consolidation fails, because run_batch converts failures into result.errors and handle only prints the count. Raise CommandError after reporting a nonzero error count so scheduled execution can detect and retry failures."
+    },
+    {
+      "severity": "HIGH",
+      "in_scope": false,
+      "confidence": 1.0,
+      "file": "server/chat/migrations/0009_saved_conversation_metadata.py",
+      "line": 16,
+      "rule": "Code Review for AI Agents, Chapter 18: Expand review context to existing compatibility failures (p. 19).",
+      "fix": "The existing migration uses PostgreSQL ALTER TABLE ADD COLUMN IF NOT EXISTS under SQLite test settings. The database-backed test run failed during setup with OperationalError near EXISTS, before reaching migration 0016. Provide a PostgreSQL integration-test configuration or a compatible migration-testing setup; this failure predates the reviewed diff."
+    }
+  ]
+}
