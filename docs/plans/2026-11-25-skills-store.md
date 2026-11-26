@@ -410,6 +410,13 @@ Not done, for deployment (AppliedAI-Infrastructure and settings): a nightly Cron
 instead of through the public host; a CODEOWNERS rule so only staff change
 `catalog.yaml`; a live check from claude.ai and Claude Code on chat-dev.
 
+5. **Linked assets** (stacked on this work; Sefaria-Project `LINKED_PANELS_AND_ASSETS_PLAN.md`,
+   Phase 4). [x] A *system* skill kind (`system_skills` in `catalog.yaml`): served, no method,
+   author or findings section, and may carry `.js` under `references/`; ordinary skills keep
+   every check. [x] `sefaria-linked-asset` with the shim. [x] OAuth scope `assets` (optional on
+   `/mcp/user`) and `save_asset`. [ ] Live check: needs Sefaria's MCP route to
+   `/api/social/token` deployed and Social's save route (spec 060) built.
+
 ### Decisions made while building
 
 | Decision | Why |
@@ -429,6 +436,9 @@ instead of through the public host; a CODEOWNERS rule so only staff change
 | Cited sources the sheet does not hold are dropped from the finding; a save whose anchors are all missing is refused. | The public page shows only what the sheet shows. |
 | Rows are capped at 2,000, anchors and positions first; public lists prefetch only anchor and position rows. | A sheet citing a whole book can't push its anchors out, or make a sidebar call load every support row. |
 | A ref search on `/findings/` goes to the passage page only if that passage has findings. | "Rule 3" stays a word search. |
+| First-party skills are a separate `system_skills` kind rather than a dummy method and author. | They are Sefaria's tooling, not a method of study: they record no findings and must never appear as one (`Catalog.skill()` skips them, so `save_finding` and the skill pages refuse them). |
+| The linked-asset shim ships as `references/shim.js`, not a fenced block in Markdown. | The model copies it verbatim; a real `.js` file is checked by `node --check` and run against a fake reader in the tests. The exception is narrow: system skills only, `references/` only, and the link and tool-name checks still apply. Nothing on the server or the host runs it. |
+| `assets` is an optional second scope on `/mcp/user`, not a new resource. | Sheets and assets are both "act as me"; one connector, one consent screen. Clients that ask for no scope get both; old `sheets`-only grants keep working without `save_asset` until the user reconnects. |
 | Re-saving a finding brings it back if sync hid it (sheet deleted or changed owner), never if staff hid it. | |
 
 ## Open questions
