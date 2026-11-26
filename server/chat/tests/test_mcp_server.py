@@ -430,3 +430,86 @@ def test_env_list_parses_and_strips(monkeypatch):
 def test_env_int(monkeypatch, raw, expected):
     monkeypatch.setenv("X_INT", raw)
     assert app_module._env_int("X_INT", 8088) == expected
+
+
+async def test_mcp_executors_never_send_the_sefaria_api_key(monkeypatch):
+    """The public MCP process builds its own clients; none may carry SEFARIA_API_KEY."""
+    import functools
+
+    import httpx
+
+    from chat.V2.agent import sefaria_client as sefaria_client_module
+    from mcp_server.app import build_mcp_executor
+
+    monkeypatch.delenv("MCP_SEFARIA_API_KEY", raising=False)
+    monkeypatch.setenv("SEFARIA_API_KEY", "sfr_test_fake_key")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={})
+
+    monkeypatch.setattr(
+        sefaria_client_module.httpx,
+        "AsyncClient",
+        functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(handler)),
+    )
+
+    executor = build_mcp_executor()
+    try:
+        await executor.client._get_json("api/calendars")
+    finally:
+        await executor.client.close()
+
+    assert len(seen) == 1
+    assert "x-api-key" not in seen[0].headers
+
+
+async def _mcp_executor_requests(monkeypatch) -> list:
+    """Run one request through the public MCP executor and return what Sefaria received."""
+    import functools
+
+    import httpx
+
+    from chat.V2.agent import sefaria_client as sefaria_client_module
+    from mcp_server.app import build_mcp_executor
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={})
+
+    monkeypatch.setattr(
+        sefaria_client_module.httpx,
+        "AsyncClient",
+        functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(handler)),
+    )
+    executor = build_mcp_executor()
+    try:
+        await executor.client._get_json("api/calendars")
+    finally:
+        await executor.client.close()
+    return seen
+
+
+async def test_mcp_executor_sends_mcp_key(monkeypatch):
+    monkeypatch.delenv("SEFARIA_API_KEY", raising=False)
+    monkeypatch.setenv("MCP_SEFARIA_API_KEY", "sfr_mcpkey123")
+
+    seen = await _mcp_executor_requests(monkeypatch)
+
+    assert len(seen) == 1
+    assert seen[0].url.host == "www.sefaria.org"
+    assert seen[0].headers["x-api-key"] == "sfr_mcpkey123"
+
+
+async def test_mcp_never_sends_library_assistant_key(monkeypatch):
+    monkeypatch.setenv("SEFARIA_API_KEY", "sfr_lakey456")
+    monkeypatch.setenv("MCP_SEFARIA_API_KEY", "sfr_mcpkey123")
+
+    seen = await _mcp_executor_requests(monkeypatch)
+
+    assert len(seen) == 1
+    assert seen[0].headers["x-api-key"] == "sfr_mcpkey123"
+    assert "sfr_lakey456" not in str(seen[0].headers)
