@@ -21,10 +21,10 @@ def test_passes_a_small_profile_without_a_model():
     assert check_profile([sec("Reply language", "You write in English.", kind="core")], None).ok
 
 
-def test_150_words_pass_and_151_fail():
-    assert MAX_WORDS == 150
-    assert check_profile([sec("Notes", " ".join(["word"] * 150))], None).ok
-    result = check_profile([sec("Notes", " ".join(["word"] * 151))], None)
+def test_149_words_pass_and_150_fail():
+    assert MAX_WORDS == 150  # "under 150", as the update validator
+    assert check_profile([sec("Notes", " ".join(["word"] * 149))], None).ok
+    result = check_profile([sec("Notes", " ".join(["word"] * 150))], None)
     assert not result.ok and result.failed == "words"
 
 

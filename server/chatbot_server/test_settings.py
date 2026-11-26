@@ -14,3 +14,9 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# Tests use the bundled prompt files; remote-loader tests opt in with override_settings and a mocked prompt service.
+PERSONALIZATION_PROMPT_SLUG_ANSWER = ""
+PERSONALIZATION_PROMPT_SLUG_PROFILE_USED = ""
+PERSONALIZATION_PROMPT_SLUG_PROFILE_UPDATE = ""
+PERSONALIZATION_PROMPT_SLUG_PROFILE_ALTER = ""

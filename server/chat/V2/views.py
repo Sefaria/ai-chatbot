@@ -305,10 +305,12 @@ def _queue_personalization_job(
 ) -> None:
     """After a saved, successful reply on a personalized-eligible turn, queue at most one Profile
     job: `new_chat` for the first message of a new session, else `every_message` when the user's
-    testing switch is on. Never raises and never waits."""
+    testing switch is on. Only when `PERSONALIZATION_LIVE_TRIGGERS` is on (default off: the nightly
+    update and Run Now build the Profile). Never raises and never waits."""
     try:
         if (
-            plain
+            not settings.PERSONALIZATION_LIVE_TRIGGERS
+            or plain
             or actor.is_anonymous
             or response_message.status != ChatMessage.Status.SUCCESS
             or not personalization_gate.enabled_for(user_id)

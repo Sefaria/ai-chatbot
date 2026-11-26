@@ -206,7 +206,7 @@ def test_profile_used_prompt_has_the_chapter_only_when_asked():
         "q", core_prompt="CORE", profile_text="PROF", ask_profile_used=True
     )
     assert CHAPTER in asked
-    assert asked.index(load_chapter("personalization_answering")) < asked.index(CHAPTER)
+    assert asked.index(load_chapter("personalization_answer")) < asked.index(CHAPTER)
     plain, _ = build_prompt("q", core_prompt="CORE", profile_text="PROF")
     assert CHAPTER not in plain
     no_blocks, _ = build_prompt("q", core_prompt="CORE", ask_profile_used=True)

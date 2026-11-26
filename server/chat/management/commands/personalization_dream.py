@@ -1,51 +1,45 @@
-"""The nightly dream: rebuild the Profile from the last 60 days for users active since their last
-dream."""
+"""The nightly update: run the Profile job for every user with a screened prompt since their last
+run, or whose Instructions changed or were toggled since then. Safe to run twice: a run moves
+`last_run_at`, so the second finds nobody due."""
 
 from __future__ import annotations
-
-from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from chat.models import ProfileWriterRun
 from chat.V2.personalization import gate, profile_job, profile_store
 
-WINDOW_DAYS = profile_job.STALE_DAYS
-DONE_STATUSES = ("applied", "no_change")  # a failed or rejected dream is retried the next night
 
-
-def _last_dream(user_id: str):
-    return (
-        ProfileWriterRun.objects.filter(user_id=user_id, window="dream", status__in=DONE_STATUSES)
-        .order_by("-started_at")
-        .values_list("started_at", flat=True)
-        .first()
-    )
+def due_users() -> list[str]:
+    due = []
+    for user_id in profile_store.users_to_screen():
+        if not gate.enabled_for(user_id):
+            continue
+        settings_ = profile_store.get_settings(user_id)
+        last_run = settings_.last_run_at
+        instructions_moved = settings_.instructions_updated_at is not None and (
+            last_run is None or settings_.instructions_updated_at > last_run
+        )
+        if instructions_moved or profile_store.unprocessed_user_prompts(user_id, last_run):
+            due.append(user_id)
+    return due
 
 
 class Command(BaseCommand):
-    help = "Run the dream for users with new prompts since their last dream."
+    help = "Run the nightly Profile update for users with new prompts or changed Instructions."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="list the users, run nothing")
 
     def handle(self, *args, **options):
         now = timezone.now()
-        floor = now - timedelta(days=WINDOW_DAYS)
-        due = []
-        for user_id in profile_store.users_active_since(floor):
-            if not gate.enabled_for(user_id):
-                continue
-            since = max(filter(None, (floor, _last_dream(user_id))))
-            if profile_store.unprocessed_user_prompts(user_id, since):
-                due.append(user_id)
+        due = due_users()
         if options["dry_run"]:
             self.stdout.write(f"dream dry run: {len(due)} user(s) due")
             return
         counts: dict[str, int] = {}
         for user_id in due:
-            result = profile_job.run_profile_job(user_id, "dream", window="dream")
+            result = profile_job.run_profile_job(user_id, "nightly", now=now)
             counts[result.status] = counts.get(result.status, 0) + 1
         summary = ", ".join(f"{k}={v}" for k, v in sorted(counts.items())) or "none"
         self.stdout.write(f"dream: {len(due)} user(s) run ({summary})")

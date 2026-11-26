@@ -16,6 +16,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 
+from chat.models import ProfileSection
 from chat.V2.prompts.chapters import chapter_source, load_chapter
 
 from .checks import check_profile, never_store_text, normalize_heading
@@ -32,9 +33,11 @@ from .profile_store import (
 )
 from .signals import is_sensitive
 
+USER_ORIGIN = ProfileSection.Origin.USER.value
+
 logger = logging.getLogger(__name__)
 
-CHAPTER = "profile_edit"
+CHAPTER = "profile_alter"
 MAX_REQUEST = 300
 MAX_REASON = 200
 
@@ -87,7 +90,7 @@ _CORE_KEY_BY_HEADING = {normalize_heading(h): k for k, h in CORE_HEADINGS.items(
 
 
 def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> list[SectionData]:
-    """The sections with the edits in; each edited section is `stated`. An empty body removes.
+    """The sections with the edits in; each edited section is `user`. An empty body removes.
 
     An entry with a `key` matches that core slot, whatever its stored heading says. An entry
     without one matches by heading any row, core or dynamic; a heading that names a core slot is
@@ -115,7 +118,7 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
                 rows.remove(match)
             continue
         if match:
-            match.body, match.origin, match.last_supported_at = e["body"], "stated", now
+            match.body, match.origin, match.last_supported_at = e["body"], USER_ORIGIN, now
         else:
             rows.append(
                 SectionData(
@@ -123,7 +126,7 @@ def _apply(sections: list[SectionData], entries: list[dict], now: datetime) -> l
                     "core" if key else "dynamic",
                     CORE_HEADINGS[key] if key else e["heading"],
                     e["body"],
-                    "stated",
+                    USER_ORIGIN,
                     now,
                     0,
                 )

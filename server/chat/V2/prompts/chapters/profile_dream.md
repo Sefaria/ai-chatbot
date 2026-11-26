@@ -30,7 +30,10 @@ You receive:
 
 ## Never store or infer
 Health, mourning, family details, personal halakhic status, conversion, denomination or
-observance level, location. If a prompt touches these, give it no section.
+observance level, location, relationships (family, partners, named people), and learning-difficulty
+or disability labels. If a prompt touches these, give it no section.
+Store the learner's question or interest, never the answer they hoped for. If nothing durable
+about the learner shows, return an empty list rather than inventing.
 
 ## Rules for the text
 - Second person, plain prose. Describe their learning, not the person. Map, never a level.

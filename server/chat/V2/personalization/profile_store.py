@@ -51,6 +51,7 @@ class SettingsData:
     profile_revision: int = 0
     processed_through: datetime | None = None
     cleared_at: datetime | None = None
+    last_run_at: datetime | None = None
     notice_pending: bool = False
     show_plain_response: bool = True
     update_every_message: bool = True
@@ -112,7 +113,11 @@ def set_enabled(user_id: str, target: str, enabled: bool) -> SettingsData:
         if getattr(row, field) == bool(enabled):
             return _settings_data(row)
         setattr(row, field, bool(enabled))
-        row.save(update_fields=[field])
+        update_fields = [field]
+        if target == "instructions":
+            row.instructions_updated_at = timezone.now()
+            update_fields.append("instructions_updated_at")
+        row.save(update_fields=update_fields)
         return _settings_data(row, changed=True)
 
 
@@ -250,6 +255,12 @@ def notice_shown_for(user_id: str, message_id: str | None) -> bool:
     ).exists()
 
 
+def mark_run(user_id: str, at: datetime) -> None:
+    """Record that the nightly update completed a run for this user at `at`."""
+    PersonalizationSettings.objects.get_or_create(user_id=user_id)
+    PersonalizationSettings.objects.filter(user_id=user_id).update(last_run_at=at)
+
+
 def refresh_support_dates(user_id: str, base_revision: int, dates: dict[str, datetime]) -> bool:
     """Move `last_supported_at` forward for sections (by heading) without touching their text,
     the revision or the notice. False, with nothing changed, when the Profile moved since
@@ -266,9 +277,13 @@ def refresh_support_dates(user_id: str, base_revision: int, dates: dict[str, dat
 
 
 def unprocessed_user_prompts(
-    user_id: str, since: datetime | None, until: datetime | None = None
+    user_id: str,
+    since: datetime | None,
+    until: datetime | None = None,
+    newest: int | None = None,
 ) -> list[PromptRow]:
-    """The user's own prompts after `since` (and up to `until`), oldest first.
+    """The user's own prompts after `since` (and up to `until`), oldest first. With `newest`, only
+    the newest that many (still oldest first).
 
     Never earlier than the last Clear. Left out: prompts of hidden sessions (the plain arm of the
     dual display is stored with `is_deleted=True`) and of sessions the user deleted, and turns that
@@ -352,10 +367,13 @@ def unprocessed_user_prompts(
         .exclude(turn_id__in=unanswered_turns)
         .order_by("server_timestamp", "id")
     )
-    return [
+    if newest is not None:
+        rows = rows.reverse()[:newest]
+    found = [
         PromptRow(r.message_id, r.session_id, r.content, r.server_timestamp)
         for r in rows.only("message_id", "session_id", "content", "server_timestamp")
     ]
+    return found[::-1] if newest is not None else found
 
 
 def record_run(**fields) -> int:
@@ -415,3 +433,30 @@ def users_active_since(since: datetime) -> list[str]:
         .distinct()
     )
     return sorted(set(rows))
+
+
+def users_to_screen() -> list[str]:
+    """Users who might be due for the nightly update (cheap; the caller screens the prompts): any
+    user prompt after their `last_run_at` (all of them when never run), or Instructions changed or
+    toggled after it. Only users whose Profile is on, or who have no settings row yet."""
+    last_run = PersonalizationSettings.objects.filter(user_id=OuterRef("user_id")).values(
+        "last_run_at"
+    )[:1]
+    prompted = (
+        ChatMessage.objects.filter(role=ChatMessage.Role.USER)
+        .exclude(user_id="")
+        .annotate(mark=Subquery(last_run))
+        .filter(Q(mark__isnull=True) | Q(server_timestamp__gt=F("mark")))
+        .order_by()
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    edited = PersonalizationSettings.objects.filter(
+        Q(last_run_at__isnull=True, instructions_updated_at__isnull=False)
+        | Q(instructions_updated_at__gt=F("last_run_at"))
+    ).values_list("user_id", flat=True)
+    candidates = set(prompted) | set(edited)
+    off = PersonalizationSettings.objects.filter(
+        user_id__in=candidates, profile_enabled=False
+    ).values_list("user_id", flat=True)
+    return sorted(candidates - set(off))

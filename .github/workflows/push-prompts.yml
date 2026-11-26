@@ -14,6 +14,11 @@ on:
       - "prompts/prompt_text/guardrail.md"
       - "prompts/prompt_text/response_format.md"
       - "prompts/prompt_text/router.md"
+      - "prompts/personalization.py"
+      - "server/chat/V2/prompts/chapters/personalization_answer.md"
+      - "server/chat/V2/prompts/chapters/personalization_profile_used.md"
+      - "server/chat/V2/prompts/chapters/profile_update.md"
+      - "server/chat/V2/prompts/chapters/profile_alter.md"
 
 jobs:
   push-prompts:
@@ -33,7 +38,7 @@ jobs:
           BRAINTRUST_PUSH_TARGET: prod
         run: |
           set -e
-          for file in prompts/core.py prompts/guardrail.py prompts/response_format.py prompts/router.py server/chatbot_server/model_defaults.py; do
+          for file in prompts/core.py prompts/guardrail.py prompts/response_format.py prompts/router.py prompts/personalization.py server/chatbot_server/model_defaults.py; do
             echo "Pushing: $file"
             python "$file"
           done
