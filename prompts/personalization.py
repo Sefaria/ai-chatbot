@@ -62,6 +62,9 @@ PROMPTS = [
 # Metadata for Braintrust only: the runtime picks its own models and params per call.
 MODEL = os.environ.get("AGENT_MODEL", AGENT_MODEL_DEFAULT)
 PARAMS = {"temperature": AGENT_TEMPERATURE, "max_tokens": AGENT_MAX_TOKENS}
+# The profile calls run at temperature 0 in code (server/chat/V2/personalization/llm.py); show that here.
+PROFILE_PARAMS = {**PARAMS, "temperature": 0}
+PROFILE_SLUGS = {"la-p13n-profile-update", "la-p13n-profile-alter"}
 
 
 def build_prompts(env=None, only=None):
@@ -130,7 +133,7 @@ def push(env=None, only=None):
             description=description,
             model=MODEL,
             prompt=text,
-            params=PARAMS,
+            params=PROFILE_PARAMS if any(slug.startswith(s) for s in PROFILE_SLUGS) else PARAMS,
             if_exists="replace",
         )
         project.add_prompt(prompt)
