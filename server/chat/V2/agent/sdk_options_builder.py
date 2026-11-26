@@ -64,6 +64,11 @@ class SDKOptionsBuilder:
             "allowed_tools": allowed_tools,
         }
 
+        # Limit the agent to its MCP tools: `tools=[]` sets the CLI's own tool list
+        # to empty (allowed_tools only controls approval).
+        if self._supports_option("tools"):
+            options_kwargs["tools"] = []
+
         debug_enabled = os.environ.get("CLAUDE_SDK_DEBUG", 1)
 
         if self._supports_option("max_tokens"):
