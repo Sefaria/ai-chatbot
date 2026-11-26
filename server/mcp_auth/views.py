@@ -38,7 +38,7 @@ from .models import (
     secret_matches,
 )
 
-SUPPORTED_SCOPES = {access_tokens.SCOPE, access_tokens.ADMIN_SCOPE}
+SUPPORTED_SCOPES = {scope for scopes in access_tokens.RESOURCE_SCOPES.values() for scope in scopes}
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 MAX_REDIRECT_URIS = 10
@@ -74,6 +74,24 @@ def resource_for_scope() -> dict[str, str]:
         access_tokens.SCOPE: resource_url(),
         access_tokens.ADMIN_SCOPE: settings.MCP_ADMIN_RESOURCE_URL.rstrip("/"),
     }
+
+
+def resource_of(scope: str) -> str:
+    """The resource a granted scope string is for: the one its first scope names."""
+    return resource_for_scope()[scope.split()[0]]
+
+
+def normalize_scope(requested: str, resource_scope: str) -> str | None:
+    """The scope string to grant for ``requested`` at the resource ``resource_scope`` names.
+
+    The resource's own scope must be there; the resource's optional scopes may be added
+    (``sheets assets``). Returned in a fixed order, resource scope first. None if invalid.
+    """
+    allowed = access_tokens.RESOURCE_SCOPES[resource_scope]
+    scopes = set(requested.split())
+    if resource_scope not in scopes or not scopes <= set(allowed):
+        return None
+    return " ".join(s for s in allowed if s in scopes)
 
 
 def callback_url() -> str:
@@ -300,19 +318,24 @@ def authorize(request: HttpRequest) -> HttpResponse:
     if params.get("code_challenge_method") != "S256" or not 43 <= len(challenge) <= 128:
         return fail("invalid_request", "PKCE with code_challenge_method=S256 is required.")
     resources = resource_for_scope()
-    # Clients that skip RFC 8707's resource parameter get the resource their scope names.
-    resource = (
-        params.get("resource") or resources.get(params.get("scope", ""), resource_url())
-    ).rstrip("/")
+    # Clients that skip RFC 8707's resource parameter get the resource their first scope names.
+    first_scope = next(iter(params.get("scope", "").split()), "")
+    resource = (params.get("resource") or resources.get(first_scope, resource_url())).rstrip("/")
     resource_scope = next((s for s, r in resources.items() if r == resource), None)
     if resource_scope is None:
         return fail(
             "invalid_target",
             f"This server only issues tokens for {' and '.join(sorted(resources.values()))}.",
         )
-    scope = params.get("scope") or resource_scope
-    if scope.split() != [resource_scope]:
-        return fail("invalid_scope", f"{resource} takes the scope {resource_scope!r}.")
+    # No scope asked for: everything the resource offers (the user sees it all on consent).
+    allowed = access_tokens.RESOURCE_SCOPES[resource_scope]
+    scope = normalize_scope(params.get("scope") or " ".join(allowed), resource_scope)
+    if scope is None:
+        return fail(
+            "invalid_scope",
+            f"{resource} takes the scope {resource_scope!r}"
+            + (f", optionally with {' '.join(allowed[1:])!r}." if len(allowed) > 1 else "."),
+        )
 
     now = timezone.now()
     AuthorizationRequest.objects.filter(
@@ -403,6 +426,7 @@ def consent(request: HttpRequest) -> HttpResponse:
             {
                 "client_name": auth_request.client.client_name or "An application",
                 "staff_tools": auth_request.scope == access_tokens.ADMIN_SCOPE,
+                "assets": access_tokens.ASSETS_SCOPE in auth_request.scope.split(),
                 "redirect_host": urlsplit(auth_request.redirect_uri).hostname,
                 "request_id": auth_request.id,
                 "consent_token": consent_token,
@@ -445,7 +469,7 @@ def _token_response(grant: Grant, refresh_token: str) -> JsonResponse:
     access_token = access_tokens.issue(
         signing_key=settings.MCP_OAUTH_SIGNING_KEY,
         issuer=issuer(),
-        audience=resource_for_scope()[grant.scope],
+        audience=resource_of(grant.scope),
         grant_id=str(grant.id),
         sefaria_user_id=grant.sefaria_user_id,
         client_id=grant.client.client_id,

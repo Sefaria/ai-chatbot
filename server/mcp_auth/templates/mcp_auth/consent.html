@@ -9,6 +9,10 @@
   {% else %}
   <li>List and read your source sheets</li>
   <li>Create new source sheets in your account</li>
+  {% if assets %}
+  <li>Save interactive pages made with Claude to your Sefaria account, linked to the texts they cover
+    <br><span lang="he" dir="rtl">לשמור בחשבון שלך בספריא דפים אינטראקטיביים שנוצרו עם Claude, מקושרים לטקסטים שהם עוסקים בהם</span></li>
+  {% endif %}
   {% endif %}
 </ul>
 <p>After you approve, you'll return to <strong>{{ redirect_host }}</strong>. Only approve if you started this from an app you trust.</p>

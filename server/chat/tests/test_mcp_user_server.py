@@ -124,6 +124,8 @@ SHEET_TOOLS = {
     "update_source_sheet",
     "save_finding",
 }
+# Served on /mcp/user only to a sign-in that granted the `assets` scope.
+ASSET_TOOLS = {"save_asset"}
 
 
 async def test_not_served_without_sign_in_configured(executor, monkeypatch):
@@ -148,7 +150,8 @@ async def test_unauthenticated_requests_get_the_oauth_challenge(executor):
     assert 'scope="sheets"' in challenge
     assert metadata.json()["resource"] == RESOURCE
     assert metadata.json()["authorization_servers"] == [ISSUER]
-    assert metadata.json()["scopes_supported"] == ["sheets"]
+    # The optional `assets` scope is advertised so clients ask for it; only `sheets` is required.
+    assert metadata.json()["scopes_supported"] == ["sheets", "assets"]
 
 
 @pytest.mark.parametrize(
@@ -177,7 +180,10 @@ async def test_sheet_tools_only_on_the_signed_in_endpoint(executor):
     assert SHEET_TOOLS <= user_names
     assert not SHEET_TOOLS & public_names
     assert user_names == public_names | SHEET_TOOLS
-    assert {t["name"] for t in tool_schemas.get_tools_for_surface("mcp_user")} == SHEET_TOOLS
+    assert {t["name"] for t in tool_schemas.get_tools_for_surface("mcp_user")} == (
+        SHEET_TOOLS | ASSET_TOOLS
+    )
+    assert not ASSET_TOOLS & {t["name"] for t in tool_schemas.get_tools_for_surface("agent")}
 
 
 async def test_public_tools_still_work_when_signed_in(executor):
@@ -330,3 +336,106 @@ async def test_unknown_admin_tool_arguments_are_rejected_cleanly(executor, sefar
     assert result["result"]["isError"]
     assert "Invalid arguments for list_topic_prompts" in result["result"]["content"][0]["text"]
     assert not sefaria
+
+
+# ---------------------------------------------------------------------------
+# save_asset: the `assets` scope, and the Sefaria -> Social token trade end to end
+# ---------------------------------------------------------------------------
+
+SOCIAL = "https://social.test"
+ASSET_HTML = (
+    '<!doctype html><script type="application/json" id="sefaria-asset">'
+    '{"v":1,"title":"Days","refs":[{"ref":"Genesis 1:1-5"}]}</script><p>hi</p>'
+)
+
+
+def assets_token(user_id: int = 42) -> str:
+    return access_token(user_id=user_id, scope="sheets assets")
+
+
+@pytest.fixture
+def social(monkeypatch):
+    """Sefaria's token route and Social's save route, behind one MockTransport."""
+    monkeypatch.setenv("SOCIAL_API_BASE_URL", SOCIAL)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/api/social/token":
+            return httpx.Response(200, json={"token": "social-identity-token", "expires_at": 1})
+        if request.url.host == "social.test" and request.url.path == "/api/v1/claude-assets":
+            if json.loads(request.content).get("dryRun"):
+                return httpx.Response(200, json={"dryRun": True, "firstRef": "Genesis 1:1-5"})
+            return httpx.Response(
+                201,
+                json={
+                    "asset": {
+                        "id": "a1",
+                        "title": "Days",
+                        "versions": [{"id": "v1", "n": 1, "contentUrl": "https://content.test/v1"}],
+                    },
+                    "version": {"id": "v1", "n": 1},
+                    "created": True,
+                    "unchanged": False,
+                    "firstRef": "Genesis 1:1-5",
+                },
+            )
+        return httpx.Response(404, json={})
+
+    monkeypatch.setattr(
+        sefaria_client_module.httpx,
+        "AsyncClient",
+        functools.partial(httpx.AsyncClient, transport=httpx.MockTransport(handler)),
+    )
+    return seen
+
+
+async def test_save_asset_is_listed_only_with_the_assets_scope(executor):
+    async with http(executor) as client:
+        _, sheets_only = await rpc(client, "tools/list", {}, token=access_token())
+        _, with_assets = await rpc(client, "tools/list", {}, token=assets_token())
+        _, public = await rpc(client, "tools/list", {}, path="/mcp")
+    assert not ASSET_TOOLS & {t["name"] for t in sheets_only["result"]["tools"]}
+    assert {t["name"] for t in with_assets["result"]["tools"]} == (
+        {t["name"] for t in sheets_only["result"]["tools"]} | ASSET_TOOLS
+    )
+    assert not ASSET_TOOLS & {t["name"] for t in public["result"]["tools"]}
+
+
+async def test_save_asset_without_the_assets_scope_is_refused(executor, social):
+    async with http(executor) as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_asset", "arguments": {"html": ASSET_HTML}},
+            token=access_token(),
+        )
+    # Hidden by FastMCP's scope check: the tool does not exist for this sign-in.
+    assert result["result"]["isError"]
+    assert "Unknown tool" in result["result"]["content"][0]["text"]
+    assert social == []  # nothing reached Sefaria or Social
+
+
+async def test_save_asset_trades_the_mcp_token_and_saves_to_social(executor, social):
+    async with http(executor) as client:
+        _, result = await rpc(
+            client,
+            "tools/call",
+            {"name": "save_asset", "arguments": {"html": ASSET_HTML}},
+            token=assets_token(user_id=42),
+        )
+    assert not result["result"].get("isError"), result
+    body = json.loads(result["result"]["content"][0]["text"])
+    assert body["assetUrl"] == "https://content.test/v1"
+    assert body["readerUrl"].endswith("/Genesis.1.1-5?asset=a1")
+    assert "verified" in body["message"]
+
+    mint, dry, save = social
+    assert mint.method == "POST" and mint.url.path == "/api/social/token"
+    sent = mint.headers["X-Session-ID"]
+    assert sefaria_tokens.user_id_from(sent, TOKEN_SECRET, aud=sefaria_tokens.API_AUDIENCE) == 42
+    for request in (dry, save):
+        assert request.headers["Authorization"] == "Bearer social-identity-token"
+        assert "X-Session-ID" not in request.headers
+    assert json.loads(dry.content) == {"html": ASSET_HTML, "dryRun": True}
+    assert json.loads(save.content) == {"html": ASSET_HTML}

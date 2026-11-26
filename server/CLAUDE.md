@@ -93,6 +93,7 @@ pytest                                    # Run tests
 | `SEFARIA_WEB_URL` | No | Sefaria site for reader and sheet links (default `https://www.sefaria.org`) |
 | `FINDINGS_DAILY_LIMIT` | No | New findings one user may save per 24 hours (default 20) |
 | `FINDINGS_API_URL` | No | MCP process: findings API base (default `<MCP_OAUTH_ISSUER>/api`) |
+| `SOCIAL_API_BASE_URL` | No | MCP process: Sefaria Social's origin for `save_asset` (unset: the tool says saving is not set up) |
 | `SEFARIA_SKILLS_CATALOG` | No | A catalog directory to serve instead of `skills_catalog/` |
 
 Findings commands: `python manage.py sync_findings` (nightly), `hide_finding <id> --reason`,
