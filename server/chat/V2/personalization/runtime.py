@@ -15,7 +15,7 @@ from .parsing import escape_block
 
 logger = logging.getLogger(__name__)
 
-CHAPTER = "personalization_answering"
+CHAPTER = "personalization_answer"
 
 
 @dataclass

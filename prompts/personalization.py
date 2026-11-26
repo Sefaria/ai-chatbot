@@ -1,17 +1,18 @@
 """Personalization prompt chapters for the Sefaria assistant.
 
-Run directly to push the six personalization chapters to Braintrust, the same
+Run directly to push the personalization chapters to Braintrust, the same
 way prompts/core.py pushes the main prompt. With no env vars set the push is
 blocked by a safety gate. Set PROMPT_SLUG_OVERRIDE=<suffix> to push sandbox
 copies instead: each live slug becomes `<live slug>-<suffix>` and the name gets
 a "[test] " prefix. (This differs from core.py, where the override is the whole
-slug, because this one script pushes six prompts.)
+slug, because this one script pushes several prompts.)
 
 The chapter text is read straight from the bundled .md files the server ships
 (server/chat/V2/prompts/chapters/), so this script needs only `braintrust`
 installed and imports nothing from Django or the chat package.
 """
 
+import argparse
 import os
 import pathlib
 import sys
@@ -33,9 +34,9 @@ CHAPTERS_DIR = (
 # (chapter file stem, live slug, display name, description)
 PROMPTS = [
     (
-        "personalization_answering",
-        "la-p13n-personalization-answering",
-        "LA Personalization Answering",
+        "personalization_answer",
+        "la-p13n-personalization-answer",
+        "LA Personalization Answer",
         "Answering-time personalization guidance",
     ),
     (
@@ -45,28 +46,16 @@ PROMPTS = [
         "Profile-used notice guidance for personalized answers",
     ),
     (
-        "profile_writer",
-        "la-p13n-profile-writer",
-        "LA Profile Writer",
-        "Writes the user profile from extracted facts",
+        "profile_update",
+        "la-p13n-profile-update",
+        "LA Profile Update",
+        "Nightly build of the user profile from recent prompts",
     ),
     (
-        "profile_extraction",
-        "la-p13n-profile-extraction",
-        "LA Profile Extraction",
-        "Extracts profile facts from a conversation",
-    ),
-    (
-        "profile_dream",
-        "la-p13n-profile-dream",
-        "LA Profile Dream",
-        "Periodic consolidation of the user profile",
-    ),
-    (
-        "profile_edit",
-        "la-p13n-profile-edit",
-        "LA Profile Edit",
-        "Applies a user's edit request to their profile",
+        "profile_alter",
+        "la-p13n-profile-alter",
+        "LA Profile Alter",
+        "Applies a user's alter request to their profile",
     ),
 ]
 
@@ -75,12 +64,17 @@ MODEL = os.environ.get("AGENT_MODEL", AGENT_MODEL_DEFAULT)
 PARAMS = {"temperature": AGENT_TEMPERATURE, "max_tokens": AGENT_MAX_TOKENS}
 
 
-def build_prompts(env=None):
-    """The list of (slug, name, description, text) to push for the given environment."""
+def build_prompts(env=None, only=None):
+    """The list of (slug, name, description, text) to push for the given environment.
+
+    `only` restricts the push to those live slugs (the unsuffixed ones in PROMPTS).
+    """
     env = os.environ if env is None else env
     suffix = env.get("PROMPT_SLUG_OVERRIDE")
     out = []
     for stem, slug, name, description in PROMPTS:
+        if only is not None and slug not in only:
+            continue
         if suffix:
             slug = f"{slug}-{suffix}"
             name = f"[test] {name}"
@@ -111,11 +105,25 @@ def check_gate(env=None):
         sys.exit(2)
 
 
-def push(env=None):
+def parse_only(value):
+    """The live slugs named by a comma-separated --only value; exit 2 on an unknown slug."""
+    only = [s.strip() for s in value.split(",") if s.strip()]
+    known = {slug for _, slug, _, _ in PROMPTS}
+    unknown = [s for s in only if s not in known]
+    if unknown:
+        print(
+            f"ERROR: unknown slug(s): {', '.join(unknown)}. Known: {', '.join(sorted(known))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return only
+
+
+def push(env=None, only=None):
     check_gate(env)
     project = braintrust.projects.create(name="On Site Agent")
     pushed = []
-    for slug, name, description, text in build_prompts(env):
+    for slug, name, description, text in build_prompts(env, only):
         prompt = project.prompts.create(
             name=name,
             slug=slug,
@@ -134,4 +142,7 @@ def push(env=None):
 
 
 if __name__ == "__main__":
-    push()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--only", help="comma-separated live slugs to push; default is all")
+    args = parser.parse_args()
+    push(only=parse_only(args.only) if args.only else None)

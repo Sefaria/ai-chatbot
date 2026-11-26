@@ -34,7 +34,7 @@ from .signals import is_sensitive
 
 logger = logging.getLogger(__name__)
 
-CHAPTER = "profile_edit"
+CHAPTER = "profile_alter"
 MAX_REQUEST = 300
 MAX_REASON = 200
 

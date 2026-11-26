@@ -218,12 +218,10 @@ TRANSLATION_PROMPT_SLUG = os.environ.get("TRANSLATION_PROMPT_SLUG", "Translation
 # Personalization prompt chapters: read from Braintrust by these live slugs by default, like the core
 # prompt (pushed by prompts/personalization.py). An environment can override a slug; an empty value
 # selects the bundled .md file, and Braintrust failures fall back to it as well.
-PERSONALIZATION_PROMPT_SLUG_ANSWERING = os.environ.get("PERSONALIZATION_PROMPT_SLUG_ANSWERING", "la-p13n-personalization-answering")
+PERSONALIZATION_PROMPT_SLUG_ANSWER = os.environ.get("PERSONALIZATION_PROMPT_SLUG_ANSWER", "la-p13n-personalization-answer")
 PERSONALIZATION_PROMPT_SLUG_PROFILE_USED = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_USED", "la-p13n-personalization-profile-used")
-PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER", "la-p13n-profile-writer")
-PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION", "la-p13n-profile-extraction")
-PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM", "la-p13n-profile-dream")
-PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT", "la-p13n-profile-edit")
+PERSONALIZATION_PROMPT_SLUG_PROFILE_UPDATE = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_UPDATE", "la-p13n-profile-update")
+PERSONALIZATION_PROMPT_SLUG_PROFILE_ALTER = os.environ.get("PERSONALIZATION_PROMPT_SLUG_PROFILE_ALTER", "la-p13n-profile-alter")
 RESPONSE_FORMAT_PROMPT_SLUG = os.environ.get("RESPONSE_FORMAT_PROMPT_SLUG", "response-format")
 
 # ============================================================================

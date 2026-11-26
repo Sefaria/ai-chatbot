@@ -26,7 +26,7 @@ BAD = [EN, HE]
 EXTRACTION = load_chapter("profile_extraction")
 WRITER_HINT = "## Output for this job"
 DREAM = load_chapter("profile_dream")
-EDIT = load_chapter("profile_edit")
+EDIT = load_chapter("profile_alter")
 
 
 @pytest.fixture(autouse=True)

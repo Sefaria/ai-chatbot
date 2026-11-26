@@ -19,7 +19,7 @@ pytestmark = pytest.mark.django_db
 
 USER = "user-1"
 T = datetime(2026, 11, 1, tzinfo=UTC)
-EDIT = load_chapter("profile_edit")
+EDIT = load_chapter("profile_alter")
 
 
 def edit_model(reply, check="no"):

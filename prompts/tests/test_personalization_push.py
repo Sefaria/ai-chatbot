@@ -6,12 +6,10 @@ import pytest
 import personalization
 
 EXPECTED = {
-    "personalization_answering": "la-p13n-personalization-answering",
+    "personalization_answer": "la-p13n-personalization-answer",
     "personalization_profile_used": "la-p13n-personalization-profile-used",
-    "profile_writer": "la-p13n-profile-writer",
-    "profile_extraction": "la-p13n-profile-extraction",
-    "profile_dream": "la-p13n-profile-dream",
-    "profile_edit": "la-p13n-profile-edit",
+    "profile_update": "la-p13n-profile-update",
+    "profile_alter": "la-p13n-profile-alter",
 }
 
 
@@ -56,8 +54,30 @@ def test_push_replaces_and_publishes_once(monkeypatch):
     project = bt.projects.create.return_value
     bt.projects.create.assert_called_once_with(name="On Site Agent")
     calls = project.prompts.create.call_args_list
-    assert len(calls) == 6
+    assert len(calls) == len(EXPECTED)
     assert all(c.kwargs["if_exists"] == "replace" for c in calls)
     assert [c.kwargs["slug"] for c in calls] == [f"{s}-me-test" for s in EXPECTED.values()]
-    assert project.add_prompt.call_count == 6
+    assert project.add_prompt.call_count == len(EXPECTED)
     project.publish.assert_called_once()
+
+
+def test_only_filters_to_named_slugs():
+    only = personalization.parse_only("la-p13n-profile-update, la-p13n-profile-alter")
+    built = personalization.build_prompts({"PROMPT_SLUG_OVERRIDE": "me-test"}, only)
+    assert [b[0] for b in built] == ["la-p13n-profile-update-me-test", "la-p13n-profile-alter-me-test"]
+
+
+def test_only_push_creates_just_those_prompts(monkeypatch):
+    monkeypatch.setenv("PROMPT_SLUG_OVERRIDE", "me-test")
+    bt = MagicMock()
+    monkeypatch.setattr(personalization, "braintrust", bt)
+    personalization.push(only=["la-p13n-profile-update"])
+    calls = bt.projects.create.return_value.prompts.create.call_args_list
+    assert [c.kwargs["slug"] for c in calls] == ["la-p13n-profile-update-me-test"]
+
+
+def test_only_unknown_slug_exits_2(capsys):
+    with pytest.raises(SystemExit) as exc:
+        personalization.parse_only("la-p13n-profile-update,nope")
+    assert exc.value.code == 2
+    assert "nope" in capsys.readouterr().err

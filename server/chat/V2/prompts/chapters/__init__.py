@@ -17,12 +17,10 @@ _BACKOFF_SECONDS = 60.0
 
 # chapter name -> the settings attribute holding its Braintrust slug (empty = bundled)
 _SLUG_SETTINGS = {
-    "personalization_answering": "PERSONALIZATION_PROMPT_SLUG_ANSWERING",
+    "personalization_answer": "PERSONALIZATION_PROMPT_SLUG_ANSWER",
     "personalization_profile_used": "PERSONALIZATION_PROMPT_SLUG_PROFILE_USED",
-    "profile_writer": "PERSONALIZATION_PROMPT_SLUG_PROFILE_WRITER",
-    "profile_extraction": "PERSONALIZATION_PROMPT_SLUG_PROFILE_EXTRACTION",
-    "profile_dream": "PERSONALIZATION_PROMPT_SLUG_PROFILE_DREAM",
-    "profile_edit": "PERSONALIZATION_PROMPT_SLUG_PROFILE_EDIT",
+    "profile_update": "PERSONALIZATION_PROMPT_SLUG_PROFILE_UPDATE",
+    "profile_alter": "PERSONALIZATION_PROMPT_SLUG_PROFILE_ALTER",
 }
 
 # chapter name -> monotonic time of its last Braintrust failure

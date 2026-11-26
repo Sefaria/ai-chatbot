@@ -101,7 +101,7 @@ def build_prompt(
         if text
     ]
     if blocks:
-        parts.append(load_chapter("personalization_answering"))
+        parts.append(load_chapter("personalization_answer"))
         if ask_profile_used and profile_text:
             parts.append(load_chapter("personalization_profile_used"))
         parts.extend(blocks)

@@ -9,12 +9,12 @@ PROJECT = "On Site Agent"
 
 
 CHAPTERS = (
-    "personalization_answering",
+    "personalization_answer",
     "personalization_profile_used",
     "profile_writer",
     "profile_extraction",
     "profile_dream",
-    "profile_edit",
+    "profile_alter",
 )
 
 

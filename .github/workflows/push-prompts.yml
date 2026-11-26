@@ -15,12 +15,10 @@ on:
       - "prompts/prompt_text/response_format.md"
       - "prompts/prompt_text/router.md"
       - "prompts/personalization.py"
-      - "server/chat/V2/prompts/chapters/personalization_answering.md"
+      - "server/chat/V2/prompts/chapters/personalization_answer.md"
       - "server/chat/V2/prompts/chapters/personalization_profile_used.md"
-      - "server/chat/V2/prompts/chapters/profile_writer.md"
-      - "server/chat/V2/prompts/chapters/profile_extraction.md"
-      - "server/chat/V2/prompts/chapters/profile_dream.md"
-      - "server/chat/V2/prompts/chapters/profile_edit.md"
+      - "server/chat/V2/prompts/chapters/profile_update.md"
+      - "server/chat/V2/prompts/chapters/profile_alter.md"
 
 jobs:
   push-prompts:

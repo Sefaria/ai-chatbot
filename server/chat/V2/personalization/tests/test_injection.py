@@ -25,7 +25,7 @@ from chat.V2.prompts.prompt_fragments import (
     build_prompt,
 )
 
-CHAPTER = chapters.load_chapter("personalization_answering")
+CHAPTER = chapters.load_chapter("personalization_answer")
 META_KEYS = {
     "personalized",
     "profile_on",
@@ -257,7 +257,7 @@ def test_meta_keys(lab_on):
     seed("u1")
     meta = runtime.context_for_request("u1", plain=False).meta
     assert set(meta) == META_KEYS
-    assert meta["chapter_sha"] == chapters.chapter_sha("personalization_answering")
+    assert meta["chapter_sha"] == chapters.chapter_sha("personalization_answer")
     assert meta["profile_revision"] == store.get_settings("u1").profile_revision
 
 

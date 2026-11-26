@@ -145,7 +145,7 @@ class TestTraceLoggerPersonalizationFields:
             "profile_revision": 7,
             "chapter_sha": "abc123",
             "notice_shown": True,
-            "prompt_versions": {"personalization_answering": "v2"},
+            "prompt_versions": {"personalization_answer": "v2"},
         }
         ctx = MessageContext(origin="sefaria-production", personalization_meta=meta)
         metadata = self._metadata(ctx)
@@ -155,7 +155,7 @@ class TestTraceLoggerPersonalizationFields:
         assert metadata["profile_revision"] == 7
         assert metadata["chapter_sha"] == "abc123"
         assert metadata["notice_shown"] is True
-        assert metadata["prompt_versions"] == {"personalization_answering": "v2"}
+        assert metadata["prompt_versions"] == {"personalization_answer": "v2"}
         assert "profile_injected" not in metadata
 
     def test_personalized_turn_keeps_lab_injected_values(self):

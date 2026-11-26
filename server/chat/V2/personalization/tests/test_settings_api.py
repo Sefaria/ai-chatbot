@@ -486,7 +486,7 @@ def test_edit_profile_applies_through_the_real_module(client, monkeypatch):
     )
 
     def respond(system, user):
-        if system == load_chapter("profile_edit"):
+        if system == load_chapter("profile_alter"):
             return json.dumps(
                 {
                     "status": "applied",
@@ -579,7 +579,7 @@ def test_a_busy_edit_returns_200_with_the_fixed_reason_and_the_current_state(cli
     store.replace_sections(
         USER_A, rev, sections, updated_by="la", processed_through=None, set_notice=False
     )
-    edit_system = load_chapter("profile_edit")
+    edit_system = load_chapter("profile_alter")
 
     def respond(system, user):
         if system != edit_system:

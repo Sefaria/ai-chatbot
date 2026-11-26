@@ -4,13 +4,13 @@ import pytest
 
 from chat.V2.prompts.chapters import chapter_sha, load_chapter
 
-NAMES = ["personalization_answering", "profile_writer"]
+NAMES = ["personalization_answer", "profile_writer"]
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_chapter_loads_with_its_rules(name):
     text = load_chapter(name)
-    if name == "personalization_answering":
+    if name == "personalization_answer":
         assert "Instructions override the Profile" in text
     else:
         assert "under 150 words" in text
@@ -18,7 +18,7 @@ def test_chapter_loads_with_its_rules(name):
 
 
 def test_both_chapters_carry_the_core_rules():
-    assert "Instructions override the Profile" in load_chapter("personalization_answering")
+    assert "Instructions override the Profile" in load_chapter("personalization_answer")
     assert "under 150 words" in load_chapter("profile_writer")
 
 
