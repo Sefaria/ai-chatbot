@@ -100,12 +100,12 @@ pytest           # Run tests
 |----------|----------|-------------|
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Yes | PostgreSQL connection for Django |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens |
+| `CHATBOT_USER_TOKEN_SECRET` | Yes | Secret used to decrypt encrypted `userId` tokens; the server refuses to start with the dev placeholder or an empty value when debug is off |
 | `CHATBOT_ALLOWED_SEFARIA_HOSTS` | For logged-out visitors | Comma-separated Sefaria hosts this deployment serves (`*.` matches subdomains), checked against the request's `Origin`. A request from one uses that Sefaria, and logged-out visitors (`anonId`) are accepted only from these. Production: `www.sefaria.org,www.sefaria.org.il`; unset means no logged-out visitors |
 | `BRAINTRUST_API_KEY` | No | Braintrust prompts/logging |
 | `BRAINTRUST_PROJECT` | No | Braintrust project name |
-| `DJANGO_SECRET_KEY` | No | Django secret |
-| `DJANGO_DEBUG` | No | Debug mode |
+| `DJANGO_SECRET_KEY` | Yes outside debug | Django secret; the server refuses to start with the dev placeholder when debug is off |
+| `DJANGO_DEBUG` | No | Debug mode (default `False`; set `True` for local development) |
 | `VITE_SEFARIA_HOSTNAMES` | No | Comma-separated hostnames the frontend should treat as Sefaria pages, for local ref detection. Empty by default; `.env.example` sets localhost |
 
 Create a `.env` file in the `server/` directory with backend API keys. For frontend-only local values, copy root `.env.example` to `.env.local`.

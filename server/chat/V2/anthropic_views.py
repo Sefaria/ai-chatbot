@@ -270,7 +270,7 @@ def chat_anthropic_v2(request):
                 context=msg_context,
             )
         )
-    except Exception as exc:
+    except Exception:
         latency_ms = int((time.time() - start_time) * 1000)
         logger.exception("Agent error in Anthropic endpoint")
 

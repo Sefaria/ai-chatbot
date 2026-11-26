@@ -952,6 +952,15 @@ def test_a_logged_in_user_can_still_run_a_load_test(client, agent):
 
 
 def test_feedback_from_a_logged_out_visitor_is_recorded_under_the_hashed_id(client):
+    # Feedback is accepted only for a session the visitor owns.
+    ChatSession.objects.create(session_id=SESSION_ID, user_id=anonymous_user_id(ANON_ID))
+    ChatMessage.objects.create(
+        message_id=MESSAGE_ID,
+        session_id=SESSION_ID,
+        user_id=anonymous_user_id(ANON_ID),
+        role=ChatMessage.Role.ASSISTANT,
+        content="answer",
+    )
     bt_logger = MagicMock()
     with patch("chat.V2.views._get_bt_logger", return_value=bt_logger):
         response = client.post(
