@@ -1,9 +1,8 @@
 """A run row holds no free text derived from the user, on every exit path. Each test drives one
-path with distinctive made-up markers (English and Hebrew) in prompts, notes, headings, candidate
-bodies and edit requests, then reads every run row back. Fake model and fake Jev only."""
+path with distinctive made-up markers (English and Hebrew) in prompts, headings, bodies and edit
+requests, then reads every run row back. Fake model and fake Jev only."""
 
 import json
-from datetime import timedelta
 
 import pytest
 
@@ -15,17 +14,14 @@ from chat.V2.personalization.profile_job import run_profile_job
 from chat.V2.prompts.chapters import load_chapter
 
 from .run_rows import assert_run_rows_hold_no_user_text, run_row_text
-from .test_profile_job import NOW, USER, item, model, put, section, seed
-from .test_profile_store import add_prompt
+from .test_profile_store import NOW, add_prompt, section
+from .test_update_job import USER, day, model, out, put, reply
 
 pytestmark = pytest.mark.django_db
 
 EN = "Teaneck-MARKER"
 HE = "גר בחיפה-סימן"
 BAD = [EN, HE]
-EXTRACTION = load_chapter("profile_extraction")
-WRITER_HINT = "## Output for this job"
-DREAM = load_chapter("profile_dream")
 EDIT = load_chapter("profile_alter")
 
 
@@ -36,36 +32,28 @@ def env(monkeypatch, settings):
 
 
 def marked_prompts():
-    seed((f"{EN} explain the first verse", "s1"), (f"{HE} short answers please", "s2"))
+    add_prompt(USER, f"{EN} explain the first verse", session="s1", at=day(2))
+    add_prompt(USER, f"{HE} short answers please", session="s2", at=day(1))
 
 
-def marked_items():
-    return [
-        item(
-            "answer_style",
-            f"{EN} {HE}",
-            sessions=1,
-            notes=(f"note {EN}", f"הערה {HE}"),
-        ),
-        item(None, f"{EN} heading {HE}", action="none", notes=(f"dyn {EN}",)),
-    ]
+def marked_reply(body=f"You like short answers {EN} {HE}."):
+    return reply(
+        out("answer_style", body, "stated", [2]),
+        out(None, f"{EN} heading {HE}", "inferred", [1, 2], heading=f"{EN} topic {HE}"),
+    )
 
 
 def run(llm, **kw):
-    return run_profile_job(USER, kw.pop("trigger", "idle"), now=NOW, llm=llm, **kw)
+    return run_profile_job(USER, kw.pop("trigger", "run_now"), now=NOW, llm=llm, **kw)
 
 
 def only_row():
     return ProfileWriterRun.objects.get(user_id=USER)
 
 
-def rejected_body(body):
-    return {"Kind of answers you want": body}
-
-
 def test_the_helper_finds_a_planted_marker():
     marked_prompts()
-    run(model(marked_items()))
+    run(model(marked_reply()))
     row = only_row()
     ProfileWriterRun.objects.filter(pk=row.pk).update(extraction=f"x {HE} y")
     with pytest.raises(AssertionError):
@@ -75,176 +63,93 @@ def test_the_helper_finds_a_planted_marker():
 
 def test_applied():
     marked_prompts()
-    result = run(model(marked_items()))
+    result = run(model(marked_reply()))
     assert result.status == "applied"
-    assert_run_rows_hold_no_user_text(USER, BAD)
     row = only_row()
-    assert row.profile_after == "# Kind of answers you want\nBody of Kind of answers you want."
+    # profile_after is the stored Profile by design; every other field holds no user text
+    assert row.profile_after.startswith("# Kind of answers you want\n")
+    ProfileWriterRun.objects.filter(pk=row.pk).update(profile_after="", profile_before="")
+    assert_run_rows_hold_no_user_text(USER, BAD)
     summary = json.loads(row.extraction)
-    assert summary["prompts_read"] == 2 and summary["screened_out"] == 0
+    assert summary["prompts_read"] == 2 and set(summary) == {"prompts_read", "gate", "sections"}
 
 
 def test_no_change():
     marked_prompts()
-    result = run(model([item(None, f"{EN} {HE}", action="none", notes=(f"n {EN}",))]))
-    assert result.status == "no_change" and result.reason == "nothing_to_write"
+    llm = model(marked_reply())
+    run(llm)
+    ProfileWriterRun.objects.all().delete()
+    assert run(llm).status == "no_change"
+    ProfileWriterRun.objects.update(profile_before="")
     assert_run_rows_hold_no_user_text(USER, BAD)
 
 
-def test_rejected_by_words():
+def test_valid_empty():
     marked_prompts()
-    result = run(model(marked_items(), rejected_body(f"{EN} {HE} " + "long " * 160)))
-    assert result.reason == "words"
+    assert run(model(reply())).reason == "valid_empty"
     assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
 
 
-def test_rejected_by_dynamic_cap():
-    put(*[section(f"Topic {i}", "You read it.", kind="dynamic", position=i) for i in range(5)])
+def test_never_store_section_dropped():
     marked_prompts()
-    result = run(model(marked_items(), rejected_body(f"You like {EN} {HE}.")))
-    assert result.status == "rejected" and result.reason == "dynamic_cap"
+    result = run(model(reply(out("answer_style", f"You live in {EN} {HE}.", "stated", [2]))))
+    assert result.reason == "never_store_rejected"
     assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
 
 
-def test_rejected_by_never_store_terms():
-    marked_prompts()
-    result = run(model(marked_items(), rejected_body(f"Your wife likes {EN} {HE}.")))
-    assert result.reason == "never_store_terms"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
-
-
-def test_rejected_by_never_store_model():
-    marked_prompts()
-    result = run(model(marked_items(), rejected_body(f"You like {EN} {HE}."), check="yes"))
-    assert result.reason == "never_store_model"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
-
-
-def test_rejected_by_never_store_unparseable():
-    marked_prompts()
-    result = run(model(marked_items(), rejected_body(f"You like {EN} {HE}."), check="maybe"))
-    assert result.reason == "never_store_unparseable"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
-
-
-def test_failed_by_bad_extraction():
+def test_validation_failed_kept_current():
     marked_prompts()
     result = run(FakeLLMClient(lambda s, u: f"not json {EN} {HE}"))
-    assert result.status == "failed" and result.reason == "bad_extraction"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-
-
-def test_failed_by_bad_writer_output():
-    marked_prompts()
-    base = model(marked_items())
-
-    def respond(system, user):
-        if WRITER_HINT in system:
-            return json.dumps({"sections": [{"heading": f"{EN} other", "body": f"{HE}"}]})
-        return base.responder(system, user)
-
-    result = run(FakeLLMClient(respond))
-    assert result.status == "failed" and result.reason == "bad_writer_output"
+    assert result.reason == "validation_failed_kept_current"
     assert_run_rows_hold_no_user_text(USER, BAD)
 
 
 def test_failed_by_model_timeout():
     marked_prompts()
-    base = model(marked_items())
 
-    def respond(system, user):
-        if WRITER_HINT in system:
-            raise TimeoutError(f"slow {EN} {HE}")
-        return base.responder(system, user)
+    def boom(system, user):
+        raise TimeoutError(f"slow {EN} {HE}")
 
-    result = run(FakeLLMClient(respond))
+    result = run(FakeLLMClient(boom))
     assert result.status == "failed" and result.reason == "error:TimeoutError"
     assert_run_rows_hold_no_user_text(USER, BAD)
 
 
 def test_revision_moved():
     marked_prompts()
-    base = model(marked_items())
+    base = model(marked_reply())
 
     def respond(system, user):
-        if WRITER_HINT in system:
+        if "yes or no" not in system:
             put(section("Reply language", "You write in English.", key="reply_language"))
         return base.responder(system, user)
 
     result = run(FakeLLMClient(respond))
     assert result.status == "failed" and result.reason == "revision_moved"
+    row = only_row()
+    assert row.profile_after == ""
+    ProfileWriterRun.objects.update(profile_before="")
     assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
 
 
-def _dream_prompts():
-    for text, session in ((f"{EN} one", "s1"), (f"{HE} two", "s2")):
-        add_prompt(USER, text, session=session, at=NOW - timedelta(days=1))
+def test_the_summary_holds_counts_slot_keys_and_the_word_dynamic_only(settings):
+    from chat.V2.personalization.jev import FakeJevClient, JevAnswer
 
-
-def _dream(sections):
-    def respond(system, user):
-        if system == DREAM:
-            return json.dumps({"sections": sections})
-        return "no"
-
-    return run_profile_job(USER, "dream", window="dream", now=NOW, llm=FakeLLMClient(respond))
-
-
-def test_dream_applied():
-    _dream_prompts()
-    result = _dream(
-        [
-            {
-                "key": "answer_style",
-                "heading": f"{EN} {HE}",
-                "body": "You like short answers.",
-                "origin": "inferred",
-                "support": [1, 2],
-            },
-            {  # one session only: dropped, its heading must not be stored
-                "key": None,
-                "heading": f"{HE} {EN} topic",
-                "body": "You read widely.",
-                "origin": "inferred",
-                "support": [1],
-            },
-        ]
-    )
-    assert result.status == "applied"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == "# Kind of answers you want\nYou like short answers."
-
-
-def test_dream_unsupported_section():
-    _dream_prompts()
-    result = _dream(
-        [
-            {
-                "key": None,
-                "heading": f"{EN} {HE}",
-                "body": f"You like {EN} {HE}.",
-                "origin": "inferred",
-                "support": [],
-            }
-        ]
-    )
-    assert result.status == "rejected" and result.reason == "unsupported_section"
-    assert_run_rows_hold_no_user_text(USER, BAD)
-    assert only_row().profile_after == ""
-
-
-def test_parked():
+    settings.PERSONALIZATION_JEV_GATE = "on"
     marked_prompts()
-    for _ in range(3):
-        assert run(FakeLLMClient(lambda s, u: f"not json {EN}")).status == "failed"
-    assert run(model()).reason == "parked"
-    assert_run_rows_hold_no_user_text(USER, BAD)
+    jev = FakeJevClient(
+        lambda state, qs: {
+            k: JevAnswer("noul", noul=0.1 if k.startswith("sensitive") else 0.9) for k in qs
+        }
+    )
+    run(model(marked_reply()), jev=jev)
+    summary = json.loads(only_row().extraction)
+    assert summary["prompts_read"] == 2
+    assert summary["gate"]["source"] == "jev" and isinstance(summary["gate"]["scores"], dict)
+    assert summary["sections"] == [
+        {"key": "answer_style", "origin": "stated", "support": 1},
+        {"key": "dynamic", "origin": "inferred", "support": 2},
+    ]
 
 
 # ---- chat-to-edit ----
@@ -319,26 +224,3 @@ def test_edit_failed():
     assert_run_rows_hold_no_user_text(USER, BAD)
     assert set(ProfileWriterRun.objects.values_list("status", flat=True)) == {"failed"}
     assert store.get_sections(USER)[0].body == "You study many books."
-
-
-def test_the_summary_holds_counts_slot_keys_and_the_word_dynamic_only(settings):
-    settings.PERSONALIZATION_JEV_GATE = "on"
-    from .test_profile_job import jev_answering
-
-    marked_prompts()
-    items = [
-        item("answer_style", "x", action="add", origin="stated", sessions=1),
-        item(None, f"{EN} topic", action="update", sessions=2, notes=(f"n {EN}",)),
-        item(None, f"{HE} other", action="none", sessions=0),
-    ]
-    run(model(items), jev=jev_answering(0.9, sensitive_0=0.1))
-    summary = json.loads(only_row().extraction)
-    assert summary["prompts_read"] == 2 and summary["screened_out"] == 1
-    assert summary["gate"]["source"] == "jev" and isinstance(summary["gate"]["scores"], dict)
-    assert summary["sections"] == [
-        {"key": "answer_style", "action": "add", "origin": "stated", "sessions": 1},
-        {"key": "dynamic", "action": "update", "origin": "inferred", "sessions": 1},  # clamped
-        {"key": "dynamic", "action": "none", "origin": "inferred", "sessions": 0},
-    ]
-    assert set(summary) == {"prompts_read", "screened_out", "gate", "sections"}
-    assert_run_rows_hold_no_user_text(USER, BAD)

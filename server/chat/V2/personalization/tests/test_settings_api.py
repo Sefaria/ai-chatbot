@@ -356,10 +356,10 @@ def test_the_three_actions_are_live(client, lab, monkeypatch):
     r = call(client, "run_now", kind="session")
     assert r.status_code == 200 and r.json()["run"] == {
         "status": "no_change",
-        "reason": "no_new_prompts",
+        "reason": "no_prompts",
     }
     r = call(client, "health")
-    assert r.status_code == 200 and [j["name"] for j in r.json()["jobs"]] == ["session", "dream"]
+    assert r.status_code == 200 and [j["name"] for j in r.json()["jobs"]] == ["session"]
 
 
 def test_edit_profile_routes_and_validates(client, monkeypatch):
@@ -405,18 +405,18 @@ def test_run_now_routes_and_maps_results(client, lab, monkeypatch):
         return next(results)
 
     monkeypatch.setattr(profile_job, "run_profile_job", run_profile_job)
-    r = call(client, "run_now", kind="dream")
+    r = call(client, "run_now", kind="session")
     assert r.status_code == 200 and r.json()["run"] == {"status": "applied", "reason": None}
-    assert calls[0][0] == USER_A and calls[0][1] == "run_now" and calls[0][2]["window"] == "dream"
+    assert calls[0][:2] == (USER_A, "run_now") and "window" not in calls[0][2]
     r = call(client, "run_now", kind="session")
     assert r.status_code == 200 and r.json()["run"]["status"] == "busy"
-    assert calls[1][2]["window"] == "session"
     r = call(client, "run_now", kind="session")
     assert r.status_code == 429 and r.json() == {"error": "quota"}
     assert call(client, "run_now", kind="weekly").status_code == 400
+    assert call(client, "run_now", kind="dream").status_code == 400  # one update job now
 
 
-def test_run_now_dream_runs_the_real_dream(client, lab, monkeypatch):
+def test_run_now_runs_the_real_update(client, lab, monkeypatch):
     from chat.V2.personalization.tests.test_profile_store import add_prompt
 
     add_prompt(USER_A, "a question", session="s1", at=timezone.now() - timedelta(days=1))
@@ -424,7 +424,7 @@ def test_run_now_dream_runs_the_real_dream(client, lab, monkeypatch):
 
     def respond(system, user):
         seen.append(system)
-        if system == load_chapter("profile_dream"):
+        if system == load_chapter("profile_update"):
             return json.dumps(
                 {
                     "sections": [
@@ -442,10 +442,10 @@ def test_run_now_dream_runs_the_real_dream(client, lab, monkeypatch):
 
     monkeypatch.setattr(profile_job, "AnthropicLLMClient", lambda: FakeLLMClient(respond))
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key-not-real")
-    r = call(client, "run_now", kind="dream")
+    r = call(client, "run_now", kind="session")
     assert r.status_code == 200 and r.json()["run"]["status"] == "applied"
     assert r.json()["profile"]["sections"][0]["body"] == "You like short answers."
-    assert ProfileWriterRun.objects.get().window == "dream"
+    assert ProfileWriterRun.objects.get().window == "session"
 
 
 def test_run_now_when_a_job_holds_the_lock_is_200_busy(client, lab):
@@ -510,19 +510,13 @@ def test_edit_profile_applies_through_the_real_module(client, monkeypatch):
 
 
 def test_health_routes(client, lab):
-    store.record_run(user_id=USER_A, trigger="idle", window="dream", status="applied")
+    store.record_run(user_id=USER_A, trigger="idle", window="session", status="applied")
     r = call(client, "health")
     assert r.status_code == 200
     jobs = {j["name"]: j for j in r.json()["jobs"]}
-    assert jobs["session"] == {
-        "name": "session",
-        "lastRunAt": None,
-        "lastWriteAt": None,
-        "parked": 0,
-    }
-    assert (
-        jobs["dream"]["lastRunAt"] and jobs["dream"]["lastWriteAt"] and jobs["dream"]["parked"] == 0
-    )
+    assert set(jobs) == {"session"}
+    assert jobs["session"]["lastRunAt"] and jobs["session"]["lastWriteAt"]
+    assert set(jobs["session"]) == {"name", "lastRunAt", "lastWriteAt"}
     assert r["Cache-Control"] == "no-store, private"
 
 
@@ -626,7 +620,7 @@ def _run_row(n, **kw):
     return ProfileWriterRun.objects.create(**fields)
 
 
-_CODES = ["no_new_prompts", "nothing_to_write", "busy", "words", "revision_moved", "applied"]
+_CODES = ["no_prompts", "valid_empty", "busy", "words", "revision_moved", "applied"]
 
 
 def _code(n):
@@ -653,7 +647,7 @@ def test_get_state_lists_recent_runs_without_text(client, lab):
 @pytest.mark.parametrize(
     "stored, shown",
     [
-        ("no_new_prompts", "no_new_prompts"),
+        ("valid_empty", "valid_empty"),
         ("error:ValueError", "error:ValueError"),
         ("never_store_terms", "never_store_terms"),
         ("model_refused", "model_refused"),
@@ -679,10 +673,16 @@ def test_every_reason_code_the_job_and_the_edit_write_is_allowed():
     job = (here / "profile_job.py").read_text()
     written = set(re.findall(r'_Fail\(\s*"\w+",\s*"(\w+)"', job))
     written |= set(re.findall(r'_finish\(ctx,\s*"\w+",\s*"(\w+)"', job))
-    written |= set(re.findall(r'_done_nothing\(ctx,\s*"(\w+)"', job))
+    written |= {
+        profile_job.VALID_EMPTY,
+        profile_job.RETRY_SUCCEEDED,
+        profile_job.VALIDATION_FAILED_KEPT_CURRENT,
+        profile_job.NEVER_STORE_REJECTED,
+        profile_job.NO_PROMPTS,
+    }
     written |= set(re.findall(r'_fail\("(\w+)"\)', (here / "checks.py").read_text()))
     written |= set(profile_edit.REASONS) | {"applied", "never_store_unparseable", "model_refused"}
-    assert {"no_new_prompts", "bad_writer_output", "words", "dream_unchanged"} <= written
+    assert {"valid_empty", "no_prompts", "words", "over_limit"} <= written
     assert written <= settings_api.RUN_REASON_CODES
 
 
@@ -712,13 +712,13 @@ def test_recent_runs_absent_without_lab(client):
     assert "recentRuns" not in testing and "jobState" not in testing
 
 
-def test_job_state_reports_quota_lock_and_park(client, lab):
+def test_job_state_reports_quota_and_lock(client, lab):
     now = timezone.now()
     hour = now.replace(minute=0, second=0, microsecond=0)
     for _ in range(3):
         assert quota.take_quota("job", USER_A, hour, 10)
     state = call(client, "get").json()["testing"]["jobState"]
-    assert state == {"hourUsed": 3, "hourLimit": 10, "lockHeld": False, "parked": False}
+    assert state == {"hourUsed": 3, "hourLimit": 10, "lockHeld": False}
     assert quota.acquire_job_lock(USER_A, now)
     assert call(client, "get").json()["testing"]["jobState"]["lockHeld"] is True
     from chat.models import LabJobLock

@@ -42,18 +42,11 @@ RUN_REASON_CODES = frozenset(
         # profile_job.py
         profile_job.REVISION_MOVED,
         profile_job.PROFILE_OFF,
-        profile_job.BATCH_SKIPPED,
-        "no_new_prompts",
-        "sensitive_only",
-        "not_relevant",
-        "nothing_to_write",
-        "check",
-        "bad_extraction",
-        "bad_writer_output",
-        "bad_dream_output",
-        "all_screened",
-        "unsupported_section",
-        "dream_unchanged",
+        profile_job.VALID_EMPTY,
+        profile_job.RETRY_SUCCEEDED,
+        profile_job.VALIDATION_FAILED_KEPT_CURRENT,
+        profile_job.NEVER_STORE_REJECTED,
+        profile_job.NO_PROMPTS,
         "over_limit",
         # checks.py
         "empty_section",
@@ -97,7 +90,7 @@ ACTIONS = (
     "health",
 )
 LAB_ONLY_ACTIONS = frozenset({"run_now", "set_testing", "health"})
-RUN_KINDS = {"session": "session", "dream": "dream"}
+RUN_KINDS = ("session",)  # one update job; the kind is kept for the Run Now clients
 
 
 class SettingsRequestSerializer(IdentitySerializerMixin):
@@ -128,7 +121,7 @@ def _iso(value):
 RECENT_RUNS = 10
 
 
-def _lab_diagnostics(user_id: str, processed_through) -> dict:
+def _lab_diagnostics(user_id: str) -> dict:
     """Why did the Profile not update: the user's latest runs (no text) and the job's limits."""
     from ...models import LabJobLock, LabQuota, ProfileWriterRun
 
@@ -163,7 +156,6 @@ def _lab_diagnostics(user_id: str, processed_through) -> dict:
             "lockHeld": bool(
                 lock and lock.running and lock.started_at and lock.started_at > stale_before
             ),
-            "parked": profile_job.is_parked(user_id, "session", processed_through),
         },
     }
 
@@ -193,7 +185,7 @@ def _state(user_id: str) -> dict:
         },
     }
     if lab:
-        state["testing"].update(_lab_diagnostics(user_id, settings_.processed_through))
+        state["testing"].update(_lab_diagnostics(user_id))
     return state
 
 
@@ -280,7 +272,7 @@ def _handle(action: str, user_id: str, data: dict):
         kind = data.get("kind")
         if kind not in RUN_KINDS:
             return _bad_request()
-        result = profile_job.run_profile_job(user_id, "run_now", window=RUN_KINDS[kind])
+        result = profile_job.run_profile_job(user_id, "run_now")
         if result.status == "quota":
             return _respond({"error": "quota"}, status.HTTP_429_TOO_MANY_REQUESTS)
         return _respond(
