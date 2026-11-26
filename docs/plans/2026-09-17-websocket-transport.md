@@ -70,8 +70,7 @@ per-process `LocMemCache` — already a correctness gap for the client-event rat
 (`views.py:215`), and a hard blocker for any push that has to reach a socket held by a different
 pod. A reconnecting client can land on a different pod than the one running its turn.
 
-### 3.4 Three non-browser consumers read the SSE endpoint
-- `server/loadtest/load_test.py:116`
+### 3.4 Two non-browser consumers read the SSE endpoint
 - `evals/run_eval.py:131`
 - `latency/scripts/run_baseline_beta_from_braintrust.py:434`
 

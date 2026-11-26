@@ -90,9 +90,8 @@ class TurnOrchestrator:
         should_cancel: CancelCheck | None = None,
     ) -> AgentResponse:
         start_time = time.time()
-        # The tracing guard (tracing_guard.py) ensures start_span returns
-        # NOOP_SPAN in load-test threads, so current_span() is safe to call
-        # unconditionally here.
+        # current_span() returns a no-op span when tracing is off, so it is
+        # safe to call unconditionally here.
         bt_span = current_span()
         emitter = ProgressEmitter(on_progress)
 
