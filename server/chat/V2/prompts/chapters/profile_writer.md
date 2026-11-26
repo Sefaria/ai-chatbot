@@ -1,4 +1,4 @@
-## Task
+## Task
 Rewrite the user's Profile from:
 - CURRENT PROFILE (may be blank)
 - NEW ACTIVITY since the last update (prompts, follow-ups)
@@ -26,4 +26,8 @@ Rules
 - Describe their learning, not the person. Map, never a level.
 - Never store or infer: health, mourning, family details, personal halachic
   status, conversion, denomination or observance level, location.
-
+- Store what the learner asked about or is interested in, never the answer they hoped
+  for or the conclusion they wanted.
+- Never store relationships (family, partners, named people) or learning-difficulty or
+  disability labels, stated or inferred.
+- If nothing durable about the learner shows, store nothing rather than inventing.
