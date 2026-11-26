@@ -270,9 +270,13 @@ def refresh_support_dates(user_id: str, base_revision: int, dates: dict[str, dat
 
 
 def unprocessed_user_prompts(
-    user_id: str, since: datetime | None, until: datetime | None = None
+    user_id: str,
+    since: datetime | None,
+    until: datetime | None = None,
+    newest: int | None = None,
 ) -> list[PromptRow]:
-    """The user's own prompts after `since` (and up to `until`), oldest first.
+    """The user's own prompts after `since` (and up to `until`), oldest first. With `newest`, only
+    the newest that many (still oldest first).
 
     Never earlier than the last Clear. Left out: prompts of hidden sessions (the plain arm of the
     dual display is stored with `is_deleted=True`) and of sessions the user deleted, and turns that
@@ -356,10 +360,13 @@ def unprocessed_user_prompts(
         .exclude(turn_id__in=unanswered_turns)
         .order_by("server_timestamp", "id")
     )
-    return [
+    if newest is not None:
+        rows = rows.reverse()[:newest]
+    found = [
         PromptRow(r.message_id, r.session_id, r.content, r.server_timestamp)
         for r in rows.only("message_id", "session_id", "content", "server_timestamp")
     ]
+    return found[::-1] if newest is not None else found
 
 
 def record_run(**fields) -> int:
