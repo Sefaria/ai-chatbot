@@ -11,6 +11,10 @@ catalog skill must:
 - link only to Sefaria sites;
 - name only tools a Sefaria MCP endpoint serves;
 - end with the standard findings section (FINDINGS_SECTION.md), unchanged.
+
+A first-party *system* skill (listed under ``system_skills``) skips the method, author,
+authorization and findings-section checks, and may also hold ``.js`` files under
+``references/`` (code the model copies into what it builds). Every other check applies.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from . import (
 MAX_FILES = 32
 MAX_TOTAL_BYTES = 512 * 1024
 ALLOWED_SUFFIXES = {".md"}
+SYSTEM_REFERENCE_SUFFIXES = {".js"}  # system skills only, and only under references/
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 URL = re.compile(r"https?://([^/\s)>\]\"'`]+)")
 ALLOWED_HOSTS = re.compile(r"^([a-z0-9-]+\.)*sefaria\.org(\.il)?$")
@@ -84,9 +89,10 @@ def problems(root: Path) -> list[str]:
             found.append(f"catalog.yaml: author {slug} needs `authorized: true` or `false`")
 
     names = {p.name for p in skill_dirs(root)}
-    for name in config.get("authorized_skills") or []:
-        if name not in names:
-            found.append(f"catalog.yaml: authorized_skills lists {name}, which is not in skills/")
+    for key in ("authorized_skills", "system_skills"):
+        for name in config.get(key) or []:
+            if name not in names:
+                found.append(f"catalog.yaml: {key} lists {name}, which is not in skills/")
 
     from fastmcp.skills import Skill
 
@@ -111,14 +117,15 @@ def problems(root: Path) -> list[str]:
             found.append(
                 f"{where}: remove `allowed-tools`; MCP hosts ignore it and it reads as a request for access"
             )
-        if skill.method not in catalog.methods:
+        if not skill.system and skill.method not in catalog.methods:
             found.append(f"{where}: metadata `{METHOD_KEY}` must name a method in catalog.yaml")
-        if skill.author not in catalog.authors:
+        if not skill.system and skill.author not in catalog.authors:
             found.append(f"{where}: metadata `{AUTHOR_KEY}` must name an author in catalog.yaml")
         if not SEMVER.match(skill.version):
             found.append(f"{where}: metadata `{VERSION_KEY}` must be a version like 1.0.0")
         if (
-            skill.method in catalog.methods
+            not skill.system
+            and skill.method in catalog.methods
             and skill.author in catalog.authors
             and not skill.authorized
         ):
@@ -130,7 +137,13 @@ def problems(root: Path) -> list[str]:
         total = 0
         for path, data in sorted(skill.files.items()):
             total += len(data)
-            if Path(path).suffix not in ALLOWED_SUFFIXES:
+            suffix = Path(path).suffix
+            system_reference = (
+                skill.system
+                and suffix in SYSTEM_REFERENCE_SUFFIXES
+                and Path(path).parts[0] == "references"
+            )
+            if suffix not in ALLOWED_SUFFIXES and not system_reference:
                 found.append(f"{where}/{path}: only markdown files are allowed")
                 continue
             text = data.decode("utf-8", errors="replace")
@@ -148,7 +161,7 @@ def problems(root: Path) -> list[str]:
             found.append(
                 f"{where}: at most {MAX_TOTAL_BYTES // 1024} KB in total (has {total // 1024} KB)"
             )
-        if not skill.instructions.rstrip().endswith(section):
+        if not skill.system and not skill.instructions.rstrip().endswith(section):
             found.append(
                 f"{where}: SKILL.md must end with the section in FINDINGS_SECTION.md, unchanged"
             )

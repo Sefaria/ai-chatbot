@@ -5,6 +5,15 @@
 #   - the skill's name is listed under `authorized_skills` (that skill alone).
 # The validator (python -m skills_catalog.validate) fails on a skill that is neither.
 #
+# First-party (system) skills are the exception: Sefaria's own tooling, listed under
+# `system_skills`. They are always served, belong to no method, need no author authorization and
+# record no findings, so they skip those checks and the findings section; their name must not be
+# passed to save_finding. A system skill may also carry `.js` reference files (code the model
+# copies into what it builds; nothing here runs it).
+
+system_skills:
+  - sefaria-linked-asset
+
 # Everything below is dummy data for development and tests.
 
 methods:

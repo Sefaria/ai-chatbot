@@ -189,3 +189,78 @@ def test_a_separate_catalog_checkout_can_be_served(root, monkeypatch):
     assert skills_catalog.default_root() == root
     shutil.rmtree(root / "skills" / "good-skill")
     assert skills_catalog.build(skills_catalog.default_root()).served() == []
+
+
+# ---------------------------------------------------------------------------
+# First-party (system) skills
+# ---------------------------------------------------------------------------
+
+SYSTEM_SKILL = (
+    "---\nname: {name}\ndescription: Sefaria's own tooling.\nmetadata:\n"
+    "  org.sefaria/version: 1.0.0\n---\n\n# Tooling\n\nNo method, no findings section.\n"
+)
+
+
+def add_system(root: Path, name: str = "house-skill", files: dict | None = None, **kwargs) -> Path:
+    text = (root / "catalog.yaml").read_text() + f"system_skills: [{name}]\n"
+    (root / "catalog.yaml").write_text(text)
+    return add(
+        root, name, files=files, text=kwargs.pop("text", None) or SYSTEM_SKILL.format(name=name)
+    )
+
+
+def test_the_shipped_system_skill_is_served_but_is_not_a_method_skill():
+    catalog = skills_catalog.build(skills_catalog.ROOT)
+    linked = catalog.skills["sefaria-linked-asset"]
+    assert linked.system and linked.authorized
+    assert "sefaria-linked-asset" in catalog.served_names()
+    assert catalog.skill("sefaria-linked-asset") is None  # save_finding and skill pages refuse it
+    assert "references/shim.js" in linked.files
+
+
+def test_a_system_skill_skips_method_author_and_findings_checks(root):
+    add_system(root, files={"references/shim.js": "window.x = 1;\n"})
+    assert validate.problems(root) == []
+    catalog = skills_catalog.build(root)
+    assert catalog.served_names() == {"good-skill", "house-skill"}
+    assert catalog.skills_of("m") == [catalog.skill("good-skill")]
+
+
+def test_ordinary_skills_still_get_every_check(root):
+    # The same skill, not listed as a system skill, fails each check the system kind skips.
+    add(root, "plain-skill", text=SYSTEM_SKILL.format(name="plain-skill"))
+    found = validate.problems(root)
+    assert any("plain-skill: metadata `org.sefaria/method` must name a method" in p for p in found)
+    assert any("plain-skill: metadata `org.sefaria/author` must name an author" in p for p in found)
+    assert any("plain-skill: SKILL.md must end with the section" in p for p in found)
+
+
+def test_js_only_for_system_skills_and_only_under_references(root):
+    add(root, "scripted-method", files={"references/shim.js": "x;\n"})
+    add_system(root, files={"shim.js": "x;\n", "references/run.py": "print(1)\n"})
+    found = validate.problems(root)
+    assert any("scripted-method/references/shim.js: only markdown" in p for p in found)
+    assert any("house-skill/shim.js: only markdown" in p for p in found)
+    assert any("house-skill/references/run.py: only markdown" in p for p in found)
+
+
+def test_system_skills_still_get_link_tool_and_version_checks(root):
+    add_system(
+        root,
+        files={"references/shim.js": "fetch('https://evil.example.com/x');\n"},
+        text=SYSTEM_SKILL.format(name="house-skill").replace("1.0.0", "1.0")
+        + "Call `update_topic_prompt`.\n",
+    )
+    found = validate.problems(root)
+    assert any("links only to Sefaria sites (found evil.example.com)" in p for p in found)
+    assert any("`update_topic_prompt` is not served" in p for p in found)
+    assert any("must be a version like 1.0.0" in p for p in found)
+
+
+def test_system_skills_must_exist(root):
+    (root / "catalog.yaml").write_text(
+        (root / "catalog.yaml").read_text() + "system_skills: [ghost]\n"
+    )
+    assert "catalog.yaml: system_skills lists ghost, which is not in skills/" in validate.problems(
+        root
+    )
